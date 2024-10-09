@@ -578,40 +578,17 @@ def radec_to_str_name(
 
 
 class SourceCandidate(BaseModel):
-    ra: List[float]
-    dec: List[float]
-    flux: List[float]
-    dflux: List[float]
-    snr: List[float]
-    ctime: List[float]
-    sourceID: List[str]
-    match_filtered: List[bool]
-    renormalized: List[bool]
-    catalog_crossmatch: List[bool]
+    ra: float
+    dec: float
+    flux: float
+    dflux: float
+    snr: float
+    ctime: float
+    sourceID: str
+    match_filtered: bool
+    renormalized: bool
+    catalog_crossmatch: bool
 
-    def __init__(
-        self,
-        ra: List[float],
-        dec: List[float],
-        flux: List[float],
-        dflux: List[float],
-        snr: List[float],
-        ctime: List[float],
-        sourceID: List[str],
-        match_filtered: List[bool],
-        renormalized: List[bool],
-        crossmatch: List[bool],
-    ):
-        self.ra = ra
-        self.dec = dec
-        self.flux = flux
-        self.dflux = dflux
-        self.snr = snr
-        self.ctime = ctime
-        self.sourceID = sourceID
-        self.match_filtered = match_filtered
-        self.renormalized = renormalized
-        self.catalog_crossmatch = crossmatch
 
 
 def depth1_pipeline(
@@ -742,30 +719,33 @@ def depth1_pipeline(
         print("number of candidates after renormalization: ", np.sum(renorm_sub))
 
     coords = np.array(np.deg2rad([dec_new, ra_new]))
-    source_string_names = [
-        radec_to_str_name(ra_new[i], dec_new[i]) for i in range(len(ra_new))
-    ]
+    source_string_names = [radec_to_str_name(ra_new[i], dec_new[i]) for i in range(len(ra_new))]
     print(source_string_names)
-    exit()
-    source_candidates = SourceCandidate(
-        ra_new,
-        dec_new,
-        flux.at(coords, order=0, mask_nan=True),
-        dflux.at(coords, order=0, mask_nan=True),
-        snr.at(coords, order=0, mask_nan=True),
-        (
-            data.time_map.at(coords, order=0, mask_nan=True)
-            + np.ones(len(ra_new)) * data.map_ctime
-        ),
-        source_string_names,
-        mf_sub,
-        renorm_sub,
-        catalog_match,
-    )
-
+    
+    flux_new = flux.at(coords, order=0, mask_nan=True)
+    dflux_new = dflux.at(coords, order=0, mask_nan=True)
+    snr_new = snr.at(coords, order=0, mask_nan=True)
+    ctime_new = data.time_map.at(coords, order=0, mask_nan=True) + np.ones(len(ra_new)) * data.map_ctime
+    source_candidates = []
+    for i in range(len(ra_new)):
+        source_candidates.append(
+            SourceCandidate(ra=ra_new[i]%360,
+                            dec=dec_new[i],
+                            flux=flux_new[i],
+                            dflux=dflux_new[i],
+                            snr=snr_new[i],
+                            ctime=ctime_new[i],
+                            sourceID=source_string_names[i],
+                            match_filtered=mf_sub[i],
+                            renormalized=renorm_sub[i],
+                            catalog_crossmatch=catalog_match[i],
+                           )
+        )
+    
     # count sources
-    source_count = np.sum(source_all)
+    source_count = len(source_candidates)
 
+    '''
     # convert to pandas df
     ocat = pd.DataFrame.from_dict(source_candidates.dict())
 
@@ -774,7 +754,7 @@ def depth1_pipeline(
         ocat, ast_cut = asteroid_cut(
             ocat, ast_dir, ast_tol, ast_orbits, verbosity=verbosity - 1
         )
-
+    
     # convert to astropy table
     ocat = Table.from_pandas(ocat)
 
@@ -798,8 +778,6 @@ def depth1_pipeline(
     if ast_dir:
         ocat.meta["asttol"] = np.rad2deg(ast_tol) * 60
         ocat.meta["nast"] = ast_cut
-
-    if outputsnr:
-        return ocat, snr
-    else:
-        return ocat
+    '''
+    return source_candidates
+    
