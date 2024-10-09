@@ -603,7 +603,6 @@ def depth1_pipeline(
     ast_orbits=None,
     ast_tol=10.0 * utils.arcmin,
     verbosity=1,
-    outputsnr=False,
 ):
     """
     Pipeline for transient detection
@@ -625,31 +624,14 @@ def depth1_pipeline(
         astropy table of candidates
     """
 
-    emptytable = Table.from_pandas(
-        pd.DataFrame(
-            {
-                "ra": [],
-                "dec": [],
-                "flux": [],
-                "dflux": [],
-                "snr": [],
-                "ctime": [],
-                "source": [],
-                "mf": [],
-                "renorm": [],
-            }
-        )
-    )
+    
 
     # check if map is all zeros
     if np.all(data.intensity_map == 0.0):
         if verbosity > 0:
             print("map is all zeros, skipping")
 
-        if outputsnr:
-            return emptytable, data.intensity_map
-        else:
-            return emptytable
+        return []
 
     # get galaxy, planet, edge masked flux, snr, tmap
     flux = data.masked_map(data.flux(), edgecut, galmask)
@@ -679,10 +661,7 @@ def depth1_pipeline(
     if not ra_can:
         if verbosity > 0:
             print("did not find any candidates")
-        if outputsnr:
-            return emptytable, snr
-        else:
-            return emptytable
+        return []
     if verbosity > 0:
         print("number of initial candidates: ", len(ra_can))
 
