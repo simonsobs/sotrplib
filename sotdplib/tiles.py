@@ -1,6 +1,41 @@
 import numpy as np
-from pixell import utils, enmap, reproject
+from pixell import utils, enmap
 from scipy import ndimage
+import warnings
+
+def get_tmap_tiles(tmap: enmap.ndmap, 
+                   grid_deg: float, 
+                   zeromap: enmap.ndmap, 
+                   id=None
+                   ):
+    tile_map = tiles_t_quick(tmap, grid_deg, id=id)
+    tile_map[np.where(zeromap == 0.0)] = 0.0
+    return tile_map
+
+
+def get_medrat(snr: enmap, tiledmap):
+    """
+    gets median ratio for map renormalization given tiles
+
+    Args:
+         snr: snr map
+         tiledmap: tiles from tmap to get ratio from
+
+    Returns:
+        median ratio for each tile
+    """
+    from scipy.stats import norm
+    t = tiledmap.astype(int)
+    med0 = norm.ppf(0.75)
+    snr2 = snr**2
+    medians = ndimage.median(snr2, labels=t, index=np.arange(np.max(t + 1)))
+    median_map = medians[t]
+    # supress divide by zero warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        med_ratio = med0 / median_map**0.5
+    med_ratio[np.where(t == 0)] = 0.0
+    return med_ratio
 
 
 def get_non_zero_pix(tmap):

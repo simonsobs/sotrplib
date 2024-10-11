@@ -1,3 +1,5 @@
+## Lightcurve needs rewritten.
+
 import os
 import os.path as op
 import numpy as np
@@ -7,8 +9,9 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 from pixell import enmap, utils
 from astropy.io import fits
-from sotdplib.pipeline import kappa_clean, get_snr, source_detection
-from sotdplib import tools, filters, inputs
+from maps import kappa_clean, get_snr, extract_sources
+from . import tools, filters, inputs
+
 
 
 def lightcurve(

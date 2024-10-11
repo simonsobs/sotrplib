@@ -253,3 +253,40 @@ def check_loc_ast(
         return near_ast
     else:
         return np.any(near_ast, axis=1)
+
+
+def asteroid_cut(df, ast_dir, ast_tol, ast_orbits, verbosity=0):
+    # create subset with just candidates, so we don't need to waste time checking asteroid on sources
+    ocat_can = df[~df["source"]]
+
+    # Cut asteroids if there are remaining candidates
+    if len(ocat_can) > 0:
+        asteroids = check_loc_ast(
+            np.deg2rad(ocat_can["ra"]).to_numpy(),
+            np.deg2rad(ocat_can["dec"]).to_numpy(),
+            ocat_can["ctime"].to_numpy(),
+            ast_dir,
+            tol=ast_tol,
+            orbits=ast_orbits,
+        )
+
+        # if one dimension, convert to array
+        if len(ocat_can) == 1:
+            asteroids = np.array([asteroids])
+
+        # remove asteroids
+        ocat_can = ocat_can[~asteroids]
+
+        # add back in sources
+        df = pd.concat([ocat_can, df[df["source"]]], ignore_index=True)
+
+        # count asteroid cut
+        ast_cut = np.sum(asteroids)
+    else:
+        ast_cut = 0
+
+    if verbosity > 0:
+        print("number of candidates after asteroid cut: ", len(ocat_can))
+        print(" ")
+
+    return df, ast_cut
