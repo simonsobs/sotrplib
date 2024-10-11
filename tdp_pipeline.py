@@ -18,8 +18,7 @@ from sotdplib.tiles import get_medrat, get_tmap_tiles
 from sotdplib.tools import crossmatch_mask, radec_to_str_name
 from sotdplib.masks import get_masked_map
 from sotdplib.inputs import get_sourceflux_threshold
-
-from pixell import enmap
+from sotdplib.plot import plot_source_thumbnail
 
 import argparse
 
@@ -81,7 +80,7 @@ class SourceCandidate(BaseModel):
 sourcecat_fname = "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/PS_S19_f090_2pass_optimalCatalog.fits"
 galmask_fname = "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/mask_for_sources2019_plus_dust.fits"
 sourcecat = Table.read(sourcecat_fname)
-galmask = enmap.read_map(galmask_fname)
+galmask = None#enmap.read_map(galmask_fname)
 
 
 for m in args.maps:
@@ -184,7 +183,19 @@ for m in args.maps:
                                 )
     
 
-    print(source_candidates)
+    for sc in source_candidates:
+        ra = sc.ra
+        dec = sc.dec
+        plot_source_thumbnail(data,
+                              ra,
+                              dec,
+                              source_name=sc.sourceID,
+                              plot_dir = '/scratch/gpfs/amfoster/scratch/',
+                              colorbar_range=1000
+                              )
+
+
+
 '''
 ocat = depth1_pipeline(
     data,
