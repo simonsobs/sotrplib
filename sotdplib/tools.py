@@ -153,6 +153,28 @@ def crossmatch_mask(sources, crosscat, radius):
     return mask
 
 
+def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
+    """
+    get desired radius that we want to cut on point sources or signal at the center, radius~2*fwhm
+
+    Args:
+        thumb: thumbnail map
+        arr: array name
+        freq: frequency
+        match_filtered: bool , increase radius by 2sqrt(2) if so
+
+    Returns:
+        radius in pixel
+    """
+    from .inputs import get_fwhm_arcmin
+    if fwhm is None:
+        fwhm = get_fwhm_arcmin(arr, freq)
+    resolution = np.abs(thumb.wcs.wcs.cdelt[0])
+    mf_factor = 2**0.5 if match_filtered else 1.
+    radius_pix = round(2 * mf_factor* fwhm / (60 * resolution))
+    return radius_pix
+
+
 def edge_map(imap):
     """Finds the edges of a map
 
@@ -496,7 +518,7 @@ def ra_neg(ra):
     return ra
 
 
-def sky_sep(ra1, dec1, ra2, dec2):
+def angular_separation(ra1, dec1, ra2, dec2):
     """calculates angular separation between two points on the sky
 
     Args:
@@ -544,8 +566,6 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
     mean_ivar = enmap.read_map(
         mean_ivar_file, box=[[dec - size, ra - size], [dec + size, ra + size]]
     )
-    wcs = mean_map.wcs
-    shape = mean_map.shape
     rho, kappa = matched_filter_1overf(mean_map, mean_ivar, freq, size_deg=0.5)
     flux_map = rho / kappa
     snr_map = rho / kappa**0.5
@@ -556,7 +576,7 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
     return flux, snr
 
 
-def thumbnail(
+def extract_flux_thumbnail_from_file(
     ra: float, dec: float, ctime: int, freq: str, arr: str, mapdir: str, radius: float
 ):
     # Parse position
@@ -583,7 +603,7 @@ def thumbnail(
     return flux
 
 
-def sanitize_kappa(kappa, tol=1e-4, inplace=False):
+def sanitize_kappa(kappa, tol=1e-4):
     return np.maximum(kappa, np.max(kappa) * tol)
 
 
