@@ -2,9 +2,6 @@ import numpy as np
 from pixell import enmap
 import warnings
 
-from . import filters,tools
-from .masks import mask_edge, mask_dustgal, mask_planets, get_masked_map
-
 
 class Depth1:
     def __init__(
@@ -17,6 +14,7 @@ class Depth1:
         wafer_name: str,
         freq: str,
         map_ctime: float,
+        is_thumbnail: bool = False,
     ):
         self.intensity_map = clean_map(intensity_map, inverse_variance_map)
         self.inverse_variance_map = inverse_variance_map
@@ -26,6 +24,8 @@ class Depth1:
         self.wafer_name = wafer_name
         self.freq = freq
         self.map_ctime = map_ctime
+        self.is_thumbnail = is_thumbnail
+        self.res = np.abs(intensity_map.wcs.wcs.cdelt[0])
 
     def snr(self):
         return get_snr(self.rho_map, self.kappa_map)
@@ -37,14 +37,61 @@ class Depth1:
         return get_dflux(self.kappa_map)
 
     def mask_map_edge(self, edgecut):
+        from .masks import mask_edge
         return mask_edge(self.kappa_map, edgecut)
 
     def mask_dustgal(self, galmask):
+        from .masks import mask_dustgal
         return mask_dustgal(self.kappa_map, galmask)
 
     def mask_planets(self):
+        from .masks import mask_planets
         return mask_planets(self.map_ctime, self.time_map)
-
+    
+    def thumbnail(self,
+                  ra:float,
+                  dec:float,
+                  thumbnail_width_arcmin:float=60
+                  ):
+        ## extract thumbnails around a location and reproject to local flat-sky
+        ## return a depth1 object with is_thumbnail=True
+        intensity_thumbnail = get_thumbnail(self.intensity_map,
+                                            ra,
+                                            dec,
+                                            size_arcmin=thumbnail_width_arcmin
+                                            )
+        rho_thumbnail = get_thumbnail(self.rho_map,
+                                       ra,
+                                       dec,
+                                       size_arcmin=thumbnail_width_arcmin
+                                       )
+        kappa_thumbnail = get_thumbnail(self.kappa_map,
+                                       ra,
+                                       dec,
+                                       size_arcmin=thumbnail_width_arcmin
+                                       )
+        ivar_thumbnail = get_thumbnail(self.inverse_variance_map,
+                                       ra,
+                                       dec,
+                                       size_arcmin=thumbnail_width_arcmin
+                                       )
+        ctime_thumbnail = get_thumbnail(self.time_map,
+                                        ra,
+                                        dec,
+                                        size_arcmin=thumbnail_width_arcmin
+                                       )
+        
+        return Depth1(intensity_thumbnail,
+                      ivar_thumbnail,
+                      rho_thumbnail,
+                      kappa_thumbnail,
+                      ctime_thumbnail,
+                      self.wafer_name,
+                      self.freq,
+                      self.map_ctime,
+                      is_thumbnail=True
+                      )
+    
     def perform_matched_filter(self, 
                                 ra_can, 
                                 dec_can, 
@@ -52,6 +99,7 @@ class Depth1:
                                 sourcemask, 
                                 detection_threshold
                                 ):
+        from .filters import renorm_ms
         mf = np.array(len(ra_can) * [False])
         renorm = np.array(len(ra_can) * [False])
         ra_arr = np.array(len(ra_can) * [np.nan])
@@ -80,13 +128,13 @@ class Depth1:
                 if pass_matched_filter:
                     # renormalization if matched filter is successful
                     ## should this be data_sub.snr=?
-                    snr_sub_renorm = filters.renorm_ms(data_sub.snr, 
-                                                    data_sub.wafer_name, 
-                                                    data_sub.freq, 
-                                                    ra, 
-                                                    dec, 
-                                                    sourcemask,
-                                                    )
+                    snr_sub_renorm = renorm_ms(data_sub.snr, 
+                                                data_sub.wafer_name, 
+                                                data_sub.freq, 
+                                                ra, 
+                                                dec, 
+                                                sourcemask,
+                                                )
                     ra, dec, pass_renorm = data_sub.recalc_source_detection(ra, 
                                                                             dec, 
                                                                             detection_threshold
@@ -117,29 +165,31 @@ class Depth1:
         Returns:
             Dept1 submaps 
         """
-        from filters import get_submap, matched_filter
+        from .filters import matched_filter
         sub = get_submap(self.intensity_map, 
-                        ra, 
-                        dec, 
-                        size
+                         ra, 
+                         dec, 
+                         size
                         )
         sub_inverse_variance = get_submap(self.inverse_variance_map, 
                                           ra, 
-                                            dec, 
-                                            size
-                                            )
+                                          dec, 
+                                          size
+                                         )
         sub_tmap = get_submap(self.time_map, 
-                                ra, 
-                                dec, 
-                                size
-                                )
+                              ra, 
+                              dec, 
+                              size
+                             )
         rho, kappa = matched_filter(sub,
                                     sub_inverse_variance,
                                     self.wafer_name,
                                     self.freq,
                                     ra,
                                     dec,
+                                    size_deg=size,
                                     source_cat=sourcemask,
+                                    apod_size_arcmin=5,
                                     )
 
         return Depth1(sub,
@@ -203,18 +253,18 @@ class Depth1:
         Also returns bool of whether source is detected
         New source must be found within matching_radius of the old one.
         """
-
+        from .tools import angular_separation
         ra_new, dec_new = self.extract_sources()
 
         if not ra_new:
             return ra, dec, False
         else:
             # calculate separation from original position. Reject sources not within 1 arcmin
-            sep = tools.sky_sep(ra, 
-                                dec, 
-                                ra_new, 
-                                dec_new
-                                ) * 60.0  # in arcmin
+            sep = angular_separation(ra, 
+                                    dec, 
+                                    ra_new, 
+                                    dec_new
+                                    ) * 60.0  # in arcmin
             # continue if no sources are within 1 arcmin
             if np.all(sep > matching_radius):
                 return ra, dec, False
@@ -294,12 +344,43 @@ def edge_map(imap: enmap.ndmap):
     Returns:
         binary ndmap with 1 inside region, 0 outside
     """
-    from scipy import ndimage
+    from scipy.ndimage import binary_fill_holes
     edge = enmap.enmap(imap, imap.wcs)  # Create map geometry
     edge[np.abs(edge) > 0] = 1  # Convert to binary
-    edge = ndimage.binary_fill_holes(edge)  # Fill holes
+    edge = binary_fill_holes(edge)  # Fill holes
 
     return enmap.enmap(edge.astype("ubyte"), imap.wcs)
 
 
+def get_submap(imap, 
+               ra_deg, 
+               dec_deg, 
+               size_deg=0.5
+               ):
+        ## Does not reproject
+        from pixell.utils import degree
+        ra = ra_deg * degree
+        dec = dec_deg * degree
+        radius = size_deg * degree
+        omap = imap.submap([[dec - radius, ra - radius], 
+                            [dec + radius, ra + radius]]
+                          )
+        return omap
+
+
+def get_thumbnail(imap, 
+                  ra_deg, 
+                  dec_deg, 
+                  size_arcmin=60
+                  ):
+    from pixell import reproject
+    from pixell.utils import degree
+    ra = ra_deg * degree
+    dec = dec_deg * degree
+
+    omap = reproject.thumbnails(imap, 
+                                [dec, ra], 
+                                size_arcmin * degree/60.
+                                )
+    return omap
 
