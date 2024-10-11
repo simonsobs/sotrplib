@@ -245,7 +245,7 @@ def lightcurve(
                             if len(cand_ra) > 0:
                                 # Take closer detection if more than one
                                 if len(cand_ra) > 1:
-                                    sep = tools.sky_sep(
+                                    sep = tools.angular_separation(
                                         cand_ra,
                                         cand_dec,
                                         np.rad2deg(pos[1]),
@@ -258,7 +258,7 @@ def lightcurve(
                                     pos_new = np.deg2rad(
                                         np.array([cand_dec[0], cand_ra[0]])
                                     )
-                                detect_sep = tools.sky_sep(
+                                detect_sep = tools.angular_separation(
                                     np.rad2deg(pos_new[1]),
                                     np.rad2deg(pos_new[0]),
                                     np.rad2deg(pos[1]),
