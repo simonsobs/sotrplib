@@ -4,7 +4,7 @@ import math
 from tqdm import tqdm
 import numpy as np
 from pixell import enmap, utils
-from scipy import ndimage
+from scipy import ndimage, stats
 from scipy.ndimage import distance_transform_edt
 from scipy.ndimage import morphology as morph
 from scipy.optimize import curve_fit
@@ -12,12 +12,81 @@ import glob as glob
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
-from sotdplib import filters
-from scipy import stats
+
 
 
 # todo: write a function that will generate thumbnail and/or lightcurve given time and position
 
+
+def radec_to_str_name(ra: float, 
+                      dec: float, 
+                      source_class="pointsource", 
+                      observatory="SO"
+                      ):
+    """
+    ## stolen from spt3g_software -AF
+
+    Convert RA & dec (in radians) to IAU-approved string name.
+
+    Arguments
+    ---------
+    ra : float
+        Source right ascension in radians
+    dec : float
+        Source declination in radians
+    source_class : str
+        The class of source to which this name is assigned.  Supported classes
+        are ``pointsource``, ``cluster`` or ``transient``.  Shorthand class
+        names for these sources are also allowed (``S``, ``CL``, or ``SV``,
+        respectively).  Alternatively, the class can be ``None`` or ``short``,
+        indicating a simple source identifier in the form ``"HHMM-DD"``.
+
+    Returns
+    -------
+    name : str
+        A unique identifier for the source with coordinates truncated to the
+        appropriate number of significant figures for the source class.
+    """
+    from astropy.coordinates.angles import Angle
+
+    source_class = str(source_class).lower()
+    if source_class in ["sv", "t", "tr", "transient", "v", "var", "variable"]:
+        source_class = "SV"
+    elif source_class in ["c", "cl", "cluster"]:
+        source_class = "CL"
+    elif source_class in ["s", "p", "ps", "pointsource", "point_source"]:
+        source_class = "S"
+    elif source_class in ["none", "short"]:
+        source_class = "short"
+    else:
+        print("Unrecognized source class {}".format(source_class))
+        print("Defaulting to [ S ]")
+        source_class = "S"
+
+    # ra in (0, 360)
+    ra = np.mod(ra, 360)
+
+    opts = dict(sep="", pad=True, precision=3)
+    rastr = Angle(ra * u.deg).to_string(**opts, unit="hour")
+    decstr = Angle(dec * u.deg).to_string(alwayssign=True, **opts)
+
+    if source_class == "SV":
+        rastr = rastr[:8]
+        decstr = decstr.split(".")[0]
+    elif source_class == "CL":
+        rastr = rastr[:4]
+        decstr = decstr[:5]
+    elif source_class == "S":
+        rastr = rastr.split(".")[0]
+        decr = "{:.3f}".format(dec * 60).split(".")[1]
+        decstr = decstr[:5] + ".{}".format(decr[:1])
+    elif source_class == "short":
+        rastr = rastr[:4]
+        decstr = decstr[:3]
+        return "{}{}".format(rastr, decstr)
+
+    name = "{}-{} J{}{}".format(observatory, source_class, rastr, decstr)
+    return name
 
 class SourceMap(enmap.ndmap):
     """Implements a ndmap with a list of sources"""
@@ -458,6 +527,7 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
     Returns:
         flux [mJy], snr
     """
+    from filters import matched_filter_1overf
     ra = ra_deg * np.pi / 180.0
     dec = dec_deg * np.pi / 180.0
     mean_map_file = (
@@ -476,7 +546,7 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
     )
     wcs = mean_map.wcs
     shape = mean_map.shape
-    rho, kappa = filters.matched_filter_1overf(mean_map, mean_ivar, freq, size_deg=0.5)
+    rho, kappa = matched_filter_1overf(mean_map, mean_ivar, freq, size_deg=0.5)
     flux_map = rho / kappa
     snr_map = rho / kappa**0.5
     flux_map[np.where(kappa == 0.0)] = 0.0

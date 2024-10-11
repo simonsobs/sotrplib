@@ -1,8 +1,9 @@
 import numpy as np
-from pixell import utils, uharm, enmap, reproject, analysis, coordinates
-from sotdplib import inputs
 import warnings
 
+from pixell import utils, uharm, enmap, reproject, analysis, coordinates
+
+from . import inputs
 
 def get_thumbnail(imap, ra_deg, dec_deg, size_deg=0.5):
     ra = ra_deg * utils.degree

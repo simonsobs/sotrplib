@@ -601,3 +601,26 @@ def candidate_output(
             print(f'Wrote {op.join(can_odir, f"{ctime}_{str(i)}_ocat.fits")}')
 
     return
+
+
+def blazar_crossmatch(pos, tol=0.5):
+    """
+    Mask blazar 3C 454.3 using icrs position from SIMBAD
+
+    Args:
+        pos:  np.array of positions [[dec, ra]] in deg
+        tol: tolerance in deg
+
+    Returns:
+        1 in blazar, 0 if not in blazar
+    """
+    blazar_pos = SkyCoord("22h53m57.7480438728s", "+16d08m53.561508864s", frame="icrs")
+    can_pos = SkyCoord(pos[:, 1], pos[:, 0], frame="icrs", unit="deg")
+    sep = blazar_pos.separation(can_pos).to(u.deg)
+    match = []
+    for s in sep:
+        if s.value < tol:
+            match.append(1)
+        else:
+            match.append(0)
+    return np.array(match).astype(bool)
