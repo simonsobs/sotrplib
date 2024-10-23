@@ -7,4 +7,6 @@
 
 class Observatory():
     def __init__():
-        
+        ## do some stuff here
+        return 
+    
