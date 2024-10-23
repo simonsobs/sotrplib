@@ -13,12 +13,11 @@ import numpy as np
 
 from astropy.table import Table
 
-from sotdplib.maps import load_maps
-from sotdplib.tiles import get_medrat, get_tmap_tiles
-from sotdplib.tools import crossmatch_mask, radec_to_str_name
-from sotdplib.masks import get_masked_map
-from sotdplib.inputs import get_sourceflux_threshold
-from sotdplib.plot import plot_source_thumbnail
+from sotdplib.maps.maps import load_maps
+from sotdplib.maps.tiles import get_medrat, get_tmap_tiles
+from sotdplib.maps.masks import get_masked_map
+from sotdplib.utils.utils import get_sourceflux_threshold, crossmatch_mask, radec_to_str_name
+from sotdplib.utils.plot import plot_source_thumbnail
 
 import argparse
 
@@ -193,24 +192,3 @@ for m in args.maps:
                               plot_dir = '/scratch/gpfs/amfoster/scratch/',
                               colorbar_range=1000
                               )
-
-
-
-'''
-ocat = depth1_pipeline(
-    data,
-    args.gridsize,
-    10,
-    galmask,
-    sourcemask=sourcecat,
-    ast_dir=args.solarsystem,
-    verbosity=2,
-)
-print(ocat)
-
-
-for source in ocat:
-    print(source)
-# all_sources = tools.get_ps_inmap(imap, sourcecat, inputs.get_sourceflux_threshold(freq))
-# print(all_sources)
-'''
