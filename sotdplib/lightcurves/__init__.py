@@ -1,1 +1,1 @@
-from . import lightcurves
+from .lightcurves import *

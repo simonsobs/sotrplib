@@ -11,3 +11,6 @@ class SourceCandidate(BaseModel):
     match_filtered: bool
     renormalized: bool
     catalog_crossmatch: bool
+
+def hello():
+    return 'hello'
