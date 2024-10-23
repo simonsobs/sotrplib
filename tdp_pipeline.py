@@ -24,13 +24,12 @@ from sotdplib.sources.sources import SourceCandidate
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-m",
-    "--maps",
-    help="input maps... the map.fits ones.",
-    default=["/scratch/gpfs/snaess/actpol/maps/depth1/release/15064/depth1_1506466826_pa4_f150_map.fits"],
-    nargs='+',
-)
+parser.add_argument("-m",
+                    "--maps",
+                    help="input maps... the map.fits ones.",
+                    default=["/scratch/gpfs/snaess/actpol/maps/depth1/release/15064/depth1_1506466826_pa4_f150_map.fits"],
+                    nargs='+',
+                )
 parser.add_argument("-g", 
                     "--gridsize", 
                     help="Flatfield tile gridsize (deg)", 
@@ -40,16 +39,22 @@ parser.add_argument("--edge-cut",
                     help="Npixels to cut from map edges", 
                     default=10 # integer
                     )
-parser.add_argument(
-    "--solarsystem",
-    help="path asteroid ephem directories",
-    default="/scratch/gpfs/snaess/actpol/ephemerides/objects",
-)
-parser.add_argument(
-    "--plot_output",
-    help="path to output maps and code for plots",
-    default="/scratch/gpfs/amfoster/so/test_transient_pipeline/",
-)
+parser.add_argument("--solarsystem",
+                    help="path asteroid ephem directories",
+                    default="/scratch/gpfs/snaess/actpol/ephemerides/objects",
+                    )
+parser.add_argument("--plot-output",
+                    help="path to output maps and code for plots",
+                    default="/scratch/gpfs/amfoster/scratch/",
+                    )
+parser.add_argument("--source-catalog",
+                    help="path to source catalog",
+                    default="/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+                    )
+parser.add_argument("--galaxy-mask",
+                    help="path to galaxy mask",
+                    default="/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/mask_for_sources2019_plus_dust.fits",
+                    )
 parser.add_argument("-v", 
                     "--verbosity", 
                     help="Level of logging", 
@@ -59,13 +64,11 @@ parser.add_argument("-v",
 args = parser.parse_args()
 
 
+## will need to be replaced by querying the TDP source catalog
+sourcecat = Table.read(args.source_catalog)
 
-## hardcoded stuff bc I'm lazy.
-## will be replace by querying the source catalog
-sourcecat_fname = "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/PS_S19_f090_2pass_optimalCatalog.fits"
-galmask_fname = "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/mask_for_sources2019_plus_dust.fits"
-sourcecat = Table.read(sourcecat_fname)
-galmask = None#enmap.read_map(galmask_fname)
+## will we mask the galaxy?
+galmask = None#enmap.read_map(args.galaxy_mask)
 
 
 for m in args.maps:
@@ -124,8 +127,7 @@ for m in args.maps:
     else:
         catalog_match = np.array(len(ra_can) * [False])
 
-    ## there is a blazar match in the ACT pipeline... this will just use source catalog
-
+   
     if args.verbosity > 0:
         print(
             "Number of transient candidates after catalog matching: ",
@@ -175,6 +177,6 @@ for m in args.maps:
                               ra,
                               dec,
                               source_name=sc.sourceID,
-                              plot_dir = '/scratch/gpfs/amfoster/scratch/',
+                              plot_dir = args.plot_output,
                               colorbar_range=1000
                               )
