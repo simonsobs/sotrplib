@@ -18,9 +18,10 @@ from sotdplib.maps.tiles import get_medrat, get_tmap_tiles
 from sotdplib.maps.masks import get_masked_map
 from sotdplib.utils.utils import get_sourceflux_threshold, crossmatch_mask, radec_to_str_name
 from sotdplib.utils.plot import plot_source_thumbnail
+from sotdplib.sources.sources import SourceCandidate
+
 
 import argparse
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -57,21 +58,6 @@ parser.add_argument("-v",
 
 args = parser.parse_args()
 
-
-## Don't know where to put this.
-from pydantic import BaseModel
-
-class SourceCandidate(BaseModel):
-    ra: float
-    dec: float
-    flux: float
-    dflux: float
-    snr: float
-    ctime: float
-    sourceID: str
-    match_filtered: bool
-    renormalized: bool
-    catalog_crossmatch: bool
 
 
 ## hardcoded stuff bc I'm lazy.
