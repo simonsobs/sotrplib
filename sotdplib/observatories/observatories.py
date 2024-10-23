@@ -9,7 +9,9 @@ from typing import Optional
 import numpy as np
 import json
 
-observatory_info = json.loads('observatory_information.json')
+with open('sotdplib/observatories/observatory_information.json', 'r') as file:
+    content = file.read()
+    observatory_info = json.loads(content)
 
 observatory_name_alias = {'SPT':'South Pole Telescope',
                          'ACT':'Atacama Cosmology Telescope',
@@ -32,25 +34,25 @@ pa5_f150_fwhm=actpol.get_fwhm('pa5','f150')
 
 
 class Observatory:
-     def __init__(self, 
-                  name:str, 
-                  location:str, 
-                  latitude:float, 
-                  longitude:float, 
-                  elevation:float, 
-                  observing_bands:list[str], 
-                  primary_aperture:float, 
-                  instruments:list[str]
-                  ):
+    def __init__(self, 
+                name:str, 
+                location:str, 
+                latitude:float, 
+                longitude:float, 
+                elevation:float, 
+                observing_bands:list[str], 
+                primary_aperture:float, 
+                instruments:list[str]
+                ):
         self.name = name
         self.location = location
         self.latitude = latitude
         self.longitude = longitude
         self.elevation = elevation
-        self.frequency_bands = observing_bands
+        self.observing_bands = observing_bands
         self.primary_aperture = primary_aperture
         self.instruments = instruments
-    
+
     @classmethod
     def from_name(cls, name):
         # Search for the observatory with the given name in the JSON data
@@ -86,7 +88,16 @@ class Instrument:
                  beam_fwhm: list[float],
                  beam_omega: list[float]
                  ):
-    
+        self.instrument_name = instrument_name
+        self.latitude = latitude
+        self.longitude = longitude
+        self.elevation = elevation
+        self.observing_bands = observing_bands
+        self.primary_aperture = primary_aperture
+        self.eff_band_centers = eff_band_centers
+        self.beam_fwhm = beam_fwhm
+        self.beam_omega = beam_omega
+
     @classmethod
     def from_name(cls, observatory, instrument_name):
         # Search for the observatory with the given name in the JSON data
