@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "date": "23October2024",
+  "observatories": [
+    {
+      "name": "South Pole Telescope",
+      "location": "South Pole, Antarctica",
+      "latitude": -89.989667,
+      "longitude": 44.201333,
+      "elevation": 2818.0,
+      "observing_bands": ["95GHz", "150GHz", "220GHz"],
+      "primary_aperture": 10.0,
+      "instruments": [
+        {
+          "name": "SPT3G",
+          "observing_bands": ["95GHz", "150GHz", "220GHz"],
+          "description": "Third generation camera with polarization-sensitive bolometers"
+        },
+        {
+          "name": "SPTpol",
+          "observing_bands": ["90GHz", "150GHz"],
+          "description": "Polarization-sensitive bolometer array used for CMB studies"
+        },
+        {
+          "name": "SPTsz",
+          "observing_bands": ["90GHz", "150GHz", "220GHz"],
+          "description": "Intensity-only bolometer array used for CMB studies"
+        }
+      ]
+    },
+    {
+      "name": "Atacama Cosmology Telescope",
+      "location": "Cerro Toco, Atacama, Chile",
+      "latitude": -22.958579,
+      "longitude": -67.787834,
+      "elevation": 5190,
+      "observing_bands": ["f090", "f150", "f220"],
+      "primary_aperture": 6.0,
+      "instruments": [
+        {
+          "name": "ACTPol",
+          "observing_bands": ["f090", "f150", "f220"],
+          "description": "Polarization-sensitive camera for CMB measurements",
+          "wafers": ["pa1","pa2","pa3","pa4","pa5","pa6"],
+          "eff_band_centers":{"pa1":{"f150":145.3e9},
+                              "pa2":{"f150":145.7e9},
+                              "pa3":{"f090":93.2e9,"f150":144.7e9},
+                              "pa4": {"f150": 148.7e9, "f220": 227.2e9},
+                              "pa5": {"f090": 96.7e9, "f150": 149.5e9},
+                              "pa6": {"f090": 95.5e9, "f150": 148.1e9},
+                              "pa7": {"f030": 27.2e9, "f040": 37.7e9}
+                              }, 
+          "beam_fwhm":{},
+          "beam_omega":{"pa1":{},
+                       "pa2":{},
+                       "pa3":{},
+                       "pa4":{"f150":227.89,"f220":113.34},
+                       "pa5":{"f090":480.93,"f150":219.69},
+                       "pa6":{"f090":492.73,"f150":229.9},
+                       "pa7":{"f030":5060,"f040":2804}
+                      }
+
+        },
+        {
+          "name": "AdvACT",
+          "observing_bands": ["f030", "f040", "f090", "f150", "f220"],
+          "description": "Advanced camera for multi-frequency observations of the CMB"
+        }
+      ]
+    },
+    {
+      "name": "Simons Observatory",
+      "location": "Cerro Toco, Atacama, Chile",
+      "latitude": -22.9599,
+      "longitude": -67.7879,
+      "elevation": 5190,
+      "observing_bands": ["f030", "f040", "f090", "f150", "f220", "f280"],
+      "instruments": [
+        {
+          "name": "LAT",
+          "description": "Large Aperture Telescope",
+          "observing_bands": ["f030", "f040", "f090", "f150", "f220", "f280"],
+          "primary_aperture": 6.0,
+          "latitude": -22.96098,
+          "longitude": -67.78769,
+          "elevation": 5147
+        },
+        {
+          "name": "SAT1",
+          "description": "Small Aperture Telescope 1",
+          "observing_bands": ["f090", "f150"],
+          "primary_aperture": 0.35,
+          "latitude": -22.9601,
+          "longitude": -67.7884,
+          "elevation": 5137.5
+        },
+        {
+          "name": "SAT2",
+          "description": "Small Aperture Telescope 2",
+          "observing_bands": ["f220", "f280"],
+          "primary_aperture": 0.35,
+          "latitude": -22.9601,
+          "longitude": -67.78816,
+          "elevation": 5137.6
+        },
+        {
+          "name": "SAT3",
+          "description": "Small Aperture Telescope 3",
+          "observing_bands": ["f090", "f150"],
+          "primary_aperture": 0.35,
+          "latitude": -22.95995,
+          "longitude": -67.787969,
+          "elevation": 5137.6
+        }
+      ]
+    }
+  ]
+}

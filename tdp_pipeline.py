@@ -68,36 +68,36 @@ args = parser.parse_args()
 sourcecat = Table.read(args.source_catalog)
 
 ## will we mask the galaxy?
-galmask = None#enmap.read_map(args.galaxy_mask)
+galmask = None #enmap.read_map(args.galaxy_mask)
 
 
 for m in args.maps:
-    data = load_maps(m)
-    if not data:
+    mapdata = load_maps(m)
+    if not mapdata:
         print(f'No data found in {m}...')
         continue
 
     ## get the masked flux, snr, and uncertainty maps
-    flux = get_masked_map(data.flux(),
-                          data.mask_map_edge(args.edge_cut), 
+    flux = get_masked_map(mapdata.flux(),
+                          mapdata.mask_map_edge(args.edge_cut), 
                           galmask,
-                          data.mask_planets()
+                          mapdata.mask_planets()
                          )
-    snr = get_masked_map(data.snr(), 
-                         data.mask_map_edge(args.edge_cut), 
+    snr = get_masked_map(mapdata.snr(), 
+                         mapdata.mask_map_edge(args.edge_cut), 
                          galmask,
-                         data.mask_planets()
+                         mapdata.mask_planets()
                         )
     ## don't need to mask this because we don't use it for source finding.
-    dflux = data.dflux()
+    dflux = mapdata.dflux()
 
     ## Tile the map into gridsize x gridsize  grids and calculate the median
     ## snr; "flatfield" the map using that median snr 
     med_ratio = get_medrat(snr,
-                           get_tmap_tiles(data.time_map,
+                           get_tmap_tiles(mapdata.time_map,
                                           args.gridsize,
                                           snr,
-                                          id=f"{data.map_ctime}_{data.wafer_name}_{data.freq}",
+                                          id=f"{mapdata.map_ctime}_{mapdata.wafer_name}_{mapdata.freq}",
                                          ),
                           )
     flux *= med_ratio
@@ -105,7 +105,7 @@ for m in args.maps:
     snr *= med_ratio
 
     # initial point source detection
-    ra_can, dec_can = data.extract_sources(snr_threshold=5.0,
+    ra_can, dec_can = mapdata.extract_sources(snr_threshold=5.0,
                                            verbosity=args.verbosity,
                                           )
 
@@ -118,7 +118,7 @@ for m in args.maps:
     if sourcecat:
         crossmatch_radius = 2 ## arcmin , radius for considering something a crossmatch. This will need editing.
         sources = sourcecat[
-            sourcecat["fluxJy"] > (get_sourceflux_threshold(data.freq) / 1000.0)
+            sourcecat["fluxJy"] > (get_sourceflux_threshold(mapdata.freq) / 1000.0)
         ]
         catalog_match = crossmatch_mask(np.array([dec_can, ra_can]).T,
                                         np.array([sources["decDeg"], sources["RADeg"]]).T,
@@ -158,7 +158,7 @@ for m in args.maps:
                                                  flux=flux.at(np.deg2rad(c), order=0, mask_nan=True),
                                                  dflux=dflux.at(np.deg2rad(c), order=0, mask_nan=True),
                                                  snr=snr.at(np.deg2rad(c), order=0, mask_nan=True),
-                                                 ctime=data.time_map.at(np.deg2rad(c), order=0, mask_nan=True),
+                                                 ctime=mapdata.time_map.at(np.deg2rad(c), order=0, mask_nan=True),
                                                  sourceID=source_string_name,
                                                  match_filtered=False,
                                                  renormalized=False,
@@ -171,11 +171,9 @@ for m in args.maps:
     
 
     for sc in source_candidates:
-        ra = sc.ra
-        dec = sc.dec
-        plot_source_thumbnail(data,
-                              ra,
-                              dec,
+        plot_source_thumbnail(mapdata,
+                              sc.ra,
+                              sc.dec,
                               source_name=sc.sourceID,
                               plot_dir = args.plot_output,
                               colorbar_range=1000
