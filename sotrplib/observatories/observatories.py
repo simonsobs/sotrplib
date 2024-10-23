@@ -9,7 +9,7 @@ from typing import Optional
 import numpy as np
 import json
 
-with open('sotdplib/observatories/observatory_information.json', 'r') as file:
+with open('sotrplib/observatories/observatory_information.json', 'r') as file:
     content = file.read()
     observatory_info = json.loads(content)
 
