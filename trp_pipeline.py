@@ -13,12 +13,12 @@ import numpy as np
 
 from astropy.table import Table
 
-from sotdplib.maps.maps import load_maps
-from sotdplib.maps.tiles import get_medrat, get_tmap_tiles
-from sotdplib.maps.masks import get_masked_map
-from sotdplib.utils.utils import get_sourceflux_threshold, crossmatch_mask, radec_to_str_name
-from sotdplib.utils.plot import plot_source_thumbnail
-from sotdplib.sources.sources import SourceCandidate
+from sotrplib.maps.maps import load_maps
+from sotrplib.maps.tiles import get_medrat, get_tmap_tiles
+from sotrplib.maps.masks import get_masked_map
+from sotrplib.utils.utils import get_sourceflux_threshold, crossmatch_mask, radec_to_str_name
+from sotrplib.utils.plot import plot_source_thumbnail
+from sotrplib.sources.sources import SourceCandidate
 
 
 import argparse
