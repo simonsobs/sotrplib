@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from pixell import enmap, utils
 from astropy.io import fits
 from ..maps.maps import kappa_clean, get_snr
-from ..filters.filters import filters
+from ..filters.filters import matched_filter
 from ..utils.utils import crossmatch_mask,angular_separation
 
 
@@ -363,7 +363,7 @@ def lightcurve(
                                     ),
                                     pixbox=pixbox,
                                 )[0]
-                                rho_mf, kappa_mf = filters.matched_filter(
+                                rho_mf, kappa_mf = matched_filter(
                                     stamp_imap,
                                     stamp_ivar,
                                     array_label,
