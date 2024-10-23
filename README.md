@@ -1,5 +1,5 @@
 # sotdplib
-Simons Observatory Time Domain Pipeline Library
+Simons Observatory Time Resolved Pipeline Library
 
 
 Porting files from the ACT depth-1 transient pipeline. 
