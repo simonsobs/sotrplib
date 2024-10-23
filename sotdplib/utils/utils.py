@@ -15,28 +15,6 @@ from astropy import units as u
 
 
 
-def get_fwhm_arcmin(arr, freq):
-    ome = -1000  # in nsr
-    if arr == "pa4" and freq == "f220":
-        ome = 113.34
-    if arr == "pa4" and freq == "f150":
-        ome = 227.89
-    if arr == "pa5" and freq == "f150":
-        ome = 219.69
-    if arr == "pa5" and freq == "f090":
-        ome = 480.93
-    if arr == "pa6" and freq == "f150":
-        ome = 229.90
-    if arr == "pa6" and freq == "f090":
-        ome = 492.73
-    if arr == "pa7" and freq == "f040":
-        ome = 2804
-    if arr == "pa7" and freq == "f030":
-        ome = 5060
-    fwhm = (ome * 1e-9 * 4 * np.log(2.0) / np.pi) ** 0.5 * 180.0 * 60.0 / np.pi
-    return fwhm
-
-
 def get_sourceflux_threshold(freq):
     """
     Get sourceflux threshold measured from mapnoise * 5 / 5
@@ -155,17 +133,6 @@ def planck_fluxcal(arr, freq):
 
     return calib_dict[arr][freq][0], calib_dict[arr][freq][1]
 
-
-@np.vectorize
-def get_freq(arr, freq):
-    freq_dict = {
-        "pa4": {"f150": 148.7e9, "f220": 227.2e9},
-        "pa5": {"f090": 96.7e9, "f150": 149.5e9},
-        "pa6": {"f090": 95.5e9, "f150": 148.1e9},
-        "pa7": {"f030": 27.2e9, "f040": 37.7e9},
-    }  # Effective centers from Hasslefield paper 2022 in prep
-
-    return freq_dict[arr][freq]
 
 
 def radec_to_str_name(ra: float, 
