@@ -1,18 +1,18 @@
+import glob as glob
+import math
 import os
 import os.path as op
-import math
-from tqdm import tqdm
+
 import numpy as np
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
 from pixell import enmap, utils
 from scipy import ndimage, stats
 from scipy.ndimage import distance_transform_edt
 from scipy.ndimage import morphology as morph
 from scipy.optimize import curve_fit
-import glob as glob
-from astropy.table import Table
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-
+from tqdm import tqdm
 
 
 def get_sourceflux_threshold(freq):
@@ -134,12 +134,9 @@ def planck_fluxcal(arr, freq):
     return calib_dict[arr][freq][0], calib_dict[arr][freq][1]
 
 
-
-def radec_to_str_name(ra: float, 
-                      dec: float, 
-                      source_class="pointsource", 
-                      observatory="SO"
-                      ):
+def radec_to_str_name(
+    ra: float, dec: float, source_class="pointsource", observatory="SO"
+):
     """
     ## stolen from spt3g_software -AF
 
@@ -204,6 +201,7 @@ def radec_to_str_name(ra: float,
 
     name = "{}-{} J{}{}".format(observatory, source_class, rastr, decstr)
     return name
+
 
 class SourceMap(enmap.ndmap):
     """Implements a ndmap with a list of sources"""
@@ -284,11 +282,12 @@ def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
         radius in pixel
     """
     from .inputs import get_fwhm_arcmin
+
     if fwhm is None:
         fwhm = get_fwhm_arcmin(arr, freq)
     resolution = np.abs(thumb.wcs.wcs.cdelt[0])
-    mf_factor = 2**0.5 if match_filtered else 1.
-    radius_pix = round(2 * mf_factor* fwhm / (60 * resolution))
+    mf_factor = 2**0.5 if match_filtered else 1.0
+    radius_pix = round(2 * mf_factor * fwhm / (60 * resolution))
     return radius_pix
 
 
@@ -464,7 +463,7 @@ def consolidate_cols(dirs, colnames):
     # init array for each colname given unless not a list
     cols = {}
     cols["cat"] = []
-    if type(colnames) == str:
+    if type(colnames) is str:
         cols[colnames] = []
     else:
         for col in colnames:
@@ -490,7 +489,7 @@ def consolidate_cols(dirs, colnames):
                 continue
 
             # check if colname is in table
-            if type(colnames) == str:
+            if type(colnames) is str:
                 if colnames in t.colnames:
                     cols[colnames].append(t[colnames])
             else:
@@ -667,6 +666,7 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
         flux [mJy], snr
     """
     from filters import matched_filter_1overf
+
     ra = ra_deg * np.pi / 180.0
     dec = dec_deg * np.pi / 180.0
     mean_map_file = (

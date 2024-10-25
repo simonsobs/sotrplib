@@ -1,6 +1,8 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 from ..maps.maps import Depth1Map
+
 
 def fancy_plot(fontsize=25):
     plt.rc("text", usetex=True)
@@ -82,54 +84,48 @@ def enplot_annotate(
     return lines
 
 
-def plot_source_thumbnail(imap:Depth1Map,
-                          ra:float,
-                          dec:float,
-                          source_name:str='',
-                          thumbnail_width:float = 60,
-                          plot_dir:str = './',
-                          output_file_name:str='',
-                          save_thumbnail_map:bool=False,
-                          colorbar_range:float=100.0
-                         ):
-        ## Cut thumbnails from map 
-        ## ra,dec in decimal deg
-        ## thumbnail_width in arcmin
-        ##
-        ## if save_thumbnail_map, then save the .fits map to same directory
-        ## with same name (but .fits instead of .png)
-        ## colorbar_range is symmetric about 0, in mJy
-        from pixell import enmap,enplot
-        from .utils import radec_to_str_name
-        if not source_name:
-            source_name = radec_to_str_name(ra,dec).split(' ')[-1] ## just the J000000-000000 part
-        if not imap.is_thumbnail:
-            thumbnail = imap.thumbnail(ra,
-                                       dec,
-                                       thumbnail_width_arcmin=thumbnail_width
-                                      )
-        else:
-            thumbnail = imap
+def plot_source_thumbnail(
+    imap: Depth1Map,
+    ra: float,
+    dec: float,
+    source_name: str = "",
+    thumbnail_width: float = 60,
+    plot_dir: str = "./",
+    output_file_name: str = "",
+    save_thumbnail_map: bool = False,
+    colorbar_range: float = 100.0,
+):
+    ## Cut thumbnails from map
+    ## ra,dec in decimal deg
+    ## thumbnail_width in arcmin
+    ##
+    ## if save_thumbnail_map, then save the .fits map to same directory
+    ## with same name (but .fits instead of .png)
+    ## colorbar_range is symmetric about 0, in mJy
+    from pixell import enmap, enplot
 
-        flux_thumbnail = thumbnail.flux()
-        # save maps
-        if not output_file_name:
-            name = f'{plot_dir}{source_name}_thumbnail'
-        else:
-            name = plot_dir+output_file_name
-        if save_thumbnail_map:
-            enmap.write_map(name + '.fits', 
-                            flux_thumbnail
-                            )
-            
-        # plot
-        img = enplot.plot(flux_thumbnail, 
-                          range=colorbar_range, 
-                          grid=True
-                         )
-        enplot.write(name, 
-                     img
-                    )
-        
-        return
+    from .utils import radec_to_str_name
 
+    if not source_name:
+        source_name = radec_to_str_name(ra, dec).split(" ")[
+            -1
+        ]  ## just the J000000-000000 part
+    if not imap.is_thumbnail:
+        thumbnail = imap.thumbnail(ra, dec, thumbnail_width_arcmin=thumbnail_width)
+    else:
+        thumbnail = imap
+
+    flux_thumbnail = thumbnail.flux()
+    # save maps
+    if not output_file_name:
+        name = f"{plot_dir}{source_name}_thumbnail"
+    else:
+        name = plot_dir + output_file_name
+    if save_thumbnail_map:
+        enmap.write_map(name + ".fits", flux_thumbnail)
+
+    # plot
+    img = enplot.plot(flux_thumbnail, range=colorbar_range, grid=True)
+    enplot.write(name, img)
+
+    return

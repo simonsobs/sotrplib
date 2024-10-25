@@ -1,3 +1,3 @@
-from . import crossmatch
-from . import cmb_minor_planets
-from . import query_tools
+__all__ = ["cmb_minor_planets", "crossmatch", "query_tools"]
+
+from . import cmb_minor_planets, crossmatch, query_tools

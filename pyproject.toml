@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sotrplib"
+version = "0.0.1a1"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "astropy",
+    "pandas",
+    "scipy",
+    "pixell",
+    "astroquery",
+    "matplotlib",
+    "pydantic",
+    "pydantic-settings"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "coverage",
+    "pytest-cov",
+    "pre-commit",
+]
+
+[project.scripts]
+"trp-pipeline" = "sotrplib.cli:main"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.coverage.run]
+source = [
+    "sotrplib",
+]

@@ -1,7 +1,11 @@
-from . import catalogs
-from . import filters
-from . import lightcurves 
-from . import maps
-from . import observatories
-from . import sources
-from . import utils
+__all__ = [
+    "catalogs",
+    "filters",
+    "lightcurves",
+    "maps",
+    "observatories",
+    "sources",
+    "utils",
+]
+
+from . import catalogs, filters, lightcurves, maps, observatories, sources, utils
