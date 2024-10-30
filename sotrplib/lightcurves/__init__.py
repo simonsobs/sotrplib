@@ -1,1 +1,1 @@
-from .lightcurves import *
+from .lightcurves import *  # noqa

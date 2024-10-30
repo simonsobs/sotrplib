@@ -1,13 +1,11 @@
-import numpy as np
-from pixell import utils, enmap
-from scipy import ndimage
 import warnings
 
-def get_tmap_tiles(tmap: enmap.ndmap, 
-                   grid_deg: float, 
-                   zeromap: enmap.ndmap, 
-                   id=None
-                   ):
+import numpy as np
+from pixell import enmap, utils
+from scipy import ndimage
+
+
+def get_tmap_tiles(tmap: enmap.ndmap, grid_deg: float, zeromap: enmap.ndmap, id=None):
     tile_map = tiles_t_quick(tmap, grid_deg, id=id)
     tile_map[np.where(zeromap == 0.0)] = 0.0
     return tile_map
@@ -25,6 +23,7 @@ def get_medrat(snr: enmap, tiledmap):
         median ratio for each tile
     """
     from scipy.stats import norm
+
     t = tiledmap.astype(int)
     med0 = norm.ppf(0.75)
     snr2 = snr**2
@@ -343,7 +342,6 @@ def get_tile_center(tmap, grid_deg, dec, ra):
             n = i
     time_shift = np.abs((time_ndeg - time) / n) * grid_half
     map_box = enmap.corners(tmap.shape, tmap.wcs, npoint=10, corner=True)
-    map_box_deg = np.rad2deg(map_box)
     map_dec_min = np.min(map_box[:, 0])  # in rad
     map_dec_max = np.max(map_box[:, 0])
     dec_max = np.min([map_dec_max, dec_rad + grid_half * utils.degree])

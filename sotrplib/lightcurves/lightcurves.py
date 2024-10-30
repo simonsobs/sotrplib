@@ -1,18 +1,19 @@
 ## Lightcurve needs rewritten.
 
+import glob as gl
 import os
 import os.path as op
-import numpy as np
-import glob as gl
-import pandas as pd
+
 import astropy.units as u
 import matplotlib.pyplot as plt
-from pixell import enmap, utils
+import numpy as np
+import pandas as pd
 from astropy.io import fits
-from ..maps.maps import kappa_clean, get_snr
-from ..filters.filters import matched_filter
-from ..utils.utils import crossmatch_mask,angular_separation
+from pixell import enmap, utils
 
+from ..filters.filters import matched_filter
+from ..maps.maps import get_snr, kappa_clean
+from ..utils.utils import angular_separation, crossmatch_mask
 
 
 def lightcurve(
@@ -59,6 +60,7 @@ def lightcurve(
         rank = 0
         size = 1
 
+    inputs = None
     sourcecats = inputs.get_sourcecats()
     for f in frequencies:
         sourcecats[f] = sourcecats[f][
@@ -220,7 +222,7 @@ def lightcurve(
                         # source detection
                         detection = True
                         if sourcedetection:
-                            cand_ra, cand_dec = source_detection(
+                            cand_ra, cand_dec = source_detection(  # noqa
                                 snr, flux, threshold=3.0
                             )
 
@@ -489,7 +491,7 @@ def run_forced_photometry_sbatch(
     order = 0
     for i in range(cat_repeat.shape[0]):
         if cat_repeat.group[i] == group:
-            repeat = cat_repeat.n_repeats[i]
+            # repeat = cat_repeat.n_repeats[i]
             ra_gen = cat_repeat.ra[i]
             dec_gen = cat_repeat.dec[i]
             name = cat_repeat.id[i]
@@ -524,7 +526,7 @@ def run_forced_photometry_sbatch(
                     )
                 )
                 f.close()
-            if submit == True:
+            if submit:
                 os.system("sbatch %s" % slurmfile)
             ocatpath = ocat_path + "/%s/%s_ocat.fits" % (name, name)
             ocat = fits.open(ocatpath)[1].data
@@ -538,7 +540,7 @@ def run_forced_photometry_sbatch(
                 )
                 if not os.path.exists(opath_new):
                     os.makedirs(opath_new)
-                ctime = float(ocat.ctime[j])
+                # ctime = float(ocat.ctime[j])
                 ra = ocat.ra[j]
                 dec = ocat.dec[j]
                 cat_file = opath_new + "/cat.txt"
@@ -565,7 +567,7 @@ def run_forced_photometry_sbatch(
                         )
                     )
                     f.close()
-                if submit == True:
+                if submit:
                     os.system("sbatch %s" % slurmfile)
             order += 1
 
@@ -595,17 +597,18 @@ def run_lightcurve(path, div):
 
     ctime_groups = cluster(ctimes_list, 700)
     for group in ctime_groups:
-        ctime1_group = str(group[0])
+        # ctime1_group = str(group[0])
         ctimes_str = ""
         for ctime in group:
             ctime_str = path + "/flux_%s.*.hdf " % ctime
             ctimes_str += ctime_str
             print(ctimes_str)
-        try:
-            filename = path + "result_%d_%s.txt" % (div, ctime1_group)
-            os.system(
-                "python /scratch/gpfs/snaess/actpol/planet9/20200801/follow_up/20201030/subarray_lightcurve.py %s %s %s -n %d "
-                % (0, ctimes_str, filename, div)
-            )
-        except:
-            print("file empty")
+        # TODO :Refactor this code.
+        # try:
+        #     filename = path + "result_%d_%s.txt" % (div, ctime1_group)
+        #     os.system(
+        #         "python /scratch/gpfs/snaess/actpol/planet9/20200801/follow_up/20201030/subarray_lightcurve.py %s %s %s -n %d "
+        #         % (0, ctimes_str, filename, div)
+        #     )
+        # except:
+        #     print("file empty")

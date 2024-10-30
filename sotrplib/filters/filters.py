@@ -1,5 +1,5 @@
 import numpy as np
-from pixell import utils, enmap
+from pixell import enmap, utils
 
 
 def matched_filter(
@@ -26,35 +26,37 @@ def matched_filter(
 
     """
     import warnings
+
     from pixell.analysis import matched_filter_constcorr_dual
-    from .masks import make_circle_mask
+
     from ..utils.utils import get_ps_inmap
     from .inputs import get_sourceflux_threshold
+    from .masks import make_circle_mask
 
     mask_base = enmap.zeros(thumb_temp.shape, wcs=thumb_temp.wcs, dtype=None)
     mask_base[np.where(thumb_ivar > 0)] = 1
-    mask_center = make_circle_mask(thumb_ivar, ra_deg, dec_deg,arr=arr, freq=freq)
+    mask_center = make_circle_mask(thumb_ivar, ra_deg, dec_deg, arr=arr, freq=freq)
     apod = enmap.apod_mask(mask_base, apod_size_arcmin * utils.arcmin)
     flux_thresh = get_sourceflux_threshold(freq)
     if source_cat:
-        source_cat = get_ps_inmap(thumb_temp,
-                                  source_cat,
-                                  fluxlim=flux_thresh
-                                  )
+        source_cat = get_ps_inmap(thumb_temp, source_cat, fluxlim=flux_thresh)
         mask_srcs = mask_base
         for i in range(len(source_cat)):
-            mask_srcs *= make_circle_mask(thumb_ivar, 
-                                          source_cat['RADeg'][i],
-                                          source_cat['decDeg'][i],
-                                          mask_radius=4
-                                          )
-        apod_noise = enmap.apod_mask(mask_center * mask_srcs * mask_base, 
-                                     apod_size_arcmin * utils.arcmin,
-                                     )
+            mask_srcs *= make_circle_mask(
+                thumb_ivar,
+                source_cat["RADeg"][i],
+                source_cat["decDeg"][i],
+                mask_radius=4,
+            )
+        apod_noise = enmap.apod_mask(
+            mask_center * mask_srcs * mask_base,
+            apod_size_arcmin * utils.arcmin,
+        )
     else:
-        apod_noise = enmap.apod_mask(mask_center * mask_base, 
-                                     apod_size_arcmin * utils.arcmin,
-                                     )
+        apod_noise = enmap.apod_mask(
+            mask_center * mask_base,
+            apod_size_arcmin * utils.arcmin,
+        )
     if arr == "pa7":
         datapath = (
             "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/beam_transform_%s_%s_201203.txt"
@@ -66,8 +68,8 @@ def matched_filter(
             % (arr, freq)
         )
     bl = np.loadtxt(datapath).T[1]
-    l = thumb_temp.modlmap()
-    B = enmap.samewcs(np.interp(l, np.arange(len(bl)), bl), l)
+    ell = thumb_temp.modlmap()
+    B = enmap.samewcs(np.interp(ell, np.arange(len(bl)), bl), ell)
     ps2d = enmap.upgrade(
         enmap.downgrade(
             np.abs(enmap.fft(thumb_temp * thumb_ivar**0.5 * apod_noise)) ** 2,
@@ -104,18 +106,13 @@ def renorm_ms(
         dec_deg:dec of source in degree
         source_cat: catalog of point sources
     """
-    from .masks import make_circle_mask
     from ..utils.utils import get_ps_inmap
     from .inputs import get_sourceflux_threshold
+    from .masks import make_circle_mask
 
     resolution = np.abs(thumb_snr.wcs.wcs.cdelt[0])
     apod_pix = int(apod_size_arcmin / (resolution * 60) + 2)
-    mask = make_circle_mask(thumb_snr, 
-                            ra_deg, 
-                            dec_deg,
-                            arr=arr,
-                            freq=freq
-                            ) 
+    mask = make_circle_mask(thumb_snr, ra_deg, dec_deg, arr=arr, freq=freq)
     flux_thresh = get_sourceflux_threshold(freq)
     mask_apod = enmap.zeros(thumb_snr.shape, wcs=thumb_snr.wcs, dtype=None)
     mask_apod[
@@ -123,17 +120,15 @@ def renorm_ms(
         apod_pix : thumb_snr.shape[1] - apod_pix,
     ] = 1
     if source_cat:
-        source_cat = get_ps_inmap(thumb_snr,
-                                  source_cat,
-                                  fluxlim=flux_thresh
-                                  )
+        source_cat = get_ps_inmap(thumb_snr, source_cat, fluxlim=flux_thresh)
         for i in range(len(source_cat)):
-            mask *= make_circle_mask(thumb_ivar, 
-                                    source_cat['RADeg'][i],
-                                    source_cat['decDeg'][i],
-                                    mask_radius=4
-                                    )
-        
+            mask *= make_circle_mask(
+                thumb_ivar,  # noqa
+                source_cat["RADeg"][i],
+                source_cat["decDeg"][i],
+                mask_radius=4,
+            )
+
     mask *= mask_apod
     thumb_snr_sel_sq = (thumb_snr * mask) ** 2
     mean_snr_sq = thumb_snr_sel_sq[np.nonzero(thumb_snr_sel_sq)].mean()
@@ -156,6 +151,7 @@ def matched_filter_1overf(
     """
     from pixell.analysis import matched_filter_constcorr_dual
     from pixell.uharm import UHT
+
     wcs = thumb_temp.wcs
     shape = thumb_temp.shape
     bsigma = 1.4 * utils.fwhm * utils.arcmin
