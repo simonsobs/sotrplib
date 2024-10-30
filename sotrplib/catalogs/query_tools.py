@@ -38,7 +38,6 @@ def SIMBAD(ra, dec, radius):
     r = Simbad.query_region(coord, radius=radius)
 
     if r is not None:
-
         for j in range(len(r)):
             row = [
                 r["MAIN_ID"][j],
@@ -114,7 +113,6 @@ def pvalue(df, radius=2.0):
     radius = radius * u.deg
 
     for i in tqdm(range(len(df))):
-
         # if index is same as previous, skip
         if i > 0 and df["event"].iloc[i] == df["event"].iloc[i - 1]:
             continue
@@ -127,7 +125,6 @@ def pvalue(df, radius=2.0):
         for j in range(len(dfi)):
             # check if mag is nan
             if dfi["mag"].iloc[j] == dfi["mag"].iloc[j]:
-
                 # if string can convert to float save mag
                 try:
                     mags.append(float(dfi["mag"].iloc[j]))

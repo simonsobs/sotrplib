@@ -1,21 +1,22 @@
 import numpy as np
 from pixell import enmap
 
-def mask_dustgal(imap: enmap.ndmap, 
-                 galmask: enmap.ndmap
-                ):
+
+def mask_dustgal(imap: enmap.ndmap, galmask: enmap.ndmap):
     return enmap.extract(galmask, imap.shape, imap.wcs)
 
 
-def mask_planets(tmap: enmap.ndmap,
-                 ctime:float,
-                 planets=["Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
-                 )->enmap.ndmap:
-    from pixell.utils import ctime2mjd, arcmin
+def mask_planets(
+    tmap: enmap.ndmap,
+    ctime: float,
+    planets=["Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
+) -> enmap.ndmap:
+    from pixell.utils import arcmin, ctime2mjd
+
     try:
         from enlib import planet9
     except ModuleNotFoundError:
-        print('enlib not found, cannot mask planets')
+        print("enlib not found, cannot mask planets")
 
     mjd_min = ctime2mjd(ctime)
     mjd_max = ctime2mjd(ctime + np.amax(tmap))
@@ -25,8 +26,8 @@ def mask_planets(tmap: enmap.ndmap,
             tmap.shape, tmap.wcs, planets, mjds, r=50 * arcmin
         )
         mask_planet = mask.copy()
-        mask_planet[np.where(mask == False)] = 1.0
-        mask_planet[np.where(mask == True)] = 0.0
+        mask_planet[np.where(not mask)] = 1.0
+        mask_planet[np.where(mask)] = 0.0
     except Exception:
         mask_planet = np.ones(tmap.shape)
 
@@ -44,7 +45,9 @@ def mask_edge(imap: enmap.ndmap, pix_num: int):
         binary ndmap with 1 == unmasked, 0 == masked
     """
     from scipy.ndimage import morphology as morph
+
     from .maps import edge_map
+
     edge = edge_map(imap)
     dmap = enmap.enmap(morph.distance_transform_edt(edge), edge.wcs)
     mask = enmap.zeros(imap.shape, imap.wcs)
@@ -74,15 +77,17 @@ def get_masked_map(
     else:
         galmask = mask_dustgal(imap, galmask)
         return imap * edgemask * galmask * planet_mask
-    
-def make_circle_mask(thumb, 
-                     ra, 
-                     dec, 
-                     fwhm=None,
-                     mask_radius=None,
-                     arr=None, 
-                     freq=None, 
-                     ):
+
+
+def make_circle_mask(
+    thumb,
+    ra,
+    dec,
+    fwhm=None,
+    mask_radius=None,
+    arr=None,
+    freq=None,
+):
     """
     Mask of center of thumbnail map
 
@@ -99,14 +104,16 @@ def make_circle_mask(thumb,
         mask center of thumbnail map
     """
     from pixell.utils import degree
+
     from ..utils.utils import get_cut_radius
+
     mask = enmap.zeros(thumb.shape, wcs=thumb.wcs, dtype=None)
     mask[np.where(thumb > 0)] = 1
     map_res = np.abs(thumb.wcs.wcs.cdelt[0])
     if arr and freq and not mask_radius:
         r_pix = get_cut_radius(thumb, arr, freq, fwhm)
     else:
-        r_pix = mask_radius/(60*map_res)
+        r_pix = mask_radius / (60 * map_res)
     center_pix = thumb.sky2pix([dec * degree, ra * degree])
     mask[
         round(center_pix[0]) - r_pix : round(center_pix[0]) + r_pix,
@@ -115,21 +122,16 @@ def make_circle_mask(thumb,
     return mask
 
 
-def make_src_mask(thumb, 
-                  srcs_pix,
-                  fwhm=None,
-                  mask_radius=None,
-                  arr=None, 
-                  freq=None
-                 ):
+def make_src_mask(thumb, srcs_pix, fwhm=None, mask_radius=None, arr=None, freq=None):
     from ..utils.utils import get_cut_radius
+
     mask = enmap.zeros(thumb.shape, wcs=thumb.wcs, dtype=None)
     mask[np.where(thumb > 0)] = 1
     map_res = np.abs(thumb.wcs.wcs.cdelt[0])
     if arr and freq and not mask_radius:
         r_pix = get_cut_radius(thumb, arr, freq, fwhm)
     else:
-        r_pix = mask_radius/(60*map_res)
+        r_pix = mask_radius / (60 * map_res)
     if len(srcs_pix) > 0:
         for cut_pix in srcs_pix:
             dec_pix = int(cut_pix[0])

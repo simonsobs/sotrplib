@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class SourceCandidate(BaseModel):
     ra: float
     dec: float
@@ -12,5 +13,6 @@ class SourceCandidate(BaseModel):
     renormalized: bool
     catalog_crossmatch: bool
 
+
 def hello():
-    return 'hello'
+    return "hello"

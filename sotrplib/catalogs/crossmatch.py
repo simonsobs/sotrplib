@@ -1,11 +1,14 @@
+import math
 import os
 import os.path as op
-import math
+
 import numpy as np
 import pandas as pd
-from scipy import spatial
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from pixell import enmap, utils
+from scipy import spatial
 
 
 def get_cats(
@@ -67,16 +70,16 @@ def crossmatch_array(cats_in_order, N, radius):
         radius: radius to search for matches in arcmin
     """
     arr_names = ["pa4", "pa4", "pa5", "pa5", "pa6", "pa6", "pa7", "pa7"]
-    keys = [
-        "pa4_f220",
-        "pa4_f150",
-        "pa5_f150",
-        "pa5_f090",
-        "pa6_f150",
-        "pa6_f090",
-        "pa7_f040",
-        "pa7_f030",
-    ]
+    # keys = [
+    #     "pa4_f220",
+    #     "pa4_f150",
+    #     "pa5_f150",
+    #     "pa5_f090",
+    #     "pa6_f150",
+    #     "pa6_f090",
+    #     "pa7_f040",
+    #     "pa7_f030",
+    # ]
     rad_deg = radius / 60.0
     skip = 0
     cat_full = []
@@ -161,6 +164,7 @@ def crossmatch_array_new(cats_in_order, N, radius, ctime):
         radius: radius to search for matches in arcmin
     """
     from ..utils.utils import obj_dist
+
     arr_names = ["pa4", "pa4", "pa5", "pa5", "pa6", "pa6", "pa7", "pa7"]
     keys = [
         "pa4_f220",
@@ -233,16 +237,14 @@ def crossmatch_array_new(cats_in_order, N, radius, ctime):
                         "/scratch/gpfs/snaess/actpol/maps/depth1/release/%s/depth1_%s_%s_ivar.fits"
                         % (ctime[:5], ctime, key)
                     )
-                    if os.path.exists(ivar_file) == True:
+                    if os.path.exists(ivar_file):
                         ivar = enmap.read_map(ivar_file)
                         if enmap.contains(
                             ivar.shape,
                             ivar.wcs,
                             [dec_deg * utils.degree, ra_deg * utils.degree],
                         ):
-                            dist = obj_dist(ivar, np.array([[dec_deg, ra_deg]]))[
-                                0
-                            ]
+                            dist = obj_dist(ivar, np.array([[dec_deg, ra_deg]]))[0]
                             dec_pix, ra_pix = ivar.sky2pix(
                                 [dec_deg * utils.degree, ra_deg * utils.degree]
                             )
@@ -289,7 +291,7 @@ def crossmatch_freq_array(cats_in_order, N, radius):
         N: integer that candidate should be detected by at least N arrays
         radius: radius to search for matches in arcmin
     """
-    arr_names = ["pa4", "pa4", "pa5", "pa5", "pa6", "pa6", "pa7", "pa7"]
+    # arr_names = ["pa4", "pa4", "pa5", "pa5", "pa6", "pa6", "pa7", "pa7"]
     keys = [
         "pa4_f220",
         "pa4_f150",
@@ -427,7 +429,7 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
         ra = 0
         dec = 0
         invar = 0
-        count = 0
+        # count = 0
         ps = 0
         for j, [arr, freq] in enumerate(
             [
@@ -443,6 +445,7 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
         ):
             key = "%s_%s" % (arr, freq)
             if not math.isnan(matched_inds[key][i]):
+                inputs = None  # TODO: Fix
                 fwhm = inputs.get_fwhm_arcmin(arr, freq)
                 fwhm_deg = fwhm / 60.0
                 idx_src = int(matched_inds[key][i])
@@ -484,6 +487,7 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
                     np.array([ra_src, dec_src]) * utils.degree,
                     np.array([ra, dec]) * utils.degree,
                 )
+                inputs = None  # TODO: FIX
                 fwhm = inputs.get_fwhm_arcmin(arr, freq)
                 fwhm_deg = fwhm / 60.0
                 pos_err = fwhm_deg / snr_src

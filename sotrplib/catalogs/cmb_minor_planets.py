@@ -1,11 +1,11 @@
 import os
 import os.path as op
-import numpy as np
+
 import ephem
+import numpy as np
 import pandas as pd
-from pixell import utils, enmap
+from pixell import enmap, utils
 from scipy import interpolate, optimize
-import pickle as pk
 
 
 def in_box(box, point):  # checks if points are inside box or not
@@ -29,10 +29,10 @@ def make_box(point, rad):  # making box
 
 def filter_map(map, lknee=3000, alpha=-3, beam=0):  # filtering map somehow (FFT)
     fmap = enmap.fft(map)
-    l = np.maximum(0.5, map.modlmap())
-    filter = (1 + (l / lknee) ** alpha) ** -1
+    ell = np.maximum(0.5, map.modlmap())
+    filter = (1 + (ell / lknee) ** alpha) ** -1
     if beam:
-        filter *= np.exp(-0.5 * l**2 * beam**2)
+        filter *= np.exp(-0.5 * ell**2 * beam**2)
     fmap *= filter
     omap = enmap.ifft(fmap).real
     return omap
@@ -175,18 +175,18 @@ def check_map_ast(infofile, ast_dir):
 
     """
 
-    for asteroid in os.listdir(ast_dir):
-        info = np.load(ast_dir + asteroid)
-        orbit = interpolate.interp1d(
-            info.ctime,
-            [
-                utils.unwind(info.ra * utils.degree),
-                info.dec * utils.degree,
-                info.r,
-                info.ang * utils.arcsec,
-            ],
-            kind=3,
-        )
+    # for asteroid in os.listdir(ast_dir):
+    # info = np.load(ast_dir + asteroid)
+    # orbit = interpolate.interp1d(
+    #     info.ctime,
+    #     [
+    #         utils.unwind(info.ra * utils.degree),
+    #         info.dec * utils.degree,
+    #         info.r,
+    #         info.ang * utils.arcsec,
+    #     ],
+    #     kind=3,
+    # )
 
 
 def check_loc_ast(
