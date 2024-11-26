@@ -207,47 +207,8 @@ class Depth1Map:
                         self.map_ctime,
                         )
 
-    def extract_sources(self,
-                        snr_threshold:float = 5.0,
-                        verbosity:int = 1,
-                        ):
-        """
-        Detects sources and returns center of mass by flux
-
-        Args:
-            snr: signal-to-noise ratio map for detection
-            flux: flux map for position
-            snr_threshold: signal detection threshold
-            mapdata: other maps to include in output
-            tags: data to include in every line, such as ctime or map name
-
-        Returns:
-            ra and dec of each source in deg
-
-        """
-        from scipy import ndimage
-        labels, nlabel = ndimage.label(self.snr() > snr_threshold)
-        cand_pix = ndimage.center_of_mass(self.flux(), 
-                                          labels, 
-                                          np.arange(nlabel) + 1
-                                         )
-        cand_pix = np.array(cand_pix)
-        ra = []
-        dec = []
-        for pix in cand_pix:
-            pos = self.flux().pix2sky(pix)
-            d = pos[0] * 180.0 / np.pi
-            if d < -90.0:
-                d = 360.0 + d
-            if d > 90.0:
-                d = 360.0 - d
-            dec.append(d)
-            ra.append(pos[1] * 180.0 / np.pi)
-        if len(ra) == 0:
-            if verbosity > 0:
-                print("did not find any candidates")
-
-        return ra, dec
+    def find_sources(self):
+        return extract_sources(self.snr(),self.flux())
 
     def recalc_source_detection(self, 
                                 ra:float, 
@@ -360,6 +321,48 @@ def edge_map(imap: enmap.ndmap):
 
     return enmap.enmap(edge.astype("ubyte"), imap.wcs)
 
+def extract_sources(snr:enmap.ndmap,
+                    flux:enmap.ndmap,
+                    snr_threshold:float = 5.0,
+                    verbosity:int = 1,
+                   ):
+        """
+        Detects sources and returns center of mass by flux
+
+        Args:
+            snr: signal-to-noise ratio map for detection
+            flux: flux map for position
+            snr_threshold: signal detection threshold
+            mapdata: other maps to include in output
+            tags: data to include in every line, such as ctime or map name
+
+        Returns:
+            ra and dec of each source in deg
+
+        """
+        from scipy import ndimage
+        labels, nlabel = ndimage.label(snr > snr_threshold)
+        cand_pix = ndimage.center_of_mass(flux, 
+                                          labels, 
+                                          np.arange(nlabel) + 1
+                                         )
+        cand_pix = np.array(cand_pix)
+        ra = []
+        dec = []
+        for pix in cand_pix:
+            pos = flux.pix2sky(pix)
+            d = pos[0] * 180.0 / np.pi
+            if d < -90.0:
+                d = 360.0 + d
+            if d > 90.0:
+                d = 360.0 - d
+            dec.append(d)
+            ra.append(pos[1] * 180.0 / np.pi)
+        if len(ra) == 0:
+            if verbosity > 0:
+                print("did not find any candidates")
+
+        return ra, dec
 
 def get_submap(imap:enmap.ndmap, 
                ra_deg:float, 
