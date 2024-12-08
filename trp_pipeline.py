@@ -71,6 +71,14 @@ parser.add_argument("--ignore-known-sources",
                     help="Only record sources which do not have catalog matches.", 
                     action='store_true'
                     )
+parser.add_argument("--plot-thumbnails", 
+                    help="Plot thumbnails of non-cataloged sources (i.e. transients).", 
+                    action='store_true'
+                    )
+parser.add_argument("--save-json", 
+                    help="Save the source candidate information as json files.", 
+                    action='store_true'
+                    )
 args = parser.parse_args()
 
 
@@ -238,21 +246,22 @@ for m in args.maps:
                                 catalog_crossmatch=cmatch,
                                 crossmatch_name='',
                             )
-        json_string_cand = cand.json()
-        with open(args.plot_output+source_string_name.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(mapdata.map_ctime)+'.json','w') as f:
-            f.write(json_string_cand)
+        if args.save_json:
+            json_string_cand = cand.json()
+            with open(args.plot_output+source_string_name.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(mapdata.map_ctime)+'.json','w') as f:
+                f.write(json_string_cand)
 
         source_candidates.append(cand)
     
-
-    for sc in source_candidates:
-        print(sc.catalog_crossmatch)
-        if np.sum(sc.catalog_crossmatch)==0:
-            print(sc.sourceID)
-            plot_source_thumbnail(mapdata,
-                                sc.ra,
-                                sc.dec,
-                                source_name='_'.join(sc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(mapdata.map_ctime),
-                                plot_dir = args.plot_output,
-                                colorbar_range=200 if mapdata.freq!='f220' else 500
-                                )
+    if args.plot_thumbnails:
+        for sc in source_candidates:
+            print(sc.catalog_crossmatch)
+            if np.sum(sc.catalog_crossmatch)==0:
+                print(sc.sourceID)
+                plot_source_thumbnail(mapdata,
+                                    sc.ra,
+                                    sc.dec,
+                                    source_name='_'.join(sc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(mapdata.map_ctime),
+                                    plot_dir = args.plot_output,
+                                    colorbar_range=200 if mapdata.freq!='f220' else 500
+                                    )
