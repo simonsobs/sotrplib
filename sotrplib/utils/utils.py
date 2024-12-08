@@ -3,7 +3,8 @@ import os.path as op
 import math
 from tqdm import tqdm
 import numpy as np
-from pixell import enmap, utils
+from pixell import enmap
+from pixell import utils as pixell_utils
 from scipy import ndimage, stats
 from scipy.ndimage import distance_transform_edt
 from scipy.ndimage import morphology as morph
@@ -69,14 +70,14 @@ def get_sourcecats():
     s040 = Table.read(sourcecat_f040)
     s040["RADeg"] = s040["ra"]
     s040["decDeg"] = s040["dec"]
-    # fconv_40 = utils.dplanck(40.e9, utils.T_cmb)
+    # fconv_40 = pixell_utils.dplanck(40.e9, pixell_utils.T_cmb)
     # s040['fluxJy'] = s040['flux'][:, 0] * fconv_40 * 2804.
     s040["fluxJy"] = s040["flux"][:, 0] / 1e3
 
     s030 = Table.read(sourcecat_f030)
     s030["RADeg"] = s030["ra"]
     s030["decDeg"] = s030["dec"]
-    # fconv_30 = utils.dplanck(30.e9, utils.T_cmb)
+    # fconv_30 = pixell_utils.dplanck(30.e9, pixell_utils.T_cmb)
     # s030['fluxJy'] = s030['flux'][0, :] * fconv_30 * 5060.
     s030["fluxJy"] = s030["flux"][:, 0] / 1e3
 
@@ -241,18 +242,18 @@ def crossmatch_mask(sources, crosscat, radius):
 
     """
 
-    radius = radius * utils.arcmin  # convert to radians
+    radius = radius * pixell_utils.arcmin  # convert to radians
 
-    crosspos_ra = crosscat[:, 1] * utils.degree
-    crosspos_dec = crosscat[:, 0] * utils.degree
+    crosspos_ra = crosscat[:, 1] * pixell_utils.degree
+    crosspos_dec = crosscat[:, 0] * pixell_utils.degree
     crosspos = np.array([crosspos_ra, crosspos_dec]).T
 
     # if only one source
     if len(sources.shape) == 1:
-        source_ra = sources[1] * utils.degree
-        source_dec = sources[0] * utils.degree
+        source_ra = sources[1] * pixell_utils.degree
+        source_dec = sources[0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
-        match = utils.crossmatch(sourcepos, crosspos, radius, mode="all")
+        match = pixell_utils.crossmatch(sourcepos, crosspos, radius, mode="all")
         if len(match) > 0:
             return True
         else:
@@ -260,10 +261,10 @@ def crossmatch_mask(sources, crosscat, radius):
 
     mask = np.zeros(len(sources), dtype=bool)
     for i, m in enumerate(mask):
-        source_ra = sources[i, 1] * utils.degree
-        source_dec = sources[i, 0] * utils.degree
+        source_ra = sources[i, 1] * pixell_utils.degree
+        source_dec = sources[i, 0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
-        match = utils.crossmatch(sourcepos, crosspos, radius, mode="all")
+        match = pixell_utils.crossmatch(sourcepos, crosspos, radius, mode="all")
         if len(match) > 0:
             mask[i] = True
 
@@ -704,7 +705,7 @@ def extract_flux_thumbnail_from_file(
     imap = f"{mapdir}/{subdir}/depth1_{ctime}_{arr}_{freq}_map.fits"
     shape_full, wcs_full = enmap.read_map_geometry(imap)
     pixbox = enmap.neighborhood_pixboxes(
-        shape_full, wcs_full, pos.T, radius * utils.degree
+        shape_full, wcs_full, pos.T, radius * pixell_utils.degree
     )
 
     # Read in stamp maps
