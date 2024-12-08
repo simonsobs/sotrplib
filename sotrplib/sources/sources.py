@@ -6,11 +6,13 @@ class SourceCandidate(BaseModel):
     flux: float
     dflux: float
     snr: float
+    freq: str
     ctime: float
-    sourceID: str
-    match_filtered: bool
-    renormalized: bool
-    catalog_crossmatch: bool
+    sourceID: str=''
+    match_filtered: bool=False
+    renormalized: bool=False
+    catalog_crossmatch: bool=False
+    crossmatch_name : str=''
 
 def hello():
     return 'hello'
