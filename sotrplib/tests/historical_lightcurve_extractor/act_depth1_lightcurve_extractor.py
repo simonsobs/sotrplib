@@ -8,9 +8,13 @@ parser.add_argument("--dec", default=[],type=float,nargs='+')
 parser.add_argument("--rho-maps", nargs="+", default=[])
 parser.add_argument("--odir",default='./lightcurves/')
 parser.add_argument("--scratch-dir",default='./lightcurves/tmp/')
-parser.add_argument("--ofname",default='tmp_lightcurves.txt')
+parser.add_argument("--output-lightcurve-fname","-o",default='tmp_lightcurves.txt')
 parser.add_argument("--coadd-dir",default='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/coadds/')
 parser.add_argument("--subtract-coadd",action='store_true')
+parser.add_argument("--save-thumbnails",action='store_true',help='Cut out and save thumbnails.')
+parser.add_argument("--thumbnail-radius",action='store',type=float,default=1.0,help='Thumbnail width, in deg.')
+parser.add_argument("--output-thumbnail-fname",default='tmp_thumbnails.hdf5')
+
 parser.add_argument("-s", "--snmin", type=float, default=None)
 parser.add_argument("-n", "--nmax",  type=int,   default=None)
 parser.add_argument("-T", "--tol",   type=float, default=1e-4)
@@ -19,8 +23,9 @@ parser.add_argument("-c", "--cont",  action="store_true")
 
 args = parser.parse_args()
 
+
 import numpy as np
-from pixell import enmap, utils, bunch, mpi
+from pixell import enmap, utils, bunch, mpi,reproject
 import os
 from glob import glob
 
@@ -51,6 +56,13 @@ def get_time_safe(time_map, poss, r=5*utils.arcmin):
             mask  = thumb != 0
             vals[bad[i]] = np.sum(mask*thumb)/np.sum(mask)
     return vals
+
+def get_submap(imap, ra_deg, dec_deg, size_deg=0.5):
+    ra = ra_deg * utils.degree
+    dec = dec_deg * utils.degree
+    radius = size_deg * utils.degree
+    omap = reproject.thumbnails(imap,([dec,ra]),r=radius,proj='tan')
+    return omap
 
 def fit_poss(rho, kappa, poss, rmax=8*utils.arcmin, tol=1e-4, snmin=3):
     """Given a set of fiducial src positions [{dec,ra},nsrc],
@@ -92,7 +104,8 @@ poss = np.array([[d*utils.degree for d in args.dec],[r*utils.degree for r in arg
 # Process our files. We'll make a separate lightcurve file per map, and then
 # merge them in the end
 lines = []
-
+thumbnail_maps = []
+thumbnail_map_info = []
 for fi in range(comm.rank, nfile, comm.size):
     rhofile   = rhofiles[fi]
     kappafile = utils.replace(rhofile, "rho", "kappa")
@@ -110,7 +123,6 @@ for fi in range(comm.rank, nfile, comm.size):
     shape, wcs = enmap.read_map_geometry(rhofile)
     pixs       = enmap.sky2pix(shape, wcs, poss)
     inside     = np.where(np.all((pixs.T >= 0)&(pixs.T<shape[-2:]),-1))[0]
-    print(inside)
     print("Processing %s with %4d srcs" % ( name, len(inside)))
     if len(inside) == 0:
         # Just create an empty file if we don't have any sources in this map
@@ -124,13 +136,34 @@ for fi in range(comm.rank, nfile, comm.size):
         # reference kappa value. Will be used to determine if individual kappa values are too low
         ref     = np.max(kappa_map)
         kappa   = kappa_map.at(poss[:,inside])
-        if ref == 0: ref = 1
+        if ref == 0: 
+            ref = 1
+        
         rho_map = enmap.read_map(rhofile)
         if args.fitlim > 0:
             pos_fit, sn_fit = fit_poss(rho_map.preflat[0], kappa_map.preflat[0], poss[:,inside], tol=args.tol)
             good = sn_fit >= args.fitlim
             poss[:,inside[good]] = pos_fit[:,good]
-        rho     = rho_map.at(poss[:,inside])
+        
+        rho = rho_map.at(poss[:,inside])
+
+        kappa_thumbs = []
+        rho_thumbs = []
+        if args.save_thumbnails:
+            for i in range(len(ra)):
+                kappa_thumbs.append(get_submap(kappa_map, 
+                                            ra[i], 
+                                            dec[i], 
+                                            args.thumbnail_radius
+                                            )
+                                    )
+                rho_thumbs.append(get_submap(rho_map, 
+                                            ra[i], 
+                                            dec[i], 
+                                            args.thumbnail_radius
+                                            )
+                                    )
+
         del kappa_map, rho_map
 
         time_map  = enmap.read_map(timefile)
@@ -140,36 +173,62 @@ for fi in range(comm.rank, nfile, comm.size):
         del time_map, info
 
         good   = np.where(kappa[0] > ref*args.tol)[0]
-        print(good)
         rho, kappa, t = rho[:,good], kappa[:,good], t[good]
 
+        coadd_thumbs = []
         if coadd:
-            coadd_flux = enmap.read_map(coadd,sel=0).at(poss[:,inside])
+            coadd_flux_map = enmap.read_map(coadd,sel=0)
+            coadd_flux = coadd_flux_map.at(poss[:,inside])
+            if args.save_thumbnails:
+                for i in range(len(ra)):
+                    coadd_thumbs.append(get_submap(coadd_flux_map, 
+                                                ra[i], 
+                                                dec[i], 
+                                                args.thumbnail_radius
+                                                )
+                                        )
+            del coadd_flux_map
         else:
             coadd_flux = 0.0
+            
 
         flux   = rho/kappa - coadd_flux
         dflux  = kappa**-0.5
+        if args.save_thumbnails:
+            flux_thumbs = []
+            for i in range(len(rho_thumbs)):
+                if coadd:
+                    flux_thumbs.append(rho_thumbs[i]/kappa_thumbs[i] - coadd_thumbs[i])
+                else:
+                    flux_thumbs.append(rho_thumbs[i]/kappa_thumbs[i])
+        
         ## intensity snr only
         snr    = flux[0]/dflux[0]
         if len(snr)==0:
-            print(flux,dflux)
             continue
         
         for i, gi in enumerate(good):
-            print(i,gi)
-            print(flux[0,i],dflux[0,i])
             line = "%10.0f, %5f, %.5f, %3s, %4s, %8.2f," % (t[i], ra[gi], dec[gi], arr, ftag, snr[i])
             for f, df in zip(flux[:,i], dflux[:,i]):
                 line += " %8.1f, %6.1f," % (f, df)
             line += " %s\n" % ttag
             lines.append(line)
-        
-ofile = "%s/%s" %(args.odir,args.ofname)
+            if args.save_thumbnails:
+                thumbnail_maps.append(flux_thumbs[gi])
+                thumbnail_map_info.append({'ra':ra[gi],'dec':dec[gi],'t':t[i],'arr':arr,'freq':ftag,'maptime':ttag})
+
+
+if args.save_thumbnails:
+    for i in range(len(thumbnail_maps)):
+        enmap.write_hdf(args.odir+'/'+args.output_thumbnail_fname, 
+                thumbnail_maps[i],
+                address=str(i).zfill(len(str(len(thumbnail_maps)))),
+                extra=thumbnail_map_info[i]
+                )
+
+ofile = "%s/%s" %(args.odir,args.output_lightcurve_fname)
 times = [float(line.split(',')[0]) for line in lines]
 order = np.argsort(times)
 with open(ofile, "w+") as f:
     for oi in order:
         f.write(lines[oi])
-
-
