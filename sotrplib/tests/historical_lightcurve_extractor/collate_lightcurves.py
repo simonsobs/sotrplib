@@ -36,13 +36,22 @@ P.add_argument("--default-file-suffix",
                default='tmp_lightcurve.txt',
                help="Suffix of temporary lightcurve files (so that deletion is safer)."
               )
+P.add_argument("--default-thumbnail-file-suffix",
+               action="store",
+               default='tmp_thumbnails.hdf5',
+               help="Suffix of temporary thumbnail files (so that deletion is safer)."
+              )
 ## not used yet...
 P.add_argument("--split-sources",
                action="store_true",
                default=False,
                help="Split final lightcurve file by source, current uses ra,dec but can eventually use sourceID, say for asteroids."
               )
-
+P.add_argument("--no-thumbnails",
+               action="store_true",
+               default=False,
+               help="Ignore the thumbnail files."
+              )
 P.add_argument("--no-cleanup",
                action="store_true",
                default=False,
@@ -52,7 +61,7 @@ P.add_argument("--no-cleanup",
 def collate_lightcurve_files(lc_files,
                              out_file,
                              cleanup=True
-                             ):
+                            ):
     inlines = []
     for lcf in sorted(lc_files):
         with open(lcf,'r') as f:
@@ -69,6 +78,46 @@ def collate_lightcurve_files(lc_files,
             sprun(['rm',lcf])
     return
 
+def load_custom_hdf5(fname):
+    import h5py
+    from pixell import enmap
+    context = h5py.File(fname, "r")
+    thumbnails = []
+    for key in context:
+        thumb_dict = {}
+        thumb_dict['thumb'] = enmap.read_hdf(context[key])
+        for k in context[key].keys():
+            if k == 'wcs' or k =='data':
+                continue
+            thumb_dict[k] = enmap.fix_python3(context[key][k][()])
+        
+        thumbnails.append(thumb_dict)
+    return thumbnails
+
+def collate_thumbnail_files(files,
+                            out_file,
+                            cleanup=True
+                           ):
+    from pixell import enmap
+
+    thumbnails = []
+    for f in sorted(files):
+       thumbnails += load_custom_hdf5(f)
+
+    for i,thumb in enumerate(thumbnails):
+        t = thumb.pop('thumb')
+        enmap.write_hdf(out_file, 
+                    t,
+                    address=str(i).zfill(len(str(len(thumbnails)))),
+                    extra=thumb
+                    )
+        
+    if cleanup:
+        from subprocess import run as sprun
+        for f in sorted(files):
+            sprun(['rm',f])
+    return
+
 args = P.parse_args()
 
 lc_files = args.files
@@ -77,5 +126,16 @@ if len(args.files)==0:
 
 collate_lightcurve_files(lc_files,
                          args.out_dir+args.out_file,
-                         cleanup=~args.no_cleanup
+                         cleanup=not bool(args.no_cleanup)
                          )
+
+thumb_files = glob(args.lc_dir+f'*{args.default_thumbnail_file_suffix}')
+if 'lightcurve' in args.out_file:
+    outfile = args.out_dir+args.out_file.split('lightcurve.txt')[0]+'.hdf5'
+else:
+    outfile = args.out_dir+args.out_file.split('.txt')[0]+'.hdf5'
+
+collate_thumbnail_files(thumb_files,
+                        outfile,
+                        cleanup=not bool(args.no_cleanup)
+                       )

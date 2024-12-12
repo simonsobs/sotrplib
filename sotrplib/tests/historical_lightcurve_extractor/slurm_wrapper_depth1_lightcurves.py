@@ -163,9 +163,9 @@ if not os.path.exists(args.out_dir):
 for i in tqdm(range(len(datelist))):
     date=datelist[i].split('/')[-1]
     globstr=args.data_dir+date+'/depth1*rho.fits'
-    outfile = date+'_tmp_lightcurve.txt'
-    
-    slurm_text+=f'''srun --overlap python {args.script_name} --ra {' '.join(args.ra)} --dec {' '.join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} --ofname {outfile} &\n sleep 1 \n'''
+    lc_outfile = date+'_tmp_lightcurve.txt'
+    thumb_outfile = date+'_tmp_thumbnail.hdf5'
+    slurm_text+=f'''srun --overlap python {args.script_name} --ra {' '.join(args.ra)} --dec {' '.join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} --o {lc_outfile} --output-thumbnail-fname {thumb_outfile} &\n sleep 1 \n'''
     
     if i%ncores == 0 and i>0:
         slurm_text+='wait\n'
