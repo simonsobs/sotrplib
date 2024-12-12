@@ -69,6 +69,8 @@ def collate_lightcurve_files(lc_files,
             sprun(['rm',lcf])
     return
 
+args = P.parse_args()
+
 lc_files = args.files
 if len(args.files)==0:
     lc_files = glob(args.lc_dir+f'*{args.default_file_suffix}')
