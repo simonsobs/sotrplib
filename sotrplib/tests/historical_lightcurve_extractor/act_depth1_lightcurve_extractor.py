@@ -110,12 +110,14 @@ for fi in range(comm.rank, nfile, comm.size):
     shape, wcs = enmap.read_map_geometry(rhofile)
     pixs       = enmap.sky2pix(shape, wcs, poss)
     inside     = np.where(np.all((pixs.T >= 0)&(pixs.T<shape[-2:]),-1))[0]
-    
+    print(inside)
     print("Processing %s with %4d srcs" % ( name, len(inside)))
     if len(inside) == 0:
         # Just create an empty file if we don't have any sources in this map
        continue
     else:
+        ra = np.asarray(args.ra)[inside]
+        dec = np.asarray(args.dec)[inside]
         # Otherwise process the map properly.
         # We read in and get values from one map at a time to save memory
         kappa_map = enmap.read_map(kappafile)
@@ -138,6 +140,7 @@ for fi in range(comm.rank, nfile, comm.size):
         del time_map, info
 
         good   = np.where(kappa[0] > ref*args.tol)[0]
+        print(good)
         rho, kappa, t = rho[:,good], kappa[:,good], t[good]
 
         if coadd:
@@ -154,7 +157,9 @@ for fi in range(comm.rank, nfile, comm.size):
             continue
         
         for i, gi in enumerate(good):
-            line = "%10.0f, %5f, %.5f, %3s, %4s, %8.2f," % (t[i], args.ra[gi], args.dec[gi], arr, ftag, snr[i])
+            print(i,gi)
+            print(flux[0,i],dflux[0,i])
+            line = "%10.0f, %5f, %.5f, %3s, %4s, %8.2f," % (t[i], ra[gi], dec[gi], arr, ftag, snr[i])
             for f, df in zip(flux[:,i], dflux[:,i]):
                 line += " %8.1f, %6.1f," % (f, df)
             line += " %s\n" % ttag
