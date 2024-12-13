@@ -104,13 +104,13 @@ def collate_thumbnail_files(files,
     for f in tqdm(sorted(files),desc='Loading thumbnail files...'):
        thumbnails += load_custom_hdf5(f)
 
-    for i,thumb in tqdm(enumerate(thumbnails),desc='Writing thumbnails to file'):
-        t = thumb.pop('thumb')
+    for i in tqdm(range(len(thumbnails)),desc='Writing thumbnails to file'):
+        t = thumbnails[i].pop('thumb')
         enmap.write_hdf(out_file, 
-                    t,
-                    address=str(i).zfill(len(str(len(thumbnails)))),
-                    extra=thumb
-                    )
+                        t,
+                        address=str(i).zfill(len(str(len(thumbnails)))),
+                        extra=thumbnails[i]
+                       )
         
     if cleanup:
         from subprocess import run as sprun
