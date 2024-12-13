@@ -90,10 +90,26 @@ P.add_argument("--save-thumbnails",
                help="Save thumbnail maps around the source(s). "
               )
 
-P.add_argument("--cont",
-               action="store_true",
-               help="Dont overwrite the file, skip if it exists."
+P.add_argument("--thumbnail-radius",
+               action="store",
+               default=0.5,
+               type=float,
+               help="Thumbnail radius (half-width of square map), in deg. "
               )
+
+P.add_argument("--ncores",
+               action="store",
+               default=66,
+               type=int,
+               help="Number of cores to request for each slurm job. "
+              )
+
+P.add_argument("--nserial",
+               action="store",
+               default=3,
+               help="Number of serial sets of `ncores` scripts to run per job. "
+              )
+
 
 args = P.parse_args()
 
@@ -121,10 +137,7 @@ cd {script_dir}
     return slurm_header
 
 
-ncores=66
-nserial=ncores*3
-n=0
-
+nserial=args.ncores*args.nserial
 
 datelist=[]
 if len(args.obsids)==0:
@@ -155,25 +168,30 @@ if not args.out_dir:
 ## set slurm output dir to live in the temp directory
 if args.slurm_out_dir == P.get_default('slurm_out_dir'):
     args.slurm_out_dir = args.out_dir+args.slurm_out_dir
-
-slurm_text = generate_slurm_header(str(n).zfill(4),
-                                   args.group_name,
-                                   str(ncores),
-                                   args.script_dir if args.script_dir else os.getcwd(),
-                                   args.slurm_out_dir
-                                  )
+if args.slurm_script_dir == P.get_default('slurm_script_dir'):
+    args.slurm_script_dir = args.out_dir+args.slurm_script_dir
 
 if not os.path.exists(args.out_dir):
     os.mkdir(args.out_dir)
+if not os.path.exists(args.slurm_script_dir):
+    os.mkdir(args.slurm_script_dir)
+
+n=0
+slurm_text = generate_slurm_header(str(n).zfill(4),
+                                   args.group_name,
+                                   str(args.ncores),
+                                   args.script_dir if args.script_dir else os.getcwd(),
+                                   args.slurm_out_dir
+                                  )
 
 for i in tqdm(range(len(datelist))):
     date=datelist[i].split('/')[-1]
     globstr=args.data_dir+date+'/depth1*rho.fits'
     lc_outfile = date+'_tmp_lightcurve.txt'
     thumb_outfile = date+'_tmp_thumbnail.hdf5'
-    slurm_text+=f'''srun --overlap python {args.script_name} --ra {' '.join(args.ra)} --dec {' '.join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} -o {lc_outfile} --output-thumbnail-fname {thumb_outfile}{' --save-thumbnails' if args.save_thumbnails else ''} &\n sleep 1 \n'''
+    slurm_text+=f'''srun --overlap python {args.script_name} --ra {' '.join(args.ra)} --dec {' '.join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} -o {lc_outfile} --output-thumbnail-fname {thumb_outfile} --thumbnail-radius {args.thumbnail_radius}{' --save-thumbnails' if args.save_thumbnails else ''} &\n sleep 1 \n'''
     
-    if i%ncores == 0 and i>0:
+    if i%args.ncores == 0 and i>0:
         slurm_text+='wait\n'
 
     if i%nserial == 0 and i>0:
@@ -183,7 +201,7 @@ for i in tqdm(range(len(datelist))):
         n+=1
         slurm_text = generate_slurm_header(str(n).zfill(4),
                                            args.group_name,
-                                           str(ncores),
+                                           str(args.ncores),
                                            args.script_dir if args.script_dir else os.getcwd(),
                                            args.slurm_out_dir
                                           )
