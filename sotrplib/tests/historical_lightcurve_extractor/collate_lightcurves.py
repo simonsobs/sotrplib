@@ -1,5 +1,4 @@
 from glob import glob
-import numpy as np
 
 import argparse as ap
 P = ap.ArgumentParser(description="Collate single depth-1 map flux files into a single lightcurve file.",
@@ -38,7 +37,7 @@ P.add_argument("--default-file-suffix",
               )
 P.add_argument("--default-thumbnail-file-suffix",
                action="store",
-               default='tmp_thumbnails.hdf5',
+               default='tmp_thumbnail.hdf5',
                help="Suffix of temporary thumbnail files (so that deletion is safer)."
               )
 ## not used yet...
@@ -62,8 +61,9 @@ def collate_lightcurve_files(lc_files,
                              out_file,
                              cleanup=True
                             ):
+    from tqdm import tqdm
     inlines = []
-    for lcf in sorted(lc_files):
+    for lcf in tqdm(sorted(lc_files),desc='Reading lightcurve files'):
         with open(lcf,'r') as f:
             for line in f:
                 inlines.append(line)
@@ -74,7 +74,7 @@ def collate_lightcurve_files(lc_files,
         
     if cleanup:
         from subprocess import run as sprun
-        for lcf in sorted(lc_files):
+        for lcf in tqdm(sorted(lc_files),desc='Cleaning up lightcurve files'):
             sprun(['rm',lcf])
     return
 
@@ -99,12 +99,12 @@ def collate_thumbnail_files(files,
                             cleanup=True
                            ):
     from pixell import enmap
-
+    from tqdm import tqdm
     thumbnails = []
-    for f in sorted(files):
+    for f in tqdm(sorted(files),desc='Loading thumbnail files...'):
        thumbnails += load_custom_hdf5(f)
 
-    for i,thumb in enumerate(thumbnails):
+    for i,thumb in tqdm(enumerate(thumbnails),desc='Writing thumbnails to file'):
         t = thumb.pop('thumb')
         enmap.write_hdf(out_file, 
                     t,
@@ -114,7 +114,7 @@ def collate_thumbnail_files(files,
         
     if cleanup:
         from subprocess import run as sprun
-        for f in sorted(files):
+        for f in tqdm(sorted(files),desc='Cleaning up thumbnails'):
             sprun(['rm',f])
     return
 
@@ -131,7 +131,7 @@ collate_lightcurve_files(lc_files,
 
 thumb_files = glob(args.lc_dir+f'*{args.default_thumbnail_file_suffix}')
 if 'lightcurve' in args.out_file:
-    outfile = args.out_dir+args.out_file.split('lightcurve.txt')[0]+'.hdf5'
+    outfile = args.out_dir+args.out_file.split('lightcurve.txt')[0]+'thumbnail.hdf5'
 else:
     outfile = args.out_dir+args.out_file.split('.txt')[0]+'.hdf5'
 
