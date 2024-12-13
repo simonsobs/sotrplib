@@ -84,6 +84,12 @@ P.add_argument("--slurm-out-dir",
                help="Directory in which the slurm output files get saved. If default, appends to scratch dir. "
               )
 
+P.add_argument("--save-thumbnails",
+               action="store_true",
+               default=False,
+               help="Save thumbnail maps around the source(s). "
+              )
+
 P.add_argument("--cont",
                action="store_true",
                help="Dont overwrite the file, skip if it exists."
@@ -165,7 +171,7 @@ for i in tqdm(range(len(datelist))):
     globstr=args.data_dir+date+'/depth1*rho.fits'
     lc_outfile = date+'_tmp_lightcurve.txt'
     thumb_outfile = date+'_tmp_thumbnail.hdf5'
-    slurm_text+=f'''srun --overlap python {args.script_name} --ra {' '.join(args.ra)} --dec {' '.join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} --o {lc_outfile} --output-thumbnail-fname {thumb_outfile} &\n sleep 1 \n'''
+    slurm_text+=f'''srun --overlap python {args.script_name} --ra {' '.join(args.ra)} --dec {' '.join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} -o {lc_outfile} --output-thumbnail-fname {thumb_outfile}{' --save-thumbnails' if args.save_thumbnails else ''} &\n sleep 1 \n'''
     
     if i%ncores == 0 and i>0:
         slurm_text+='wait\n'
