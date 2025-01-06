@@ -5,8 +5,136 @@ import numpy as np
 import pandas as pd
 from scipy import spatial
 from astropy.table import Table
-from pixell import enmap, utils
+from pixell import enmap
+from pixell import utils as pixell_utils
 
+
+
+def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matches:bool=False):
+    """Determines if source matches with masked objects
+
+    Args:
+        sources: np.array of sources [[dec, ra]] in deg
+        crosscat: catalog of masked objects [[dec, ra]] in deg
+        radius: radius to search for matches in arcmin, float or list of length sources.
+        mode: return `all` pairs, or just `closest`
+    Returns:
+        mask column for sources, 1 matches with at least one source, 0 no matches
+
+    """
+
+    crosspos_ra = crosscat[:, 1] * pixell_utils.degree
+    crosspos_dec = crosscat[:, 0] * pixell_utils.degree
+    crosspos = np.array([crosspos_ra, crosspos_dec]).T
+
+    # if only one source
+    if len(sources.shape) == 1:
+        source_ra = sources[1] * pixell_utils.degree
+        source_dec = sources[0] * pixell_utils.degree
+        sourcepos = np.array([[source_ra, source_dec]])
+        if isinstance(radius,(list,np.array)):
+            r = radius[0] * pixell_utils.arcmin
+        else:
+            r = radius * pixell_utils.arcmin
+        match = pixell_utils.crossmatch(sourcepos, crosspos, r, mode=mode)
+        
+        if len(match) > 0:
+            return True if not return_matches else True,match
+        else:
+            return False if not return_matches else False,match
+
+    mask = np.zeros(len(sources), dtype=bool)
+    matches = []
+    for i, m in enumerate(mask):
+        source_ra = sources[i, 1] * pixell_utils.degree
+        source_dec = sources[i, 0] * pixell_utils.degree
+        sourcepos = np.array([[source_ra, source_dec]])
+        if isinstance(radius,(list,np.array)):
+            r = radius[i] * pixell_utils.arcmin
+        else:
+            r = radius * pixell_utils.arcmin
+        match = pixell_utils.crossmatch(sourcepos, crosspos, r, mode=mode)
+        if len(match) > 0:
+            mask[i] = True
+        matches.append([(i,m[1]) for m in match])
+    if return_matches:
+        return mask,matches
+    else:
+        return mask
+
+def sift(extracted_sources,
+         catalog_sources,
+         radius1Jy:float=30.0,
+         min_match_radius:float=1.5,
+         source_fluxes:list = None,
+         map_freq:str = 'f090',
+         map_time:float = None,
+         ):
+    from ..utils.utils import radec_to_str_name
+    from ..sources.sources import SourceCandidate
+
+    if isinstance(source_fluxes,type(None)):
+        source_fluxes = np.asarray([extracted_sources[f]['kron_flux']/1000. for f in extracted_sources])
+    
+    extracted_ra = np.asarray([extracted_sources[f]['ra'] for f in extracted_sources])
+    extracted_dec = np.asarray([extracted_sources[f]['dec'] for f in extracted_sources])
+
+    crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
+    isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
+                                            np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
+                                            list(crossmatch_radius),
+                                            mode='closest',
+                                            return_matches=True
+                                            )
+
+
+    source_candidates = []
+    transient_candidates = []
+    noise_candidates = []
+    for source,cand_pos in enumerate(zip(extracted_ra,extracted_dec)):
+        forced_photometry_info = extracted_sources[source]
+        source_string_name = radec_to_str_name(cand_pos[0]/pixell_utils.degree,
+                                               cand_pos[1]/pixell_utils.degree
+                                              )
+            
+        if isin_cat[source]:
+            crossmatch_name = catalog_sources['name'][catalog_match[source][0][1]]
+        else:
+            crossmatch_name = ''
+
+        #candidate_observed_time = mapdata.time_map.at(np.deg2rad(c), order=0, mask_nan=True)
+        cand = SourceCandidate(ra=cand_pos[0]/pixell_utils.degree%360,
+                               dec=cand_pos[1]/pixell_utils.degree,
+                               flux=forced_photometry_info['kron_flux'],
+                               dflux=forced_photometry_info['kron_fluxerr'],
+                               snr=forced_photometry_info['kron_flux']/forced_photometry_info['kron_fluxerr'],
+                               freq=str(map_freq),
+                               ctime=forced_photometry_info['time'],
+                               sourceID=source_string_name,
+                               match_filtered=False,
+                               renormalized=True,
+                               catalog_crossmatch=isin_cat[source],
+                               crossmatch_name=crossmatch_name,
+                              )
+            
+        ## do sifting operations here...
+        if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']):
+            noise_candidates.append(cand)
+        elif isin_cat[source]:
+            source_candidates.append(cand)
+        else:
+            transient_candidates.append(cand)
+        del cand
+        
+    print(len(source_candidates),'catalog matches')
+    print(len(transient_candidates),'transient candidates')
+    print(len(noise_candidates),'probably noise') 
+    return source_candidates, transient_candidates, noise_candidates
+
+
+####################
+## Act crossmatching between wafers / bands etc.
+####################
 
 def get_cats(
     path, ctime, return_fnames=False, mfcut=True, renromcut=False, sourcecut=True
@@ -238,13 +366,13 @@ def crossmatch_array_new(cats_in_order, N, radius, ctime):
                         if enmap.contains(
                             ivar.shape,
                             ivar.wcs,
-                            [dec_deg * utils.degree, ra_deg * utils.degree],
+                            [dec_deg * pixell_utilsdegree, ra_deg * pixell_utilsdegree],
                         ):
                             dist = obj_dist(ivar, np.array([[dec_deg, ra_deg]]))[
                                 0
                             ]
                             dec_pix, ra_pix = ivar.sky2pix(
-                                [dec_deg * utils.degree, ra_deg * utils.degree]
+                                [dec_deg * pixell_utilsdegree, ra_deg * pixell_utilsdegree]
                             )
                             ivar_src = ivar[int(dec_pix), int(ra_pix)]
                             if ivar_src != 0.0 and dist > 10.0:
@@ -480,16 +608,16 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
                 idx_src = int(matched_inds[key][i])
                 ra_src = full_cats_in_order[j].ra[idx_src]
                 dec_src = full_cats_in_order[j].dec[idx_src]
-                dist = utils.angdist(
-                    np.array([ra_src, dec_src]) * utils.degree,
-                    np.array([ra, dec]) * utils.degree,
+                dist = pixell_utilsangdist(
+                    np.array([ra_src, dec_src]) * pixell_utilsdegree,
+                    np.array([ra, dec]) * pixell_utilsdegree,
                 )
                 fwhm = inputs.get_fwhm_arcmin(arr, freq)
                 fwhm_deg = fwhm / 60.0
                 pos_err = fwhm_deg / snr_src
                 var_w += (dist**2.0) * (1 / pos_err**2.0)
         var_w /= invar
-        pos_err_arcmin = var_w**0.5 * 60 / utils.degree
+        pos_err_arcmin = var_w**0.5 * 60 / pixell_utilsdegree
         cat_merge.append(
             np.array(
                 [

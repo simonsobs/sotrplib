@@ -82,54 +82,123 @@ def enplot_annotate(
     return lines
 
 
-def plot_source_thumbnail(imap:Depth1Map,
-                          ra:float,
-                          dec:float,
-                          source_name:str='',
-                          thumbnail_width:float = 60,
-                          plot_dir:str = './',
-                          output_file_name:str='',
-                          save_thumbnail_map:bool=False,
-                          colorbar_range:float=100.0
-                         ):
+def plot_map_thumbnail(imap,
+                  ra:float,
+                  dec:float,
+                  source_name:str='',
+                  thumbnail_width:float = 0.5,
+                  plot_dir:str = './',
+                  output_file_name:str='',
+                  save_thumbnail_map:bool=False,
+                  colorbar_range:float=6.0,
+                  plot_flux:bool=False,
+                 ):
         ## Cut thumbnails from map 
         ## ra,dec in decimal deg
-        ## thumbnail_width in arcmin
+        ## thumbnail_width in deg
         ##
         ## if save_thumbnail_map, then save the .fits map to same directory
         ## with same name (but .fits instead of .png)
-        ## colorbar_range is symmetric about 0, in mJy
+        ## colorbar_range is symmetric about 0
+        ## plot_flux plots the flux, rather than the default snr
         from pixell import enmap,enplot
-        from .utils import radec_to_str_name
+        from sotrplib.utils.utils import radec_to_str_name
+        from sotrplib.maps.maps import get_thumbnail
         if not source_name:
             source_name = radec_to_str_name(ra,dec).split(' ')[-1] ## just the J000000-000000 part
-        if not imap.is_thumbnail:
-            thumbnail = imap.thumbnail(ra,
-                                       dec,
-                                       thumbnail_width_arcmin=thumbnail_width
+        
+        thumbnail = get_thumbnail(imap,
+                                      ra,
+                                      dec,
+                                      size_deg=thumbnail_width
                                       )
+        
+        if plot_flux:
+            plot_type='flux'
         else:
-            thumbnail = imap
-
-        flux_thumbnail = thumbnail.flux()
+            plot_type='snr'
         # save maps
         if not output_file_name:
-            name = f'{plot_dir}{source_name}_thumbnail'
+            name = f'{plot_dir}{source_name}_%s_thumbnail'%plot_type
         else:
             name = plot_dir+output_file_name
         if save_thumbnail_map:
             enmap.write_map(name + '.fits', 
-                            flux_thumbnail
+                            thumbnail
                             )
             
         # plot
-        img = enplot.plot(flux_thumbnail, 
+        img = enplot.plot(thumbnail, 
                           range=colorbar_range, 
                           grid=True
                          )
         enplot.write(name, 
                      img
                     )
+        
+        return
+
+
+def plot_depth1_thumbnail(imap:Depth1Map,
+                          ra:float,
+                          dec:float,
+                          source_name:str='',
+                          thumbnail_width:float = 0.5,
+                          plot_dir:str = './',
+                          output_file_name:str='',
+                          save_thumbnail_map:bool=False,
+                          colorbar_range:float=6.0,
+                          plot_flux:bool=False,
+                         ):
+        ## Cut thumbnails from map 
+        ## ra,dec in decimal deg
+        ## thumbnail_width in deg
+        ##
+        ## if save_thumbnail_map, then save the .fits map to same directory
+        ## with same name (but .fits instead of .png)
+        ## colorbar_range is symmetric about 0
+        ## plot_flux plots the flux, rather than the default snr
+        from pixell import enmap,enplot
+        from .utils import radec_to_str_name
+        from ...sotrplib.maps.maps import get_thumbnail
+        if not source_name:
+            source_name = radec_to_str_name(ra,dec).split(' ')[-1] ## just the J000000-000000 part
+        
+        rho_thumbnail = get_thumbnail(imap.rho_map,
+                                      ra_deg,
+                                      dec_deg,
+                                      size_deg=thumbnail_width
+                                      )
+        kappa_thumbnail = get_thumbnail(imap.kappa_map,
+                                        ra_deg,
+                                        dec_deg,
+                                        size_deg=thumbnail_width
+                                        )
+        if plot_flux:
+            thumbnail = rho_thumbnail/kappa_thumbnail
+            plot_type='flux'
+        else:
+            thumbnail = rho_thumbnail*kappa_thumbnail**-0.5
+            plot_type='snr'
+        # save maps
+        if not output_file_name:
+            name = f'{plot_dir}{source_name}_%s_thumbnail'%plot_type
+        else:
+            name = plot_dir+output_file_name
+        if save_thumbnail_map:
+            enmap.write_map(name + '.fits', 
+                            thumbnail
+                            )
+            
+        # plot
+        img = enplot.plot(thumbnail, 
+                          range=colorbar_range, 
+                          grid=True
+                         )
+        enplot.write(name, 
+                     img
+                    )
+        del rho_thumbnail,kappa_thumbnail,thumbnail
         
         return
 

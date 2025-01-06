@@ -26,9 +26,8 @@ def get_medrat(snr: enmap, tiledmap):
     """
     from scipy.stats import norm
     t = tiledmap.astype(int)
-    med0 = norm.ppf(0.75)
-    snr2 = snr**2
-    medians = ndimage.median(snr2, labels=t, index=np.arange(np.max(t + 1)))
+    med0 = norm.ppf(0.75) 
+    medians = ndimage.median(snr**2, labels=t, index=np.arange(np.max(t + 1)))
     median_map = medians[t]
     # supress divide by zero warning
     with warnings.catch_warnings():
@@ -115,17 +114,17 @@ def time_shift_in_ra_new(tmap):
     """
     dec_pix_0 = int(tmap.shape[0] / 2)
     ra_pix = 0
-    ivreso = np.abs(tmap.wcs.wcs.cdelt[0])
-    ra_inds = range(int(tmap.shape[1] * 2 * ivreso))
-    dec_inds_pos = range(int(tmap.shape[0] * 2 * 0.5 * ivreso))
-    dec_inds_neg = range(0, 0 - int(tmap.shape[0] * 2 * 0.5 * ivreso), -1)
+    res = np.abs(tmap.wcs.wcs.cdelt[0])
+    ra_inds = range(int(tmap.shape[1] * 2 * res))
+    dec_inds_pos = range(int(tmap.shape[0] * res))
+    dec_inds_neg = range(0, 0 - int(tmap.shape[0] * res), -1)
     dec_inds = list(dec_inds_pos) + list(dec_inds_neg)
     t_shift = 0
     for j in dec_inds:  # adding 0.5 degree increment each time in dec
-        dec_pix = dec_pix_0 + int((j) * 0.5 / ivreso)
+        dec_pix = dec_pix_0 + int((j) * 0.5 / res)
         for i in ra_inds:  # adding 0.5 degree increment each time in ra
-            ra_pix = int(i * 0.5 / ivreso)
-            ra_pix_shift = int((i + 1) * 0.5 / ivreso)
+            ra_pix = int(i * 0.5 / res)
+            ra_pix_shift = int((i + 1) * 0.5 / res)
             if (
                 tmap[dec_pix, ra_pix] != 0.0 and tmap[dec_pix, ra_pix_shift] != 0.0
             ):  # adding 0.5 degree increment each time in ra
@@ -215,7 +214,7 @@ def tiles_t(tmap, grid_deg):
 
 
 def tiles_t_quick(tmap, grid_deg, id=None):
-    """takes tmap as imput and return a tilemap with pixels having same ind number beloing to the same time
+    """takes tmap as input and return a tilemap with pixels having same ind number belonging to the same time
 
     Args:
         tmap: ndmap of time map
@@ -224,7 +223,7 @@ def tiles_t_quick(tmap, grid_deg, id=None):
     Returns:
         mask_poly: ndmap of tile map with pixels labeled with tile number
     """
-    t_max = np.max(tmap)
+    t_max = np.nanmax(tmap)
     t_shift_1deg = time_shift_in_ra_new(tmap)
     t_shift = t_shift_1deg * grid_deg
     if t_shift == 0.0:
