@@ -5,135 +5,13 @@ from tqdm import tqdm
 import numpy as np
 from pixell import enmap
 from pixell import utils as pixell_utils
-from scipy import ndimage, stats
+from scipy import stats
 from scipy.ndimage import distance_transform_edt
-from scipy.ndimage import morphology as morph
 from scipy.optimize import curve_fit
 import glob as glob
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
-
-
-
-def get_sourceflux_threshold(freq):
-    """
-    Get sourceflux threshold measured from mapnoise * 5 / 5
-
-    avg dflux of f090 = 28.517394966150707
-    avg dflux of f150 = 53.679349692751394
-    avg dflux of f220 = 88.04350067775873
-    avg dflux of f040 = 93.94425336313529
-    avg dflux of f030 = 133.4519154035587
-
-
-    Args:
-        freq: frequency
-
-    Returns:
-        sourceflux threshold [mJy]
-    """
-    if freq == "f090":
-        sourceflux_thresh = 30.0
-    elif freq == "f150":
-        sourceflux_thresh = 50.0
-    elif freq == "f220":
-        sourceflux_thresh = 90.0
-    elif freq == "f040":
-        sourceflux_thresh = 90.0
-    elif freq == "f030":
-        sourceflux_thresh = 130.0
-    else:
-        raise ValueError("Frequency not recognized")
-    return sourceflux_thresh
-
-
-def get_sourcecats():
-    sourcecat_f090 = op.join(
-        op.dirname(__file__), "../data/inputs/PS_S19_f090_2pass_optimalCatalog.fits"
-    )
-    sourcecat_f150 = op.join(
-        op.dirname(__file__), "../data/inputs/PS_S19_f150_2pass_optimalCatalog.fits"
-    )
-    sourcecat_f220 = op.join(
-        op.dirname(__file__), "../data/inputs/PS_S19_f220_2pass_optimalCatalog.fits"
-    )
-    sourcecat_f030 = op.join(
-        op.dirname(__file__),
-        "../data/inputs/cmb_night_pa7_f030_4pass_8way_coadd_map_cat.fits",
-    )
-    sourcecat_f040 = op.join(
-        op.dirname(__file__),
-        "../data/inputs/cmb_night_pa7_f040_4pass_8way_coadd_map_cat.fits",
-    )
-
-    s040 = Table.read(sourcecat_f040)
-    s040["RADeg"] = s040["ra"]
-    s040["decDeg"] = s040["dec"]
-    # fconv_40 = pixell_utils.dplanck(40.e9, pixell_utils.T_cmb)
-    # s040['fluxJy'] = s040['flux'][:, 0] * fconv_40 * 2804.
-    s040["fluxJy"] = s040["flux"][:, 0] / 1e3
-
-    s030 = Table.read(sourcecat_f030)
-    s030["RADeg"] = s030["ra"]
-    s030["decDeg"] = s030["dec"]
-    # fconv_30 = pixell_utils.dplanck(30.e9, pixell_utils.T_cmb)
-    # s030['fluxJy'] = s030['flux'][0, :] * fconv_30 * 5060.
-    s030["fluxJy"] = s030["flux"][:, 0] / 1e3
-
-    sourcecats = {
-        "f090": Table.read(sourcecat_f090),
-        "f150": Table.read(sourcecat_f150),
-        "f220": Table.read(sourcecat_f220),
-        "f030": s030,
-        "f040": s040,
-    }
-    return sourcecats
-
-
-def get_badmaps():
-    """Looks like the first ctime doesn't exist. Keeping for reference here."""
-    return ["150214186", "1502421750"]
-
-
-@np.vectorize
-def planck_fluxcal(arr, freq):
-    """
-    Get flux calibration factor for a given frequency
-
-    Args:
-        freq: frequency
-
-    Returns:
-        flux calibration factor
-    """
-
-    # with open('../../data/inputs/calibs_dict_ACTxACT-dr4.pkl', 'rb') as f:
-    # dr6_calib = pk.load(f)
-    #
-    # calib_dict = {'pa4': {'f150': dr6_calib['dr6_pa4_f150']['calibs'], 'f220': dr6_calib['dr6_pa4_f220']['calibs']},
-    #       'pa5': {'f090': dr6_calib['dr6_pa5_f090']['calibs'], 'f150': dr6_calib['dr6_pa5_f150']['calibs']},
-    #       'pa6': {'f090': dr6_calib['dr6_pa6_f090']['calibs'], 'f150': dr6_calib['dr6_pa6_f150']['calibs']}
-    #                 }
-
-    calib_dict = {
-        "pa4": {
-            "f150": [1.0072175262677963, 0.0023154207035651023],
-            "f220": [1.0340185610989223, 0.01626333139583416],
-        },
-        "pa5": {
-            "f090": [1.0218836321586204, 0.0011691303344386838],
-            "f150": [0.9876564792184743, 0.001704546067935355],
-        },
-        "pa6": {
-            "f090": [1.0181628559678786, 0.0013096342890986763],
-            "f150": [0.9699498005405339, 0.002141045797557799],
-        },
-        "pa7": {"f030": [1.0, 1.0], "f040": [1.0, 1.0]},
-    }  # Alternatively hardcoded
-
-    return calib_dict[arr][freq][0], calib_dict[arr][freq][1]
-
 
 
 def radec_to_str_name(ra: float, 
@@ -206,69 +84,38 @@ def radec_to_str_name(ra: float,
     name = "{}-{} J{}{}".format(observatory, source_class, rastr, decstr)
     return name
 
-class SourceMap(enmap.ndmap):
-    """Implements a ndmap with a list of sources"""
 
-    def __new__(cls, arr, wcs, sources):
-        """Wraps a numpy and a wcslib world coordinate system object into an ndmap."""
-        obj = np.asarray(arr).view(cls)
-        obj.wcs = wcs.deepcopy()
-        obj.sources = np.asarray(sources).view(cls)
-        return obj
-
-    def edge_map(self):
-        return edge_map(self)
-
-    def edge_dist(self):
-        return obj_dist(edge_map(self), self.sources)
-
-    def mask_col(self, mask):
-        return source_in_mask(self.sources, mask)
-
-    def cross_mask(self, crosscat, r):
-        return crossmatch_mask(self.sources, crosscat, r)
-
-
-def crossmatch_mask(sources, crosscat, radius):
-    """Determines if source matches with masked objects
-
-    Args:
-        sources: np.array of sources [[dec, ra]] in deg
-        crosscat: catalog of masked objects [[dec, ra]] in deg
-        radius: radius to search for matches in arcmin
-
-    Returns:
-        mask column for sources, 1 matches with at least one source, 0 no matches
-
-    """
-
-    radius = radius * pixell_utils.arcmin  # convert to radians
-
-    crosspos_ra = crosscat[:, 1] * pixell_utils.degree
-    crosspos_dec = crosscat[:, 0] * pixell_utils.degree
-    crosspos = np.array([crosspos_ra, crosspos_dec]).T
-
-    # if only one source
-    if len(sources.shape) == 1:
-        source_ra = sources[1] * pixell_utils.degree
-        source_dec = sources[0] * pixell_utils.degree
-        sourcepos = np.array([[source_ra, source_dec]])
-        match = pixell_utils.crossmatch(sourcepos, crosspos, radius, mode="all")
-        if len(match) > 0:
-            return True
+def get_map_groups(maps:list,
+                   coadd_days:float=7
+                  ):
+    import Path
+    map_groups = [[m] for m in sorted(maps)]
+    map_group_time_windows = []
+    if coadd_days !=0:
+        times = [float(m.split('depth1_')[-1].split('_')[0]) for m in maps]
+        mintime = np.min(times)
+        maxtime = np.max(times)
+        print('Full time range: %.1f days'%((maxtime-mintime)/86400))
+        full_time_range = maxtime-mintime
+        if mintime==maxtime:
+            time_bins=[mintime]
+        elif full_time_range < coadd_days*86400:
+            time_bins = [mintime,maxtime]
         else:
-            return False
-
-    mask = np.zeros(len(sources), dtype=bool)
-    for i, m in enumerate(mask):
-        source_ra = sources[i, 1] * pixell_utils.degree
-        source_dec = sources[i, 0] * pixell_utils.degree
-        sourcepos = np.array([[source_ra, source_dec]])
-        match = pixell_utils.crossmatch(sourcepos, crosspos, radius, mode="all")
-        if len(match) > 0:
-            mask[i] = True
-
-    return mask
+            time_bins = np.arange(mintime,maxtime,coadd_days*86400)
+        
+        inds = np.digitize(times,time_bins)-1
+        map_groups = [[] for _ in range(len(time_bins))]
+        #print(map_groups)
+        for i in range(len(maps)):
+            map_groups[inds[i]].append(Path(maps[i]))
+        for i in range(len(map_groups)):
+            mapgrouptimes = [float(str(m).split('depth1_')[-1].split('_')[0]) for m in map_groups[i]]
+            if mapgrouptimes:
+                map_group_time_windows.append([min(mapgrouptimes),max(mapgrouptimes)])
+            else:
+                map_group_time_windows.append([])
+    return map_groups,map_group_time_windows
 
 
 def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
@@ -293,23 +140,6 @@ def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
     return radius_pix
 
 
-def edge_map(imap):
-    """Finds the edges of a map
-
-    Args:
-        imap: ndmap to find edges of
-
-    Returns:
-        binary ndmap with 1 inside region, 0 outside
-    """
-
-    edge = enmap.enmap(imap, imap.wcs)  # Create map geometry
-    edge[np.abs(edge) > 0] = 1  # Convert to binary
-    edge = ndimage.binary_fill_holes(edge)  # Fill holes
-
-    return enmap.enmap(edge.astype("ubyte"), imap.wcs)
-
-
 def obj_dist(mask, sources):
     """returns catalog with distances from mask
 
@@ -329,96 +159,6 @@ def obj_dist(mask, sources):
     ps_dist = dmap[ypix.astype(int), xpix.astype(int)]  # lookup distance from mask
 
     return ps_dist
-
-
-def source_in_mask(sources, maskmap):
-    """Determines if source is inside mask
-
-    Args:
-        sources: np.array of sources [[dec, ra]] in deg
-        maskmap: ndmap of mask (zero masked, one not masked)
-
-    Returns:
-        mask column for sources, 1 masked, 0 not masked
-    """
-
-    # Check if sources are in mask
-    dec = sources[:, 0]
-    ra = sources[:, 1]
-    coords_rad = np.deg2rad(np.array([dec, ra]))
-    ypix, xpix = enmap.sky2pix(maskmap.shape, maskmap.wcs, coords_rad)
-    mask = maskmap[ypix.astype(int), xpix.astype(int)]  # lookup mask value
-
-    # Convert to binary
-    mask[np.abs(mask) > 0] = 1
-
-    # switch 0 and 1
-    mask = mask.astype("bool")
-    mask = ~mask
-    mask = mask.astype("int")
-
-    return mask
-
-
-def source_in_map(sources, imap):
-    """Determines if source is inside map and unmasked
-
-    Args:
-        sources: np.array of sources [[dec, ra]] in deg
-        imap: ndmap to find sources in
-
-    Returns:
-        mask column for sources, 1 inside map, 0 outside map
-    """
-    dec = sources[:, 0]
-    ra = sources[:, 1]
-    coords_rad = np.deg2rad(np.array([dec, ra]))
-    # check if source is masked
-    inmap = imap.contains(coords_rad)
-    values = imap.at(coords_rad[:, inmap]).astype(bool)
-    inmap[inmap] = values
-    return inmap
-
-
-def mask_map_edge(imap, pix_num):
-    """Get a mask that masking off edge pixels
-
-    Args:
-        imap:ndmap to create mask for,usually kappa map
-        pix_num: pixels within this number from edge will be cutoff
-
-    Returns:
-        binary ndmap with 1 inside region, 0 outside
-    """
-    edge = edge_map(imap)
-    dmap = enmap.enmap(morph.distance_transform_edt(edge), edge.wcs)
-    mask = enmap.zeros(imap.shape, imap.wcs)
-    mask[np.where(dmap > pix_num)] = 1
-    return mask
-
-
-def snr_map(kappa, rho):
-    snr = rho / kappa**0.5
-    snr[np.where(kappa <= 1.0e-3)] = 0.0
-    return snr
-
-
-def find_kappa_w_rho(rho_file):
-    kfile = rho_file[:-8] + "kappa.fits"
-    return kfile
-
-
-def find_time_w_rho(rho_file):
-    tfile = rho_file[:-8] + "time.fits"
-    return tfile
-
-
-def find_rho(ctime, arr, freq):
-    rho_file = glob.glob(
-        "/scratch/gpfs/snaess/actpol/maps/depth1/release/*/depth1_%s_%s_%s_rho.fits"
-        % (ctime, arr, freq)
-    )[0]
-    return rho_file
 
 
 def init_mpi(arr, randomize=False):
@@ -509,102 +249,6 @@ def consolidate_cols(dirs, colnames):
     return cols
 
 
-def count_ps(dirs, galcut=False, edgecut=None):
-    """
-    count number of point source matches in each catalog
-
-    Args:
-        dirs:directories to count point source matches
-        galcut:whether to cut out galactic plane
-        edgecut:number of pixels to cut from edge
-
-    Returns:
-        cat name and number of sources
-    """
-
-    # init array for each colname given unless not a list
-    cols = {}
-    cols["cat"] = []
-    cols["source"] = []
-    cols["all"] = []
-
-    for subdir in tqdm(dirs):
-        # list files in directory
-        files = os.listdir(subdir)
-
-        # check if fits
-        files = [f for f in files if f.endswith(".fits")]
-
-        # Check if list is empty
-        if len(files) == 0:
-            continue
-
-        for f in files:
-            # Read table
-            t = Table.read(op.join(subdir, f))
-
-            if galcut:
-                # mask anything with gal==0
-                mask = t["gal"] == 0
-                t = t[~mask]
-
-            if edgecut is not None:
-                # mask number of pix from edge
-                t = t[t["dist"] > edgecut]
-
-            # check if colname is in table
-            if "source" in t.colnames:
-                cols["source"].append(len(t[t["source"]]))
-            else:
-                cols["source"].append(np.nan)
-
-            # count all sources
-            cols["all"].append(len(t))
-
-            # add cat name
-            cols["cat"].append(op.join(subdir, f))
-
-    return cols
-
-
-def get_ps_inmap(imap, sourcecat, fluxlim=None):
-    """
-    get point sources in map
-
-    Args:
-        imap:ndmap to get point sources in
-        sourcecat:source catalog
-        fluxlim:flux limit in mJy
-
-    Returns:
-        sourcecat with sources in map
-    """
-    if fluxlim:
-        sourcecat = sourcecat[sourcecat["fluxJy"] > fluxlim / 1000.0]
-    # convert ra to -180 to 180
-    sourcecat["RADeg"] = np.where(
-        sourcecat["RADeg"] > 180, sourcecat["RADeg"] - 360, sourcecat["RADeg"]
-    )
-
-    sourcecat_coords = enmap.sky2pix(
-        imap.shape,
-        imap.wcs,
-        np.array([np.deg2rad(sourcecat["decDeg"]), np.deg2rad(sourcecat["RADeg"])]),
-    )
-    sourcecat = sourcecat[
-        (sourcecat_coords[0] > 0)
-        & (sourcecat_coords[0] < imap.shape[0])
-        & (sourcecat_coords[1] > 0)
-        & (sourcecat_coords[1] < imap.shape[1])
-    ]
-
-    return sourcecat
-
-
-def get_depth1_time_w_rho(rho_file):
-    kfile = rho_file[:-8] + "time.fits"
-    return kfile
-
 
 def ra_pos(ra):
     """converts ra to 0<ra<360
@@ -657,46 +301,47 @@ def angular_separation(ra1, dec1, ra2, dec2):
     return sep.value
 
 
-def get_mean_flux(ra_deg, dec_deg, freq, size):
-    """calculates mean flux given position and band
-
-    Args:
-        ra_deg: ra of candidate [deg]
-        dec_deg:dec of candidates [deg]
-        freq: frequency band, i.e. f220,f150 etc
-    Returns:
-        flux [mJy], snr
-    """
-    from filters import matched_filter_1overf
-    ra = ra_deg * np.pi / 180.0
-    dec = dec_deg * np.pi / 180.0
-    mean_map_file = (
-        "/home/snaess/project/actpol/map_coadd/20211219/release/act_daynight_%s_map.fits"
-        % freq
-    )
-    mean_ivar_file = (
-        "/home/snaess/project/actpol/map_coadd/20211219/release/act_daynight_%s_ivar.fits"
-        % freq
-    )
-    mean_map = enmap.read_map(
-        mean_map_file, box=[[dec - size, ra - size], [dec + size, ra + size]]
-    )[0, :, :]
-    mean_ivar = enmap.read_map(
-        mean_ivar_file, box=[[dec - size, ra - size], [dec + size, ra + size]]
-    )
-    rho, kappa = matched_filter_1overf(mean_map, mean_ivar, freq, size_deg=0.5)
-    flux_map = rho / kappa
-    snr_map = rho / kappa**0.5
-    flux_map[np.where(kappa == 0.0)] = 0.0
-    snr_map[np.where(kappa == 0.0)] = 0.0
-    flux = flux_map.at([dec, ra])
-    snr = snr_map.at([dec, ra])
-    return flux, snr
+def fit_poss(rho, kappa, poss, rmax=8*pixell_utils.arcmin, tol=1e-4, snmin=3):
+    """Given a set of fiducial src positions [{dec,ra},nsrc],
+    return a new set of positions measured from the local center-of-mass
+    Assumes scalar rho and kappa"""
+    from scipy import ndimage
+    ref     = np.max(kappa)
+    if ref == 0: ref = 1
+    snmap2  = rho**2/np.maximum(kappa, ref*tol)
+    # label regions that are strong enough and close enough to the
+    # fiducial positions
+    mask    = snmap2 > snmin**2
+    mask   &= snmap2.distance_from(poss, rmax=rmax) < rmax
+    labels  = enmap.samewcs(ndimage.label(mask)[0], rho)
+    del mask
+    # Figure out which labels correspond to which objects
+    label_inds = labels.at(poss, order=0)
+    good       = label_inds > 0
+    # Compute the center-of mass position for the good labels
+    # For the bad ones, just return the original values
+    oposs = poss.copy()
+    if np.sum(good) > 0:
+        oposs[:,good] = snmap2.pix2sky(np.array(ndimage.center_of_mass(snmap2, labels, label_inds[good])).T)
+    del labels
+    osns  = snmap2.at(oposs, order=1)**0.5
+    #for i in range(nsrc):
+    #dpos = pixell_utils.rewind(oposs[:,i]-poss[:,i])
+    #print("%3d %6.2f %8.3f %8.3f %8.3f %8.3f" % (i, osns[i], poss[1,i]/pixell_utils.degree, poss[0,i]/pixell_utils.degree, dpos[1]/pixell_utils.arcmin, dpos[0]/pixell_utils.arcmin))
+    return oposs, osns
 
 
-def extract_flux_thumbnail_from_file(
-    ra: float, dec: float, ctime: int, freq: str, arr: str, mapdir: str, radius: float
-):
+
+
+def extract_flux_thumbnail_from_file(ra:float,
+                                     dec:float, 
+                                     ctime:int, 
+                                     freq: str, 
+                                     arr:str=None, 
+                                     mapdir:str='/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1',
+                                     radius:float=0.5
+                                    ):
+    from ..maps.maps import kappa_clean
     # Parse position
     pos = np.deg2rad(np.array([dec, ra]))
 
@@ -715,17 +360,15 @@ def extract_flux_thumbnail_from_file(
     stamp_kappa = enmap.read_map(
         f"{mapdir}/{subdir}/depth1_{ctime}_{arr}_{freq}_kappa.fits", pixbox=pixbox
     )[0]
-    stamp_kappa = sanitize_kappa(stamp_kappa)
+    stamp_kappa = kappa_clean(stamp_kappa,
+                              stamp_rho,
+                              )
     flux = stamp_rho / stamp_kappa
 
     return flux
 
 
-def sanitize_kappa(kappa, tol=1e-4):
-    return np.maximum(kappa, np.max(kappa) * tol)
-
-
-def find_map_ctime(ctime, mapdir="/scratch/gpfs/snaess/actpol/maps/depth1/release"):
+def find_map_ctime(ctime, mapdir="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1"):
     """
     Find map that contains ctime
 
@@ -751,7 +394,11 @@ def find_map_ctime(ctime, mapdir="/scratch/gpfs/snaess/actpol/maps/depth1/releas
     return ctime_map
 
 
-def ctime_to_pos(ctime, freq, arr, mapdir):
+def ctime_to_pos(ctime:float, 
+                 freq:str, 
+                 arr:str, 
+                 mapdir:str='/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1'
+                 ):
     # Find subdirectory clostest to ctime
     subdir = str(ctime)[:5]
 
@@ -812,61 +459,6 @@ def radial_profile(data, center_pix, mask, bin_width_arcsec):
     radialprofile = tbin / nr
     return radialprofile
 
-
-def merge_result(flux_data):  # merge pa4 and pa5 result
-    result_merged = np.array(
-        [[225.0 * 1e9, 0.0, 0.0], [150.0 * 1e9, 0.0, 0.0], [98.0 * 1e9, 0.0, 0.0]]
-    )
-    result_merged[0, 1] = flux_data["pa4_f220_flux"][0]
-    result_merged[0, 2] = flux_data["pa4_f220_flux"][1]
-    result_merged[2, 1] = flux_data["pa5_f090_flux"][0]
-    result_merged[2, 2] = flux_data["pa5_f090_flux"][1]
-    ivar_150 = 0.0
-    for key in ["pa4_f150_flux", "pa5_f150_flux"]:
-        if flux_data[key][1] != 0:
-            result_merged[1, 1] += flux_data[key][0] / flux_data[key][1] ** 2.0
-            ivar_150 += 1 / flux_data[key][1] ** 2.0
-    if ivar_150 != 0.0:
-        result_merged[1, 1] /= ivar_150
-        result_merged[1, 2] = 1 / ivar_150**0.5
-    return result_merged
-
-
-def merge_result_all(flux_data):  # merge same band results from all array
-    result_merged = np.array(
-        [
-            [225.0 * 1e9, 0.0, 0.0],
-            [150.0 * 1e9, 0.0, 0.0],
-            [98.0 * 1e9, 0.0, 0.0],
-            [40 * 1e9, 0.0, 0.0],
-            [30 * 1e9, 0.0, 0.0],
-        ]
-    )
-    result_merged[0, 1] = flux_data["pa4_f220_flux"][0]
-    result_merged[0, 2] = flux_data["pa4_f220_flux"][1]
-    result_merged[3, 1] = flux_data["pa7_f040_flux"][0]
-    result_merged[3, 2] = flux_data["pa7_f040_flux"][1]
-    result_merged[4, 1] = flux_data["pa7_f030_flux"][0]
-    result_merged[4, 2] = flux_data["pa7_f030_flux"][1]
-    ivar_150 = 0.0
-    for key in ["pa4_f150_flux", "pa5_f150_flux", "pa6_f150_flux"]:
-        if flux_data[key][1] != 0:
-            result_merged[1, 1] += flux_data[key][0] / flux_data[key][1] ** 2.0
-            ivar_150 += 1 / flux_data[key][1] ** 2.0
-    if ivar_150 != 0.0:
-        result_merged[1, 1] /= ivar_150
-        result_merged[1, 2] = 1 / ivar_150**0.5
-    ivar_090 = 0.0
-    for key in ["pa5_f090_flux", "pa6_f090_flux"]:
-        if flux_data[key][1] != 0:
-            result_merged[2, 1] += flux_data[key][0] / flux_data[key][1] ** 2.0
-            ivar_090 += 1 / flux_data[key][1] ** 2.0
-    if ivar_090 != 0.0:
-        result_merged[2, 1] /= ivar_090
-        result_merged[2, 2] = 1 / ivar_090**0.5
-    return result_merged
-
-
 def calculate_alpha(data):
     alpha = math.log(data[0, 1] / data[1, 1], data[0, 0] / data[1, 0])
     A = data[0, 1] / (data[0, 0] ** alpha)
@@ -875,95 +467,6 @@ def calculate_alpha(data):
         + (data[1, 2] / (data[1, 1] * np.log(data[0, 0] / data[1, 0]))) ** 2.0
     ) ** 0.5
     return A, alpha, err
-
-
-def get_spectra_index(flux_data, ctime, data_type="pa4pa5_or_third"):
-    def func(x, a, b):
-        y = a * x**b
-        return y
-
-    if data_type == "pa4pa5_or_third":
-        merged_data = merge_result(flux_data)
-        result_merged_sel = merged_data[np.where(merged_data[:, 1] > 0.0)]
-        if result_merged_sel.shape[0] == 3:
-            pars, cov = curve_fit(
-                f=func,
-                xdata=result_merged_sel[:, 0],
-                ydata=result_merged_sel[:, 1],
-                sigma=result_merged_sel[:, 2],
-                absolute_sigma=True,
-                p0=[0, 1],
-                maxfev=5000,
-            )
-            alpha = pars[1]
-            err = np.sqrt(cov[1, 1])
-        elif result_merged_sel.shape[0] == 2:
-            amp, alpha, err = calculate_alpha(result_merged_sel)
-        else:
-            if ctime < 1580515200:
-                pa6_data = np.array(
-                    [
-                        [
-                            150 * 1e9,
-                            flux_data["pa6_f150_flux"][0],
-                            flux_data["pa6_f150_flux"][1],
-                        ],
-                        [
-                            98 * 1e9,
-                            flux_data["pa6_f090_flux"][0],
-                            flux_data["pa6_f090_flux"][1],
-                        ],
-                    ]
-                )
-                pa6_data_sel = pa6_data[np.where(pa6_data[:, 1] > 0.0)]
-                if pa6_data_sel.shape[0] == 2:
-                    amp, alpha, err = calculate_alpha(pa6_data_sel)
-                else:
-                    alpha = 0
-                    err = 0
-            else:
-                pa7_data = np.array(
-                    [
-                        [
-                            40 * 1e9,
-                            flux_data["pa7_f040_flux"][0],
-                            flux_data["pa7_f040_flux"][1],
-                        ],
-                        [
-                            30 * 1e9,
-                            flux_data["pa7_f030_flux"][0],
-                            flux_data["pa7_f030_flux"][1],
-                        ],
-                    ]
-                )
-                pa7_data_sel = pa7_data[np.where(pa7_data[:, 1] > 0.0)]
-                if pa7_data_sel.shape[0] == 2:
-                    amp, alpha, err = calculate_alpha(pa7_data_sel)
-                else:
-                    alpha = 0
-                    err = 0
-    if data_type == "all":
-        merged_data = merge_result_all(flux_data)
-        result_merged_sel = merged_data[np.where(merged_data[:, 1] > 0.0)]
-        if result_merged_sel.shape[0] > 2:
-            pars, cov = curve_fit(
-                f=func,
-                xdata=result_merged_sel[:, 0],
-                ydata=result_merged_sel[:, 1],
-                sigma=result_merged_sel[:, 2],
-                absolute_sigma=True,
-                p0=[0, 1],
-                maxfev=5000,
-            )
-            alpha = pars[1]
-            err = np.sqrt(cov[1, 1])
-        elif result_merged_sel.shape[0] == 2:
-            amp, alpha, err = calculate_alpha(result_merged_sel)
-        else:
-            alpha = 0
-            err = 0
-    return alpha, err
-
 
 def get_spectra_index_general(flux_data):
     """
@@ -993,13 +496,6 @@ def get_spectra_index_general(flux_data):
     return alpha, err
 
 
-def rtsumofsquares(arr):
-    """
-    Calculate root sum of squares of array
-    """
-    return np.sqrt(np.sum(np.square(arr)))
-
-
 def weightedmean(arr, err):
     """
     Calculate weighted mean of array
@@ -1014,7 +510,7 @@ def weightedmean(arr, err):
         return np.sum(arr / err**2.0) / np.sum(1 / err**2.0)
 
 
-def pos_variance(ra, dec, ra_data, dec_data):
+def euclidean_variance(ra, dec, ra_data, dec_data):
     """
     Calculate variance of array
     """
@@ -1027,29 +523,6 @@ def pos_variance(ra, dec, ra_data, dec_data):
         count += 1
     var /= count - 1
     return var**0.5
-
-
-def bindata(x, y, yerr, binsize):
-    # bin data
-    bins = np.arange(np.min(x), np.max(x) + binsize, binsize)
-    bin_idx = np.digitize(x, bins)
-
-    # Get weighted mean, error, and bin centers
-    bin_means = np.array(
-        [weightedmean(y[bin_idx == i], yerr[bin_idx == i]) for i in range(1, len(bins))]
-    )
-    bin_err = np.array(
-        [rtsumofsquares(yerr[bin_idx == i]) for i in range(1, len(bins))]
-    )
-    bin_centers = np.array([np.mean(x[bin_idx == i]) for i in range(1, len(bins))])
-
-    # weightedmean_func = lambda y_data: weightedmean(y_data, yerr)
-    # bin_means, bin_edges, binnumber = binned_statistic(x, y, statistic=weightedmean_func, bins=bin_edges)
-    # bin_width = (bin_edges[1] - bin_edges[0])
-    # bin_centers = bin_edges[1:] - bin_width / 2
-    # bin_err = binned_statistic(x, yerr, statistic=rtsumofsquares, bins=nbins)[0]
-
-    return np.array([bin_centers, bin_means, bin_err])
 
 
 def mjy2lum(flux, freq, dist, fluxerr=None):
@@ -1105,5 +578,6 @@ def datetime2ctime(dt):
 
 
 def q(p, mu=0, std=1):
+    ## quantile?
     c0 = stats.norm.cdf(0, loc=mu, scale=std)
     return stats.norm.ppf(p * (1 - c0) + c0, loc=mu, scale=std)

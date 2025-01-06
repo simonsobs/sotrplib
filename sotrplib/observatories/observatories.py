@@ -9,7 +9,12 @@ from typing import Optional
 import numpy as np
 import json
 
-with open('sotrplib/observatories/observatory_information.json', 'r') as file:
+
+## Example usage:
+'''
+import os
+cwd = os.getcwd()
+with open(os.path.join(cwd,'observatory_information.json'), 'r') as file:
     content = file.read()
     observatory_info = json.loads(content)
 
@@ -22,8 +27,9 @@ instrument_name_alias = {'SPT':'SPT3G',
                          'SATP3':'SAT3'
                          }
 
-## Example usage:
-'''
+
+
+
 act=Observatory.from_name('ACT')
 print(act)
 actpol = Instrument.from_name(act,'ACTpol')
@@ -44,6 +50,7 @@ class Observatory:
                 primary_aperture:float, 
                 instruments:list[str]
                 ):
+        
         self.name = name
         self.location = location
         self.latitude = latitude
@@ -52,6 +59,7 @@ class Observatory:
         self.observing_bands = observing_bands
         self.primary_aperture = primary_aperture
         self.instruments = instruments
+        
 
     @classmethod
     def from_name(cls, name):
