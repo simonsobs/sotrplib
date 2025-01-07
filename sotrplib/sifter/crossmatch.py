@@ -119,7 +119,6 @@ def sift(extracted_sources,
                                elongation=forced_photometry_info['elongation'],
                                fwhm=forced_photometry_info['fwhm']
                               )
-            
         ## do sifting operations here...
         if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or cand.fwhm>=fwhm_cut:
             noise_candidates.append(cand)
