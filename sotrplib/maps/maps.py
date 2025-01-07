@@ -1,6 +1,6 @@
 import numpy as np
 from pixell import enmap
-from pixell.utils import arcmin
+from pixell.utils import arcmin,degree
 import warnings
 from typing import Optional
 from pathlib import Path
@@ -115,7 +115,7 @@ class Depth1Map:
                 
                 setattr(self, attr_name,m)
                 if not self.res:
-                    self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])
+                    self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])*degree
                 self.get_map_info(map)
                 return
 
@@ -175,7 +175,7 @@ class Depth1Map:
             print(e,'Failed to read FREQ')
 
         if not self.res:
-            self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])
+            self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])*degree
         del h
 
         return
@@ -348,7 +348,7 @@ class Depth1Map:
 
         if  isinstance(self.rho_map,type(None)):
             if not self.res:
-                self.res = np.abs(enmap.read_map_geometry(str(second_map))[1].wcs.cdelt[0])
+                self.res = np.abs(enmap.read_map_geometry(str(second_map))[1].wcs.cdelt[0])*degree
             self.init_empty_so_map()
             self.get_map_info(second_map)
 
@@ -413,7 +413,7 @@ def load_maps(map_path:Path)->Depth1Map:
         arr = path.split("/")[-1].split("_")[2]
         freq = path.split("/")[-1].split("_")[3]
         ctime = float(path.split("/")[-1].split("_")[1])
-        res = np.abs(imap.wcs.wcs.cdelt[0])
+        res = np.abs(imap.wcs.wcs.cdelt[0])*degree
         return Depth1Map(intensity_map=imap, 
                          inverse_variance_map=ivar, 
                          time_map=time,
@@ -442,7 +442,7 @@ def load_maps(map_path:Path)->Depth1Map:
         arr = path.split("/")[-1].split("_")[2]
         freq = path.split("/")[-1].split("_")[3]
         ctime = float(path.split("/")[-1].split("_")[1])
-        res = np.abs(rho.wcs.wcs.cdelt[0])
+        res = np.abs(rho.wcs.wcs.cdelt[0])*degree
         t0=get_observation_start_time(map_path)
         return Depth1Map(rho_map=rho, 
                          kappa_map=kappa, 
