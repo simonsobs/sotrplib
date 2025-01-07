@@ -20,7 +20,8 @@ class Depth1Map:
         freq: str=None,
         map_ctime: float=None,
         is_thumbnail: bool = False,
-        res: Optional[float]=None
+        res:float=None,
+        map_start_time:float=None
     ):
         self.inverse_variance_map = inverse_variance_map
         self.intensity_map = intensity_map
@@ -45,6 +46,7 @@ class Depth1Map:
         self.start_ctime = None
         self.end_ctime = None
         self.coadd_days = None
+        self.map_start_time = map_start_time
 
     def get_map_info(self,map_path):
         if not isinstance(map_path,Path):
@@ -407,6 +409,7 @@ def load_maps(map_path:Path)->Depth1Map:
         ivar = enmap.read_map(path + "ivar.fits") # inverse variance map
         time = enmap.read_map(path + "time.fits") # time map
         ## These should be contained in the map metadata in the future
+        t0=get_observation_start_time(map_path)
         arr = path.split("/")[-1].split("_")[2]
         freq = path.split("/")[-1].split("_")[3]
         ctime = float(path.split("/")[-1].split("_")[1])
@@ -417,7 +420,8 @@ def load_maps(map_path:Path)->Depth1Map:
                          wafer_name=arr,
                          freq=freq,
                          map_ctime=ctime,
-                         res=res
+                         res=res,
+                         map_start_time=t0
                         )
     elif 'rho.fits' in str(map_path):
         try:
@@ -439,13 +443,15 @@ def load_maps(map_path:Path)->Depth1Map:
         freq = path.split("/")[-1].split("_")[3]
         ctime = float(path.split("/")[-1].split("_")[1])
         res = np.abs(rho.wcs.wcs.cdelt[0])
+        t0=get_observation_start_time(map_path)
         return Depth1Map(rho_map=rho, 
                          kappa_map=kappa, 
                          time_map=time,
                          wafer_name=arr,
                          freq=freq,
                          map_ctime=ctime,
-                         res=res
+                         res=res,
+                         map_start_time=t0
                         )
     
 
@@ -502,7 +508,6 @@ def get_dflux(kappa: np.ndarray):
 
 
 def get_maptype(map_path:Path):
-    
     if 'rho' in str(map_path):
         maptype='rho'
     elif 'kappa' in str(map_path):
@@ -513,8 +518,11 @@ def get_maptype(map_path:Path):
         maptype='ivar'
     elif 'time' in str(map_path):
         maptype='time'
-    
-    return maptype,map_path.suffix
+    if isinstance(map_path,str):
+        suffix = '.'+map_path.split('.')[-1]
+    else:
+        suffix = map_path.suffix
+    return maptype,suffix
 
 def get_observation_start_time(map_path:Path
                               ):
