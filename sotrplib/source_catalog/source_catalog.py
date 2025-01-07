@@ -15,9 +15,9 @@ def load_act_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster
     '''
     from astropy.table import Table 
     sourcecat=None
-    print("Extracting known sources from source catalog")
+    print("Extracting known sources from ACT catalog")
     sourcecat = Table.read(source_cat_file)
     sources = sourcecat[sourcecat["fluxJy"] > (flux_threshold)]
     sources['RADeg'][sources["RADeg"]<0]+=360.
-    print(len(sources["decDeg"]), 'sources above flux threshold %.2f mJy'%(flux_threshold))
+    print(len(sources["decDeg"]), 'sources above flux threshold %.1f mJy'%(flux_threshold*1000))
     return sources

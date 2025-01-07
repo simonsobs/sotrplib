@@ -13,6 +13,8 @@ class SourceCandidate(BaseModel):
     renormalized: bool=False
     catalog_crossmatch: bool=False
     crossmatch_name : str=''
-
+    ellipticity:float=None
+    elongation:float=None
+    fwhm:float=None
 def hello():
     return 'hello'

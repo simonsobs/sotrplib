@@ -88,7 +88,7 @@ def radec_to_str_name(ra: float,
 def get_map_groups(maps:list,
                    coadd_days:float=7
                   ):
-    import Path
+    from pathlib import Path
     map_groups = [[m] for m in sorted(maps)]
     map_group_time_windows = []
     if coadd_days !=0:
