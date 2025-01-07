@@ -302,7 +302,7 @@ def find_sources_quick(inmap:enmap,
 
     if res is None:
         try:
-            res = inmap.res
+            res = np.abs(inmap.wcs.wcs.cdelt[0])
         except AttributeError:
             raise ValueError("Argument `res` required if inmap is an array")
 
@@ -363,7 +363,6 @@ def find_sources_quick(inmap:enmap,
         kron_fluxes = peaks["kron_flux"]
         kron_fluxerrs = peaks["kron_fluxerr"]
         kron_radii = peaks["kron_radius"]
-        ginis = peaks["gini"]
     peak_assoc = np.zeros(npeaks)
 
     output_struct = dict()
@@ -375,16 +374,15 @@ def find_sources_quick(inmap:enmap,
             "peaksig": peaksigs[0],
         }
         if deblend_sources:
-            output_struct[i]["area"] = areas[0]
+            output_struct[i]["area"] = areas[0].value*res**2
             output_struct[i]["ellipticity"] = ellipticities[0]
             output_struct[i]["elongation"] = elongations[0]
-            output_struct[i]["fwhm"] = fwhms[0]
+            output_struct[i]["fwhm"] = fwhms[0].value*res
             output_struct[i]["kron_aperture"] = kron_apertures[0]
             output_struct[i]["kron_flux"] = kron_fluxes[0]
             output_struct[i]["kron_fluxerr"] = kron_fluxerrs[0]
-            output_struct[i]["kron_radius"] = kron_radii[0]
-            output_struct[i]["gini"] = ginis[0]
-       
+            output_struct[i]["kron_radius"] = kron_radii[0].value*res
+            
     minrad_pix = minrad / res
 
     ksource = 1
@@ -418,15 +416,15 @@ def find_sources_quick(inmap:enmap,
                     "peaksig": peaksigs[j],
                 }
                 if deblend_sources:
-                    output_struct[ksource]["area"] = areas[j]
+                    output_struct[ksource]["area"] = areas[j].value*res**2
                     output_struct[ksource]["ellipticity"] = ellipticities[j]
                     output_struct[ksource]["elongation"] = elongations[j]
-                    output_struct[ksource]["fwhm"] = fwhms[j]
+                    output_struct[ksource]["fwhm"] = fwhms[j].value*res
                     output_struct[ksource]["kron_aperture"] = kron_apertures[j]
                     output_struct[ksource]["kron_flux"] = kron_fluxes[j]
                     output_struct[ksource]["kron_fluxerr"] = kron_fluxerrs[j]
-                    output_struct[ksource]["kron_radius"] = kron_radii[j]
-                    output_struct[ksource]["gini"] = ginis[j]
+                    output_struct[ksource]["kron_radius"] = kron_radii[j].value*res
+                    
                 peak_assoc[j] = ksource
                 minrad_pix_os[ksource] = minrad_pix_all[j]
                 ksource += 1
@@ -451,15 +449,15 @@ def find_sources_quick(inmap:enmap,
                     "peaksig": peaksigs[j],
                 }
                 if deblend_sources:
-                    output_struct[ksource]["area"] = areas[j]
+                    output_struct[ksource]["area"] = areas[j].value*res**2
                     output_struct[ksource]["ellipticity"] = ellipticities[j]
                     output_struct[ksource]["elongation"] = elongations[j]
-                    output_struct[ksource]["fwhm"] = fwhms[j]
+                    output_struct[ksource]["fwhm"] = fwhms[j].value*res
                     output_struct[ksource]["kron_aperture"] = kron_apertures[j]
                     output_struct[ksource]["kron_flux"] = kron_fluxes[j]
                     output_struct[ksource]["kron_fluxerr"] = kron_fluxerrs[j]
-                    output_struct[ksource]["kron_radius"] = kron_radii[j]
-                    output_struct[ksource]["gini"] = ginis[j]
+                    output_struct[ksource]["kron_radius"] = kron_radii[j].value*res
+                    
                 peak_assoc[j] = ksource
                 ksource += 1
             else:
@@ -528,10 +526,6 @@ def find_using_photutils(Tmap:np.ndarray,
         * kron_flux - Parameter requires that Tmap already be in units of mJy.
         * kron_fluxerr - Parameter requires that Tmap already be in units of mJy.
         * kron_radius - units of pixels.
-        * gini - From the documentation, "Gini coefficient value of 0
-          corresponds to a galaxy image with the light evenly distributed over
-          all pixels while a Gini coefficient value of 1 represents a galaxy
-          image with all its light concentrated in just one pixel."
 
     Function written by Melanie Archipley, adapted by AF Jan 2025
     """
@@ -556,7 +550,6 @@ def find_using_photutils(Tmap:np.ndarray,
         "kron_flux",
         "kron_fluxerr",
         "kron_radius",
-        "gini",
     ]
 
     groups = {k: 0 for k in list(default_keys) + extra_keys}
@@ -590,7 +583,7 @@ def find_using_photutils(Tmap:np.ndarray,
                             )
 
     # convert catalog to table
-    columns = [v for k, v in default_keys.items() if v] + extra_keys
+    columns = [v for _, v in default_keys.items() if v] + extra_keys
     tbl = cat.to_table(columns=columns)
     # rename keys to match find_groups output
     for k, v in default_keys.items():

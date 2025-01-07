@@ -44,6 +44,7 @@ class Depth1Map:
         self.masked=False
         self.start_ctime = None
         self.end_ctime = None
+        self.coadd_days = None
 
     def get_map_info(self,map_path):
         if not isinstance(map_path,Path):
@@ -67,7 +68,6 @@ class Depth1Map:
             res = self.res/arcmin
         elif not self.res:
             self.res = res
-        print(self.res,res)
         empty_map = enmap.zeros(*widefield_geometry(res=self.res))
         if intensity:
             self.inverse_variance_map = empty_map.copy()
@@ -140,10 +140,6 @@ class Depth1Map:
         path2map = str(map_path).split(f'{maptype}.fits')[0]
         if not exists(path2map + "rho.fits") or not exists(path2map + "kappa.fits") or not exists(path2map + "time.fits"):
             raise FileNotFoundError(f"One of {path2map} [rho/kappa/time].fits not found! Cant load.")
-
-        arr = path2map.split("/")[-1].split("_")[3]
-        freq = path2map.split("/")[-1].split("_")[2]
-        ctime = float(path2map.split("/")[-1].split("_")[1])
 
         
         self.rho_map = enmap.read_map(path2map + "rho.fits") # whatever rho is, only I
@@ -395,27 +391,63 @@ def enmap_map_union(map1,map2):
 
 def load_maps(map_path:Path)->Depth1Map:
     ## map_path should be /file/path/to/[obsid]_[arr]_[freq]_map.fits
-    ## only supports I map right now 
+    ## or /file/path/to/[obsid]_[arr]_[freq]_rho.fits
+    ## if rho, then loads rho, kappa, time
+    ## if map, then loads map, ivar, time
+    if 'map.fits' in str(map_path):
+        try:
+            imap = enmap.read_map(str(map_path), sel=0) # intensity map
+        except exception:
+            imap = enmap.read_map(str(map_path))
+        # check if map is all zeros
+        if np.all(imap == 0.0) or np.all(np.isnan(imap)):
+            print("map is all nan or zeros, skipping")
+            return None
+        path = str(map_path).split('map.fits')[0]
+        ivar = enmap.read_map(path + "ivar.fits") # inverse variance map
+        time = enmap.read_map(path + "time.fits") # time map
+        ## These should be contained in the map metadata in the future
+        arr = path.split("/")[-1].split("_")[2]
+        freq = path.split("/")[-1].split("_")[3]
+        ctime = float(path.split("/")[-1].split("_")[1])
+        res = np.abs(imap.wcs.wcs.cdelt[0])
+        return Depth1Map(intensity_map=imap, 
+                         inverse_variance_map=ivar, 
+                         time_map=time,
+                         wafer_name=arr,
+                         freq=freq,
+                         map_ctime=ctime,
+                         res=res
+                        )
+    elif 'rho.fits' in str(map_path):
+        try:
+            rho = enmap.read_map(str(map_path), sel=0) # intensity map
+        except Exception:
+            rho = enmap.read_map(str(map_path))
+        # check if map is all zeros
+        if np.all(rho == 0.0) or np.all(np.isnan(rho)):
+            print("rho is all nan or zeros, skipping")
+            return None
+        path = str(map_path).split('rho.fits')[0]
+        try:
+            kappa = enmap.read_map(path + "kappa.fits", sel=0) # whatever kappa is, only I
+        except Exception:
+            kappa = enmap.read_map(path + "kappa.fits")
+        time = enmap.read_map(path + "time.fits") # time map
+        ## These should be contained in the map metadata in the future
+        arr = path.split("/")[-1].split("_")[2]
+        freq = path.split("/")[-1].split("_")[3]
+        ctime = float(path.split("/")[-1].split("_")[1])
+        res = np.abs(rho.wcs.wcs.cdelt[0])
+        return Depth1Map(rho_map=rho, 
+                         kappa_map=kappa, 
+                         time_map=time,
+                         wafer_name=arr,
+                         freq=freq,
+                         map_ctime=ctime,
+                         res=res
+                        )
     
-    imap = enmap.read_map(str(map_path), sel=0) # intensity map
-    # check if map is all zeros
-    if np.all(imap == 0.0) or np.all(np.isnan(imap)):
-        print("map is all nan or zeros, skipping")
-        return None
-    path = str(map_path).split('map.fits')[0]
-    
-    ivar = enmap.read_map(path + "ivar.fits") # inverse variance map
-    rho = enmap.read_map(path + "rho.fits", sel=0) # whatever rho is, only I
-    kappa = enmap.read_map(path + "kappa.fits", sel=0) # whatever kappa is, only I
-    time = enmap.read_map(path + "time.fits") # time map
-
-    ## These should be contained in the map metadata in the future
-    arr = path.split("/")[-1].split("_")[2]
-    freq = path.split("/")[-1].split("_")[3]
-    ctime = float(path.split("/")[-1].split("_")[1])
-
-    return Depth1Map(imap, ivar, rho, kappa, time, arr, freq, ctime)
-
 
 def kappa_clean(kappa: np.ndarray, 
                 rho: np.ndarray
@@ -647,3 +679,102 @@ def widefield_geometry(res=None, shape=None, dims=(), proj="car", variant="fejer
     wcs.wcs.crpix = [nx//2,(ny-dec_cent*pixell_utils.degree/res[0])/2]#
     wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
     return dims+(ny,nx), wcs
+
+def preprocess_map(mapdata,
+                   galmask_file='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/mask_for_sources2019_plus_dust.fits',
+                   plot_output_dir='./',
+                   PLOT=False):
+    from pixell.enmap import read_map, extract
+    from .masks import mask_edge
+    from .tiles import get_medrat,get_tmap_tiles
+    if PLOT:
+        import matplotlib as mpl
+        mpl.use('agg')
+        from matplotlib import pylab as plt
+
+    print('Cleaning maps...')
+    if not mapdata.cleaned:
+        mapdata.kappa_map  = kappa_clean(mapdata.kappa_map,
+                                         mapdata.rho_map
+                                        )
+        mapdata.rho_map = clean_map(mapdata.rho_map,
+                                    mapdata.kappa_map,
+                                    cut_on='median',
+                                    fraction=0.05
+                                   )
+        mapdata.cleaned=True
+    
+    mapdata.flux = mapdata.rho_map/mapdata.kappa_map
+    mapdata.snr = mapdata.rho_map*mapdata.kappa_map**(-0.5)
+    mapdata.kappa_map = None
+    mapdata.rho_map = None
+
+    if not mapdata.masked:
+        mapdata.masked=0
+        print('Masking maps...')
+        try:
+            galaxy_mask = read_map(galmask_file)
+            gal_mask = extract(galaxy_mask,mapdata.flux.shape,mapdata.flux.wcs)
+            mapdata.flux *= gal_mask
+            mapdata.snr *= gal_mask
+            del gal_mask,galaxy_mask
+            
+        except Exception as e:
+            print(e,' ... skipping galaxy mask')
+            mapdata.masked+=1
+        
+        try:
+            ## could add in planet mask here:
+            planet_mask = None
+            if planet_mask:
+                mapdata.flux *= planet_mask
+                mapdata.snr *= planet_mask
+            del planet_mask
+        except Exception as e:
+            print(e,' ... skipping planet mask')
+            mapdata.masked+=1
+
+        try:
+            edge_mask = mask_edge(mapdata.flux,20)
+            mapdata.flux *= edge_mask
+            mapdata.snr *= edge_mask
+            del edge_mask
+        except Exception as e:
+            print(e, ' ... skipping edge mask')
+            mapdata.masked+=1
+
+    if not mapdata.flatfielded:
+        print('Flatfielding maps...')
+        med_ratio=None
+        try:
+            med_ratio = get_medrat(mapdata.snr,
+                                   get_tmap_tiles(np.nan_to_num(mapdata.time_map)-np.nanmin(mapdata.time_map),
+                                                  1.0, ## 1deg tiles
+                                                  mapdata.snr,
+                                                  id=f"{mapdata.freq}",
+                                                 ),
+                                  )
+            
+            mapdata.flux*=med_ratio
+            mapdata.snr*=med_ratio
+            mapdata.flatfielded=True
+        except Exception as e:
+            print(e,' Cannot flatfield at this time... need to update medrat algorithm for coadds')
+        if PLOT:
+            print('Plotting flatfield...')
+            plt.figure(dpi=200)
+            plt.imshow(med_ratio,vmax=1,vmin=0)
+            plt.colorbar()
+            plt.savefig(plot_output_dir+'%i_medratio_map.png'%mapdata.map_ctime)
+            plt.close()
+        
+            plt.figure(dpi=200)
+            plt.hist(np.ndarray.flatten(med_ratio[med_ratio>0]),bins=101)
+            plt.grid()
+            plt.yscale('log')
+            plt.savefig(plot_output_dir+'%i_medratio_hist.png'%mapdata.map_ctime)
+            plt.close('all')
+            
+        del med_ratio
+
+    return 

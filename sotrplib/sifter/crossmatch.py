@@ -68,7 +68,6 @@ def sift(extracted_sources,
          min_match_radius:float=1.5,
          source_fluxes:list = None,
          map_freq:str = 'f090',
-         map_time:float = None,
          ):
     from ..utils.utils import radec_to_str_name
     from ..sources.sources import SourceCandidate
@@ -115,6 +114,9 @@ def sift(extracted_sources,
                                renormalized=True,
                                catalog_crossmatch=isin_cat[source],
                                crossmatch_name=crossmatch_name,
+                               ellipticity=forced_photometry_info['ellipticity'],
+                               elongation=forced_photometry_info['elongation'],
+                               fwhm=forced_photometry_info['fwhm']
                               )
             
         ## do sifting operations here...
