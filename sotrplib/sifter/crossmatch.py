@@ -68,6 +68,7 @@ def sift(extracted_sources,
          min_match_radius:float=1.5,
          source_fluxes:list = None,
          map_freq:str = 'f090',
+         fwhm_cut = 5.0,
          ):
     from ..utils.utils import radec_to_str_name
     from ..sources.sources import SourceCandidate
@@ -120,7 +121,7 @@ def sift(extracted_sources,
                               )
             
         ## do sifting operations here...
-        if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']):
+        if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or cand.fwhm>=fwhm_cut:
             noise_candidates.append(cand)
         elif isin_cat[source]:
             source_candidates.append(cand)
