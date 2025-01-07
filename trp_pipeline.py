@@ -135,8 +135,9 @@ for map_group in map_groups:
                    )
 
     print('Finding sources...')
+    t0 = mapdata.map_start_time if mapdata.map_start_time else 0
     extracted_sources = find_sources_quick(mapdata.flux,
-                                            timemap=mapdata.time_map,
+                                            timemap=mapdata.time_map+t0,
                                             maprms=mapdata.flux/mapdata.snr,
                                             mapmean=0.0,
                                             nsigma=args.snr_threshold,
@@ -167,7 +168,7 @@ for map_group in map_groups:
             print(tc.sourceID)
             if args.save_json:
                 json_string_cand = tc.json()
-                with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(tc.ctime)+'.json','w') as f:
+                with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
                     f.write(json_string_cand)
             if args.plot_thumbnails:
                 plot_map_thumbnail(mapdata.snr,
