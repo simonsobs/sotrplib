@@ -106,8 +106,8 @@ args = parser.parse_args()
 
 if len(args.maps) == 1:
     if '*' in args.maps[0]:
-        args.maps = glob(args.maps[0] if '_rho.fits' in args.maps[0] else args.maps[0]+'*rho.fits')
-
+        args.maps = glob(args.maps[0])
+print(args.maps)
 map_groups,map_group_time_windows = get_map_groups(args.maps,
                                                    coadd_days=args.coadd_n_days
                                                    )
@@ -147,6 +147,9 @@ for map_group in map_groups:
                                             deblend_sources=True
                                             )
 
+    if not extracted_sources:
+        del mapdata
+        continue
     print(len(extracted_sources.keys()),'sources found.')
     noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
     flux_thresh = get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
@@ -162,7 +165,13 @@ for map_group in map_groups:
                                                                   )
 
 
-    
+    if not args.ignore_known_sources:
+         if args.save_json:
+                for sc in source_candidates:
+                    json_string_cand = sc.json()
+                    with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
+                        f.write(json_string_cand)
+
     if len(transient_candidates)<=args.candidate_limit:
         for tc in transient_candidates:
             print(tc.sourceID)
