@@ -10,6 +10,7 @@ Testing for use as SO Time domain pipeline test.
 """
 import numpy as np
 from glob import glob 
+import json
 
 from sotrplib.maps.maps import load_maps, preprocess_map
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
@@ -167,18 +168,29 @@ for map_group in map_groups:
 
     if not args.ignore_known_sources:
          if args.save_json:
+            jsonfilename = args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+'%i'%(np.nanmean(mapdata.time_map)+t0)+'_catalog_matches.json'
+            with open(jsonfilename, 'w', encoding='utf-8') as f:
                 for sc in source_candidates:
-                    json_string_cand = sc.json()
-                    with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
-                        f.write(json_string_cand)
+                    json_string_cand = sc.json()+'\n'
+                    f.write(json_string_cand)
+                #with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
+                #    f.write(json_string_cand)
 
     if len(transient_candidates)<=args.candidate_limit:
         for tc in transient_candidates:
             print(tc.sourceID)
             if args.save_json:
-                json_string_cand = tc.json()
-                with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
-                    f.write(json_string_cand)
+                jsonfilename = args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+'%i'%(np.nanmean(mapdata.time_map)+t0)+'_transient_candidates.json'
+                with open(jsonfilename, 'w', encoding='utf-8') as f:
+                    for tc in transient_candidates:
+                        json_string_cand = tc.json()+'\n'
+                        f.write(json_string_cand)
+                        
+                        #json.dump(json_string_cand,json_out)
+                    
+                #json_string_cand = tc.json()
+                #with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
+                #    f.write(json_string_cand)
             if args.plot_thumbnails:
                 plot_map_thumbnail(mapdata.snr,
                                    tc.ra,
