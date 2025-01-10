@@ -174,3 +174,122 @@ def matched_filter_1overf(
         thumb_temp * fconv, beam, thumb_ivar / fconv**2, iN, uht=uht
     )
     return rho, kappa
+
+
+
+def matched_filter_full_map(file,imap, ivar, arr, freq):
+    """
+    Make matched filter map using Sigurd's way
+    basically copied from this script:/home/yaqiongl/code/depth1_transients/filter_depth1.py on tiger
+
+    Args:
+        mapfile: file path of the original depth1 map file
+        imap: temp map
+        ivar: inverse variance map
+        arr: array
+        freq: frequency
+    """
+    frequency = float(freq[1:])*1e9
+    fconv = utils.dplanck(frequency)/1e3
+    imap *= fconv
+    ivar /= fconv**2
+    path = mapfile[:-8]
+    infofile = path + 'info.hdf'
+    info = bunch.read(infofile)
+    dtype  = imap.dtype
+    ny, nx = imap.shape[-2:]
+    beam_file = '/projects/ACT/adriaand/beams/20220817_beams/coadd_%s_%s_night_beam_tform_jitter_cmb.txt'%(arr,freq) #this path is on tiger
+    beam1d = np.loadtxt(beam_file).T[1]
+    lfwhm  = np.where(beam1d<0.5)[0][0]
+    fwhm   = 1/(lfwhm*utils.fwhm)/utils.fwhm
+    mask_file = '/scratch/gpfs/snaess/actpol/masks/srcfind/srcfind_mask_%s.fits'%(freq)   #this path is on tiger
+    #Parameters I used defult from Sigurd's script
+    shrink_holes=1.0
+    apod_edge = 10
+    apod_holes = 10
+    highpass = 0
+    band_height = 2
+    shift = 0
+    lres = np.array([70,100])
+    simple = False
+    simple_alpha = -3.5
+    simple_lknee = 1000
+    apod_edge   = apod_edge *utils.arcmin
+    apod_holes  = apod_holes*utils.arcmin
+    shrink_holes= shrink_holes*fwhm
+    # Build our shift matrix
+    if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
+    else:              S = ShiftDummy()
+    # Set up apodization. A bit messy due to handling two types of apodizion
+    # depending on whether it's based on the extrnal mask or not
+    hit  = ivar > 0
+    if shrink_holes > 0:
+        hit = enmap.shrink_mask(enmap.grow_mask(hit, shrink_holes), shrink_holes)
+    # Apodize the edge by decreasing the significance in ivar
+    noise_apod = enmap.apod_mask(hit, apod_edge)
+    apod_holes  = apod_holes*utils.arcmin
+    shrink_holes= shrink_holes*fwhm
+    # Build our shift matrix
+    if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
+    else:              S = ShiftDummy()
+    # Set up apodization. A bit messy due to handling two types of apodizion
+    # depending on whether it's based on the extrnal mask or not
+    hit  = ivar > 0
+    if shrink_holes > 0:
+        hit = enmap.shrink_mask(enmap.grow_mask(hit, shrink_holes), shrink_holes)
+    # Apodize the edge by decreasing the significance in ivar
+    noise_apod = enmap.apod_mask(hit, apod_edge)
+    # Check if we have a noise model mask too
+    mask = enmap.read_map(mask_file, geometry=imap.geometry)
+    mask = np.asanyarray(mask)
+    noise_apod *= enmap.apod_mask(1-mask, apod_holes)
+    del mask
+    # Build the noise model
+    iC  = build_ips2d_udgrade(S.forward(imap), S.forward(ivar*noise_apod), apod_corr=np.mean(noise_apod**2), lres=lres)
+    del noise_apod
+    if highpass > 0:
+        iC = highpass_ips2d(iC, highpass)
+    # Set up output map buffers
+    rho   = imap*0
+    kappa = imap*0
+    tot_weight = np.zeros(ny, imap.dtype)
+    # Bands. At least band_height in height and with at least
+    # 2*apod_edge of overlapping padding at top and bottom
+    nband    = utils.ceil(imap.extent()[0]/band_height) if band_height > 0 else 1
+    bedge    = utils.ceil(apod_edge/imap.pixshape()[0]) * 2
+    boverlap = bedge
+    for bi, r in enumerate(overlapping_range_iterator(ny, nband, boverlap, padding=bedge)):
+        # Get band-local versions of the map etc.
+        bmap, bivar, bhit = [a[...,r.i1:r.i2,:] for a in [imap, ivar, hit]]
+        bny, bnx = bmap.shape[-2:]
+        if shift > 0: bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)
+        else:              bS = ShiftDummy()
+        # Translate iC to smaller fourier space
+        if simple:
+            bl  = bmap.modlmap()
+            biC = (1 + (np.maximum(bl,0.5)/simple_lknee)**simple_alpha)**-1
+        else:
+            biC     = enmap.ifftshift(enmap.resample(enmap.fftshift(iC), bmap.shape, method="spline", order=1))
+            biC.wcs = bmap.wcs.deepcopy()
+        # 2d beam
+        beam2d  = enmap.samewcs(utils.interp(bmap.modlmap(), np.arange(len(beam1d)), beam1d), bmap)
+        # Set up apodization
+        filter_apod = enmap.apod_mask(bhit, apod_edge)
+        bivar       = bivar*filter_apod
+        del filter_apod
+        # Phew! Actually perform the filtering
+        uht  = uharm.UHT(bmap.shape, bmap.wcs, mode="flat")
+        brho, bkappa = analysis.matched_filter_constcorr_dual(bmap, beam2d, bivar, biC, uht, S=bS.forward, iS=bS.backward)
+        del uht
+        # Restrict to exposed area
+        brho   *= bhit
+        bkappa *= bhit
+        # Merge into full output
+        weight = r.weight.astype(imap.dtype)
+        rho  [...,r.i1+r.p1:r.i2-r.p2,:] += brho  [...,r.p1:bny-r.p2,:]*weight[:,None]
+        kappa[...,r.i1+r.p1:r.i2-r.p2,:] += bkappa[...,r.p1:bny-r.p2,:]*weight[:,None]
+        tot_weight[r.i1+r.p1:r.i2-r.p2]  += weight
+        del bmap, bivar, bhit, bS, biC, beam2d, brho, bkappa
+
+    del imap, ivar, iC
+    return rho, kappa
