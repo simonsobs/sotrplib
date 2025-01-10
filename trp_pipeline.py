@@ -10,7 +10,6 @@ Testing for use as SO Time domain pipeline test.
 """
 import numpy as np
 from glob import glob 
-import json
 
 from sotrplib.maps.maps import load_maps, preprocess_map
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
