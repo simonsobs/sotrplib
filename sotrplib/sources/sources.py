@@ -14,7 +14,7 @@ class SourceCandidate(BaseModel):
     catalog_crossmatch: bool=False
     crossmatch_name : str=''
     kron_flux:float=None
-    kron_fluxerr:float:None
+    kron_fluxerr:float=None
     kron_radius:float=None
     ellipticity:float=None
     elongation:float=None
