@@ -74,7 +74,7 @@ def sift(extracted_sources,
     from ..sources.sources import SourceCandidate
 
     if isinstance(source_fluxes,type(None)):
-        source_fluxes = np.asarray([extracted_sources[f]['kron_flux']/1000. for f in extracted_sources])
+        source_fluxes = np.asarray([extracted_sources[f]['peakval']/1000. for f in extracted_sources])
     
     extracted_ra = np.asarray([extracted_sources[f]['ra'] for f in extracted_sources])
     extracted_dec = np.asarray([extracted_sources[f]['dec'] for f in extracted_sources])
@@ -102,11 +102,15 @@ def sift(extracted_sources,
         else:
             crossmatch_name = ''
 
-        #candidate_observed_time = mapdata.time_map.at(np.deg2rad(c), order=0, mask_nan=True)
+        ## peakval is the max value within the kron radius while kron_flux is the integrated flux (i.e. assuming resolved)
+        ## since filtered maps are convolved w beam, use max pixel value.
         cand = SourceCandidate(ra=cand_pos[0]/pixell_utils.degree%360,
                                dec=cand_pos[1]/pixell_utils.degree,
-                               flux=forced_photometry_info['kron_flux'],
-                               dflux=forced_photometry_info['kron_fluxerr'],
+                               flux=forced_photometry_info['peakval'],
+                               dflux=forced_photometry_info['peakval']/forced_photometry_info['peaksig'],
+                               kron_flux=forced_photometry_info['kron_flux'],
+                               kron_fluxerr=forced_photometry_info['kron_fluxerr'],
+                               kron_radius = forced_photometry_info['kron_radius'],
                                snr=forced_photometry_info['kron_flux']/forced_photometry_info['kron_fluxerr'],
                                freq=str(map_freq),
                                ctime=forced_photometry_info['time'],
@@ -120,7 +124,7 @@ def sift(extracted_sources,
                                fwhm=forced_photometry_info['fwhm']
                               )
         ## do sifting operations here...
-        if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or cand.fwhm>=fwhm_cut:
+        if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or cand.fwhm>=fwhm_cut or not np.isfinite(forced_photometry_info['peakval']) :
             noise_candidates.append(cand)
         elif isin_cat[source]:
             source_candidates.append(cand)
