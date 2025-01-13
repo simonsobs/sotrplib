@@ -14,7 +14,7 @@ from glob import glob
 from sotrplib.maps.maps import load_maps, preprocess_map
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups
-from sotrplib.sources.finding import find_sources_quick
+from sotrplib.sources.finding import extract_sources
 from sotrplib.utils.actpol_utils import get_sourceflux_threshold
 from sotrplib.source_catalog.source_catalog import load_act_catalog
 from sotrplib.sifter.crossmatch import sift
@@ -136,16 +136,14 @@ for map_group in map_groups:
 
     print('Finding sources...')
     t0 = mapdata.map_start_time if mapdata.map_start_time else 0
-    extracted_sources = find_sources_quick(mapdata.flux,
-                                            timemap=mapdata.time_map+t0,
-                                            maprms=mapdata.flux/mapdata.snr,
-                                            mapmean=0.0,
-                                            nsigma=args.snr_threshold,
-                                            minrad=[0.5,1.5,3.0,5.0,10.0,20.0,60.0],
-                                            sigma_thresh_for_minrad=[0,3,5,10,50,100,200],
-                                            res=mapdata.res/arcmin,
-                                            deblend_sources=True
-                                            )
+    extracted_sources = extract_sources(mapdata.flux,
+                                        timemap=mapdata.time_map+t0,
+                                        maprms=mapdata.flux/mapdata.snr,
+                                        nsigma=args.snr_threshold,
+                                        minrad=[0.5,1.5,3.0,5.0,10.0,20.0,60.0],
+                                        sigma_thresh_for_minrad=[0,3,5,10,50,100,200],
+                                        res=mapdata.res/arcmin,
+                                        )
 
     if not extracted_sources:
         del mapdata
@@ -167,29 +165,18 @@ for map_group in map_groups:
 
     if not args.ignore_known_sources:
          if args.save_json:
-            jsonfilename = args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+'%i'%(np.nanmean(mapdata.time_map)+t0)+'_catalog_matches.json'
-            with open(jsonfilename, 'w', encoding='utf-8') as f:
                 for sc in source_candidates:
-                    json_string_cand = sc.json()+'\n'
-                    f.write(json_string_cand)
-                #with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
-                #    f.write(json_string_cand)
+                    json_string_cand = sc.json()
+                    with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
+                        f.write(json_string_cand)
 
     if len(transient_candidates)<=args.candidate_limit:
         for tc in transient_candidates:
             print(tc.sourceID)
             if args.save_json:
-                jsonfilename = args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+'%i'%(np.nanmean(mapdata.time_map)+t0)+'_transient_candidates.json'
-                with open(jsonfilename, 'w', encoding='utf-8') as f:
-                    for tc in transient_candidates:
-                        json_string_cand = tc.json()+'\n'
-                        f.write(json_string_cand)
-                        
-                        #json.dump(json_string_cand,json_out)
-                    
-                #json_string_cand = tc.json()
-                #with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
-                #    f.write(json_string_cand)
+                json_string_cand = tc.json()
+                with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
+                    f.write(json_string_cand)
             if args.plot_thumbnails:
                 plot_map_thumbnail(mapdata.snr,
                                    tc.ra,
