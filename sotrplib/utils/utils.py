@@ -85,16 +85,70 @@ def radec_to_str_name(ra: float,
     return name
 
 
+def ctime_to_local_time(ctimes,tz_loc="America/Santiago"):
+    import pytz
+    from datetime import datetime,timezone
+    # Define the time zone for Atacama, Chile
+    act_tz = pytz.timezone(tz_loc)
+    local_time = [datetime.fromtimestamp(ct,tz=timezone.utc).astimezone(act_tz) for ct in ctimes]
+    return np.asarray(local_time)
+
+
+def ctime_to_local_hour(ctimes,tz_loc="America/Santiago"):
+    # Convert the Unix timestamp to a datetime object
+    local_times = ctime_to_local_time(ctimes,tz_loc)
+    local_hr = [lt.hour for lt in local_times]
+    return np.asarray(local_hr)
+
+
+def restrict_ctimes_to_local_night(ctimes:list,
+                                   morning_hour:float=11,
+                                   night_hour:float = 22, 
+                                   tz_loc:str="America/Santiago"
+                                  ):
+    '''
+    Given a list of ctimes, return the boolean mask for night times,
+    where night times are defined as pre-morning_hour and post-night_hour.
+    '''
+    local_hour = ctime_to_local_hour(ctimes,
+                                     tz_loc=tz_loc
+                                     )
+    night_times = (local_hour>night_hour) & (local_hour<morning_hour)
+    
+    return night_times
+
+
 def get_map_groups(maps:list,
-                   coadd_days:float=7
+                   coadd_days:float=7,
+                   restrict_to_night:bool=False,
+                   morning_hour:float=11,
+                   night_hour:float = 22, 
                   ):
+    '''
+    group `maps` list into bins of length `coadd_days` days.
+    Also supports restricting the maps to nighttime only.
+    '''
     from pathlib import Path
-    map_groups = [[m] for m in sorted(maps)]
+    
+    if restrict_to_night:
+        times = np.asarray([float(m.split('depth1_')[-1].split('_')[0]) for m in maps])
+        night_times = restrict_ctimes_to_local_night(times,
+                                                       morning_hour=morning_hour,
+                                                       night_hour=night_hour
+                                                       )
+        maps = np.asarray(maps)[night_times]
+        del night_times
+
     map_group_time_windows = []
     if coadd_days !=0:
-        times = [float(m.split('depth1_')[-1].split('_')[0]) for m in maps]
+        times = np.asarray([float(m.split('depth1_')[-1].split('_')[0]) for m in maps])
+        if restrict_to_night:
+            local_hours = ctime_to_local_hour(times)
+            times = times[(local_hours>22) & (local_hours < 11)]
         mintime = np.min(times)
         maxtime = np.max(times)
+        
+
         print('Full time range: %.1f days'%((maxtime-mintime)/86400))
         full_time_range = maxtime-mintime
         if mintime==maxtime:
