@@ -10,7 +10,7 @@ def get_source_sky_positions(extracted_sources,
                              skymap
                              ):
     '''
-    from output of find_sources_quick, use xpeak and ypeak to 
+    from output of extract_sources, use xpeak and ypeak to 
     convert to sky coordinates.
     '''
     from pixell.utils import degree
@@ -28,10 +28,9 @@ def get_source_observation_time(extracted_sources,
                                 timemap:np.ndarray
                                 ):
     '''
-    from output of find_sources_quick, use xpeak and ypeak to 
-    get the observed time.
+    from output of extract_sources, use xpeak and ypeak to 
+    get the observed time given the map `timemap`.
     '''
-    
     for f in extracted_sources:
         x,y = int(extracted_sources[f]['xpeak']),int(extracted_sources[f]['ypeak'])
         extracted_sources[f]['time'] = timemap[y,x]

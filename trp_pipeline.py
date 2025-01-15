@@ -88,6 +88,11 @@ parser.add_argument("--coadd-n-days",
                     default=0,
                     type=int
                     )
+parser.add_argument("--nighttime-only", 
+                    help="Only use maps which were observed between 2300 and 1100 local time.", 
+                    action='store_true',
+                    default=False,
+                    )
 parser.add_argument("--plot-all", 
                     help="Plot various plots to check filtering and source finding.", 
                     action='store_true'
@@ -109,7 +114,8 @@ if len(args.maps) == 1:
         args.maps = glob(args.maps[0])
 print(args.maps)
 map_groups,map_group_time_windows = get_map_groups(args.maps,
-                                                   coadd_days=args.coadd_n_days
+                                                   coadd_days=args.coadd_n_days,
+                                                   restrict_to_night = args.nighttime_only
                                                    )
 
 for map_group in map_groups:

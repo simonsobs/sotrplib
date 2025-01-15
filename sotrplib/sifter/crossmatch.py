@@ -45,7 +45,7 @@ def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matche
 
     mask = np.zeros(len(sources), dtype=bool)
     matches = []
-    for i, m in enumerate(mask):
+    for i, _ in enumerate(mask):
         source_ra = sources[i, 1] * pixell_utils.degree
         source_dec = sources[i, 0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
@@ -72,6 +72,32 @@ def sift(extracted_sources,
          ):
     from ..utils.utils import radec_to_str_name
     from ..sources.sources import SourceCandidate
+
+    """
+     Perform crossmatching of extracted sources from `extract_sources` and the cataloged sources.
+     Return lists of dictionaries containing each source which matches the catalog, may be noise, or appears to be a transient.
+
+     Uses a flux-based matching radius with `radius1Jy` the radius, in arcmin, for a 1Jy source and 
+     `min_match_radius` the radius, in arcmin, for a zero flux source, up to a max of 2 degrees.
+
+     Args:
+       extracted_sources:dict
+           sources returned from extract_sources function
+       catalog_sources:astropy table
+           source catalog returned from load_act_catalog
+       radius1Jy:float=30.0
+           matching radius for a 1Jy source, arcmin
+       min_match_radius:float=1.5
+           minimum matching radius, i.e. for a zero flux source, arcmin
+       source_fluxes:list = None,
+           a list of the fluxes of the extracted sources, if None will pull it from `extracted_sources` dict. 
+       fwhm_cut = 5.0
+           a simple cut on fwhm, in arcmin, above which something is considered noise.
+     Returns:
+        source_candidates, transient_candidates, noise_candidates : list
+            list of dictionaries with information about the detected source.
+
+    """    
 
     if isinstance(source_fluxes,type(None)):
         source_fluxes = np.asarray([extracted_sources[f]['peakval']/1000. for f in extracted_sources])
