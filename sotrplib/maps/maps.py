@@ -674,7 +674,7 @@ def widefield_geometry(res=None, shape=None, dims=(), proj="car", variant="fejer
         res   = np.zeros(2)+res
         shape = pixell_utils.nint(([dec_width,ra_width]/res) + (yo,0))
     else:
-        res = np.array([dec_wdith,ra_width])/(np.array(shape)-(yo,0))
+        res = np.array([dec_width,ra_width])/(np.array(shape)-(yo,0))
     ny, nx = shape
     assert abs(res[0]*(ny-yo) - dec_width) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
     assert abs(res[1]*nx - ra_width) < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
