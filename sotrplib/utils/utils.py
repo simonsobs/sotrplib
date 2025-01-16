@@ -118,6 +118,25 @@ def restrict_ctimes_to_local_night(ctimes:list,
     return night_times
 
 
+def get_freq_array_splits(files:list):
+    '''
+    given a list of map files with names depth1_[obsid]_[arr]_[freq]_[maptype].fits,
+    return a dictionary with keys arr_freq for each combination of arr,freq as 
+    well as freq for coadds of all arrays. 
+    each element contains a boolean array indexing the files into those subsets.
+    '''
+    arrs = np.asarray([f.split('_')[-3] for f in files])
+    freqs = np.asarray([f.split('_')[-2] for f in files])
+
+    splits = {}
+    for freq in np.unique(freqs):
+        splits[freq] = freqs==freq
+        for arr in np.unique(arrs):
+            splits[f'{arr}_{freq}'] = (freqs==freq) & (arrs==arr) 
+
+    return splits
+
+
 def get_map_groups(maps:list,
                    coadd_days:float=7,
                    restrict_to_night:bool=False,
@@ -125,51 +144,66 @@ def get_map_groups(maps:list,
                    night_hour:float = 22, 
                   ):
     '''
-    group `maps` list into bins of length `coadd_days` days.
+    given a list of map files with names depth1_[obsid]_[arr]_[freq]_[maptype].fits
+    group into bins of length `coadd_days` days.
     Also supports restricting the maps to nighttime only.
+
+    returns 
+     map_groups:dict
+        dictionary keyed by array/freq combinations containing the relevant set of maps
+     map_group_time_range:dict
+        dictionary keyed by array/freq combinations containing the actual time range of maps in the bin.
+     time_bins: array-like, None
+        time bin centers in ctime seconds (with bin-widths of coadd_days) if coadd_days>0 else None.
     '''
     from pathlib import Path
-    
+
+    map_group_time_range = {}
+    map_groups = {}
+    time_bins = None
+    times = np.asarray([float(m.split('depth1_')[-1].split('_')[0]) for m in maps])
+    maps=np.asarray(maps)
     if restrict_to_night:
-        times = np.asarray([float(m.split('depth1_')[-1].split('_')[0]) for m in maps])
         night_times = restrict_ctimes_to_local_night(times,
-                                                       morning_hour=morning_hour,
-                                                       night_hour=night_hour
-                                                       )
+                                                     morning_hour=morning_hour,
+                                                     night_hour=night_hour
+                                                    )
         maps = np.asarray(maps)[night_times]
+        times = times[night_times]
         del night_times
 
-    map_group_time_windows = []
+    mintime = np.min(times)
+    maxtime = np.max(times)
+    full_time_range = (maxtime-mintime)/86400.
+    print('Full time range: %.1f days'%(full_time_range))
     if coadd_days !=0:
-        times = np.asarray([float(m.split('depth1_')[-1].split('_')[0]) for m in maps])
-        if restrict_to_night:
-            local_hours = ctime_to_local_hour(times)
-            times = times[(local_hours>22) & (local_hours < 11)]
-        mintime = np.min(times)
-        maxtime = np.max(times)
-        
-
-        print('Full time range: %.1f days'%((maxtime-mintime)/86400))
-        full_time_range = maxtime-mintime
         if mintime==maxtime:
             time_bins=[mintime]
-        elif full_time_range < coadd_days*86400:
+        elif full_time_range < coadd_days:
             time_bins = [mintime,maxtime]
         else:
             time_bins = np.arange(mintime,maxtime,coadd_days*86400)
-        
-        inds = np.digitize(times,time_bins)-1
-        map_groups = [[] for _ in range(len(time_bins))]
-        #print(map_groups)
-        for i in range(len(maps)):
-            map_groups[inds[i]].append(Path(maps[i]))
-        for i in range(len(map_groups)):
-            mapgrouptimes = [float(str(m).split('depth1_')[-1].split('_')[0]) for m in map_groups[i]]
+        time_idx = np.digitize(times,time_bins)-1
+
+    freq_arr_splits = get_freq_array_splits(maps)
+
+    for key in freq_arr_splits:
+        freq_arr_inds = freq_arr_splits[key]
+        inmaps = maps[freq_arr_inds]
+        map_groups[key] = inmaps
+        if coadd_days>0:
+            map_groups[key] = [[] for _ in range(len(time_bins))]
+            map_group_time_range[key] = []
+            freq_arr_time_inds = time_idx[freq_arr_inds]
+            for i in range(len(inmaps)):
+                map_groups[key][freq_arr_time_inds[i]].append(Path(inmaps[i]))
+            mapgrouptimes = [float(str(m).split('depth1_')[-1].split('_')[0]) for m in inmaps]
             if mapgrouptimes:
-                map_group_time_windows.append([min(mapgrouptimes),max(mapgrouptimes)])
+                map_group_time_range[key].append([min(mapgrouptimes),max(mapgrouptimes)])
             else:
-                map_group_time_windows.append([])
-    return map_groups,map_group_time_windows
+                map_group_time_range[key].append([])
+
+    return map_groups, map_group_time_range, time_bins
 
 
 def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):

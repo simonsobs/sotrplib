@@ -8,6 +8,7 @@ class SourceCandidate(BaseModel):
     snr: float
     freq: str
     ctime: float
+    arr: str=None
     sourceID: str=''
     match_filtered: bool=False
     renormalized: bool=False
