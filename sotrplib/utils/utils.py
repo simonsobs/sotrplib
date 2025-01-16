@@ -124,6 +124,9 @@ def get_freq_array_splits(files:list):
     return a dictionary with keys arr_freq for each combination of arr,freq as 
     well as freq for coadds of all arrays. 
     each element contains a boolean array indexing the files into those subsets.
+
+    check if all of the files only contain one wafer, in which case remove the 
+    array-coadded key; i.e. if all files have pa5_f090, remove the f090.
     '''
     arrs = np.asarray([f.split('_')[-3] for f in files])
     freqs = np.asarray([f.split('_')[-2] for f in files])
@@ -134,6 +137,16 @@ def get_freq_array_splits(files:list):
         for arr in np.unique(arrs):
             splits[f'{arr}_{freq}'] = (freqs==freq) & (arrs==arr) 
 
+    ## check if any arr_freq splits are equal to the coadded freq split
+    remove_list = []
+    for freq in np.unique(freqs):
+        coaddsplit = splits[freq]
+        for arr in np.unique(arrs):
+            if np.all(splits[f'{arr}_{freq}'] == coaddsplit):
+                remove_list.append(freq)
+    for freq in np.unique(remove_list):
+        del splits[freq]
+    del remove_list
     return splits
 
 
