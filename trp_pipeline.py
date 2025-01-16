@@ -105,6 +105,10 @@ parser.add_argument("--save-json",
                     help="Save the source candidate information as json files.", 
                     action='store_true'
                     )
+parser.add_argument("--verbose", 
+                    help="Print useful things.", 
+                    action='store_true'
+                    )
 args = parser.parse_args()
 
 
@@ -112,90 +116,108 @@ args = parser.parse_args()
 if len(args.maps) == 1:
     if '*' in args.maps[0]:
         args.maps = glob(args.maps[0])
-print(args.maps)
-map_groups,map_group_time_windows = get_map_groups(args.maps,
-                                                   coadd_days=args.coadd_n_days,
-                                                   restrict_to_night = args.nighttime_only
-                                                   )
 
-for map_group in map_groups:
-    if len(map_group)==0:
-        continue
-    elif len(map_group)==1:
-        print('Loading map ',map_group[0])
-        ## need a more robust way to check this...
-        if 'coadd' in str(map_group[0]):
-            mapdata = load_coadd_maps(mapfile=map_group[0])[0]
+indexed_map_groups,indexed_map_group_time_ranges,time_bins = get_map_groups(args.maps,
+                                                                            coadd_days=args.coadd_n_days,
+                                                                            restrict_to_night = args.nighttime_only,
+                                                                           )
+for freq_arr_idx in indexed_map_groups:
+    if args.verbose:
+        print(freq_arr_idx)
+    if '_' in freq_arr_idx:
+        ## assume it's [arr]_[freq]
+        arr,freq=freq_arr_idx.split('_')
+    else:
+        arr=None
+        freq = freq_arr_idx
+    map_groups = indexed_map_groups[freq_arr_idx]
+    map_group_time_ranges = indexed_map_group_time_ranges[freq_arr_idx]
+    for map_group in map_groups:
+        if len(map_group)==0:
+            continue
+        elif len(map_group)==1:
+            if args.verbose:
+                print('Loading map ',map_group[0])
+            ## need a more robust way to check this...
+            if 'coadd' in str(map_group[0]):
+                mapdata = load_coadd_maps(mapfile=map_group[0],arr=arr)[0]
+            else:
+                mapdata = load_maps(map_group[0])
         else:
-            mapdata = load_maps(map_group[0])
-    else:
-        print('Coadding map group containing the following maps:')
-        for mg in map_group:
-            print(mg)
-        mapdata = coadd_map_group(map_group)
-    
-    preprocess_map(mapdata,
-                   galmask_file = args.galaxy_mask,
-                   plot_output_dir=args.plot_output,
-                   PLOT=args.plot_all
-                   )
-
-    print('Finding sources...')
-    t0 = mapdata.map_start_time if mapdata.map_start_time else 0
-    extracted_sources = extract_sources(mapdata.flux,
-                                        timemap=mapdata.time_map+t0,
-                                        maprms=mapdata.flux/mapdata.snr,
-                                        nsigma=args.snr_threshold,
-                                        minrad=[0.5,1.5,3.0,5.0,10.0,20.0,60.0],
-                                        sigma_thresh_for_minrad=[0,3,5,10,50,100,200],
-                                        res=mapdata.res/arcmin,
-                                        )
-
-    if not extracted_sources:
-        del mapdata
-        continue
-    print(len(extracted_sources.keys()),'sources found.')
-    noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
-    flux_thresh = get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
-    catalog_sources = load_act_catalog(args.source_catalog,
-                                       flux_threshold = flux_thresh
+            if args.verbose:
+                print('Coadding map group containing the following maps:')
+                for mg in map_group:
+                    print(mg)
+            mapdata = coadd_map_group(map_group,
+                                      freq=freq,
+                                      arr=arr
                                       )
-
-    print('Cross-matching found sources with catalog...')
         
-    source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
-                                                                   catalog_sources,
-                                                                   map_freq = mapdata.freq,
-                                                                  )
+        preprocess_map(mapdata,
+                       galmask_file = args.galaxy_mask,
+                       plot_output_dir=args.plot_output,
+                       PLOT=args.plot_all
+                      )
+
+        print('Finding sources...')
+        t0 = mapdata.map_start_time if mapdata.map_start_time else 0
+        extracted_sources = extract_sources(mapdata.flux,
+                                            timemap=mapdata.time_map+t0,
+                                            maprms=mapdata.flux/mapdata.snr,
+                                            nsigma=args.snr_threshold,
+                                            minrad=[0.5,1.5,3.0,5.0,10.0,20.0,60.0],
+                                            sigma_thresh_for_minrad=[0,3,5,10,50,100,200],
+                                            res=mapdata.res/arcmin,
+                                            )
+
+        if not extracted_sources:
+            del mapdata
+            continue
+
+        print(len(extracted_sources.keys()),'sources found.')
+        noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
+        flux_thresh = get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
+        catalog_sources = load_act_catalog(args.source_catalog,
+                                           flux_threshold = flux_thresh
+                                          )
+
+        print('Cross-matching found sources with catalog...')
+            
+        source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
+                                                                       catalog_sources,
+                                                                       map_freq = mapdata.freq,
+                                                                       arr=mapdata.wafer_name
+                                                                      )
 
 
-    if not args.ignore_known_sources:
-         if args.save_json:
-                for sc in source_candidates:
-                    json_string_cand = sc.json()
-                    with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
-                        f.write(json_string_cand)
-
-    if len(transient_candidates)<=args.candidate_limit:
-        for tc in transient_candidates:
-            print(tc.sourceID)
+        if not args.ignore_known_sources:
             if args.save_json:
-                json_string_cand = tc.json()
-                with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
-                    f.write(json_string_cand)
-            if args.plot_thumbnails:
-                plot_map_thumbnail(mapdata.snr,
-                                   tc.ra,
-                                   tc.dec,
-                                   source_name='_'.join(tc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(tc.ctime),
-                                   plot_dir = args.plot_output,
-                                   colorbar_range=args.snr_threshold
-                                  )
-        if len(transient_candidates)>0:
-            print('To extract lightcurves for transient candidates, run the following: ')
-            executable=['python','slurm_wrapper_depth1_lightcurves.py','--ra']+['%.5f'%tc.ra for tc in transient_candidates]+['--dec']+['%.5f'%tc.dec for tc in transient_candidates]+['--data-dir',args.map_dir, '--save-thumbnails']
-            print(' '.join(executable))
-    else:
-        print('Too many transient candidates (%i)... something fishy'%len(transient_candidates))
+                    for sc in source_candidates:
+                        json_string_cand = sc.json()
+                        with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
+                            f.write(json_string_cand)
 
-    del mapdata,source_candidates,transient_candidates,noise_candidates,extracted_sources,catalog_sources
+        if len(transient_candidates)<=args.candidate_limit:
+            for tc in transient_candidates:
+                print(tc.sourceID)
+                if args.save_json:
+                    json_string_cand = tc.json()
+                    with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
+                        f.write(json_string_cand)
+                if args.plot_thumbnails:
+                    plot_map_thumbnail(mapdata.snr,
+                                       tc.ra,
+                                       tc.dec,
+                                       source_name='_'.join(tc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(tc.ctime),
+                                       plot_dir = args.plot_output,
+                                       colorbar_range=args.snr_threshold
+                                      )
+            if args.verbose:
+                if len(transient_candidates)>0:
+                    print('To extract lightcurves for transient candidates, run the following: ')
+                    executable=['python','slurm_wrapper_depth1_lightcurves.py','--ra']+['%.5f'%tc.ra for tc in transient_candidates]+['--dec']+['%.5f'%tc.dec for tc in transient_candidates]+['--data-dir',args.map_dir, '--save-thumbnails']
+                    print(' '.join(executable))
+        else:
+            print('Too many transient candidates (%i)... something fishy'%len(transient_candidates))
+
+        del mapdata,source_candidates,transient_candidates,noise_candidates,extracted_sources,catalog_sources
