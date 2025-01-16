@@ -67,7 +67,8 @@ def sift(extracted_sources,
          radius1Jy:float=30.0,
          min_match_radius:float=1.5,
          source_fluxes:list = None,
-         map_freq:str = 'f090',
+         map_freq:str = None,
+         arr:str=None,
          fwhm_cut = 5.0,
          ):
     from ..utils.utils import radec_to_str_name
@@ -107,10 +108,10 @@ def sift(extracted_sources,
 
     crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
     isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
-                                            np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
-                                            list(crossmatch_radius),
-                                            mode='closest',
-                                            return_matches=True
+                                             np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
+                                             list(crossmatch_radius),
+                                             mode='closest',
+                                             return_matches=True
                                             )
 
 
@@ -139,6 +140,7 @@ def sift(extracted_sources,
                                kron_radius = forced_photometry_info['kron_radius'],
                                snr=forced_photometry_info['kron_flux']/forced_photometry_info['kron_fluxerr'],
                                freq=str(map_freq),
+                               arr=arr,
                                ctime=forced_photometry_info['time'],
                                sourceID=source_string_name,
                                match_filtered=False,
