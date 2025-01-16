@@ -61,16 +61,20 @@ class Depth1Map:
 
     def init_empty_so_map(self,
                           res:float=None,
-                          intensity:bool=False
+                          intensity:bool=False,
+                          include_half_pixel_offset=False
                          ):
-        ## res in arcmin
+        ## res in radian
         if not res:
             if not self.res:
                 raise Exception("Need a resolution, no input res and self.res is None.")
             res = self.res/arcmin
         elif not self.res:
             self.res = res
-        empty_map = enmap.zeros(*widefield_geometry(res=self.res))
+        empty_map = enmap.zeros(*widefield_geometry(res=self.res,
+                                                    include_half_pixel_offset=include_half_pixel_offset
+                                                    )
+                               )
         if intensity:
             self.inverse_variance_map = empty_map.copy()
             self.intensity_map = empty_map.copy()
@@ -649,7 +653,13 @@ def get_time_safe(time_map:enmap.ndmap,
             vals[bad[i]] = np.sum(mask*thumb)/np.sum(mask)
     return vals
 
-def widefield_geometry(res=None, shape=None, dims=(), proj="car", variant="fejer1"):
+def widefield_geometry(res=None, 
+                       shape=None, 
+                       dims=(), 
+                       proj="car", 
+                       variant="fejer1",
+                       include_half_pixel_offset=False
+                      ):
     """Build an enmap covering the full sky, with the outermost pixel centers
 	at the poles and wrap-around points. Only the car projection is
 	supported for now, but the variants CC and fejer1 can be selected using
@@ -682,11 +692,16 @@ def widefield_geometry(res=None, shape=None, dims=(), proj="car", variant="fejer
 	# Note the reference point is shifted by half a pixel to keep
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
     #
-    wcs.wcs.crval = [0,0]#res[1]/2/pixell_utils.degree,-res[0]/2/pixell_utils.degree]
+    wcs.wcs.crval = [0,0]
+    if include_half_pixel_offset:
+        wcs.wcs.crval = [res[1]/2/pixell_utils.degree,0]
     wcs.wcs.cdelt = [-ra_width/pixell_utils.degree/nx,dec_width/pixell_utils.degree/(ny-yo)]
     wcs.wcs.crpix = [nx//2,(ny-dec_cent*pixell_utils.degree/res[0])/2]#
+    if include_half_pixel_offset:
+        wcs.wcs.crpix = [nx//2+0.5,(ny+1)/2]#
     wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
     return dims+(ny,nx), wcs
+
 
 def preprocess_map(mapdata,
                    galmask_file='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/mask_for_sources2019_plus_dust.fits',
