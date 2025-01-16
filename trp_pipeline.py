@@ -128,7 +128,7 @@ for freq_arr_idx in indexed_map_groups:
         ## assume it's [arr]_[freq]
         arr,freq=freq_arr_idx.split('_')
     else:
-        arr=None
+        arr='all'
         freq = freq_arr_idx
     map_groups = indexed_map_groups[freq_arr_idx]
     map_group_time_ranges = indexed_map_group_time_ranges[freq_arr_idx]
@@ -192,26 +192,29 @@ for freq_arr_idx in indexed_map_groups:
 
         if not args.ignore_known_sources:
             if args.save_json:
+                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'cataloged_sources.json','w') as f:
                     for sc in source_candidates:
                         json_string_cand = sc.json()
-                        with open(args.plot_output+sc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(sc.ctime))+'.json','w') as f:
-                            f.write(json_string_cand)
+                        f.write(json_string_cand)
+                        f.write('\n')
 
         if len(transient_candidates)<=args.candidate_limit:
-            for tc in transient_candidates:
-                print(tc.sourceID)
-                if args.save_json:
-                    json_string_cand = tc.json()
-                    with open(args.plot_output+tc.sourceID.split(' ')[-1]+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(tc.ctime))+'.json','w') as f:
+            if args.save_json:
+                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'transient_candidates.json','w') as f:
+                    for tc in transient_candidates:
+                        print(tc.sourceID)
+                        json_string_cand = tc.json()
                         f.write(json_string_cand)
-                if args.plot_thumbnails:
+                        f.write('\n')
+            if args.plot_thumbnails:
+                for tc in transient_candidates:
                     plot_map_thumbnail(mapdata.snr,
-                                       tc.ra,
-                                       tc.dec,
-                                       source_name='_'.join(tc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(tc.ctime),
-                                       plot_dir = args.plot_output,
-                                       colorbar_range=args.snr_threshold
-                                      )
+                                        tc.ra,
+                                        tc.dec,
+                                        source_name='_'.join(tc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(tc.ctime),
+                                        plot_dir = args.plot_output,
+                                        colorbar_range=args.snr_threshold
+                                        )
             if args.verbose:
                 if len(transient_candidates)>0:
                     print('To extract lightcurves for transient candidates, run the following: ')
