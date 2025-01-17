@@ -203,10 +203,10 @@ def get_map_groups(maps:list,
     for key in freq_arr_splits:
         freq_arr_inds = freq_arr_splits[key]
         inmaps = maps[freq_arr_inds]
-        map_groups[key] = inmaps
+        map_groups[key] = [[m] for m in inmaps]
+        map_group_time_range[key] = [[] for m in inmaps]
         if coadd_days>0:
             map_groups[key] = [[] for _ in range(len(time_bins))]
-            map_group_time_range[key] = []
             freq_arr_time_inds = time_idx[freq_arr_inds]
             for i in range(len(inmaps)):
                 map_groups[key][freq_arr_time_inds[i]].append(Path(inmaps[i]))
