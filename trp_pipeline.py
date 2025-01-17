@@ -16,7 +16,7 @@ from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups
 from sotrplib.sources.finding import extract_sources
 from sotrplib.utils.actpol_utils import get_sourceflux_threshold
-from sotrplib.source_catalog.source_catalog import load_act_catalog
+from sotrplib.source_catalog.source_catalog import load_catalog
 from sotrplib.sifter.crossmatch import sift
 from sotrplib.utils.plot import plot_map_thumbnail
 
@@ -72,6 +72,11 @@ parser.add_argument("-s",
                     default=5.0,
                     type=float
                     )
+parser.add_argument("--flux-threshold", 
+                    help="Flux threshold for catalog matching. in units of Jy. If None, uses act rms values.", 
+                    default=None,
+                    type=float,
+                    )
 parser.add_argument("--ignore-known-sources", 
                     help="Only record sources which do not have catalog matches.", 
                     action='store_true'
@@ -121,6 +126,7 @@ indexed_map_groups,indexed_map_group_time_ranges,time_bins = get_map_groups(args
                                                                             coadd_days=args.coadd_n_days,
                                                                             restrict_to_night = args.nighttime_only,
                                                                            )
+
 for freq_arr_idx in indexed_map_groups:
     if args.verbose:
         print(freq_arr_idx)
@@ -176,10 +182,10 @@ for freq_arr_idx in indexed_map_groups:
 
         print(len(extracted_sources.keys()),'sources found.')
         noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
-        flux_thresh = get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
-        catalog_sources = load_act_catalog(args.source_catalog,
-                                           flux_threshold = flux_thresh
-                                          )
+        flux_thresh = args.flux_threshold if args.flux_threshold else get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
+        catalog_sources = load_catalog(args.source_catalog,
+                                       flux_threshold = flux_thresh
+                                      )
 
         print('Cross-matching found sources with catalog...')
             
@@ -192,7 +198,7 @@ for freq_arr_idx in indexed_map_groups:
 
         if not args.ignore_known_sources:
             if args.save_json:
-                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'cataloged_sources.json','w') as f:
+                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_cataloged_sources.json','w') as f:
                     for sc in source_candidates:
                         json_string_cand = sc.json()
                         f.write(json_string_cand)
@@ -200,7 +206,7 @@ for freq_arr_idx in indexed_map_groups:
 
         if len(transient_candidates)<=args.candidate_limit:
             if args.save_json:
-                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'transient_candidates.json','w') as f:
+                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_transient_candidates.json','w') as f:
                     for tc in transient_candidates:
                         print(tc.sourceID)
                         json_string_cand = tc.json()
