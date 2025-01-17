@@ -441,7 +441,10 @@ def load_maps(map_path:Path)->Depth1Map:
             kappa = enmap.read_map(path + "kappa.fits", sel=0) # whatever kappa is, only I
         except Exception:
             kappa = enmap.read_map(path + "kappa.fits")
-        time = enmap.read_map(path + "time.fits") # time map
+        try:
+            time = enmap.read_map(path + "time.fits",sel=0) # time map
+        except Exception:
+            time = enmap.read_map(path + "time.fits")
         ## These should be contained in the map metadata in the future
         arr = path.split("/")[-1].split("_")[2]
         freq = path.split("/")[-1].split("_")[3]
@@ -633,6 +636,7 @@ def get_thumbnail(imap:enmap.ndmap,
                                 proj=proj,
                                 )
     return omap
+
 
 def get_time_safe(time_map:enmap.ndmap, 
                   poss:list, 
