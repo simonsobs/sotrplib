@@ -14,9 +14,9 @@ from glob import glob
 from sotrplib.maps.maps import load_maps, preprocess_map
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups
-from sotrplib.sources.finding import extract_sources, mask_sources_outside_map
+from sotrplib.sources.finding import extract_sources
 from sotrplib.utils.actpol_utils import get_sourceflux_threshold
-from sotrplib.source_catalog.source_catalog import load_catalog
+from sotrplib.source_catalog.source_catalog import load_catalog,write_json_catalog
 from sotrplib.sifter.crossmatch import sift
 from sotrplib.utils.plot import plot_map_thumbnail
 
@@ -188,14 +188,10 @@ for freq_arr_idx in indexed_map_groups:
         noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
         flux_thresh = args.flux_threshold if args.flux_threshold else get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
         catalog_sources = load_catalog(args.source_catalog,
-                                       flux_threshold = flux_thresh
+                                       flux_threshold = flux_thresh,
+                                       mask_outside_map=True,
+                                       mask_map=mapdata.flux
                                       )
-        
-        source_mask = mask_sources_outside_map(catalog_sources,
-                                               mapdata.flux
-                                              )
-        for key in catalog_sources:
-            catalog_sources[key]  = catalog_sources[key][source_mask]
 
         print('Cross-matching found sources with catalog...')
         source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
@@ -204,44 +200,47 @@ for freq_arr_idx in indexed_map_groups:
                                                                        arr=mapdata.wafer_name
                                                                       )
 
+        if args.simulation:
+            injected_sources = []
+            from sotrplib.sources.sources import SourceCandidate
+            for i in range(len(catalog_sources['name'])):
+                ic = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
+                                    dec=catalog_sources['decDeg'][i],
+                                    flux=catalog_sources['fluxJy'][i]*1000,
+                                    dflux=catalog_sources['err_fluxJy'][i]*1000,
+                                    snr=catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i],
+                                    freq=str(mapdata.freq),
+                                    arr=mapdata.wafer_name,
+                                    ctime=mapdata.map_ctime,
+                                    sourceID=catalog_sources['name'][i],
+                                    crossmatch_name=catalog_sources['name'][i], 
+                                    )
+                injected_sources.append(ic)
+
         if not args.ignore_known_sources:
             if args.save_json:
-                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_cataloged_sources.json','w') as f:
-                    for sc in source_candidates:
-                        json_string_cand = sc.json()
-                        f.write(json_string_cand)
-                        f.write('\n')
+                write_json_catalog(source_candidates,
+                                   out_dir=args.plot_output,
+                                   out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_cataloged_sources.json',
+                                  )
                 if args.simulation:
-                    from sotrplib.sources.sources import SourceCandidate
-                    with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_injected_sources.json','w') as f:
-                        for i in range(len(catalog_sources['name'])):
-                            sc = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
-                                                dec=catalog_sources['decDeg'][i],
-                                                flux=catalog_sources['fluxJy'][i],
-                                                dflux=catalog_sources['err_fluxJy'][i],
-                                                snr=catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i],
-                                                freq=str(mapdata.freq),
-                                                arr=mapdata.wafer_name,
-                                                ctime=mapdata.map_ctime,
-                                                sourceID=catalog_sources['name'][i],
-                                                )
-                            json_string_cand = sc.json()
-                            f.write(json_string_cand)
-                            f.write('\n')
+                    write_json_catalog(injected_sources,
+                                       out_dir=args.plot_output,
+                                       out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_injected_sources.json',
+                                      )
+                    
         if len(transient_candidates)<=args.candidate_limit:
             if args.save_json:
-                with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_transient_candidates.json','w') as f:
-                    for tc in transient_candidates:
-                        print(tc.sourceID)
-                        json_string_cand = tc.json()
-                        f.write(json_string_cand)
-                        f.write('\n')
+                write_json_catalog(transient_candidates,
+                                   out_dir=args.plot_output,
+                                   out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_transient_candidates.json',
+                                  )
             if args.plot_thumbnails:
                 for tc in transient_candidates:
                     plot_map_thumbnail(mapdata.snr,
                                         tc.ra,
                                         tc.dec,
-                                        source_name='_'.join(tc.sourceID.split(' '))+'_'+mapdata.wafer_name+'_'+mapdata.freq+'_'+str(tc.ctime),
+                                        source_name='_'.join(tc.sourceID.split(' '))+'_'+str(tc.ctime)+'_'+mapdata.wafer_name+'_'+mapdata.freq,
                                         plot_dir = args.plot_output,
                                         colorbar_range=args.snr_threshold
                                         )

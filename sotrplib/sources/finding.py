@@ -395,14 +395,17 @@ def mask_sources_outside_map(sourcecat,
     ypix, xpix = sky2pix(maskmap.shape, maskmap.wcs, coords_rad)
     mask = np.zeros(len(ypix))
     for i,(x,y) in enumerate(zip(xpix.astype(int),ypix.astype(int))):
-        try:
-            m = maskmap[y, x]  # lookup mask value
-        except IndexError:
+        if x<0 or y<0:
             m = 0
+        else:
+            try:
+                m = np.nan_to_num(maskmap[y, x])  # lookup mask value
+            except IndexError:
+                m = 0
         mask[i] = m
     # Convert to binary
     ## if non-observed regions are nan, ignore those as well
-    mask[np.abs(np.nan_to_num(mask)) > 0] = 1
+    mask[np.abs(mask) > 1e-8] = 1
     # switch 0 and 1
     mask = mask.astype("bool")
 
