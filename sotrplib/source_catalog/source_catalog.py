@@ -1,3 +1,5 @@
+from pixell.enmap import enmap
+
 class SourceCatalog():
     def __init__(self,ra,dec):
         self.ra=ra
@@ -86,13 +88,25 @@ def load_json_test_catalog(source_cat_file:str,
 
 
 def load_catalog(source_cat_file:str,
-                 flux_threshold:float=0
+                 flux_threshold:float=0,
+                 mask_outside_map:bool=False,
+                 mask_map:enmap=None
                  ):
     '''
     flux_threshold is a threshold, in Jy, below which we ignore the sources.
         i.e. if we want sources in depth-1 map, we don't care about sub mJy sources.
         by default, returns all positive sources.
+    mask_outside_map: bool
+        if False, do not mask the mapped region, just include all sources in catalog.
+    mask_map: enmap
+        map with which to do the masking; can be anything that is zero/nan outside observed region.
+
+    Returns:
+
+        sources: source catalog, in astropy.table.table.Table or dict format... dumb but works for now.
+
     '''
+
     if 'PS_S19_f090_2pass_optimalCatalog.fits' in source_cat_file:
         sources = load_act_catalog(source_cat_file=source_cat_file,
                                    flux_threshold=flux_threshold
@@ -101,5 +115,27 @@ def load_catalog(source_cat_file:str,
         sources = load_json_test_catalog(source_cat_file=source_cat_file,
                                          flux_threshold=flux_threshold
                                          ) 
-        
+    if mask_outside_map and not isinstance(mask_map,type(None)):
+        from ..sources.finding import mask_sources_outside_map
+        source_mask = mask_sources_outside_map(sources,
+                                               mask_map
+                                              )
+        if isinstance(sources,dict):
+            for key in sources:
+                sources[key]  = sources[key][source_mask]
+        else:
+            sources = sources[source_mask]
+
     return sources
+
+
+def write_json_catalog(outcat,
+                       out_dir:str='./',
+                       out_name:str='source_catalog.json'
+                       ):
+    with open(out_dir+out_name,'w') as f:
+        for oc in outcat:
+            json_string_cand = oc.json()
+            f.write(json_string_cand)
+            f.write('\n')
+    return
