@@ -14,7 +14,7 @@ from glob import glob
 from sotrplib.maps.maps import load_maps, preprocess_map
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups
-from sotrplib.sources.finding import extract_sources
+from sotrplib.sources.finding import extract_sources, mask_sources_outside_map
 from sotrplib.utils.actpol_utils import get_sourceflux_threshold
 from sotrplib.source_catalog.source_catalog import load_catalog
 from sotrplib.sifter.crossmatch import sift
@@ -114,6 +114,10 @@ parser.add_argument("--verbose",
                     help="Print useful things.", 
                     action='store_true'
                     )
+parser.add_argument("--simulation", 
+                    help="Injected sources are known and given in the source catalog. Use that to record the expected sources in each map.", 
+                    action='store_true'
+                    )
 args = parser.parse_args()
 
 
@@ -186,15 +190,19 @@ for freq_arr_idx in indexed_map_groups:
         catalog_sources = load_catalog(args.source_catalog,
                                        flux_threshold = flux_thresh
                                       )
+        
+        source_mask = mask_sources_outside_map(catalog_sources,
+                                               mapdata.flux
+                                              )
+        for key in catalog_sources:
+            catalog_sources[key]  = catalog_sources[key][source_mask]
 
         print('Cross-matching found sources with catalog...')
-            
         source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
                                                                        catalog_sources,
                                                                        map_freq = mapdata.freq,
                                                                        arr=mapdata.wafer_name
                                                                       )
-
 
         if not args.ignore_known_sources:
             if args.save_json:
@@ -203,7 +211,23 @@ for freq_arr_idx in indexed_map_groups:
                         json_string_cand = sc.json()
                         f.write(json_string_cand)
                         f.write('\n')
-
+                if args.simulation:
+                    from sotrplib.sources.sources import SourceCandidate
+                    with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_injected_sources.json','w') as f:
+                        for i in range(len(catalog_sources['name'])):
+                            sc = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
+                                                dec=catalog_sources['decDeg'][i],
+                                                flux=catalog_sources['fluxJy'][i],
+                                                dflux=catalog_sources['err_fluxJy'][i],
+                                                snr=catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i],
+                                                freq=str(mapdata.freq),
+                                                arr=mapdata.wafer_name,
+                                                ctime=mapdata.map_ctime,
+                                                sourceID=catalog_sources['name'][i],
+                                                )
+                            json_string_cand = sc.json()
+                            f.write(json_string_cand)
+                            f.write('\n')
         if len(transient_candidates)<=args.candidate_limit:
             if args.save_json:
                 with open(args.plot_output+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_'+str(int(mapdata.map_ctime))+'_transient_candidates.json','w') as f:
