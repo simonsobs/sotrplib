@@ -375,33 +375,36 @@ def find_using_photutils(Tmap:np.ndarray,
     return groups
 
 
-def source_in_mask(sources, 
-                   maskmap
-                   ):
-    """Determines if source is inside mask
+def mask_sources_outside_map(sourcecat, 
+                             maskmap:enmap
+                            ):
+    """
+    Determines if source is inside mask or observed region
 
     Args:
-        sources: np.array of sources [[dec, ra]] in deg
+        sourcecat: source catalog, need keys RADeg, decDeg
         maskmap: ndmap of mask (zero masked, one not masked)
+                 or weights map which will be zero or nan elsewhere.
 
     Returns:
-        mask column for sources, 1 masked, 0 not masked
+        mask column for sources, 1 observed, 0 not observed or outside map
     """
     from pixell.enmap import sky2pix
     # Check if sources are in mask
-    dec = sources[:, 0]
-    ra = sources[:, 1]
-    coords_rad = np.deg2rad(np.array([dec, ra]))
+    coords_rad = np.deg2rad(np.array([sourcecat['decDeg'], sourcecat['RADeg']]))
     ypix, xpix = sky2pix(maskmap.shape, maskmap.wcs, coords_rad)
-    mask = maskmap[ypix.astype(int), xpix.astype(int)]  # lookup mask value
-
+    mask = np.zeros(len(ypix))
+    for i,(x,y) in enumerate(zip(xpix.astype(int),ypix.astype(int))):
+        try:
+            m = maskmap[y, x]  # lookup mask value
+        except IndexError:
+            m = 0
+        mask[i] = m
     # Convert to binary
-    mask[np.abs(mask) > 0] = 1
-
+    ## if non-observed regions are nan, ignore those as well
+    mask[np.abs(np.nan_to_num(mask)) > 0] = 1
     # switch 0 and 1
     mask = mask.astype("bool")
-    mask = ~mask
-    mask = mask.astype("int")
 
     return mask
 
