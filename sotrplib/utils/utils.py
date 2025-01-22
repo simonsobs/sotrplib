@@ -2,14 +2,18 @@ import glob as glob
 import math
 import os
 import os.path as op
-
 import numpy as np
 from pixell import enmap
 from pixell import utils as pixell_utils
 from scipy import stats
+
 from scipy.ndimage import distance_transform_edt
 from scipy.optimize import curve_fit
 from tqdm import tqdm
+
+from astropy.table import Table
+from astropy.coordinates import SkyCoord
+from astropy import units as u
 
 def radec_to_str_name(ra: float, 
                       dec: float, 
