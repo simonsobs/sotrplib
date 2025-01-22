@@ -205,15 +205,15 @@ for freq_arr_idx in indexed_map_groups:
             from sotrplib.sources.sources import SourceCandidate
             for i in range(len(catalog_sources['name'])):
                 ic = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
-                                    dec=catalog_sources['decDeg'][i],
-                                    flux=catalog_sources['fluxJy'][i]*1000,
-                                    dflux=catalog_sources['err_fluxJy'][i]*1000,
-                                    snr=catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i],
-                                    freq=str(mapdata.freq),
-                                    arr=mapdata.wafer_name,
-                                    ctime=mapdata.map_ctime,
-                                    sourceID=catalog_sources['name'][i],
-                                    crossmatch_name=catalog_sources['name'][i], 
+                                     dec=catalog_sources['decDeg'][i],
+                                     flux=catalog_sources['fluxJy'][i]*1000,
+                                     dflux=catalog_sources['err_fluxJy'][i]*1000,
+                                     snr=catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i],
+                                     freq=str(mapdata.freq),
+                                     arr=mapdata.wafer_name,
+                                     ctime=mapdata.map_ctime,
+                                     sourceID=catalog_sources['name'][i],
+                                     crossmatch_name=catalog_sources['name'][i], 
                                     )
                 injected_sources.append(ic)
 
