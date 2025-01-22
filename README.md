@@ -8,10 +8,11 @@ Creating a test setup of the SO map-domain transient pipeline which will start b
 
 To run the pipeline, you can simply do:
 
-`python trp_pipeline.py --plot-output <path/to/output/dir/>`
+python trp_pipeline.py --maps  <path/to/map.fits> --save-json
 
-Which runs with a default map file (`/scratch/gpfs/snaess/actpol/maps/depth1/release/15064/depth1_1506466826_pa4_f150_map.fits`)
+for example:
+python trp_pipeline.py --maps  /scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15001/depth1_1500110453_pa5_f090_rho.fits /scratch/gpfs/SIMONSOBS/users/amfoster/scratch/depth1_month_coadds/coadd_1516177324.0_all_f090_rho.fits --save-json
 
-Otherwise, if you want to run multiple maps through, you can specify the input files using the `-m` argument, for example:
+will run the msaking, cleaning and source finding on the two input maps, match the output to the act source catalog and then decide which are transients or noise based on simple cuts.
 
-`python trp_pipeline.py -m obs1_map.fits obs2_map.fits obs3_map.fits --plot-output <path/to/output/dir/>`
+can also provide several depth-1 maps as input and coadd over n days by supplying the --coadd-n-days argument.

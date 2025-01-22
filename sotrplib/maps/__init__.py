@@ -1,3 +1,6 @@
-__all__ = ["maps", "masks", "tiles"]
+from . import maps
+from . import masks
+from . import tiles
+from . import coadding
 
-from . import maps, masks, tiles
+__all__ = ['maps','masks','tiles','coadding']
