@@ -33,7 +33,7 @@ actpol = Instrument.from_name(act,'ACTpol')
 
 ## get pa5 f150 beam fwhm
 pa5_f150_fwhm=actpol.get_fwhm('pa5','f150')
-"""
+'''
 
 
 class Observatory:
