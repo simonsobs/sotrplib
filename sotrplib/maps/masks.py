@@ -16,8 +16,9 @@ def mask_planets(
     try:
         from enlib import planet9
     except ModuleNotFoundError:
-        print("enlib not found, cannot mask planets")
-
+        print('enlib not found, cannot mask planets')
+        return np.ones(tmap.shape)
+    
     mjd_min = ctime2mjd(ctime)
     mjd_max = ctime2mjd(ctime + np.amax(tmap))
     mjds = np.linspace(mjd_min, mjd_max, 10)
@@ -50,6 +51,7 @@ def mask_edge(imap: enmap.ndmap, pix_num: int):
 
     edge = edge_map(imap)
     dmap = enmap.enmap(morph.distance_transform_edt(edge), edge.wcs)
+    del edge
     mask = enmap.zeros(imap.shape, imap.wcs)
     mask[np.where(dmap > pix_num)] = 1
     return mask

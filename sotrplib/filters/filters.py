@@ -176,8 +176,12 @@ def matched_filter_1overf(
     return rho, kappa
 
 
-
-def matched_filter_full_map(file,imap, ivar, arr, freq):
+def matched_filter_full_map(mapfile:str,
+                            imap:enmap.enmap, 
+                            ivar:enmap.enmap, 
+                            arr:str, 
+                            freq:str
+                            ):
     """
     Make matched filter map using Sigurd's way
     basically copied from this script:/home/yaqiongl/code/depth1_transients/filter_depth1.py on tiger
@@ -189,6 +193,8 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
         arr: array
         freq: frequency
     """
+    from pixell import bunch,uharm,analysis
+
     frequency = float(freq[1:])*1e9
     fconv = utils.dplanck(frequency)/1e3
     imap *= fconv
@@ -196,13 +202,12 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
     path = mapfile[:-8]
     infofile = path + 'info.hdf'
     info = bunch.read(infofile)
-    dtype  = imap.dtype
     ny, nx = imap.shape[-2:]
-    beam_file = '/projects/ACT/adriaand/beams/20220817_beams/coadd_%s_%s_night_beam_tform_jitter_cmb.txt'%(arr,freq) #this path is on tiger
+    beam_file = '/projects/ACT/adriaand/beams/20220817_beams/coadd_%s_%s_night_beam_tform_jitter_cmb.txt'%(arr,freq) #this path is on tiger3
     beam1d = np.loadtxt(beam_file).T[1]
     lfwhm  = np.where(beam1d<0.5)[0][0]
     fwhm   = 1/(lfwhm*utils.fwhm)/utils.fwhm
-    mask_file = '/scratch/gpfs/snaess/actpol/masks/srcfind/srcfind_mask_%s.fits'%(freq)   #this path is on tiger
+    mask_file = '/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/snaess_srcfind_masks/srcfind_mask_%s.fits'%(freq)   #this path is on tiger3
     #Parameters I used defult from Sigurd's script
     shrink_holes=1.0
     apod_edge = 10
@@ -218,8 +223,8 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
     apod_holes  = apod_holes*utils.arcmin
     shrink_holes= shrink_holes*fwhm
     # Build our shift matrix
-    if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
-    else:              S = ShiftDummy()
+    #if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
+    #else:              S = ShiftDummy()
     # Set up apodization. A bit messy due to handling two types of apodizion
     # depending on whether it's based on the extrnal mask or not
     hit  = ivar > 0
@@ -230,8 +235,8 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
     apod_holes  = apod_holes*utils.arcmin
     shrink_holes= shrink_holes*fwhm
     # Build our shift matrix
-    if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
-    else:              S = ShiftDummy()
+    #if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
+    #else:              S = ShiftDummy()
     # Set up apodization. A bit messy due to handling two types of apodizion
     # depending on whether it's based on the extrnal mask or not
     hit  = ivar > 0
@@ -240,12 +245,17 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
     # Apodize the edge by decreasing the significance in ivar
     noise_apod = enmap.apod_mask(hit, apod_edge)
     # Check if we have a noise model mask too
-    mask = enmap.read_map(mask_file, geometry=imap.geometry)
-    mask = np.asanyarray(mask)
-    noise_apod *= enmap.apod_mask(1-mask, apod_holes)
-    del mask
+    #mask = enmap.read_map(mask_file, geometry=imap.geometry)
+    #mask = np.asanyarray(mask)
+    noise_apod *= 1.0#enmap.apod_mask(1-mask, apod_holes)
+    #del mask
     # Build the noise model
-    iC  = build_ips2d_udgrade(S.forward(imap), S.forward(ivar*noise_apod), apod_corr=np.mean(noise_apod**2), lres=lres)
+    ## s.forward for 0 shift just returns self... so I'll just use that for now
+    iC  = build_ips2d_udgrade(imap,#S.forward(imap), 
+                              ivar*noise_apod,#S.forward(ivar*noise_apod), 
+                              apod_corr=np.mean(noise_apod**2), 
+                              lres=lres
+                              )
     del noise_apod
     if highpass > 0:
         iC = highpass_ips2d(iC, highpass)
@@ -262,8 +272,8 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
         # Get band-local versions of the map etc.
         bmap, bivar, bhit = [a[...,r.i1:r.i2,:] for a in [imap, ivar, hit]]
         bny, bnx = bmap.shape[-2:]
-        if shift > 0: bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)
-        else:              bS = ShiftDummy()
+        #if shift > 0: bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)
+        #else:              bS = ShiftDummy()
         # Translate iC to smaller fourier space
         if simple:
             bl  = bmap.modlmap()
@@ -279,7 +289,7 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
         del filter_apod
         # Phew! Actually perform the filtering
         uht  = uharm.UHT(bmap.shape, bmap.wcs, mode="flat")
-        brho, bkappa = analysis.matched_filter_constcorr_dual(bmap, beam2d, bivar, biC, uht, S=bS.forward, iS=bS.backward)
+        brho, bkappa = analysis.matched_filter_constcorr_dual(bmap, beam2d, bivar, biC, uht)#, S=bS.forward, iS=bS.backward)
         del uht
         # Restrict to exposed area
         brho   *= bhit
@@ -289,7 +299,7 @@ def matched_filter_full_map(file,imap, ivar, arr, freq):
         rho  [...,r.i1+r.p1:r.i2-r.p2,:] += brho  [...,r.p1:bny-r.p2,:]*weight[:,None]
         kappa[...,r.i1+r.p1:r.i2-r.p2,:] += bkappa[...,r.p1:bny-r.p2,:]*weight[:,None]
         tot_weight[r.i1+r.p1:r.i2-r.p2]  += weight
-        del bmap, bivar, bhit, bS, biC, beam2d, brho, bkappa
+        del bmap, bivar, bhit,  biC, beam2d, brho, bkappa#,bS,
 
     del imap, ivar, iC
     return rho, kappa
