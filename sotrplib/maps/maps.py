@@ -1,6 +1,4 @@
 import numpy as np
-from pixell import enmap
-from pixell.utils import arcmin,degree
 import warnings
 from typing import Optional
 from pathlib import Path
@@ -8,8 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from pixell import enmap
-
-from sotrplib.sourcecatalog import SourceCatalog
+from pixell.utils import arcmin,degree
 
 
 class Depth1Map:
