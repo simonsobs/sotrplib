@@ -1,6 +1,8 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 from ..maps.maps import Depth1Map
+
 
 def fancy_plot(fontsize=25):
     plt.rc("text", usetex=True)

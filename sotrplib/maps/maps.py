@@ -6,6 +6,10 @@ from typing import Optional
 from pathlib import Path
 
 
+import numpy as np
+from pixell import enmap
+
+from sotrplib.sourcecatalog import SourceCatalog
 
 
 class Depth1Map:
@@ -205,33 +209,28 @@ class Depth1Map:
             else:
                 ra = ra_can[i]
                 dec = dec_can[i]
-                data_sub = self.matched_filter_submap(ra, 
-                                                      dec, 
-                                                      sourcemask, 
-                                                      size=0.5
-                                                     )
+                data_sub = self.matched_filter_submap(ra, dec, sourcemask, size=0.5)
 
                 # check if candidate still exists
-                ra, dec, pass_matched_filter = self.recalc_source_detection(ra, 
-                                                                            dec, 
-                                                                            detection_threshold
-                                                                            )
+                ra, dec, pass_matched_filter = self.recalc_source_detection(
+                    ra, dec, detection_threshold
+                )
                 mf[i] = pass_matched_filter
 
                 if pass_matched_filter:
                     # renormalization if matched filter is successful
                     ## should this be data_sub.snr=?
-                    snr_sub_renorm = renorm_ms(data_sub.snr, 
-                                                data_sub.wafer_name, 
-                                                data_sub.freq, 
-                                                ra, 
-                                                dec, 
-                                                sourcemask,
-                                                )
-                    ra, dec, pass_renorm = data_sub.recalc_source_detection(ra, 
-                                                                            dec, 
-                                                                            detection_threshold
-                                                                            )
+                    # snr_sub_renorm = renorm_ms(
+                    #     data_sub.snr,
+                    #     data_sub.wafer_name,
+                    #     data_sub.freq,
+                    #     ra,
+                    #     dec,
+                    #     sourcemask,
+                    # )
+                    ra, dec, pass_renorm = data_sub.recalc_source_detection(
+                        ra, dec, detection_threshold
+                    )
                     renorm[i] = pass_renorm
 
                 ra_arr[i] = ra
@@ -239,13 +238,13 @@ class Depth1Map:
 
         return ra_arr, dec_arr, mf, renorm
 
-
-    def matched_filter_submap(self, 
-                              ra: float, 
-                              dec: float, 
-                              sourcemask:Optional["SourceCatalog"]=None, 
-                              size:float=0.5
-                             ):
+    def matched_filter_submap(
+        self,
+        ra: float,
+        dec: float,
+        sourcemask: Optional["SourceCatalog"] = None,
+        size: float = 0.5,
+    ):
         """
         calculate rho and kappa maps given a ra and dec
 
@@ -256,44 +255,24 @@ class Depth1Map:
             size: size of submap in deg, default=0.5
 
         Returns:
-            Dept1 submaps 
+            Dept1 submaps
         """
         from ..filters import matched_filter
-        sub = get_submap(self.intensity_map, 
-                         ra, 
-                         dec, 
-                         size
-                        )
-        sub_inverse_variance = get_submap(self.inverse_variance_map, 
-                                          ra, 
-                                          dec, 
-                                          size
-                                         )
-        sub_tmap = get_submap(self.time_map, 
-                              ra, 
-                              dec, 
-                              size
-                             )
-        rho, kappa = matched_filter(sub,
-                                    sub_inverse_variance,
-                                    self.wafer_name,
-                                    self.freq,
-                                    ra,
-                                    dec,
-                                    size_deg=size,
-                                    source_cat=sourcemask,
-                                    apod_size_arcmin=5,
-                                    )
 
-        return Depth1Map(sub,
-                        sub_inverse_variance,
-                        rho,
-                        kappa,
-                        sub_tmap,
-                        self.wafer_name,
-                        self.freq,
-                        self.map_ctime,
-                        )
+        sub = get_submap(self.intensity_map, ra, dec, size)
+        sub_inverse_variance = get_submap(self.inverse_variance_map, ra, dec, size)
+        sub_tmap = get_submap(self.time_map, ra, dec, size)
+        rho, kappa = matched_filter(
+            sub,
+            sub_inverse_variance,
+            self.wafer_name,
+            self.freq,
+            ra,
+            dec,
+            size_deg=size,
+            source_cat=sourcemask,
+            apod_size_arcmin=5,
+        )
 
 
     def recalc_source_detection(self, 
@@ -316,11 +295,7 @@ class Depth1Map:
             return ra, dec, False
         else:
             # calculate separation from original position. Reject sources not within 1 arcmin
-            sep = angular_separation(ra, 
-                                     dec, 
-                                     ra_new, 
-                                     dec_new
-                                     ) * 60.0  # in arcmin
+            sep = angular_separation(ra, dec, ra_new, dec_new) * 60.0  # in arcmin
             # continue if no sources are within 1 arcmin
             if np.all(sep > matching_radius):
                 return ra, dec, False
@@ -555,6 +530,7 @@ def edge_map(imap: enmap.ndmap):
         binary ndmap with 1 inside region, 0 outside
     """
     from scipy.ndimage import binary_fill_holes
+
     edge = enmap.enmap(imap, imap.wcs)  # Create map geometry
     edge[np.abs(edge) > 0] = 1  # Convert to binary
     edge = binary_fill_holes(edge)  # Fill holes
@@ -628,6 +604,7 @@ def get_thumbnail(imap:enmap.ndmap,
                   )->enmap:
     from pixell import reproject
     from pixell.utils import degree
+
     ra = ra_deg * degree
     dec = dec_deg * degree
     omap = reproject.thumbnails(imap, 

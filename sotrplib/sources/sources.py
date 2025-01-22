@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class SourceCandidate(BaseModel):
     ra: float
     dec: float
@@ -21,4 +22,4 @@ class SourceCandidate(BaseModel):
     elongation:float=None
     fwhm:float=None
 def hello():
-    return 'hello'
+    return "hello"

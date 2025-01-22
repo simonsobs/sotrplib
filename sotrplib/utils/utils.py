@@ -1,18 +1,15 @@
+import glob as glob
+import math
 import os
 import os.path as op
-import math
-from tqdm import tqdm
+
 import numpy as np
 from pixell import enmap
 from pixell import utils as pixell_utils
 from scipy import stats
 from scipy.ndimage import distance_transform_edt
 from scipy.optimize import curve_fit
-import glob as glob
-from astropy.table import Table
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-
+from tqdm import tqdm
 
 def radec_to_str_name(ra: float, 
                       dec: float, 
@@ -233,11 +230,12 @@ def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
         radius in pixel
     """
     from .inputs import get_fwhm_arcmin
+
     if fwhm is None:
         fwhm = get_fwhm_arcmin(arr, freq)
     resolution = np.abs(thumb.wcs.wcs.cdelt[0])
-    mf_factor = 2**0.5 if match_filtered else 1.
-    radius_pix = round(2 * mf_factor* fwhm / (60 * resolution))
+    mf_factor = 2**0.5 if match_filtered else 1.0
+    radius_pix = round(2 * mf_factor * fwhm / (60 * resolution))
     return radius_pix
 
 
@@ -306,7 +304,7 @@ def consolidate_cols(dirs, colnames):
     # init array for each colname given unless not a list
     cols = {}
     cols["cat"] = []
-    if type(colnames) == str:
+    if type(colnames) is str:
         cols[colnames] = []
     else:
         for col in colnames:
@@ -332,7 +330,7 @@ def consolidate_cols(dirs, colnames):
                 continue
 
             # check if colname is in table
-            if type(colnames) == str:
+            if type(colnames) is str:
                 if colnames in t.colnames:
                     cols[colnames].append(t[colnames])
             else:
