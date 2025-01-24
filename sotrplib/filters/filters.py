@@ -209,7 +209,7 @@ def matched_filter_depth1_map(imap:enmap,
         intensity map, uK
 
     ivarmap:enmap
-        inverse variance map, uK
+        inverse variance map, 1./uK^2
 
     freq_ghz:float
         observing band, in GHz
@@ -236,7 +236,7 @@ def matched_filter_depth1_map(imap:enmap,
         apodize this far around holes, radians
 
     noisemask_lim:float [0.01]
-        an upper limit to the noise, above which you mask. imap units
+        an upper limit to the noise, above which you mask. mJy/sr
 
     highpass:bool [False]
         perform highpass filtering

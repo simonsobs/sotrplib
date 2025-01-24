@@ -695,18 +695,23 @@ def preprocess_map(mapdata,
 
     print('Cleaning maps...')
     if not mapdata.cleaned:
-        mapdata.kappa_map  = kappa_clean(mapdata.kappa_map,
-                                         mapdata.rho_map
-                                        )
-        mapdata.rho_map = clean_map(mapdata.rho_map,
-                                    mapdata.kappa_map,
-                                    cut_on='median',
-                                    fraction=0.05
-                                   )
+        ## ignore divide by zero warning since that will happen outside the weighted region
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            mapdata.kappa_map  = kappa_clean(mapdata.kappa_map,
+                                            mapdata.rho_map
+                                            )
+            mapdata.rho_map = clean_map(mapdata.rho_map,
+                                        mapdata.kappa_map,
+                                        cut_on='median',
+                                        fraction=0.05
+                                    )
         mapdata.cleaned=True
-    
-    mapdata.flux = mapdata.rho_map/mapdata.kappa_map
-    mapdata.snr = mapdata.rho_map*mapdata.kappa_map**(-0.5)
+    ## ignore divide by zero warning since that will happen outside the weighted region
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mapdata.flux = mapdata.rho_map/mapdata.kappa_map
+        mapdata.snr = mapdata.rho_map*mapdata.kappa_map**(-0.5)
     mapdata.kappa_map = None
     mapdata.rho_map = None
 
