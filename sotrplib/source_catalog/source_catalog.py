@@ -86,6 +86,32 @@ def load_json_test_catalog(source_cat_file:str,
 
     return sources
 
+def load_websky_csv_catalog(source_cat_file:str,
+                            flux_threshold:float=0
+                            ):
+    '''
+    load the websky catalog from a csv containing the columns
+    flux(Jy), ra(deg), dec(deg)
+    '''
+    from numpy import loadtxt, asarray
+    from ..utils.utils import radec_to_str_name
+    print('loading websky catalog')
+    websky_flux,websky_ra,websky_dec = loadtxt(source_cat_file,
+                                               delimiter=',',
+                                               unpack=True,
+                                               skiprows=1
+                                              )
+    websky_ra[websky_ra>180.]-=360
+    inds = websky_flux>flux_threshold
+    print(sum(inds),' sources above %.2f Jy'%(flux_threshold))
+    sources = {}
+    sources['RADeg'] = websky_ra[inds]
+    sources['decDeg'] = websky_dec[inds]
+    sources['fluxJy'] = websky_flux[inds]
+    sources['err_fluxJy'] = websky_flux[inds]*0.0
+    sources['name'] = asarray([radec_to_str_name(sources['RADeg'][i],sources['decDeg'][i]) for i in range(sum(inds))])
+    return sources
+
 
 def load_catalog(source_cat_file:str,
                  flux_threshold:float=0,
@@ -111,6 +137,10 @@ def load_catalog(source_cat_file:str,
         sources = load_act_catalog(source_cat_file=source_cat_file,
                                    flux_threshold=flux_threshold
                                    )
+    if 'websky_cat_100_1mJy.csv' in source_cat_file:
+        sources = load_websky_csv_catalog(source_cat_file=source_cat_file,
+                                          flux_threshold=flux_threshold
+                                         )
     if '.json' in source_cat_file:
         sources = load_json_test_catalog(source_cat_file=source_cat_file,
                                          flux_threshold=flux_threshold
