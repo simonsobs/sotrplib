@@ -1,6 +1,12 @@
 import numpy as np
 from pixell import enmap, utils
 
+'''
+Lots of functions copied from https://github.com/amaurea/tenki/blob/master/filter_depth1.py
+
+'''
+
+
 def renorm_thumbnail_snr(thumb_snr, 
                          arr, 
                          freq, 
@@ -181,21 +187,75 @@ def matched_filter_depth1_map(imap:enmap,
                               maskfile:str=None,
                               beam_fwhm:float=None,
                               beam1d:str=None,
-                              shrink_holes:float = 0*utils.fwhm,
+                              shrink_holes:float = 0*utils.arcmin,
                               apod_edge:float = 10*utils.arcmin,
                               apod_holes:float = 5*utils.arcmin,
                               noisemask_lim:float = 0.01,
                               highpass:bool=False,
-                              band_height = 0*utils.degree,
-                              shift = 0,
-                              simple_lknee = 1000,
-                              simple_alpha = -3.5,
+                              band_height:float = 0*utils.degree,
+                              shift:float = 0,
+                              simple_lknee:float = 1000,
+                              simple_alpha:float = -3.5,
                               lres = (70,100),
-                              pixwin = 'nn',
-                              simple=True,
+                              pixwin:str = 'nn',
+                              simple:bool=True,
                               ):
     '''
-    blah
+    copy of the script https://github.com/amaurea/tenki/blob/master/filter_depth1.py converted to a function.
+
+    Arguments:
+    -----------
+    imap:enmap
+        intensity map, uK
+
+    ivarmap:enmap
+        inverse variance map, uK
+
+    freq_ghz:float
+        observing band, in GHz
+
+    infofile:str [None]
+        the .info file for the observation in case shifting is nonzero.
+
+    maskfile:str [None]
+        a mask file to apply to the observation
+
+    beam_fwhm:float [None]
+        fwhm of the beam, in arcmin.
+    
+    beam1d:str=None
+        path to 1D b_l file (i think...)
+    
+    shrink_holes:float [0]
+        hole size under which to ignore, radians
+        
+    apod_edge:float [10*utils.arcmin]
+        apodize this far from the map edge, radians
+
+    apod_holes:float [5*utils.arcmin]
+        apodize this far around holes, radians
+
+    noisemask_lim:float [0.01]
+        an upper limit to the noise, above which you mask. imap units
+
+    highpass:bool [False]
+        perform highpass filtering
+
+    band_height [0*utils.degree]
+        do filtering in dec bands of this height if >0, else one filtering for entire map, in radians.
+
+    shift = 0
+    simple_lknee = 1000,
+    simple_alpha = -3.5,
+    lres = (70,100),
+    pixwin = 'nn',
+    simple=True
+
+
+    Returns:
+    -----------
+    rho,kappa : enmap
+        the matched filtered maps rho and kappa.
     '''
     from pixell import enmap, utils, bunch, uharm, analysis
     
