@@ -168,7 +168,7 @@ for freq_arr_idx in indexed_map_groups:
                        plot_output_dir=args.plot_output,
                        PLOT=args.plot_all
                       )
-
+        
         print('Finding sources...')
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0
         extracted_sources = extract_sources(mapdata.flux,
@@ -183,8 +183,9 @@ for freq_arr_idx in indexed_map_groups:
         if not extracted_sources:
             del mapdata
             continue
-
+        
         print(len(extracted_sources.keys()),'sources found.')
+
         noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
         flux_thresh = args.flux_threshold if args.flux_threshold else get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
         catalog_sources = load_catalog(args.source_catalog,
@@ -204,11 +205,15 @@ for freq_arr_idx in indexed_map_groups:
             injected_sources = []
             from sotrplib.sources.sources import SourceCandidate
             for i in range(len(catalog_sources['name'])):
+                if catalog_sources['err_fluxJy'][i] == 0.0:
+                    source_snr = np.inf
+                else:
+                    source_snr = catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i]
                 ic = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
                                      dec=catalog_sources['decDeg'][i],
                                      flux=catalog_sources['fluxJy'][i]*1000,
                                      dflux=catalog_sources['err_fluxJy'][i]*1000,
-                                     snr=catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i],
+                                     snr=source_snr,
                                      freq=str(mapdata.freq),
                                      arr=mapdata.wafer_name,
                                      ctime=mapdata.map_ctime,
