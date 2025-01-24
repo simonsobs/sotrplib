@@ -1,101 +1,14 @@
 import numpy as np
 from pixell import enmap, utils
 
-
-def matched_filter(
-    thumb_temp,
-    thumb_ivar,
-    arr,
-    freq,
-    ra_deg,
-    dec_deg,
-    source_cat=None,
-    apod_size_arcmin=10,
-):
-    """
-    Make matched filter map around source thumbnail
-
-    Args:
-        thumb_temp: thumbnail of temperature map
-        thumb_ivar: thumbnail of inverse variance map
-        arr: array name
-        freq: frequency
-        ra_deg: ra of source in degree
-        dec_deg: dec of source in degree
-        source_cat: catalog of point sources, if None do not cut point sources
-
-    """
-    import warnings
-
-    from pixell.analysis import matched_filter_constcorr_dual
-
-    from ..utils.utils import get_ps_inmap
-    from .inputs import get_sourceflux_threshold
-    from .masks import make_circle_mask
-
-    mask_base = enmap.zeros(thumb_temp.shape, wcs=thumb_temp.wcs, dtype=None)
-    mask_base[np.where(thumb_ivar > 0)] = 1
-    mask_center = make_circle_mask(thumb_ivar, ra_deg, dec_deg, arr=arr, freq=freq)
-    apod = enmap.apod_mask(mask_base, apod_size_arcmin * utils.arcmin)
-    flux_thresh = get_sourceflux_threshold(freq)
-    if source_cat:
-        source_cat = get_ps_inmap(thumb_temp, source_cat, fluxlim=flux_thresh)
-        mask_srcs = mask_base
-        for i in range(len(source_cat)):
-            mask_srcs *= make_circle_mask(
-                thumb_ivar,
-                source_cat["RADeg"][i],
-                source_cat["decDeg"][i],
-                mask_radius=4,
-            )
-        apod_noise = enmap.apod_mask(
-            mask_center * mask_srcs * mask_base,
-            apod_size_arcmin * utils.arcmin,
-        )
-    else:
-        apod_noise = enmap.apod_mask(
-            mask_center * mask_base,
-            apod_size_arcmin * utils.arcmin,
-        )
-    if arr == "pa7":
-        datapath = (
-            "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/beam_transform_%s_%s_201203.txt"
-            % (arr, freq)
-        )
-    else:
-        datapath = (
-            "/home/eb8912/transients/depth1/ACT_depth1-transient-pipeline/data/inputs/s19_%s_%s_night_beam_tform_instant.txt"
-            % (arr, freq)
-        )
-    bl = np.loadtxt(datapath).T[1]
-    ell = thumb_temp.modlmap()
-    B = enmap.samewcs(np.interp(ell, np.arange(len(bl)), bl), ell)
-    ps2d = enmap.upgrade(
-        enmap.downgrade(
-            np.abs(enmap.fft(thumb_temp * thumb_ivar**0.5 * apod_noise)) ** 2,
-            5,
-            ref=[0, 0],
-            inclusive=True,
-        ),
-        5,
-        oshape=thumb_temp.shape,
-        inclusive=True,
-    ) / np.mean(apod_noise**2)
-    # Force shape if it does not output correct shape Todo: Data loss for some maps. This is a quick fix
-    if ps2d.shape != thumb_temp.shape:
-        ps2d = ps2d[: thumb_temp.shape[0], : thumb_temp.shape[1]]
-        warnings.warn("Forcing ps2d shape to match thumb_temp shape. Data may be lost.")
-
-    iN_emp = 1.0 / ps2d
-    rho, kappa = matched_filter_constcorr_dual(
-        thumb_temp * apod, B, thumb_ivar * apod, iN_emp
-    )
-    return rho, kappa
-
-
-def renorm_ms(
-    thumb_snr, arr, freq, ra_deg, dec_deg, source_cat=None, apod_size_arcmin=10
-):
+def renorm_thumbnail_snr(thumb_snr, 
+                         arr, 
+                         freq, 
+                         ra_deg, 
+                         dec_deg, 
+                         source_cat=None, 
+                         apod_size_arcmin=10
+                        ):
     """
     renormalize the matched filtered maps
     Args:
@@ -136,144 +49,233 @@ def renorm_ms(
     return thumb_snr_renorm
 
 
-def matched_filter_1overf(
-    thumb_temp, thumb_ivar, freq, source_cat=None, size_deg=0.5, apod_size_arcmin=10
-):
+def fix_profile(profile):
+    """profile has a bug where it was generated over too big an
+    az range. This is probably harmless, but could in theory lead to it moving
+    past north, which makes the profile non-monotonous in dec. This function
+    chops off those parts.
     """
-    Make matched filter map with noised modeled by 1/f noise
-
-    Args:
-        thumb_temp: thumbnail of temperature map
-        thumb_ivar: thumbnail of inverse variance map
-        freq: frequency
-        source_cat: catalog of point sources, if None do not cut point sources
-
-    """
-    from pixell.analysis import matched_filter_constcorr_dual
-    from pixell.uharm import UHT
-
-    wcs = thumb_temp.wcs
-    shape = thumb_temp.shape
-    bsigma = 1.4 * utils.fwhm * utils.arcmin
-    fconv = utils.dplanck(150e9, utils.T_cmb) / 1e3
-    alpha = -3.5
-    uht = UHT(shape, wcs)
-    iN = (1 + ((uht.l + 0.5) / 3000) ** alpha) ** (-1)
-    if freq == "f220":
-        bsigma = 1.4 * utils.fwhm * utils.arcmin * 150.0 / 220.0
-        fconv = utils.dplanck(220e9, utils.T_cmb) / 1e3
-        iN = (1 + ((uht.l + 0.5) / 4000) ** alpha) ** (-1)
-        # iN   =  10**-2/utils.arcmin**2 / (1 + ((uht.l+0.5)/4000)**-3.5)
-    elif freq == "f090":
-        bsigma = 1.4 * utils.fwhm * utils.arcmin * 150.0 / 90.0
-        fconv = utils.dplanck(90e9, utils.T_cmb) / 1e3
-        iN = (1 + ((uht.l + 0.5) / 2000) ** alpha) ** (-1)
-        # iN   =  10**-2/utils.arcmin**2 / (1 + ((uht.l+0.5)/2000)**-3.5)
-    beam = np.exp(-0.5 * uht.l**2 * bsigma**2)
-    rho, kappa = matched_filter_constcorr_dual(
-        thumb_temp * fconv, beam, thumb_ivar / fconv**2, iN, uht=uht
-    )
-    return rho, kappa
+    # First fix any wrapping issues
+    profile[1] = utils.unwind(profile[1])
+    # Then handle any north/south-crossing
+    dec   = profile[0]
+    i0    = len(dec)//2
+    # Starting from the reference point i0, run left and right until
+    # the slope switches sign. That's equivalent to the code below.
+    # The point i0 is double-counted here, but that compensates for
+    # the ddec calculation shortening the array.
+    ddec  = dec[1:]-dec[:-1]
+    good1 = ddec[:i0+1]*ddec[i0] > 0
+    good2 = ddec[i0:]*ddec[i0] > 0
+    good  = np.concatenate([good1,good2])
+    return profile[:,good]
 
 
-def matched_filter_full_map(mapfile:str,
-                            imap:enmap.enmap, 
-                            ivar:enmap.enmap, 
-                            arr:str, 
-                            freq:str
-                            ):
-    """
-    Make matched filter map using Sigurd's way
-    basically copied from this script:/home/yaqiongl/code/depth1_transients/filter_depth1.py on tiger
+class ShiftMatrix:
+    def __init__(self, shape, wcs, profile):
+        """Given a map geometry and a scanning profile [{dec,ra},:]
+        create an operator that can be used to transform a map to/from
+        a coordinate system where the scans are straight vertically.
+        """
+        map_decs, map_ras = enmap.posaxes(shape, wcs)
+        # make sure it's sorted, otherwise interp won't work
+        profile = fix_profile(profile)
+        profile = profile[:,np.argsort(profile[0])]
+        # get the profile ra for each dec in the map,
+        # and since its position is arbitrary, put it in the middle ofthe
+        # map to be safe
+        ras     = np.interp(map_decs, profile[0], profile[1])
+        ras    += np.mean(map_ras)-np.mean(ras)
+        # Transform to x pixel positions
+        xs      = enmap.sky2pix(shape, wcs, [map_decs,ras])[1]
+        # We want to turn this into pixel *offsets* rather than
+        # direct pixel values.
+        dxs     = xs - shape[-1]/2
+        # This operator just shifts whole pixels, it doesn't interpolate
+        dxs     = utils.nint(dxs)
+        self.dxs = dxs
+    def forward(self, map):
+        from pixell import array_ops
+        # Numpy can't do this efficiently
+        return array_ops.roll_rows(map, -self.dxs)
+    def backward(self, map):
+        from pixell import array_ops
+        return array_ops.roll_rows(map,  self.dxs)
 
-    Args:
-        mapfile: file path of the original depth1 map file
-        imap: temp map
-        ivar: inverse variance map
-        arr: array
-        freq: frequency
-    """
-    from pixell import bunch,uharm,analysis
 
-    frequency = float(freq[1:])*1e9
-    fconv = utils.dplanck(frequency)/1e3
+class ShiftDummy:
+    def forward (self, map): return map.copy()
+    def backward(self, map): return map.copy()
+
+
+class NmatShiftConstCorr:
+    def __init__(self, S, ivar, iC):
+        self.S  = S
+        self.H  = ivar**0.5
+        self.iC = iC
+    def apply(self, map, omap=None):
+        sub = map.extract(self.H.shape, self.H.wcs)
+        sub = self.H*self.S.backward(enmap.ifft(self.iC*enmap.fft(self.S.forward(self.H*sub))).real)
+        if omap is None: return sub.extract(map.shape, map.wcs)
+        else: return omap.insert(sub, op=np.add)
+
+
+def build_ips2d_udgrade(map, ivar, lres=(70,100), apod_corr=1):
+    # Apodize
+    white = map*ivar**0.5
+    # Compute the 2d spectrun
+    ps2d = np.abs(enmap.fft(white))**2 / apod_corr
+    del white
+    # Smooth it. Using downgrade/upgrade is crude, but
+    # has the advantage of being local, so that stong values
+    # don't leak far
+    down = np.maximum(1,utils.nint(lres/ps2d.lpixshape()))
+    down[1] = max(down[1], 4)
+    ps2d = enmap.upgrade(enmap.downgrade(ps2d, down, inclusive=True), down, inclusive=True, oshape=ps2d.shape)
+    return 1/ps2d
+
+
+def overlapping_range_iterator(n, 
+                               nblock, 
+                               overlap, 
+                               padding=0
+                               ):
+    from pixell.bunch import Bunch
+    if nblock == 0: return
+    # We don't handle overlap > half our block size
+    min_bsize = n//nblock
+    if min_bsize == 0: raise ValueError("Empty blocks in overlapping_range_iterator. Too low n or too high nblock? n = %d nblock = %d" % (n, nblock))
+    overlap   = min(overlap, min_bsize//2)
+    for bi in range(nblock):
+        # Range we would have had without any overlap etc
+        i1 = bi*n//nblock
+        i2 = (bi+1)*n//nblock
+        # Full range including overlap and padding
+        ifull1 = max(i1-overlap-padding,0)
+        ifull2 = min(i2+overlap+padding,n)
+        # Range that crops away padding
+        iuse1  = max(i1-overlap,0)
+        iuse2  = min(i2+overlap,n)
+        ionly1 = i1+overlap if bi > 0        else 0
+        ionly2 = i2-overlap if bi < nblock-1 else n
+        nover1 = ionly1-iuse1
+        nover2 = iuse2-ionly2
+        left   = (np.arange(nover1)+1)/(nover1+2)
+        right  = (np.arange(nover2)+2)[::-1]/(nover2+2)
+        middle = np.full(ionly2-ionly1,1.0)
+        weight = np.concatenate([left,middle,right])
+        yield Bunch(i1=ifull1, i2=ifull2, p1=iuse1-ifull1, p2=ifull2-iuse2, weight=weight)
+
+def highpass_ips2d(ips2d, 
+                   lknee, 
+                   alpha=-20
+                   ):
+    l = np.maximum(ips2d.modlmap(), 0.5)
+    return ips2d * (1 + (l/lknee)**alpha)**-1
+
+
+def matched_filter_depth1_map(imap:enmap,
+                              ivarmap:enmap,
+                              freq_ghz:float,
+                              infofile:str=None,
+                              maskfile:str=None,
+                              beam_fwhm:float=None,
+                              beam1d:str=None,
+                              shrink_holes:float = 0*utils.fwhm,
+                              apod_edge:float = 10*utils.arcmin,
+                              apod_holes:float = 5*utils.arcmin,
+                              noisemask_lim:float = 0.01,
+                              highpass:bool=False,
+                              band_height = 0*utils.degree,
+                              shift = 0,
+                              simple_lknee = 1000,
+                              simple_alpha = -3.5,
+                              lres = (70,100),
+                              pixwin = 'nn',
+                              simple=True,
+                              ):
+    '''
+    blah
+    '''
+    from pixell import enmap, utils, bunch, uharm, analysis
+    
+    freq = freq_ghz*1e9    
+    ## uK-> mJy/sr
+    fconv = utils.dplanck(freq)/1e3
+
+    if beam1d:
+        beam = np.loadtxt(beam1d).T[1]
+        beam /= np.max(beam)
+        beamis2d=False
+    elif beam_fwhm:
+        bsigma     = beam_fwhm*utils.fwhm
+        uht        = uharm.UHT(imap.shape, imap.wcs)
+        beam       = np.exp(-0.5*uht.l**2*bsigma**2)
+        beamis2d=True
+    else:
+        raise "Need one of beam1d or beam_fwhm"
+    
+    ## convert map in T_cmb to mJy/sr
     imap *= fconv
-    ivar /= fconv**2
-    path = mapfile[:-8]
-    infofile = path + 'info.hdf'
-    info = bunch.read(infofile)
-    ny, nx = imap.shape[-2:]
-    beam_file = '/projects/ACT/adriaand/beams/20220817_beams/coadd_%s_%s_night_beam_tform_jitter_cmb.txt'%(arr,freq) #this path is on tiger3
-    beam1d = np.loadtxt(beam_file).T[1]
-    lfwhm  = np.where(beam1d<0.5)[0][0]
-    fwhm   = 1/(lfwhm*utils.fwhm)/utils.fwhm
-    mask_file = '/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/snaess_srcfind_masks/srcfind_mask_%s.fits'%(freq)   #this path is on tiger3
-    #Parameters I used defult from Sigurd's script
-    shrink_holes=1.0
-    apod_edge = 10
-    apod_holes = 10
-    highpass = 0
-    band_height = 2
-    shift = 0
-    lres = np.array([70,100])
-    simple = False
-    simple_alpha = -3.5
-    simple_lknee = 1000
-    apod_edge   = apod_edge *utils.arcmin
-    apod_holes  = apod_holes*utils.arcmin
-    shrink_holes= shrink_holes*fwhm
+    ivarmap /= fconv**2
+
+    if shift > 0:
+        info = bunch.read(infofile)
+    ny, _ = imap.shape[-2:]
+
     # Build our shift matrix
-    #if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
-    #else:              S = ShiftDummy()
+    if shift > 0: 
+        S = ShiftMatrix(imap.shape, 
+                        map.wcs, 
+                        info.profile
+                        )
+    else:
+        S = ShiftDummy()
     # Set up apodization. A bit messy due to handling two types of apodizion
     # depending on whether it's based on the extrnal mask or not
-    hit  = ivar > 0
-    if shrink_holes > 0:
-        hit = enmap.shrink_mask(enmap.grow_mask(hit, shrink_holes), shrink_holes)
-    # Apodize the edge by decreasing the significance in ivar
-    noise_apod = enmap.apod_mask(hit, apod_edge)
-    apod_holes  = apod_holes*utils.arcmin
-    shrink_holes= shrink_holes*fwhm
-    # Build our shift matrix
-    #if shift > 0: S = ShiftMatrix(imap.shape, imap.wcs, info.profile)
-    #else:              S = ShiftDummy()
-    # Set up apodization. A bit messy due to handling two types of apodizion
-    # depending on whether it's based on the extrnal mask or not
-    hit  = ivar > 0
+    hit  = ivarmap > 0
     if shrink_holes > 0:
         hit = enmap.shrink_mask(enmap.grow_mask(hit, shrink_holes), shrink_holes)
     # Apodize the edge by decreasing the significance in ivar
     noise_apod = enmap.apod_mask(hit, apod_edge)
     # Check if we have a noise model mask too
-    #mask = enmap.read_map(mask_file, geometry=imap.geometry)
-    #mask = np.asanyarray(mask)
-    noise_apod *= 1.0#enmap.apod_mask(1-mask, apod_holes)
-    #del mask
+    mask = hit
+    if maskfile:
+        mask |= enmap.read_map(maskfile, geometry=imap.geometry)
+    # Optionally mask very bright regions
+    if noisemask_lim:
+        bright= np.abs(imap.preflat[0] < noisemask_lim * fconv)
+        rmask = 5*utils.arcmin
+        mask |= bright.distance_transform(rmax=rmask) < rmask
+        del bright
+    mask = np.asanyarray(mask)
+    if mask.size > 0 and mask.ndim > 0:
+        noise_apod *= enmap.apod_mask(1-mask, apod_holes)
+    del mask
     # Build the noise model
-    ## s.forward for 0 shift just returns self... so I'll just use that for now
-    iC  = build_ips2d_udgrade(imap,#S.forward(imap), 
-                              ivar*noise_apod,#S.forward(ivar*noise_apod), 
-                              apod_corr=np.mean(noise_apod**2), 
-                              lres=lres
-                              )
+    iC  = build_ips2d_udgrade(S.forward(imap), S.forward(ivarmap*noise_apod), apod_corr=np.mean(noise_apod**2), lres=lres)
     del noise_apod
     if highpass > 0:
-        iC = highpass_ips2d(iC, highpass)
+        iC = highpass_ips2d(iC, simple_lknee)
+
     # Set up output map buffers
     rho   = imap*0
     kappa = imap*0
     tot_weight = np.zeros(ny, imap.dtype)
     # Bands. At least band_height in height and with at least
-    # 2*apod_edge of overlapping padding at top and bottom
+    # 2*apod_edge of overlapping padding at top and bottom. Using narrow bands
+    # make the flat sky approximation a good approximation
     nband    = utils.ceil(imap.extent()[0]/band_height) if band_height > 0 else 1
     bedge    = utils.ceil(apod_edge/imap.pixshape()[0]) * 2
     boverlap = bedge
-    for bi, r in enumerate(overlapping_range_iterator(ny, nband, boverlap, padding=bedge)):
+    for _, r in enumerate(overlapping_range_iterator(ny, nband, boverlap, padding=bedge)):
         # Get band-local versions of the map etc.
-        bmap, bivar, bhit = [a[...,r.i1:r.i2,:] for a in [imap, ivar, hit]]
-        bny, bnx = bmap.shape[-2:]
-        #if shift > 0: bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)
-        #else:              bS = ShiftDummy()
+        bmap, bivar, bhit = [a[...,r.i1:r.i2,:] for a in [imap, ivarmap, hit]]
+        bny, _ = bmap.shape[-2:]
+        if shift > 0: 
+            bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)
+        else:
+            bS = ShiftDummy()
         # Translate iC to smaller fourier space
         if simple:
             bl  = bmap.modlmap()
@@ -282,14 +284,27 @@ def matched_filter_full_map(mapfile:str,
             biC     = enmap.ifftshift(enmap.resample(enmap.fftshift(iC), bmap.shape, method="spline", order=1))
             biC.wcs = bmap.wcs.deepcopy()
         # 2d beam
-        beam2d  = enmap.samewcs(utils.interp(bmap.modlmap(), np.arange(len(beam1d)), beam1d), bmap)
+        if beamis2d:
+            beam2d = beam
+        else:
+            beam2d  = enmap.samewcs(utils.interp(bmap.modlmap(), np.arange(len(beam1d)), beam1d), bmap)
+        # Pixel window. We include it as part of the 2d beam, which is valid in the flat sky
+        # approximation we use here.
+        if pixwin in ["nn","0"]:
+            beam2d = enmap.apply_window(beam2d, order=0, nofft=True)
+        elif pixwin in ["lin","bilin","1"]:
+            beam2d = enmap.apply_window(beam2d, order=1, nofft=True)
+        elif pixwin in ["none"]:
+            pass
+        else:
+            raise ValueError("Invalid pixel window '%s'" % str(pixwin))
         # Set up apodization
         filter_apod = enmap.apod_mask(bhit, apod_edge)
         bivar       = bivar*filter_apod
         del filter_apod
         # Phew! Actually perform the filtering
         uht  = uharm.UHT(bmap.shape, bmap.wcs, mode="flat")
-        brho, bkappa = analysis.matched_filter_constcorr_dual(bmap, beam2d, bivar, biC, uht)#, S=bS.forward, iS=bS.backward)
+        brho, bkappa = analysis.matched_filter_constcorr_dual(bmap, beam2d, bivar, biC, uht, S=bS.forward, iS=bS.backward)
         del uht
         # Restrict to exposed area
         brho   *= bhit
@@ -299,7 +314,10 @@ def matched_filter_full_map(mapfile:str,
         rho  [...,r.i1+r.p1:r.i2-r.p2,:] += brho  [...,r.p1:bny-r.p2,:]*weight[:,None]
         kappa[...,r.i1+r.p1:r.i2-r.p2,:] += bkappa[...,r.p1:bny-r.p2,:]*weight[:,None]
         tot_weight[r.i1+r.p1:r.i2-r.p2]  += weight
-        del bmap, bivar, bhit,  biC, beam2d, brho, bkappa#,bS,
+        del bmap, bivar, bhit, bS, biC, beam2d, brho, bkappa
 
-    del imap, ivar, iC
+    del imap, ivarmap, iC
+
     return rho, kappa
+
+
