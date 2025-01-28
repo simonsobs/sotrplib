@@ -18,7 +18,7 @@ This script can also be used to coadd depth1 maps before source-finding.
 
 Right now, sources are saved in json files as `SourceCandidate` objects which will in the future be directly stored in the SO source catalog and lightcurve databases.
 
-You have to create the output directory before running.
+> *You have to create the output directory before running.*
 
 ### running on sims
 
@@ -27,17 +27,23 @@ Sources are extracted above s/n ratio of 5 and the input source catalog is limit
 The `--simulation` tag tells the script to record the injected source fluxes given in the catalog along with the recovered source fluxes.
 `--save-json` tells the script to save the extracted sources in .json format and `--plot-output` tells the script where to save the files (name should be changed, but also tells the script where to save the plots if you choose to make them.)
 
-```python trp_pipeline.py --maps /scratch/gpfs/SIMONSOBS/users/amfoster/scratch/pipe-s0004_depth1/1696*/depth1*rho.fits --save-json --plot-output /scratch/gpfs/SIMONSOBS/users/[youruser]/scratch/pipe-s0004_depth1_extracted_sources/ -s 5 --verbose --source-catalog /scratch/gpfs/SIMONSOBS/users/amfoster/so/pipe-s0004_depth1_sims/websky_cat_100_1mJy.csv --flux-threshold 0.03 --simulation```
+```py
+python trp_pipeline.py --maps /scratch/gpfs/SIMONSOBS/users/amfoster/scratch/pipe-s0004_depth1/1696*/depth1*rho.fits --save-json --plot-output /scratch/gpfs/SIMONSOBS/users/[youruser]/scratch/pipe-s0004_depth1_extracted_sources/ -s 5 --verbose --source-catalog /scratch/gpfs/SIMONSOBS/users/amfoster/so/pipe-s0004_depth1_sims/websky_cat_100_1mJy.csv --flux-threshold 0.03 --simulation
+```
 
-Warning: the websky sims have a lot of sources, so make sure to set the flux threshold to avoid including the several hundred thousand low-flux sources.
+> *Warning: the websky sims have a lot of sources, so make sure to set the flux threshold to avoid including the several hundred thousand low-flux sources.*
 
 ### Running on ACT depth1 maps
 
-```python trp_pipeline.py --maps /scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15873/*rho.fits --save-json --plot-output /scratch/gpfs/SIMONSOBS/users/[youruser]/scratch/act_depth1_extracted_sources/ -s 5 --verbose --source-catalog /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits```
+```py
+python trp_pipeline.py --maps /scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15873/*rho.fits --save-json --plot-output /scratch/gpfs/SIMONSOBS/users/[youruser]/scratch/act_depth1_extracted_sources/ -s 5 --verbose --source-catalog /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits
+```
 
 ### Coadding maps
 
-```python trp_pipeline.py --maps /scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/158*/*rho.fits --save-json --plot-output /scratch/gpfs/SIMONSOBS/users/[youruser]/scratch/act_depth1_extracted_sources/ -s 5 --verbose --source-catalog /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits --coadd-n-days 7 ```
+```py
+python trp_pipeline.py --maps /scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/158*/*rho.fits --save-json --plot-output /scratch/gpfs/SIMONSOBS/users/[youruser]/scratch/act_depth1_extracted_sources/ -s 5 --verbose --source-catalog /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits --coadd-n-days 7
+```
 
 This script will run the same way as the previous example, however it will coadd observations in 7 day bins before performing the source-finding. 
 
