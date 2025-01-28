@@ -146,7 +146,7 @@ class Depth1Map:
 
         path2map = str(map_path).split(f'{maptype}.fits')[0]
         if not exists(path2map + "rho.fits") or not exists(path2map + "kappa.fits") or not exists(path2map + "time.fits"):
-            raise FileNotFoundError(f"One of {path2map} [rho/kappa/time].fits not found! Cant load.")
+            raise FileNotFoundError(f"One of {path2map}[rho/kappa/time].fits not found! Cant load.")
 
         
         self.rho_map = enmap.read_map(path2map + "rho.fits") # whatever rho is, only I
