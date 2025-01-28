@@ -103,7 +103,7 @@ def load_websky_csv_catalog(source_cat_file:str,
                                               )
     websky_ra[websky_ra>180.]-=360
     inds = websky_flux>flux_threshold
-    print(sum(inds),' sources above %.2f Jy'%(flux_threshold))
+    print(sum(inds),' sources above %.0f mJy'%(flux_threshold*1000))
     sources = {}
     sources['RADeg'] = websky_ra[inds]
     sources['decDeg'] = websky_dec[inds]
