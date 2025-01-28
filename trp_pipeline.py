@@ -93,6 +93,11 @@ parser.add_argument("--coadd-n-days",
                     default=0,
                     type=int
                     )
+parser.add_argument("--is-coadd", 
+                    help="The input is a coadd map.", 
+                    action='store_true',
+                    default=False,
+                    )
 parser.add_argument("--nighttime-only", 
                     help="Only use maps which were observed between 2300 and 1100 local time.", 
                     action='store_true',
@@ -126,10 +131,18 @@ if len(args.maps) == 1:
     if '*' in args.maps[0]:
         args.maps = glob(args.maps[0])
 
-indexed_map_groups,indexed_map_group_time_ranges,time_bins = get_map_groups(args.maps,
-                                                                            coadd_days=args.coadd_n_days,
-                                                                            restrict_to_night = args.nighttime_only,
-                                                                           )
+if not args.is_coadd:
+    indexed_map_groups,indexed_map_group_time_ranges,time_bins = get_map_groups(args.maps,
+                                                                                coadd_days=args.coadd_n_days,
+                                                                                restrict_to_night = args.nighttime_only,
+                                                                                )
+else:
+    ## only works for a single input map
+    ## should have name [blah]_coadd_[freq]_rho.fits
+    freq_arr_idx = args.maps[0].split('_')[-2]
+    indexed_map_groups = {freq_arr_idx:[args.maps]}
+    indexed_map_group_time_ranges = {freq_arr_idx:[[0,1]]}
+    time_bins = {freq_arr_idx:[[0]]}
 
 for freq_arr_idx in indexed_map_groups:
     if args.verbose:
