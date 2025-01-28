@@ -25,16 +25,20 @@ def get_source_sky_positions(extracted_sources,
 
 
 def get_source_observation_time(extracted_sources,
-                                timemap:np.ndarray
+                                timemap:np.ndarray=None
                                 ):
     '''
     from output of extract_sources, use xpeak and ypeak to 
     get the observed time given the map `timemap`.
     '''
+    
     for f in extracted_sources:
-        x,y = int(extracted_sources[f]['xpeak']),int(extracted_sources[f]['ypeak'])
-        extracted_sources[f]['time'] = timemap[y,x]
-        
+        if not isinstance(timemap,type(None)):
+            x,y = int(extracted_sources[f]['xpeak']),int(extracted_sources[f]['ypeak'])
+            extracted_sources[f]['time'] = timemap[y,x]
+        else:
+            extracted_sources[f]['time'] = np.nan
+            
     return extracted_sources
 
 
@@ -240,10 +244,10 @@ def extract_sources(inmap:enmap,
     output_struct = get_source_sky_positions(output_struct,
                                              inmap
                                             )
-    if not isinstance(timemap,type(None)):
-        output_struct = get_source_observation_time(output_struct,
-                                                    timemap
-                                                   )
+    
+    output_struct = get_source_observation_time(output_struct,
+                                                timemap
+                                                )
     return output_struct
 
 
