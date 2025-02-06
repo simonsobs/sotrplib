@@ -221,7 +221,7 @@ def matched_filter_depth1_map(imap:enmap,
         a mask file to apply to the observation
 
     beam_fwhm:float [None]
-        fwhm of the beam, in arcmin.
+        fwhm of the beam, in radian.
     
     beam1d:str=None
         path to 1D b_l file (i think...)
@@ -271,7 +271,7 @@ def matched_filter_depth1_map(imap:enmap,
         bsigma     = beam_fwhm*utils.fwhm
         uht        = uharm.UHT(imap.shape, imap.wcs)
         beam       = np.exp(-0.5*uht.l**2*bsigma**2)
-        beamis2d=False
+        beamis2d=True
     else:
         raise "Need one of beam1d or beam_fwhm"
     
@@ -345,7 +345,10 @@ def matched_filter_depth1_map(imap:enmap,
             biC.wcs = bmap.wcs.deepcopy()
         # 2d beam
         if beamis2d:
-            beam2d = beam
+            bsigma     = beam_fwhm*utils.fwhm
+            uht        = uharm.UHT(bmap.shape, bmap.wcs)
+            beam       = np.exp(-0.5*uht.l**2*bsigma**2)
+            beam2d = beam.modlmap()#enmap.samewcs(utils.interp(bmap.modlmap(), np.arange(len(beam)), beam), bmap)
         else:
             beam2d  = enmap.samewcs(utils.interp(bmap.modlmap(), np.arange(len(beam)), beam), bmap)
         # Pixel window. We include it as part of the 2d beam, which is valid in the flat sky
