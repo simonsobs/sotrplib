@@ -127,8 +127,7 @@ def make_circle_mask(
 def make_src_mask(thumb, srcs_pix, fwhm=None, mask_radius=None, arr=None, freq=None):
     from ..utils.utils import get_cut_radius
 
-    mask = enmap.zeros(thumb.shape, wcs=thumb.wcs, dtype=None)
-    mask[np.where(thumb > 0)] = 1
+    mask = enmap.ones(thumb.shape, wcs=thumb.wcs, dtype=None)
     map_res = np.abs(thumb.wcs.wcs.cdelt[0])
     if arr and freq and not mask_radius:
         r_pix = get_cut_radius(thumb, arr, freq, fwhm)
@@ -141,6 +140,6 @@ def make_src_mask(thumb, srcs_pix, fwhm=None, mask_radius=None, arr=None, freq=N
             dec_min = max(dec_pix - r_pix, 0)
             dec_max = min(dec_pix + r_pix, thumb.shape[0] - 1)
             ra_min = max(ra_pix - r_pix, 0)
-            ra_max = min(ra_pix + r_pix, thumb.shape[0] - 1)
+            ra_max = min(ra_pix + r_pix, thumb.shape[1] - 1)
             mask[dec_min:dec_max, ra_min:ra_max] = 0
     return mask
