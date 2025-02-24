@@ -684,7 +684,9 @@ def widefield_geometry(res=None,
 def preprocess_map(mapdata,
                    galmask_file='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/mask_for_sources2019_plus_dust.fits',
                    plot_output_dir='./',
+                   tilegrid=1.0,
                    PLOT=False):
+    ## tilegrid in deg, used for setting median ratio flatfielding grid size
     from pixell.enmap import read_map, extract
     from .masks import mask_edge
     from .tiles import get_medrat,get_tmap_tiles
@@ -755,13 +757,13 @@ def preprocess_map(mapdata,
         try:
             med_ratio = get_medrat(mapdata.snr,
                                    get_tmap_tiles(np.nan_to_num(mapdata.time_map)-np.nanmin(mapdata.time_map),
-                                                  1.0, ## 1deg tiles
+                                                  tilegrid,
                                                   mapdata.snr,
                                                   id=f"{mapdata.freq}",
                                                  ),
                                   )
             
-            mapdata.flux*=med_ratio
+            #mapdata.flux*=med_ratio
             mapdata.snr*=med_ratio
             mapdata.flatfielded=True
         except Exception as e:
