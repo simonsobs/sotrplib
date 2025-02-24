@@ -233,7 +233,7 @@ def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
     Returns:
         radius in pixel
     """
-    from .inputs import get_fwhm_arcmin
+    from .actpol_utils import get_fwhm_arcmin
 
     if fwhm is None:
         fwhm = get_fwhm_arcmin(arr, freq)
