@@ -5,6 +5,12 @@ Simons Observatory Time Resolved Pipeline Library
 Porting files from the ACT depth-1 transient pipeline. 
 Creating a test setup of the SO map-domain transient pipeline which will start by ingesting .FITS depth-1 maps.
 
+
+## extra required packages
+
+astroquery
+photutils
+
 ## SO depth-1 sims 
 pipe-s0004 sims for 3 days and 4 optics tubes at 90 / 150 GHz are available in the productdb and have been saved to tiger3 in 
 `/scratch/gpfs/SIMSONSOBS/users/amfoster/scratch/pipe-s0004_depth1/`
