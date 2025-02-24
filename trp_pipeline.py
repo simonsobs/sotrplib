@@ -12,15 +12,17 @@ import numpy as np
 from glob import glob 
 
 from sotrplib.maps.maps import load_maps, preprocess_map
+from sotrplib.maps.masks import make_src_mask
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups
 from sotrplib.sources.finding import extract_sources
+from sotrplib.sources.forced_photometry import enmap_extract_fluxes
 from sotrplib.utils.actpol_utils import get_sourceflux_threshold
 from sotrplib.source_catalog.source_catalog import load_catalog,write_json_catalog
 from sotrplib.sifter.crossmatch import sift
 from sotrplib.utils.plot import plot_map_thumbnail
 
-from pixell.utils import arcmin
+from pixell.utils import arcmin, degree
 
 import argparse
 
@@ -182,6 +184,28 @@ for freq_arr_idx in indexed_map_groups:
                        PLOT=args.plot_all
                       )
         
+        print('Loading Source Catalog')
+        catalog_sources = load_catalog(args.source_catalog,
+                                       flux_threshold = 0.0,
+                                       mask_outside_map=True,
+                                       mask_map=mapdata.flux
+                                      )
+        
+        ## simply grab the pixel corresponding to the ra,dec location of the source
+        ## need to flag sources which are nearby other sources, especially if the fluxes are dissimilar.
+        catalog_forced_photometry_flux,catalog_forced_photometry_dflux,catalog_forced_photometry_pixels = enmap_extract_fluxes(mapdata.flux,
+                                                                                                                               catalog_sources['RADeg']*degree,
+                                                                                                                               catalog_sources['decDeg']*degree,
+                                                                                                                               snr_map=mapdata.snr,
+                                                                                                                               return_pixels=True
+                                                                                                                              )
+
+        catalog_mask = make_src_mask(mapdata.flux,
+                                     catalog_forced_photometry_pixels,
+                                     arr=mapdata.wafer_name,
+                                     freq=mapdata.freq
+                                    )
+
         print('Finding sources...')
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0
         extracted_sources = extract_sources(mapdata.flux,
@@ -201,11 +225,7 @@ for freq_arr_idx in indexed_map_groups:
 
         noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
         flux_thresh = args.flux_threshold if args.flux_threshold else get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
-        catalog_sources = load_catalog(args.source_catalog,
-                                       flux_threshold = flux_thresh,
-                                       mask_outside_map=True,
-                                       mask_map=mapdata.flux
-                                      )
+        
 
         print('Cross-matching found sources with catalog...')
         source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,

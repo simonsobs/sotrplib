@@ -9,7 +9,8 @@ def enmap_extract_fluxes(imap:enmap.ndmap,
                          decs:Union[List,np.array],
                          snr_map:enmap.ndmap=None,
                          dflux_map:enmap.ndmap=None,
-                         atmode='nn'
+                         atmode='nn',
+                         return_pixels = False
                         ):
     '''
     input flux map will have the catalog ra,dec positions extracted using the ndmap.at function
@@ -25,9 +26,11 @@ def enmap_extract_fluxes(imap:enmap.ndmap,
 	* mode=="fourier": Non-uniform fourier interpolation
 
     return two arrays, 1st is flux, 2nd is flux uncert
+    option to return pixel array as well (i.e. the pixel index for the ra,dec of each source)
     '''
     forced_phot_flux = []
     forced_phot_fluxerr = []
+    pixels = []
     for i in range(len(ras)):
         pos = [decs[i],ras[i]]
         fluxi = imap.at(pos,
@@ -45,4 +48,9 @@ def enmap_extract_fluxes(imap:enmap.ndmap,
                                       )
             forced_phot_fluxerr.append(dfluxi)
         
-    return np.array(forced_phot_flux),np.array(forced_phot_fluxerr)
+        pixels.append(imap.sky2pix(pos))
+    
+    if return_pixels:
+        return np.array(forced_phot_flux),np.array(forced_phot_fluxerr),np.array(pixels)
+    else:
+        return np.array(forced_phot_flux),np.array(forced_phot_fluxerr)

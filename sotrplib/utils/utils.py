@@ -220,7 +220,21 @@ def get_map_groups(maps:list,
     return map_groups, map_group_time_range, time_bins
 
 
-def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
+def get_fwhm(freq:str,
+             arr:str=None
+             ):
+    #Array not used yet, but could have per array/freq fwhm
+    fwhm={'f090':2.2,'f150':1.4,'f220':1.0}
+    
+    return fwhm[freq]
+
+
+def get_cut_radius(thumb:enmap.ndmap, 
+                   arr:str, 
+                   freq:str, 
+                   fwhm:float=None,
+                   match_filtered:bool=False
+                   ):
     """
     get desired radius that we want to cut on point sources or signal at the center, radius~2*fwhm
 
@@ -228,18 +242,18 @@ def get_cut_radius(thumb, arr, freq, fwhm=None, match_filtered=False):
         thumb: thumbnail map
         arr: array name
         freq: frequency
+        fwhm: float fwhm (arcmin) or None
         match_filtered: bool , increase radius by 2sqrt(2) if so
 
     Returns:
         radius in pixel
     """
-    from .actpol_utils import get_fwhm_arcmin
-
-    if fwhm is None:
-        fwhm = get_fwhm_arcmin(arr, freq)
-    resolution = np.abs(thumb.wcs.wcs.cdelt[0])
+    
+    if not fwhm:
+        fwhm=get_fwhm(freq,arr)
+    resolution = np.abs(thumb.wcs.wcs.cdelt[0])*pixell_utils.degree/pixell_utils.arcmin
     mf_factor = 2**0.5 if match_filtered else 1.0
-    radius_pix = round(2 * mf_factor * fwhm / (60 * resolution))
+    radius_pix = round(2 * mf_factor * fwhm / resolution)
     return radius_pix
 
 
