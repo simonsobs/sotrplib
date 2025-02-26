@@ -81,65 +81,34 @@ def get_masked_map(
         return imap * edgemask * galmask * planet_mask
 
 
-def make_circle_mask(
-    thumb,
-    ra,
-    dec,
-    fwhm=None,
-    mask_radius=None,
-    arr=None,
-    freq=None,
-):
-    """
-    Mask of center of thumbnail map
-
-    Args:e
-        thumb: thumbnail map
-        arr: array name
-        freq: frequency
-        fwhm: freq+arr fwhm
-        mask_radius [arcmin]: make mask of this radius, ignore freq,arr,fwhm
-        ra: ra of source in degree
-        dec: dec of source in degree
-
-    Returns:
-        mask center of thumbnail map
-    """
-    from pixell.utils import degree
-
+def make_src_mask(imap:enmap.ndmap, 
+                  srcs_pix:list, 
+                  fwhm:float=None, 
+                  mask_radius:list=[], 
+                  arr:str=None, 
+                  freq:str=None
+                  ):
+    '''
+    
+    
+    '''
     from ..utils.utils import get_cut_radius
 
-    mask = enmap.zeros(thumb.shape, wcs=thumb.wcs, dtype=None)
-    mask[np.where(thumb > 0)] = 1
-    map_res = np.abs(thumb.wcs.wcs.cdelt[0])
-    if arr and freq and not mask_radius:
-        r_pix = get_cut_radius(thumb, arr, freq, fwhm)
+    mask = enmap.ones(imap.shape, wcs=imap.wcs, dtype=None)
+    map_res = np.abs(imap.wcs.wcs.cdelt[0])
+    if arr and freq and len(mask_radius)==0:
+        r_pix = get_cut_radius(imap, arr, freq, fwhm)
     else:
-        r_pix = mask_radius / (60 * map_res)
-    center_pix = thumb.sky2pix([dec * degree, ra * degree])
-    mask[
-        round(center_pix[0]) - r_pix : round(center_pix[0]) + r_pix,
-        round(center_pix[1]) - r_pix : round(center_pix[1]) + r_pix,
-    ] = 0
-    return mask
+        r_pix = np.asarray(mask_radius) / (60 * map_res)
 
-
-def make_src_mask(thumb, srcs_pix, fwhm=None, mask_radius=None, arr=None, freq=None):
-    from ..utils.utils import get_cut_radius
-
-    mask = enmap.ones(thumb.shape, wcs=thumb.wcs, dtype=None)
-    map_res = np.abs(thumb.wcs.wcs.cdelt[0])
-    if arr and freq and not mask_radius:
-        r_pix = get_cut_radius(thumb, arr, freq, fwhm)
-    else:
-        r_pix = mask_radius / (60 * map_res)
     if len(srcs_pix) > 0:
-        for cut_pix in srcs_pix:
+        for i,cut_pix in enumerate(srcs_pix):
+            r = int(r_pix[i])
             dec_pix = int(cut_pix[0])
             ra_pix = int(cut_pix[1])
-            dec_min = max(dec_pix - r_pix, 0)
-            dec_max = min(dec_pix + r_pix, thumb.shape[0] - 1)
-            ra_min = max(ra_pix - r_pix, 0)
-            ra_max = min(ra_pix + r_pix, thumb.shape[1] - 1)
+            dec_min = max(dec_pix - r, 0)
+            dec_max = min(dec_pix + r, imap.shape[0] - 1)
+            ra_min = max(ra_pix - r, 0)
+            ra_max = min(ra_pix + r, imap.shape[1] - 1)
             mask[dec_min:dec_max, ra_min:ra_max] = 0
     return mask

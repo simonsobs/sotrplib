@@ -233,7 +233,8 @@ def get_cut_radius(thumb:enmap.ndmap,
                    arr:str, 
                    freq:str, 
                    fwhm:float=None,
-                   match_filtered:bool=False
+                   match_filtered:bool=False,
+                   source_fluxes:list=[]
                    ):
     """
     get desired radius that we want to cut on point sources or signal at the center, radius~2*fwhm
@@ -244,7 +245,7 @@ def get_cut_radius(thumb:enmap.ndmap,
         freq: frequency
         fwhm: float fwhm (arcmin) or None
         match_filtered: bool , increase radius by 2sqrt(2) if so
-
+        source_fluxes: list of fluxes (Jy), used to set mask radius 
     Returns:
         radius in pixel
     """
@@ -253,7 +254,14 @@ def get_cut_radius(thumb:enmap.ndmap,
         fwhm=get_fwhm(freq,arr)
     resolution = np.abs(thumb.wcs.wcs.cdelt[0])*pixell_utils.degree/pixell_utils.arcmin
     mf_factor = 2**0.5 if match_filtered else 1.0
-    radius_pix = round(2 * mf_factor * fwhm / resolution)
+    
+    if len(source_fluxes)>0:
+        flux_factor = np.copy(source_fluxes)
+        flux_factor[flux_factor<1.]=1.
+        flux_factor = flux_factor**0.5
+    else:
+        flux_factor = 1.0
+    radius_pix = np.rint(2 * mf_factor * flux_factor * fwhm / resolution)
     return radius_pix
 
 
