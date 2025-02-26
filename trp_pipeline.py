@@ -14,7 +14,7 @@ from glob import glob
 from sotrplib.maps.maps import load_maps, preprocess_map
 from sotrplib.maps.masks import make_src_mask
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
-from sotrplib.utils.utils import get_map_groups
+from sotrplib.utils.utils import get_map_groups, get_cut_radius
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import enmap_extract_fluxes
 from sotrplib.utils.actpol_utils import get_sourceflux_threshold
@@ -200,11 +200,24 @@ for freq_arr_idx in indexed_map_groups:
                                                                                                                                return_pixels=True
                                                                                                                               )
 
+        ## get source mask radius based on flux.
+        source_mask_radius = get_cut_radius(mapdata.flux,
+                                            mapdata.wafer_name,
+                                            mapdata.freq,
+                                            source_fluxes=catalog_sources['fluxJy']
+                                            )
+
+        ## simple catalog mask
         catalog_mask = make_src_mask(mapdata.flux,
                                      catalog_forced_photometry_pixels,
                                      arr=mapdata.wafer_name,
-                                     freq=mapdata.freq
+                                     freq=mapdata.freq,
+                                     mask_radius=source_mask_radius
                                     )
+
+        ## mask the flux and snr after extracting via forced photometry
+        mapdata.flux*=catalog_mask
+        mapdata.snr*=catalog_mask
 
         print('Finding sources...')
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0
