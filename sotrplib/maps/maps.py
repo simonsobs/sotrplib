@@ -19,7 +19,7 @@ class Depth1Map:
         time_map: Path=None,
         wafer_name: str=None,
         freq: str=None,
-        map_ctime: float=None,
+        map_ctime: float=-1.,
         is_thumbnail: bool = False,
         res:float=None,
         map_start_time:float=None
@@ -192,6 +192,7 @@ class Depth1Map:
             self.freq  = h[0].header['FREQ']
         except Exception as e:
             print(e,'Failed to read FREQ')
+            self.freq = str(map_path).split('/')[-1].split('_')[3]
 
         if not self.res:
             self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])*degree

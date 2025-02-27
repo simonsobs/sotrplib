@@ -4,13 +4,16 @@ from typing import List, Union
 from pixell import enmap
 
 
-def enmap_extract_fluxes(imap:enmap.ndmap,
-                         ras:Union[List,np.array],
-                         decs:Union[List,np.array],
+def enmap_extract_fluxes(flux_map:enmap.ndmap,
+                         source_catalog:dict,
                          snr_map:enmap.ndmap=None,
                          dflux_map:enmap.ndmap=None,
-                         atmode='nn',
-                         return_pixels = False
+                         atmode:str='nn',
+                         return_pixels:bool=False,
+                         rakey:str='RADeg',
+                         deckey:str='decDeg',
+                         fluxkey:str='fluxJy',
+                         dfluxkey:str='err_fluxJy'
                         ):
     '''
     input flux map will have the catalog ra,dec positions extracted using the ndmap.at function
@@ -28,29 +31,43 @@ def enmap_extract_fluxes(imap:enmap.ndmap,
     return two arrays, 1st is flux, 2nd is flux uncert
     option to return pixel array as well (i.e. the pixel index for the ra,dec of each source)
     '''
-    forced_phot_flux = []
-    forced_phot_fluxerr = []
+    from pixell.utils import degree
+
+    ras = source_catalog.pop(rakey)*degree
+    decs = source_catalog.pop(deckey)*degree
+    
+    if fluxkey in source_catalog:
+        fluxes = source_catalog.pop(fluxkey)
+    else:
+        fluxes = np.zeros(len(ras))*np.nan
+    if dfluxkey in source_catalog:
+        fluxerrs = source_catalog.pop(dfluxkey)
+    else:
+        fluxerrs = np.zeros(len(ras))*np.nan
+    
     pixels = []
     for i in range(len(ras)):
         pos = [decs[i],ras[i]]
-        fluxi = imap.at(pos,
-                        mode=atmode
-                        )
-        forced_phot_flux.append(fluxi)
-        if isinstance(dflux_map,type(enmap.ndmap)):
-            dfluxi = dflux_map.at(pos,
-                                  mode=atmode
-                                  )
-            forced_phot_fluxerr.append(dfluxi)
-        elif isinstance(snr_map,type(enmap.ndmap)):
-            dfluxi = fluxi/snr_map.at(pos,
-                                      mode=atmode
+        fluxes[i] = flux_map.at(pos,
+                                mode=atmode
+                               )
+        if isinstance(dflux_map,enmap.ndmap):
+            fluxerrs[i] = dflux_map.at(pos,
+                                       mode=atmode
                                       )
-            forced_phot_fluxerr.append(dfluxi)
-        
-        pixels.append(imap.sky2pix(pos))
+        elif isinstance(snr_map,enmap.ndmap):
+            fluxerrs[i] = fluxes[i]/snr_map.at(pos,
+                                               mode=atmode
+                                              )
+
+        pixels.append(flux_map.sky2pix(pos))
+
+    source_catalog[fluxkey] = np.array(fluxes)
+    source_catalog[dfluxkey] = np.array(fluxerrs)
+    source_catalog[rakey] = ras/degree
+    source_catalog[deckey] = decs/degree
     
     if return_pixels:
-        return np.array(forced_phot_flux),np.array(forced_phot_fluxerr),np.array(pixels)
-    else:
-        return np.array(forced_phot_flux),np.array(forced_phot_fluxerr)
+        source_catalog['pix'] = np.array(pixels)
+    
+    return source_catalog

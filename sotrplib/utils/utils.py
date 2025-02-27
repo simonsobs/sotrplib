@@ -257,7 +257,7 @@ def get_cut_radius(thumb:enmap.ndmap,
     
     if len(source_fluxes)>0:
         flux_factor = np.copy(source_fluxes)
-        flux_factor[flux_factor<1.]=1.
+        flux_factor[(flux_factor<1.) | (np.isnan(flux_factor))]=1.
         flux_factor = flux_factor**0.5
     else:
         flux_factor = 1.0

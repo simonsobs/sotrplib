@@ -6,7 +6,7 @@ class SourceCatalog():
         self.dec=dec
 
 def load_act_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits',
-                    flux_threshold:float=0
+                     flux_threshold:float=0
                     ):
     '''
     source_cat_file is path to source catalog
@@ -22,7 +22,8 @@ def load_act_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster
     sources = sourcecat[sourcecat["fluxJy"] >= (flux_threshold)]
     sources['RADeg'][sources["RADeg"]<0]+=360.
     print(len(sources["decDeg"]), 'sources above flux threshold %.1f mJy'%(flux_threshold*1000))
-    return sources
+    out_dict = {key:sources[key] for key in sources.colnames}
+    return out_dict
 
 
 def convert_json_to_act_format(json_list):
