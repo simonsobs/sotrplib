@@ -145,13 +145,27 @@ class Depth1Map:
             maptype='ivar'    
 
         path2map = str(map_path).split(f'{maptype}.fits')[0]
-        if not exists(path2map + "rho.fits") or not exists(path2map + "kappa.fits") or not exists(path2map + "time.fits"):
-            raise FileNotFoundError(f"One of {path2map}[rho/kappa/time].fits not found! Cant load.")
+        if not exists(path2map + "rho.fits") or not exists(path2map + "kappa.fits"):
+            raise FileNotFoundError(f"One of {path2map}[rho/kappa].fits not found! Cant load.")
 
+        if not exists(path2map + "time.fits"):
+            from glob import glob
+            timefiles = glob(path2map+'*time.fits')
+            if len(timefiles) == 0:
+                print(str(path2map)+'*time.fits')
+                raise FileNotFoundError("No time map found!")
+            elif 'weighted' in timefiles[0]:
+                time_map_file = timefiles[0]
+                weighted_time=True
+        else:
+            time_map_file = path2map + "time.fits"
+            weighted_time = False
         
         self.rho_map = enmap.read_map(path2map + "rho.fits") # whatever rho is, only I
         self.kappa_map = enmap.read_map(path2map + "kappa.fits") # whatever kappa is, only I
-        self.time_map=enmap.read_map(path2map + "time.fits")
+        self.time_map=enmap.read_map(time_map_file)
+        if weighted_time:
+            self.time_map/=self.kappa_map
         
         ## load in extra info, like obs in map, freq, and Ndays coadded.
         self.load_coadd_info(map_path)
