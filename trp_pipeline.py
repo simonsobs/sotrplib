@@ -1,10 +1,4 @@
 """
-Emily Biermann
-6/30/23
-
-Script to test transient pipeline driver function
-
-Updated Oct 2024, by Allen Foster 
 Testing for use as SO Time domain pipeline test.
 
 """
@@ -18,12 +12,11 @@ from sotrplib.utils.utils import get_map_groups, get_cut_radius
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import enmap_extract_fluxes
 from sotrplib.sources.sources import SourceCandidate
-from sotrplib.utils.actpol_utils import get_sourceflux_threshold
 from sotrplib.source_catalog.source_catalog import load_catalog,write_json_catalog
 from sotrplib.sifter.crossmatch import sift
 from sotrplib.utils.plot import plot_map_thumbnail
 
-from pixell.utils import arcmin, degree
+from pixell.utils import arcmin
 
 import argparse
 
@@ -222,10 +215,11 @@ for freq_arr_idx in indexed_map_groups:
                                 )
 
         ## get source mask radius based on flux.
-        source_mask_radius = get_cut_radius(mapdata.flux,
+        source_mask_radius = get_cut_radius(mapdata.res/arcmin,
                                             mapdata.wafer_name,
                                             mapdata.freq,
-                                            source_fluxes=catalog_sources['fluxJy']
+                                            source_amplitudes=catalog_sources['fluxJy'],
+                                            map_noise=catalog_sources['err_fluxJy']
                                             )
 
         ## simple catalog mask
