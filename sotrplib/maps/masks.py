@@ -89,17 +89,19 @@ def make_src_mask(imap:enmap.ndmap,
                   freq:str=None
                   ):
     '''
-    
+    mask_radius in pixels, can be gotten using
+    sotrplib.utils.utils.get_pix_from_peak_to_noise
     
     '''
     from ..utils.utils import get_cut_radius
+    from pixell.utils import degree,arcmin
 
     mask = enmap.ones(imap.shape, wcs=imap.wcs, dtype=None)
-    map_res = np.abs(imap.wcs.wcs.cdelt[0])
+    map_res = np.abs(imap.wcs.wcs.cdelt[0])*degree
     if arr and freq and len(mask_radius)==0:
-        r_pix = get_cut_radius(imap, arr, freq, fwhm)
+        r_pix = get_cut_radius(map_res/arcmin, arr, freq, fwhm)
     else:
-        r_pix = np.asarray(mask_radius) / (60 * map_res)
+        r_pix = np.asarray(mask_radius) 
 
     if len(srcs_pix) > 0:
         for i,cut_pix in enumerate(srcs_pix):
