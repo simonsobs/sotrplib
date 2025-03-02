@@ -3,6 +3,7 @@ import math
 import os
 import os.path as op
 import numpy as np
+from typing import Union
 from pixell import enmap
 from pixell import utils as pixell_utils
 from scipy import stats
@@ -14,6 +15,7 @@ from tqdm import tqdm
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
+
 
 def radec_to_str_name(ra: float, 
                       dec: float, 
@@ -189,7 +191,10 @@ def get_map_groups(maps:list,
     mintime = np.min(times)
     maxtime = np.max(times)
     full_time_range = (maxtime-mintime)/86400.
-    print('Full time range: %.1f days'%(full_time_range))
+    if full_time_range>1:
+        print('Full time range: %.1f days'%(full_time_range))
+    else:
+        print('Full time range: %.1f hours'%(full_time_range*24))
     if coadd_days !=0:
         if mintime==maxtime:
             time_bins=[mintime]
@@ -229,39 +234,101 @@ def get_fwhm(freq:str,
     return fwhm[freq]
 
 
-def get_cut_radius(thumb:enmap.ndmap, 
+def get_pix_from_peak_to_noise(peak:Union[float,list],
+                               noise:Union[float,list],
+                               fwhm_pix:Union[float,list],
+                               minpix:Union[int,float]=1
+                              ):
+    '''
+    Given a gaussian with amplitude, `peak`, and fwhm in units of pixels, `fwhm_pix`, 
+    calculate the distance from the peak to the noise level given by `noise`.
+
+    Assumes that peak, noise, fwhm_pix are either the same length or floats 
+    (i.e. the same noise value or same fwhm for each source)
+
+    Units are in pixels.
+
+    minpix provides the minimum radius.
+
+    Returns array of pixels corresponding to mask radius for each source.
+    '''
+    from astropy.modeling.models import Gaussian1D
+    
+    mask_pix = []
+    std = np.atleast_1d(fwhm_pix)/(2*np.sqrt(2*np.log(2)))
+    peak = np.atleast_1d(peak)
+    noise = np.atleast_1d(noise)
+    for i in range(len(peak)):
+        ## quick check that they're 
+        if len(std)==1:
+            stdi = std[0]
+        else:
+            stdi = std[i]
+        if len(noise)==1:
+            noisei = noise[0]
+        else:
+            noisei = noise[i]
+            
+        f = Gaussian1D(peak[i],stddev=stdi)
+        pix = 0
+        while f(pix)>noisei:
+            pix+=1
+        if pix<minpix:
+            pix=minpix
+        mask_pix.append(pix)
+    return np.atleast_1d(mask_pix)
+
+
+def get_cut_radius(map_res_arcmin:float, 
                    arr:str, 
                    freq:str, 
-                   fwhm:float=None,
+                   fwhm_arcmin:float=None,
                    match_filtered:bool=False,
-                   source_fluxes:list=[]
+                   source_amplitudes:list=[],
+                   map_noise:list=[],
+                   min_radius_arcmin:float=0.5,
+                   max_radius_arcmin:float=60.0
                    ):
     """
-    get desired radius that we want to cut on point sources or signal at the center, radius~2*fwhm
+    get desired radius that we want to cut on point sources or signal at the center
 
+    Uses the noise in the map which can be a single value or localized for each source.
+
+    if source_amplitudes provided, will perform a scaling of the cut radius up to max_radius 
+    by taking the number of pixels required for a gaussian with peak amplitude to fall below the map noise.
     Args:
-        thumb: thumbnail map
+        map_res_arcmin: resolution of map, in arcmin
         arr: array name
         freq: frequency
-        fwhm: float fwhm (arcmin) or None
+        fwhm_arcmin: float fwhm (arcmin) or None
         match_filtered: bool , increase radius by 2sqrt(2) if so
-        source_fluxes: list of fluxes (Jy), used to set mask radius 
+        source_amplitudes: list of amplitudes, used to set mask radius 
+        map_noise: noise in the map, for scaling mask radius.
+        max_radius_arcmin: maximum mask radius, in arcmin
     Returns:
         radius in pixel
     """
     
-    if not fwhm:
-        fwhm=get_fwhm(freq,arr)
-    resolution = np.abs(thumb.wcs.wcs.cdelt[0])*pixell_utils.degree/pixell_utils.arcmin
-    mf_factor = 2**0.5 if match_filtered else 1.0
+    if not fwhm_arcmin:
+        fwhm_arcmin=get_fwhm(freq,arr)
     
-    if len(source_fluxes)>0:
-        flux_factor = np.copy(source_fluxes)
-        flux_factor[(flux_factor<1.) | (np.isnan(flux_factor))]=1.
-        flux_factor = flux_factor**0.5
+    ## I guess this is needed for filtering wings?
+    mf_factor = 2**0.5 if match_filtered else 1.0
+
+    ## sqrt amplitude scaling after some amplitude pivot
+    if len(source_amplitudes)==0:
+        radius_pix = np.rint(2 * mf_factor * fwhm_arcmin / map_res_arcmin)
     else:
-        flux_factor = 1.0
-    radius_pix = np.rint(2 * mf_factor * flux_factor * fwhm / resolution)
+        if len(map_noise)==0:
+            raise ValueError("Map noise must be given")
+        radius_pix = get_pix_from_peak_to_noise(source_amplitudes,
+                                                map_noise,
+                                                fwhm_arcmin/map_res_arcmin,
+                                                minpix=min_radius_arcmin/map_res_arcmin
+                                                )
+
+    max_radius_pix = max_radius_arcmin/map_res_arcmin
+    radius_pix[radius_pix>max_radius_pix] = max_radius_pix
     return radius_pix
 
 
