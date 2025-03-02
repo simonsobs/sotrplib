@@ -467,6 +467,12 @@ def get_thumbnail(imap:enmap.ndmap,
                                 size_deg * degree,
                                 proj=proj,
                                 )
+    if np.all(np.isnan(omap)):
+        omap = reproject.thumbnails(np.nan_to_num(imap), 
+                                    [dec, ra], 
+                                    size_deg * degree,
+                                    proj=proj,
+                                    )
     return omap
 
 
