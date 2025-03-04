@@ -2,9 +2,36 @@ import numpy as np
 import pandas as pd
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astroquery.gaia import Gaia
+
 from astroquery.simbad import Simbad
 from tqdm import tqdm
+
+
+def cone_query_gaia(ra_deg:float,
+                    dec_deg:float,
+                    radius_arcmin:float=1.0,
+                    columns=['designation','ra','ra_error','dec','dec_error','parallax','parallax_error','phot_g_mean_mag', 'phot_g_mean_flux_error']
+                    ):
+    '''
+    Query gaia using astroquery.
+    Performs cone search at ra_deg,dec_deg with a search radius of radius_arcmin
+    '''
+    from astroquery.gaia import Gaia 
+    Gaia.ROW_LIMIT = 100  
+    coord = SkyCoord(ra=ra_deg, 
+                     dec=dec_deg,
+                     unit=(u.degree, u.degree), 
+                     frame='icrs'
+                     )
+    gaia_results = Gaia.cone_search(coord, 
+                                    radius=u.Quantity(radius_arcmin, u.arcmin),
+                                    columns=columns
+                                    ).get_results()
+    if not gaia_results:
+        return []
+    else:
+        return gaia_results
+    
 
 
 def SIMBAD(ra, dec, radius):
