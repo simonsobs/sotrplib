@@ -69,8 +69,8 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     mapres = abs(sim_map.wcs.wcs.cdelt[0])*degree
     
     gaussfwhm = gauss_fwhm_arcmin*arcmin/mapres
-    minfwhm = gaussfwhm-fwhm_uncert_frac*gaussfwhm
-    maxfwhm = gaussfwhm+fwhm_uncert_frac*gaussfwhm
+    minfwhm = gaussfwhm-(fwhm_uncert_frac*gaussfwhm)
+    maxfwhm = gaussfwhm+(fwhm_uncert_frac*gaussfwhm)
 
     if not seed:
         print('No seed provided, setting seed with current ctime')
