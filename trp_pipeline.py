@@ -1,10 +1,4 @@
 """
-Emily Biermann
-6/30/23
-
-Script to test transient pipeline driver function
-
-Updated Oct 2024, by Allen Foster 
 Testing for use as SO Time domain pipeline test.
 
 """
@@ -12,10 +6,12 @@ import numpy as np
 from glob import glob 
 
 from sotrplib.maps.maps import load_maps, preprocess_map
+from sotrplib.maps.masks import make_src_mask
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
-from sotrplib.utils.utils import get_map_groups
+from sotrplib.utils.utils import get_map_groups, get_cut_radius
 from sotrplib.sources.finding import extract_sources
-from sotrplib.utils.actpol_utils import get_sourceflux_threshold
+from sotrplib.sources.forced_photometry import enmap_extract_fluxes
+from sotrplib.sources.sources import SourceCandidate
 from sotrplib.source_catalog.source_catalog import load_catalog,write_json_catalog
 from sotrplib.sifter.crossmatch import sift
 from sotrplib.utils.plot import plot_map_thumbnail
@@ -73,13 +69,9 @@ parser.add_argument("-s",
                     type=float
                     )
 parser.add_argument("--flux-threshold", 
-                    help="Flux threshold for catalog matching. in units of Jy. If None, uses act rms values.", 
-                    default=None,
+                    help="Flux threshold for catalog matching. in units of Jy.", 
+                    default=0.0,
                     type=float,
-                    )
-parser.add_argument("--ignore-known-sources", 
-                    help="Only record sources which do not have catalog matches.", 
-                    action='store_true'
                     )
 parser.add_argument("--candidate-limit", 
                     help="Flag map as bad beyond this number of candidate transients.", 
@@ -182,31 +174,86 @@ for freq_arr_idx in indexed_map_groups:
                        PLOT=args.plot_all
                       )
         
+        print('Loading Source Catalog')
+        catalog_sources = load_catalog(args.source_catalog,
+                                       flux_threshold = args.flux_threshold,
+                                       mask_outside_map=True,
+                                       mask_map=mapdata.flux
+                                      )
+        
+        ## simply grab the pixel corresponding to the ra,dec location of the source
+        catalog_sources = enmap_extract_fluxes(mapdata.flux,
+                                               catalog_sources,
+                                               dflux_map=mapdata.flux/mapdata.snr,
+                                               return_pixels=True
+                                              )
+
+        
+        known_sources = []
+        for i in range(len(catalog_sources['name'])):
+            cs = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
+                                 dec=catalog_sources['decDeg'][i],
+                                 flux=catalog_sources['fluxJy'][i],
+                                 dflux=catalog_sources['err_fluxJy'][i],
+                                 snr=np.nan,
+                                 freq=str(mapdata.freq),
+                                 arr=mapdata.wafer_name,
+                                 ctime=mapdata.map_ctime,
+                                 sourceID=catalog_sources['name'][i],
+                                 crossmatch_name=catalog_sources['name'][i], 
+                                )
+            if cs.dflux>0.0:
+                cs.snr = cs.flux/cs.dflux
+
+            known_sources.append(cs)
+
+        ## update the source catalog
+        if args.save_json:
+            write_json_catalog(known_sources,
+                                out_dir=args.plot_output,
+                                out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_cataloged_sources.json',
+                                )
+
+        ## get source mask radius based on flux.
+        source_mask_radius = get_cut_radius(mapdata.res/arcmin,
+                                            mapdata.wafer_name,
+                                            mapdata.freq,
+                                            source_amplitudes=catalog_sources['fluxJy'],
+                                            map_noise=catalog_sources['err_fluxJy']
+                                            )
+
+        ## simple catalog mask
+        catalog_mask = make_src_mask(mapdata.flux,
+                                     catalog_sources['pix'],
+                                     arr=mapdata.wafer_name,
+                                     freq=mapdata.freq,
+                                     mask_radius=source_mask_radius
+                                    )
+
+        ## mask the flux and snr after extracting via forced photometry
+        mapdata.flux*=catalog_mask
+        mapdata.snr*=catalog_mask
+        del catalog_mask
+
         print('Finding sources...')
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0
         extracted_sources = extract_sources(mapdata.flux,
                                             timemap=mapdata.time_map+t0,
                                             maprms=mapdata.flux/mapdata.snr,
                                             nsigma=args.snr_threshold,
-                                            minrad=[0.5,1.5,3.0,5.0,10.0,20.0,60.0],
-                                            sigma_thresh_for_minrad=[0,3,5,10,50,100,200],
+                                            minrad=[0.5,1.5,3.0,5.0,10.0,60.0],
+                                            sigma_thresh_for_minrad=[0,3,5,10,50,1000],
                                             res=mapdata.res/arcmin,
                                             )
 
         if not extracted_sources:
-            del mapdata
+            ## no sources were extracted from the map.
+            del mapdata,known_sources
             continue
         
         print(len(extracted_sources.keys()),'sources found.')
 
-        noise_red = np.sqrt(mapdata.coadd_days) if mapdata.coadd_days else 1.
-        flux_thresh = args.flux_threshold if args.flux_threshold else get_sourceflux_threshold(mapdata.freq)/1000./ noise_red
-        catalog_sources = load_catalog(args.source_catalog,
-                                       flux_threshold = flux_thresh,
-                                       mask_outside_map=True,
-                                       mask_map=mapdata.flux
-                                      )
-
+        
         print('Cross-matching found sources with catalog...')
         source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
                                                                        catalog_sources,
@@ -214,39 +261,12 @@ for freq_arr_idx in indexed_map_groups:
                                                                        arr=mapdata.wafer_name
                                                                       )
 
-        if args.simulation:
-            injected_sources = []
-            from sotrplib.sources.sources import SourceCandidate
-            for i in range(len(catalog_sources['name'])):
-                if catalog_sources['err_fluxJy'][i] == 0.0:
-                    source_snr = np.inf
-                else:
-                    source_snr = catalog_sources['fluxJy'][i]/catalog_sources['err_fluxJy'][i]
-                ic = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
-                                     dec=catalog_sources['decDeg'][i],
-                                     flux=catalog_sources['fluxJy'][i]*1000,
-                                     dflux=catalog_sources['err_fluxJy'][i]*1000,
-                                     snr=source_snr,
-                                     freq=str(mapdata.freq),
-                                     arr=mapdata.wafer_name,
-                                     ctime=mapdata.map_ctime,
-                                     sourceID=catalog_sources['name'][i],
-                                     crossmatch_name=catalog_sources['name'][i], 
-                                    )
-                injected_sources.append(ic)
+        if len(source_candidates)>0:
+            print('Source found in blind search which is associated with catalog... masking may have a problem.')
+            ## do we do anything here? add to updated source catalog?
+            ## should only be possible if the masking radius and the source matching radius are significantly different.
+            print(source_candidates)
 
-        if not args.ignore_known_sources:
-            if args.save_json:
-                write_json_catalog(source_candidates,
-                                   out_dir=args.plot_output,
-                                   out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_cataloged_sources.json',
-                                  )
-                if args.simulation:
-                    write_json_catalog(injected_sources,
-                                       out_dir=args.plot_output,
-                                       out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_injected_sources.json',
-                                      )
-                    
         if len(transient_candidates)<=args.candidate_limit:
             if args.save_json:
                 write_json_catalog(transient_candidates,
@@ -270,4 +290,4 @@ for freq_arr_idx in indexed_map_groups:
         else:
             print('Too many transient candidates (%i)... something fishy'%len(transient_candidates))
 
-        del mapdata,source_candidates,transient_candidates,noise_candidates,extracted_sources,catalog_sources
+        del mapdata,source_candidates,transient_candidates,noise_candidates,extracted_sources,catalog_sources,known_sources

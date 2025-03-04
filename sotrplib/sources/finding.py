@@ -1,5 +1,8 @@
 import numpy as np
-from pixell.enmap import enmap
+from typing import Union
+from pixell.enmap import ndmap
+
+
 '''
 Source finding routines from spt3g_software.
 Photutils version implemented by Melanie Archipley
@@ -42,9 +45,9 @@ def get_source_observation_time(extracted_sources,
     return extracted_sources
 
 
-def extract_sources(inmap:enmap,
-                    timemap:enmap=None,
-                    maprms:float=None,
+def extract_sources(inmap:ndmap,
+                    timemap:ndmap=None,
+                    maprms:Union[float,ndmap]=None,
                     nsigma:float=5.0,
                     minrad:list=[0.5],
                     sigma_thresh_for_minrad:list=[0.0],
@@ -56,13 +59,13 @@ def extract_sources(inmap:enmap,
 
     Arguments
     ---------
-    inmap : 2d array or enmap
+    inmap : 2d array or enmap.ndmap
         2d-array representing an unweighted flux map.
-        Must be an enmap to get sky coordinates.
-    timemap : enmap (or 2D array)
+        Must be an enmap.ndmap to get sky coordinates.
+    timemap : enmap.ndmap (or 2D array)
         time at each pixel, used to get observed time if provided
-    maprms : float
-        The 1-sigma noise level in the map. If not provided, will be calculated.
+    maprms : enmap.ndmap or float
+        The 1-sigma noise level in the map which can be postition-dependent. If None, will be calculated as rms.
     nsigma :
         Required signal-to-noise to detect a source.
     minrad : array-like
@@ -73,7 +76,7 @@ def extract_sources(inmap:enmap,
         radii. Only used if more than one element in ``minrad``.
     res :
         Resolution of map, in arcmin.  Required if ``inmap`` is an array.
-    pixel_mask : 2d array or enmap
+    pixel_mask : 2d array or enmap.ndmap
         Optional mask applied to map before source finding.
     
     Returns
@@ -93,7 +96,7 @@ def extract_sources(inmap:enmap,
 
     if res is None:
         try:
-            res = np.abs(inmap.wcs.wcs.cdelt[0])
+            res = np.abs(inmap.wcs.wcs.cdelt[0])*degree/arcmin
         except AttributeError:
             raise ValueError("Argument `res` required if inmap is an array")
 
@@ -111,7 +114,7 @@ def extract_sources(inmap:enmap,
         imap*=pixel_mask 
 
     # get rms in map if not supplied
-    if maprms is None:
+    if isinstance(maprms,type(None)):
         whn0 = np.where(np.abs(inmap) > 1.0e-8)
         if len(whn0[0]) == 0:
             maprms = np.nanstd(inmap)
@@ -251,8 +254,8 @@ def extract_sources(inmap:enmap,
     return output_struct
 
 
-def find_using_photutils(Tmap:np.ndarray, 
-                         signoise:float=None,
+def find_using_photutils(Tmap:ndmap, 
+                         signoise:Union[float,ndmap]=None,
                          minnum:int=2, 
                          nsigma:float=5.0
                          ):
@@ -267,11 +270,10 @@ def find_using_photutils(Tmap:np.ndarray,
 
     Arguments
     ---------
-    Tmap: enamp,ndarray
-        enmap,ndarray, e.g. representing a flux map.
-    signoise : float
-        global rms of the map.
-        ## need to update this to use tiled rms map - it's all set up, just need to do it.
+    Tmap: enamp.ndmap
+        Intensity map.
+    signoise : float or enmap.ndmap
+        Noise in the map, can be float or enmap.ndmap of same shape as Tmap.
     offset : float
         Zero point of map.
     minnum : int
@@ -329,13 +331,13 @@ def find_using_photutils(Tmap:np.ndarray,
 
     groups = {k: 0 for k in list(default_keys) + extra_keys}
 
-    if not isinstance(Tmap, np.ndarray):
-        Tmap = np.asarray(Tmap)
+    ## convert ndmap to 2D numpy array for photutils
+    Tmap = np.asarray(Tmap)
     assert len(Tmap.shape) == 2
-    if not isinstance(signoise, np.ndarray):
+    if isinstance(signoise, ndmap):
         signoise = np.asarray(signoise)
-    assert signoise.shape == Tmap.shape
-
+        assert signoise.shape == Tmap.shape
+    
     img = pseg.detect_sources(Tmap, 
                               threshold=nsigma * signoise, 
                               npixels=minnum
@@ -380,7 +382,7 @@ def find_using_photutils(Tmap:np.ndarray,
 
 
 def mask_sources_outside_map(sourcecat, 
-                             maskmap:enmap
+                             maskmap:ndmap
                             ):
     """
     Determines if source is inside mask or observed region
