@@ -66,7 +66,7 @@ def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matche
         return mask
 
 def gaia_match(cand:SourceCandidate,
-               maxmag:float=20,
+               maxmag:float=16,
                maxsep_deg:float=1*pixell_utils.degree,
                parallax_required=True,
                mag_key = 'phot_g_mean_mag',
@@ -76,7 +76,7 @@ def gaia_match(cand:SourceCandidate,
     gaia_results = cone_query_gaia(cand.ra,cand.dec,radius_arcmin=cand.fwhm)
 
     parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
-    gaia_valid = gaia_results[(gaia_results[mag_key]<15) & parallax & (gaia_results[sep_key]<maxsep_deg)]
+    gaia_valid = gaia_results[(gaia_results[mag_key]<maxmag) & parallax & (gaia_results[sep_key]<maxsep_deg)]
 
     ## calculate pvalue, sort on pvalue.
 
