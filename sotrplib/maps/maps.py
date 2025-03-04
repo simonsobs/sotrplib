@@ -19,10 +19,11 @@ class Depth1Map:
         time_map: Path=None,
         wafer_name: str=None,
         freq: str=None,
-        map_ctime: float=None,
+        map_ctime: float=-1.,
         is_thumbnail: bool = False,
         res:float=None,
-        map_start_time:float=None
+        map_start_time:float=None,
+        units:str=None
     ):
         self.inverse_variance_map = inverse_variance_map
         self.intensity_map = intensity_map
@@ -31,6 +32,7 @@ class Depth1Map:
         self.time_map = time_map
         self.flux = None
         self.snr = None
+        self.units = units
 
         self.wafer_name = wafer_name
         self.freq = freq
@@ -145,13 +147,27 @@ class Depth1Map:
             maptype='ivar'    
 
         path2map = str(map_path).split(f'{maptype}.fits')[0]
-        if not exists(path2map + "rho.fits") or not exists(path2map + "kappa.fits") or not exists(path2map + "time.fits"):
-            raise FileNotFoundError(f"One of {path2map}[rho/kappa/time].fits not found! Cant load.")
+        if not exists(path2map + "rho.fits") or not exists(path2map + "kappa.fits"):
+            raise FileNotFoundError(f"One of {path2map}[rho/kappa].fits not found! Cant load.")
 
+        if not exists(path2map + "time.fits"):
+            from glob import glob
+            timefiles = glob(path2map+'*time.fits')
+            if len(timefiles) == 0:
+                print(str(path2map)+'*time.fits')
+                raise FileNotFoundError("No time map found!")
+            elif 'weighted' in timefiles[0]:
+                time_map_file = timefiles[0]
+                weighted_time=True
+        else:
+            time_map_file = path2map + "time.fits"
+            weighted_time = False
         
         self.rho_map = enmap.read_map(path2map + "rho.fits") # whatever rho is, only I
         self.kappa_map = enmap.read_map(path2map + "kappa.fits") # whatever kappa is, only I
-        self.time_map=enmap.read_map(path2map + "time.fits")
+        self.time_map=enmap.read_map(time_map_file)
+        if weighted_time:
+            self.time_map/=self.kappa_map
         
         ## load in extra info, like obs in map, freq, and Ndays coadded.
         self.load_coadd_info(map_path)
@@ -169,139 +185,23 @@ class Depth1Map:
             self.maps_included = obsids
         except Exception as e:
             print(e,'Failed to read OBSIDS')
+        
         try:
             self.coadd_days  = float(h[0].header['NDAYS'])
         except Exception as e:
             print(e,'Failed to read NDAYS')
-
+        
         try:
             self.freq  = h[0].header['FREQ']
         except Exception as e:
             print(e,'Failed to read FREQ')
+            self.freq = str(map_path).split('/')[-1].split('_')[3]
 
         if not self.res:
             self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])*degree
         del h
 
         return
-
-
-    def perform_matched_filter(self, 
-                               ra_can:list[float], 
-                               dec_can:list[float], 
-                               source:list[str], 
-                               sourcemask:Optional["SourceCatalog"]=None, 
-                               detection_threshold:float=5.0
-                              ):
-        from ..filters import renorm_ms
-        mf = np.array(len(ra_can) * [False])
-        renorm = np.array(len(ra_can) * [False])
-        ra_arr = np.array(len(ra_can) * [np.nan])
-        dec_arr = np.array(len(ra_can) * [np.nan])
-        for i in range(len(ra_can)):
-            if source[i]:
-                ra_arr[i] = ra_can[i]
-                dec_arr[i] = dec_can[i]
-
-            else:
-                ra = ra_can[i]
-                dec = dec_can[i]
-                data_sub = self.matched_filter_submap(ra, dec, sourcemask, size=0.5)
-
-                # check if candidate still exists
-                ra, dec, pass_matched_filter = self.recalc_source_detection(
-                    ra, dec, detection_threshold
-                )
-                mf[i] = pass_matched_filter
-
-                if pass_matched_filter:
-                    # renormalization if matched filter is successful
-                    ## should this be data_sub.snr=?
-                    # snr_sub_renorm = renorm_ms(
-                    #     data_sub.snr,
-                    #     data_sub.wafer_name,
-                    #     data_sub.freq,
-                    #     ra,
-                    #     dec,
-                    #     sourcemask,
-                    # )
-                    ra, dec, pass_renorm = data_sub.recalc_source_detection(
-                        ra, dec, detection_threshold
-                    )
-                    renorm[i] = pass_renorm
-
-                ra_arr[i] = ra
-                dec_arr[i] = dec
-
-        return ra_arr, dec_arr, mf, renorm
-
-    def matched_filter_submap(
-        self,
-        ra: float,
-        dec: float,
-        sourcemask: Optional["SourceCatalog"] = None,
-        size: float = 0.5,
-    ):
-        """
-        calculate rho and kappa maps given a ra and dec
-
-        Args:
-            ra: right ascension in deg
-            dec: declination in deg
-            sourcemask: point sources to mask, default=None
-            size: size of submap in deg, default=0.5
-
-        Returns:
-            Dept1 submaps
-        """
-        from ..filters import matched_filter
-
-        sub = get_submap(self.intensity_map, ra, dec, size)
-        sub_inverse_variance = get_submap(self.inverse_variance_map, ra, dec, size)
-        sub_tmap = get_submap(self.time_map, ra, dec, size)
-        rho, kappa = matched_filter(
-            sub,
-            sub_inverse_variance,
-            self.wafer_name,
-            self.freq,
-            ra,
-            dec,
-            size_deg=size,
-            source_cat=sourcemask,
-            apod_size_arcmin=5,
-        )
-
-
-    def recalc_source_detection(self, 
-                                ra:float, 
-                                dec:float, 
-                                snr_threshold:float=5.0,
-                                matching_radius:float = 2.5
-                                ):
-        """
-        returns new ra/dec of source if source is detected in submap, otherwise returns original ra/dec
-        Also returns bool of whether source is detected
-        New source must be found within matching_radius of the old one.
-        """
-        from ..utils.utils import angular_separation
-        ra_new, dec_new = extract_sources(self.snr,
-                                          self.flux,
-                                          snr_threshold=snr_threshold
-                                          )
-        if not ra_new:
-            return ra, dec, False
-        else:
-            # calculate separation from original position. Reject sources not within 1 arcmin
-            sep = angular_separation(ra, dec, ra_new, dec_new) * 60.0  # in arcmin
-            # continue if no sources are within 1 arcmin
-            if np.all(sep > matching_radius):
-                return ra, dec, False
-            # only keep source closest to original position
-            else:
-                ra_new = ra_new[np.argmin(sep)]
-                dec_new = dec_new[np.argmin(sep)]
-
-                return ra_new, dec_new, True
 
 
     def coadd_maps(self,second_map):
@@ -534,48 +434,6 @@ def edge_map(imap: enmap.ndmap):
 
     return enmap.enmap(edge.astype("ubyte"), imap.wcs)
 
-def extract_sources(snr:enmap.ndmap,
-                    flux:enmap.ndmap,
-                    snr_threshold:float = 5.0,
-                    verbosity:int = 1,
-                   ):
-        """
-        Detects sources and returns center of mass by flux
-
-        Args:
-            snr: signal-to-noise ratio map for detection
-            flux: flux map for position
-            snr_threshold: signal detection threshold
-            mapdata: other maps to include in output
-            tags: data to include in every line, such as ctime or map name
-
-        Returns:
-            ra and dec of each source in deg
-
-        """
-        from scipy import ndimage
-        labels, nlabel = ndimage.label(snr > snr_threshold)
-        cand_pix = ndimage.center_of_mass(flux, 
-                                          labels, 
-                                          np.arange(nlabel) + 1
-                                         )
-        cand_pix = np.array(cand_pix)
-        ra = []
-        dec = []
-        for pix in cand_pix:
-            pos = flux.pix2sky(pix)
-            d = pos[0] * 180.0 / np.pi
-            if d < -90.0:
-                d = 360.0 + d
-            if d > 90.0:
-                d = 360.0 - d
-            dec.append(d)
-            ra.append(pos[1] * 180.0 / np.pi)
-        if len(ra) == 0:
-            if verbosity > 0:
-                print("did not find any candidates")
-
-        return ra, dec
 
 def get_submap(imap:enmap.ndmap, 
                ra_deg:float, 
@@ -609,6 +467,12 @@ def get_thumbnail(imap:enmap.ndmap,
                                 size_deg * degree,
                                 proj=proj,
                                 )
+    if np.all(np.isnan(omap)):
+        omap = reproject.thumbnails(np.nan_to_num(imap), 
+                                    [dec, ra], 
+                                    size_deg * degree,
+                                    proj=proj,
+                                    )
     return omap
 
 

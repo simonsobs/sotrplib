@@ -10,6 +10,7 @@ from astropy.table import Table
 from pixell import enmap
 from pixell import utils as pixell_utils
 
+from ..sources.sources import SourceCandidate
 
 
 def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matches:bool=False):
@@ -71,11 +72,10 @@ def sift(extracted_sources,
          source_fluxes:list = None,
          map_freq:str = None,
          arr:str=None,
-         fwhm_cut = 5.0,
+         cuts:dict={'fwhm':[0.5,5.0]}
          ):
     from ..utils.utils import radec_to_str_name
-    from ..sources.sources import SourceCandidate
-
+    
     """
      Perform crossmatching of extracted sources from `extract_sources` and the cataloged sources.
      Return lists of dictionaries containing each source which matches the catalog, may be noise, or appears to be a transient.
@@ -140,7 +140,7 @@ def sift(extracted_sources,
                                kron_flux=forced_photometry_info['kron_flux'],
                                kron_fluxerr=forced_photometry_info['kron_fluxerr'],
                                kron_radius = forced_photometry_info['kron_radius'],
-                               snr=forced_photometry_info['kron_flux']/forced_photometry_info['kron_fluxerr'],
+                               snr=forced_photometry_info['peaksig'], 
                                freq=str(map_freq),
                                arr=arr,
                                ctime=forced_photometry_info['time'],
@@ -153,8 +153,10 @@ def sift(extracted_sources,
                                elongation=forced_photometry_info['elongation'],
                                fwhm=forced_photometry_info['fwhm']
                               )
+        
         ## do sifting operations here...
-        if not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or cand.fwhm>=fwhm_cut or not np.isfinite(forced_photometry_info['peakval']) :
+        is_cut = get_cut_decision(cand,cuts)
+        if is_cut or not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or not np.isfinite(forced_photometry_info['peakval']) :
             noise_candidates.append(cand)
         elif isin_cat[source]:
             source_candidates.append(cand)
@@ -168,9 +170,40 @@ def sift(extracted_sources,
     return source_candidates, transient_candidates, noise_candidates
 
 
+def get_cut_decision(candidate:SourceCandidate,
+                     cuts:dict={}
+                     )->bool:
+    '''
+    cuts contains dictionary with key values describing the cuts.
+
+    acceptable cut keys : ['fwhm']
+
+    each cut key has [min,max] value on which to make cuts.
+
+    for example, 
+    if i want a source iwth measured fwhm >0.5 arcmin and less than 5 arcmin
+    cuts={'fwhm':[0.5,5.0]}
+    cut = (candidate['fwhm']<cuts['fwhm'][0]) | (candidate['fwhm']>cuts['fwhm'][1])
+
+    Returns:
+
+    True : cut source
+    False : within ranges
+    '''
+    cut = False
+    for c in cuts.keys():
+        val = getattr(candidate,c)
+        cut |= (val<cuts[c][0]) | (val>cuts[c][1])
+
+    return cut
+
+
 ####################
 ## Act crossmatching between wafers / bands etc.
 ####################
+
+
+
 
 def get_cats(
     path, ctime, return_fnames=False, mfcut=True, renromcut=False, sourcecut=True
