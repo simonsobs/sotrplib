@@ -65,6 +65,23 @@ def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matche
     else:
         return mask
 
+def gaia_match(cand:SourceCandidate,
+               maxmag:float=20,
+               maxsep_deg:float=1*pixell_utils.degree,
+               parallax_required=True,
+               mag_key = 'phot_g_mean_mag',
+               sep_key = 'dist',
+               ):
+    from ..source_catalog.query_tools import cone_query_gaia
+    gaia_results = cone_query_gaia(cand.ra,cand.dec,radius_arcmin=cand.fwhm)
+
+    parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
+    gaia_valid = gaia_results[(gaia_results[mag_key]<15) & parallax & (gaia_results[sep_key]<maxsep_deg)]
+
+    ## calculate pvalue, sort on pvalue.
+
+    return gaia_valid
+
 def sift(extracted_sources,
          catalog_sources,
          radius1Jy:float=30.0,
@@ -72,9 +89,11 @@ def sift(extracted_sources,
          source_fluxes:list = None,
          map_freq:str = None,
          arr:str=None,
-         cuts:dict={'fwhm':[0.5,5.0]}
+         cuts:dict={'fwhm':[0.5,5.0]},
+         crossmatch_with_gaia=True,
          ):
     from ..utils.utils import radec_to_str_name
+    
     
     """
      Perform crossmatching of extracted sources from `extract_sources` and the cataloged sources.
@@ -161,6 +180,11 @@ def sift(extracted_sources,
         elif isin_cat[source]:
             source_candidates.append(cand)
         else:
+            if crossmatch_with_gaia:
+                gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
+                ## just grab the first result
+                if len(gaia_match_result['designation'])>0:
+                    cand.crossmatch_name=gaia_match_result['designation'][0]
             transient_candidates.append(cand)
         del cand
         

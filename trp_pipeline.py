@@ -265,7 +265,6 @@ for freq_arr_idx in indexed_map_groups:
             print('Source found in blind search which is associated with catalog... masking may have a problem.')
             ## do we do anything here? add to updated source catalog?
             ## should only be possible if the masking radius and the source matching radius are significantly different.
-            print(source_candidates)
 
         if len(transient_candidates)<=args.candidate_limit:
             if args.save_json:
