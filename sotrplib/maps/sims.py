@@ -53,14 +53,15 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     '''
     from photutils.psf import GaussianPSF
     from photutils.datasets import make_model_params, make_model_image, make_noise_image
-    from pixell.utils import degree,arcmin,dplanck,T_cmb,fwhm
+    from pixell.utils import degree,arcmin
+    from pixell.utils import fwhm as fwhm_to_sigma
 
     ## for matched filtering
     from pixell.analysis import matched_filter_white
     from pixell.uharm import UHT
 
     #Omega_b is the beam solid angle for a Gaussian beam in sr
-    bsigma     = gauss_fwhm_arcmin*fwhm*arcmin
+    bsigma     = gauss_fwhm_arcmin*fwhm_to_sigma*arcmin
     omega_b    = (np.pi / 4 / np.log(2)) * (2.2*arcmin)**2
     
     model = GaussianPSF()
@@ -81,6 +82,7 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     params = make_model_params(shape, 
                                n_sources, 
                                min_separation=5,
+                               border_size=5,
                                flux=(min_flux_Jy, max_flux_Jy), 
                                x_fwhm=(minfwhm, maxfwhm),
                                y_fwhm=(minfwhm, maxfwhm), 
@@ -130,7 +132,6 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     
     flux += noise
 
-    
     ## photutils parameter table is in Astropy QTable
     ## convert to the json format we've been using.
     injected_sources = convert_qtable_to_json(params,
