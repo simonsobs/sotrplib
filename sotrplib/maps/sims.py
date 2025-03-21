@@ -44,6 +44,7 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
                             fwhm_uncert_frac:float=0.3,
                             gauss_theta_min:float=0,
                             gauss_theta_max:float=90,
+                            min_sep_arcmin:float=5,
                             seed:int=None,
                             freq:str='f090',
                             ):
@@ -51,26 +52,25 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     
     
     '''
-    from photutils.psf import GaussianPSF
-    from photutils.datasets import make_model_params, make_model_image, make_noise_image
+    from photutils.psf import GaussianPSF, make_psf_model_image
+    from photutils.datasets import make_noise_image
     from pixell.utils import degree,arcmin
-    from pixell.utils import fwhm as fwhm_to_sigma
 
-    ## for matched filtering
-    from pixell.analysis import matched_filter_white
-    from pixell.uharm import UHT
-
-    #Omega_b is the beam solid angle for a Gaussian beam in sr
-    bsigma     = gauss_fwhm_arcmin*fwhm_to_sigma*arcmin
-    omega_b    = (np.pi / 4 / np.log(2)) * (2.2*arcmin)**2
     
     model = GaussianPSF()
     shape = sim_map.shape
-    mapres = abs(sim_map.wcs.wcs.cdelt[0])*degree
+    wcs = sim_map.wcs
+    mapres = abs(wcs.wcs.cdelt[0])*degree
     
-    gaussfwhm = gauss_fwhm_arcmin*arcmin/mapres
+    gaussfwhm = gauss_fwhm_arcmin*arcmin
+    #Omega_b is the beam solid angle for a Gaussian beam in sr
+    omega_b = (np.pi / 4 / np.log(2)) * (gaussfwhm)**2
+    
+    gaussfwhm/=mapres
     minfwhm = gaussfwhm-(fwhm_uncert_frac*gaussfwhm)
     maxfwhm = gaussfwhm+(fwhm_uncert_frac*gaussfwhm)
+
+    minsep=min_sep_arcmin*arcmin/mapres
 
     if not seed:
         print('No seed provided, setting seed with current ctime')
@@ -79,49 +79,29 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     if min_flux_Jy>=max_flux_Jy:
         raise ValueError("Min injected flux is less than or equal to max injected flux")
     
-    params = make_model_params(shape, 
-                               n_sources, 
-                               min_separation=5,
-                               border_size=5,
-                               flux=(min_flux_Jy, max_flux_Jy), 
-                               x_fwhm=(minfwhm, maxfwhm),
-                               y_fwhm=(minfwhm, maxfwhm), 
-                               theta=(gauss_theta_min, gauss_theta_max), 
-                               seed=seed
-                               )
     ## set the window for each source to be 10x10 arcmin
     ## make the source map and add to input map
-    model_window = int(20*arcmin/mapres)
-    model_shape = (model_window, model_window)
-    data = make_model_image(shape, 
-                            model, 
-                            params, 
-                            model_shape=model_shape,
-                            )
+    model_window = (int(2*minsep),int(2*minsep))
+    data,params = make_psf_model_image(shape, 
+                                        model, 
+                                        n_sources, 
+                                        model_shape=model_window,
+                                        min_separation=minsep,
+                                        border_size=int(minsep),
+                                        flux=(min_flux_Jy, max_flux_Jy), 
+                                        x_fwhm=(minfwhm, maxfwhm),
+                                        y_fwhm=(minfwhm, maxfwhm), 
+                                        theta=(gauss_theta_min, gauss_theta_max), 
+                                        seed=seed,
+                                        normalize=False
+                                        )
     ## photutils distributes the flux over the solid angle
     ## so this map should be the intensity map in Jy/sr
-    data/=omega_b
-
-    sim_map+=data
+    ## multiply by beam area in sq pixels
+    sim_map+=data*(omega_b/mapres**2)
 
     ## make white noise map with mean zero
     ## add to input map
-    ## assume map pixels are square
-    #ivar = map_noise_Jy**-2*mapres**2/arcmin**2
-
-    ## Now map is in Jy/sr
-    uht = UHT(sim_map.shape, sim_map.wcs)
-    # This is the harmonic transform of the beam in 2D
-    beam = np.exp(-0.5*uht.l**2*bsigma**2)
-    rho, kappa = matched_filter_white(sim_map,
-                                      beam, 
-                                      enmap.ndmap(np.ones(sim_map.shape),sim_map.wcs)/map_noise_Jy**2,
-                                      uht
-                                      )
-    flux  = rho/kappa
-    ## beams per pixel
-    flux*=omega_b/mapres**2
-    del sim_map,rho,kappa
     
     noise = make_noise_image(shape, 
                              distribution='gaussian', 
@@ -130,14 +110,14 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
                              seed=seed
                              )
     
-    flux += noise
+    sim_map += noise
 
     ## photutils parameter table is in Astropy QTable
     ## convert to the json format we've been using.
     injected_sources = convert_qtable_to_json(params,
-                                              imap=flux
+                                              imap=sim_map
                                               )
-    return flux, injected_sources
+    return sim_map, injected_sources
 
 
 def inject_white_noise(imap:enmap.ndmap,

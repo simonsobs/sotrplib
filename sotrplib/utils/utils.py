@@ -193,8 +193,10 @@ def get_map_groups(maps:list,
     full_time_range = (maxtime-mintime)/86400.
     if full_time_range>1:
         print('Full time range: %.1f days'%(full_time_range))
-    else:
+    elif full_time_range>1/24.:
         print('Full time range: %.1f hours'%(full_time_range*24))
+    else:
+        print('Full time range: %.1f minutes'%(full_time_range*24*60))
     if coadd_days !=0:
         if mintime==maxtime:
             time_bins=[mintime]

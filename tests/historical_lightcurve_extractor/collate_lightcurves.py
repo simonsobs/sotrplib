@@ -68,8 +68,13 @@ def collate_lightcurve_files(lc_files,
             for line in f:
                 inlines.append(line)
 
+    headerlines=0
     with open(out_file,'w') as f:
         for i in range(len(inlines)):
+            if '#' in inlines[i]:
+                headerlines+=1
+                if headerlines>1:
+                    continue
             f.write(inlines[i])
         
     if cleanup:

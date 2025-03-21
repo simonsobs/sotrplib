@@ -9,6 +9,7 @@ Photutils version implemented by Melanie Archipley
 
 '''
 
+
 def get_source_sky_positions(extracted_sources,
                              skymap
                              ):
@@ -20,9 +21,17 @@ def get_source_sky_positions(extracted_sources,
 
     for f in extracted_sources:
         x,y = extracted_sources[f]['xpeak'],extracted_sources[f]['ypeak']
+        
         dec,ra = skymap.pix2sky(np.asarray([[y],[x]]))
         extracted_sources[f]['ra'] = ra[0]%(360*degree)
         extracted_sources[f]['dec'] = dec[0]
+        
+        if 'err_xpeak' in extracted_sources[f] and 'err_ypeak' in extracted_sources[f]:
+            dx,dy = extracted_sources[f]['err_xpeak'],extracted_sources[f]['err_ypeak']
+            ## assume flat sky
+            mapres = abs(skymap.wcs.wcs.cdelt[0])*degree
+            extracted_sources[f]['err_ra'] = dx*mapres/np.cos(dec[0])
+            extracted_sources[f]['err_dec'] = dy*mapres
         
     return extracted_sources
 
@@ -84,15 +93,17 @@ def extract_sources(inmap:ndmap,
     output_struct: dict
         Contains a dictionary for each source, labelled by sequential integers,
         with keys 'xpeak', 'ypeak','peakval','peaksig'.
-        Also the various photutils output which may be useful:
-            "area", "ellipticity", "elongation", "fwhm", "kron_aperture",
-            "kron_flux", "kron_fluxerr", "kron_radius"
+        Also the various photutils output describing the 2D gaussian fit:
+            "ellipticity", "elongation", "fwhm", semimajor_sigma, semiminor_sigma, orientation
+        Also kron aperture things:
+          "kron_aperture","kron_flux", "kron_fluxerr", "kron_radius"
             
     Notes
     -----
     Jan 2019: DPD ported from spt_analysis/sources/find_sources_quick.pro
     Jan 2025: AF porting to sotrplib
     """
+    from pixell.utils import degree, arcmin
 
     if res is None:
         try:
@@ -140,26 +151,36 @@ def extract_sources(inmap:ndmap,
     ypeaks = peaks["ycen"]
     peakvals = peaks["maxvals"]
     peaksigs = peaks["sigvals"]
-    areas = peaks["area"]
     ellipticities = peaks["ellipticity"]
     elongations = peaks["elongation"]
     fwhms = peaks["fwhm"]
+    sigma_major = peaks["semimajor_sigma"]
+    sigma_minor = peaks["semiminor_sigma"]
+    orientation = peaks["orientation"]
+    '''
+    need to add these in...
+    "covar_sigx2",
+    "covar_sigy2",
+    "covar_sigxy",
+    '''
     kron_apertures = peaks["kron_aperture"]
     kron_fluxes = peaks["kron_flux"]
     kron_fluxerrs = peaks["kron_fluxerr"]
     kron_radii = peaks["kron_radius"]
     peak_assoc = np.zeros(npeaks)
-
+    
     output_struct = dict()
     for i in np.arange(npeaks):
         output_struct[i] = {"xpeak": xpeaks[0],
                             "ypeak": ypeaks[0],
                             "peakval": peakvals[0],
                             "peaksig": peaksigs[0],
-                            "area": areas[0].value*res**2,
                             "ellipticity": ellipticities[0],
                             "elongation": elongations[0],
                             "fwhm": fwhms[0].value*res,
+                            "semimajor_sigma": sigma_major[0].value*res,
+                            "semiminor_sigma": sigma_minor[0].value*res,
+                            "orientation": orientation[0].value*degree,
                             "kron_aperture": kron_apertures[0],
                             "kron_flux": kron_fluxes[0],
                             "kron_fluxerr": kron_fluxerrs[0],
@@ -196,10 +217,12 @@ def extract_sources(inmap:ndmap,
                                           "ypeak": ypeaks[j],
                                           "peakval": peakvals[j],
                                           "peaksig": peaksigs[j],
-                                          "area": areas[j].value*res**2,
                                           "ellipticity": ellipticities[j],
                                           "elongation": elongations[j],
                                           "fwhm": fwhms[j].value*res,
+                                          "semimajor_sigma": sigma_major[j].value*res,
+                                          "semiminor_sigma": sigma_minor[j].value*res,
+                                          "orientation": orientation[j].value*degree,
                                           "kron_aperture": kron_apertures[j],
                                           "kron_flux": kron_fluxes[j],
                                           "kron_fluxerr": kron_fluxerrs[j],
@@ -227,10 +250,12 @@ def extract_sources(inmap:ndmap,
                                           "ypeak": ypeaks[j],
                                           "peakval": peakvals[j],
                                           "peaksig": peaksigs[j],
-                                          "area": areas[j].value*res**2,
                                           "ellipticity": ellipticities[j],
                                           "elongation": elongations[j],
                                           "fwhm": fwhms[j].value*res,
+                                          "semimajor_sigma": sigma_major[j].value*res,
+                                          "semiminor_sigma": sigma_minor[j].value*res,
+                                          "orientation": orientation[j].value*degree,
                                           "kron_aperture": kron_apertures[j],
                                           "kron_flux": kron_fluxes[j],
                                           "kron_fluxerr": kron_fluxerrs[j],
@@ -290,11 +315,13 @@ def find_using_photutils(Tmap:ndmap,
           the "centroid is computed as the center of mass of the unmasked pixels
           within the source segment."
         * ycen - array of Y-location of group centers.
+        * semimajor_sigma, semiminor_sigma - sigma in major and minor axes of 2D gauss fit.
+        * orientation - The angle between the x axis and the semimajor axis. 
+                        The angle increases in the counter-clockwise direction.
         * n_detected - Number of detected sources.
 
     The keys below are outputs of the astropy source finding functionality,
     being used to test if any of them indicate extendedness of a source.
-        * area - units of pixels**2
         * ellipticity
         * elongation
         * fwhm - units of pixels. From the documentation, "circularized FWHM of
@@ -312,17 +339,22 @@ def find_using_photutils(Tmap:ndmap,
 
     default_keys = {
         "maxvals": "max_value",
-        "sigvals": None,
         "xcen": "xcentroid",
         "ycen": "ycentroid",
+        "sigvals": None,
         "n_detected": None,
     }
 
     extra_keys = [
-        "area",
         "ellipticity",
         "elongation",
         "fwhm",
+        "semimajor_sigma",
+        "semiminor_sigma",
+        "orientation",
+        "covar_sigx2",
+        "covar_sigy2",
+        "covar_sigxy",
         "kron_aperture",
         "kron_flux",
         "kron_fluxerr",
@@ -362,6 +394,7 @@ def find_using_photutils(Tmap:ndmap,
     # convert catalog to table
     columns = [v for _, v in default_keys.items() if v] + extra_keys
     tbl = cat.to_table(columns=columns)
+    
     # rename keys to match find_groups output
     for k, v in default_keys.items():
         if v is not None:

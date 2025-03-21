@@ -13,7 +13,12 @@ from pixell import utils as pixell_utils
 from ..sources.sources import SourceCandidate
 
 
-def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matches:bool=False):
+def crossmatch_mask(sources, 
+                    crosscat, 
+                    radius:float,
+                    mode:str='all',
+                    return_matches:bool=False
+                    ):
     """Determines if source matches with masked objects
 
     Args:
@@ -35,7 +40,7 @@ def crossmatch_mask(sources, crosscat, radius:float,mode:str='all',return_matche
         source_ra = sources[1] * pixell_utils.degree
         source_dec = sources[0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
-        if isinstance(radius,(list,np.array)):
+        if isinstance(radius,(list,np.ndarray)):
             r = radius[0] * pixell_utils.arcmin
         else:
             r = radius * pixell_utils.arcmin
@@ -86,6 +91,8 @@ def sift(extracted_sources,
          catalog_sources,
          radius1Jy:float=30.0,
          min_match_radius:float=1.5,
+         ra_jitter:float=0.0,
+         dec_jitter:float=0.0,
          source_fluxes:list = None,
          map_freq:str = None,
          arr:str=None,
@@ -120,9 +127,11 @@ def sift(extracted_sources,
             list of dictionaries with information about the detected source.
 
     """    
+    from ..utils.utils import get_fwhm
+    fwhm_arcmin = get_fwhm(map_freq,arr=arr)
 
     if isinstance(source_fluxes,type(None)):
-        source_fluxes = np.asarray([extracted_sources[f]['peakval']/1000. for f in extracted_sources])
+        source_fluxes = np.asarray([extracted_sources[f]['peakval'] for f in extracted_sources])
     
     extracted_ra = np.asarray([extracted_sources[f]['ra'] for f in extracted_sources])
     extracted_dec = np.asarray([extracted_sources[f]['dec'] for f in extracted_sources])
@@ -149,13 +158,22 @@ def sift(extracted_sources,
             crossmatch_name = catalog_sources['name'][catalog_match[source][0][1]]
         else:
             crossmatch_name = ''
-
+        
+        ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
+        if "err_ra" not in forced_photometry_info or "err_dec" not in forced_photometry_info:
+            forced_photometry_info['err_ra'] = pixell_utils.fwhm*fwhm_arcmin*pixell_utils.arcmin /np.sqrt(forced_photometry_info['peaksig'])
+            forced_photometry_info['err_dec'] = pixell_utils.fwhm*fwhm_arcmin*pixell_utils.arcmin /np.sqrt(forced_photometry_info['peaksig'])
+            forced_photometry_info['err_ra'] = np.sqrt(forced_photometry_info['err_ra']**2+ra_jitter**2)
+            forced_photometry_info['err_dec'] = np.sqrt(forced_photometry_info['err_dec']**2+dec_jitter**2)
+            
         ## peakval is the max value within the kron radius while kron_flux is the integrated flux (i.e. assuming resolved)
         ## since filtered maps are convolved w beam, use max pixel value.
         cand = SourceCandidate(ra=cand_pos[0]/pixell_utils.degree%360,
                                dec=cand_pos[1]/pixell_utils.degree,
+                               err_ra=forced_photometry_info['err_ra']/pixell_utils.degree,
+                               err_dec=forced_photometry_info['err_dec']/pixell_utils.degree,
                                flux=forced_photometry_info['peakval'],
-                               dflux=forced_photometry_info['peakval']/forced_photometry_info['peaksig'],
+                               err_flux=forced_photometry_info['peakval']/forced_photometry_info['peaksig'],
                                kron_flux=forced_photometry_info['kron_flux'],
                                kron_fluxerr=forced_photometry_info['kron_fluxerr'],
                                kron_radius = forced_photometry_info['kron_radius'],
@@ -170,15 +188,18 @@ def sift(extracted_sources,
                                crossmatch_name=crossmatch_name,
                                ellipticity=forced_photometry_info['ellipticity'],
                                elongation=forced_photometry_info['elongation'],
-                               fwhm=forced_photometry_info['fwhm']
+                               fwhm=forced_photometry_info['fwhm'],
+                               fwhm_a=forced_photometry_info['semimajor_sigma']*2.355,
+                               fwhm_b=forced_photometry_info['semiminor_sigma']*2.355,
+                               orientation=forced_photometry_info['orientation'],
                               )
         
         ## do sifting operations here...
         is_cut = get_cut_decision(cand,cuts)
-        if is_cut or not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or not np.isfinite(forced_photometry_info['peakval']) :
-            noise_candidates.append(cand)
-        elif isin_cat[source]:
+        if isin_cat[source]:
             source_candidates.append(cand)
+        elif is_cut or not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or not np.isfinite(forced_photometry_info['peakval']) :
+            noise_candidates.append(cand)
         else:
             if crossmatch_with_gaia:
                 gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
@@ -218,7 +239,6 @@ def get_cut_decision(candidate:SourceCandidate,
     for c in cuts.keys():
         val = getattr(candidate,c)
         cut |= (val<cuts[c][0]) | (val>cuts[c][1])
-
     return cut
 
 

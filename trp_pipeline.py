@@ -10,13 +10,14 @@ from sotrplib.maps.masks import make_src_mask
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups, get_cut_radius
 from sotrplib.sources.finding import extract_sources
-from sotrplib.sources.forced_photometry import enmap_extract_fluxes
+from sotrplib.sources.forced_photometry import enmap_extract_fluxes,photutils_2D_gauss_fit,convert_catalog_to_source_objects
 from sotrplib.sources.sources import SourceCandidate
-from sotrplib.source_catalog.source_catalog import load_catalog,write_json_catalog
+from sotrplib.source_catalog.source_catalog import load_catalog,write_json_catalog,convert_gauss_fit_to_source_cat
 from sotrplib.sifter.crossmatch import sift
 from sotrplib.utils.plot import plot_map_thumbnail
+from sotrplib.utils.utils import get_fwhm
 
-from pixell.utils import arcmin
+from pixell.utils import arcmin,degree
 
 import argparse
 
@@ -73,6 +74,11 @@ parser.add_argument("--flux-threshold",
                     default=0.0,
                     type=float,
                     )
+parser.add_argument("--bright-flux-threshold", 
+                    help="Flux threshold for pointing offset calculation. in units of Jy.", 
+                    default=0.3,
+                    type=float,
+                    )
 parser.add_argument("--candidate-limit", 
                     help="Flag map as bad beyond this number of candidate transients.", 
                     action='store',
@@ -105,6 +111,10 @@ parser.add_argument("--plot-thumbnails",
                     )
 parser.add_argument("--save-json", 
                     help="Save the source candidate information as json files.", 
+                    action='store_true'
+                    )
+parser.add_argument("--save-source-thumbnails", 
+                    help="Save the cataloged source thumbnails. NOT YET IMPLEMENTED", 
                     action='store_true'
                     )
 parser.add_argument("--verbose", 
@@ -167,7 +177,9 @@ for freq_arr_idx in indexed_map_groups:
                                       freq=freq,
                                       arr=arr
                                       )
-        
+            
+        map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
+        band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
         preprocess_map(mapdata,
                        galmask_file = args.galaxy_mask,
                        plot_output_dir=args.plot_output,
@@ -181,45 +193,46 @@ for freq_arr_idx in indexed_map_groups:
                                        mask_map=mapdata.flux
                                       )
         
-        ## simply grab the pixel corresponding to the ra,dec location of the source
-        catalog_sources = enmap_extract_fluxes(mapdata.flux,
-                                               catalog_sources,
-                                               dflux_map=mapdata.flux/mapdata.snr,
-                                               return_pixels=True
-                                              )
-
+        gauss_fits,thumbs = photutils_2D_gauss_fit(mapdata.flux,
+                                                   mapdata.flux/mapdata.snr,
+                                                   catalog_sources,
+                                                   size_deg=band_fwhm/degree,
+                                                   PLOT=args.plot_all,
+                                                   reproject_thumb=True,
+                                                   flux_lim_fit_centroid=args.bright_flux_threshold,
+                                                   return_thumbnails=args.save_source_thumbnails
+                                                  )
         
-        known_sources = []
-        for i in range(len(catalog_sources['name'])):
-            cs = SourceCandidate(ra=catalog_sources['RADeg'][i]%360,
-                                 dec=catalog_sources['decDeg'][i],
-                                 flux=catalog_sources['fluxJy'][i],
-                                 dflux=catalog_sources['err_fluxJy'][i],
-                                 snr=np.nan,
-                                 freq=str(mapdata.freq),
-                                 arr=mapdata.wafer_name,
-                                 ctime=mapdata.map_ctime,
-                                 sourceID=catalog_sources['name'][i],
-                                 crossmatch_name=catalog_sources['name'][i], 
-                                )
-            if cs.dflux>0.0:
-                cs.snr = cs.flux/cs.dflux
+        ## check gaussian fits? 
 
-            known_sources.append(cs)
+        ## calculate the rms of the offsets and add in quadrature to the invdividual fit uncertainties?
 
+        ## write thumbnails to db?
+        
+        catalog_sources = convert_gauss_fit_to_source_cat(gauss_fits)
+        del gauss_fits,thumbs
+        
+        known_sources = convert_catalog_to_source_objects(catalog_sources,
+                                                          mapdata.freq,
+                                                          mapdata.wafer_name,
+                                                          mapdata.map_ctime
+                                                         )
+        
         ## update the source catalog
         if args.save_json:
             write_json_catalog(known_sources,
-                                out_dir=args.plot_output,
-                                out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_cataloged_sources.json',
-                                )
+                               out_dir=args.plot_output,
+                               out_name=map_id+'_cataloged_sources.json',
+                              )
 
         ## get source mask radius based on flux.
         source_mask_radius = get_cut_radius(mapdata.res/arcmin,
                                             mapdata.wafer_name,
                                             mapdata.freq,
                                             source_amplitudes=catalog_sources['fluxJy'],
-                                            map_noise=catalog_sources['err_fluxJy']
+                                            map_noise=catalog_sources['err_fluxJy'],
+                                            max_radius_arcmin=120.0,
+                                            match_filtered=True
                                             )
 
         ## simple catalog mask
@@ -255,10 +268,18 @@ for freq_arr_idx in indexed_map_groups:
 
         
         print('Cross-matching found sources with catalog...')
+        ## need to figure out what distribution "good" sources have to set the cuts.
+        default_cuts = {'fwhm':[0.5,2*band_fwhm/arcmin],
+                        'ellipticity':[-1,1],
+                        'elongation': [-1,2],
+                        'fwhm_a': [0.5*band_fwhm/arcmin,2*band_fwhm/arcmin],
+                        'fwhm_b': [0.5*band_fwhm/arcmin,2*band_fwhm/arcmin],
+                        }
         source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
                                                                        catalog_sources,
                                                                        map_freq = mapdata.freq,
-                                                                       arr=mapdata.wafer_name
+                                                                       arr=mapdata.wafer_name,
+                                                                       cuts=default_cuts,
                                                                       )
 
         if len(source_candidates)>0:
