@@ -549,11 +549,14 @@ def preprocess_map(mapdata,
                    galmask_file='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/mask_for_sources2019_plus_dust.fits',
                    plot_output_dir='./',
                    tilegrid=1.0,
-                   PLOT=False):
+                   output_units='Jy',
+                   PLOT=False
+                   ):
     ## tilegrid in deg, used for setting median ratio flatfielding grid size
     from pixell.enmap import read_map, extract
     from .masks import mask_edge
     from .tiles import get_medrat,get_tmap_tiles
+    
     if PLOT:
         import matplotlib as mpl
         mpl.use('agg')
@@ -648,5 +651,6 @@ def preprocess_map(mapdata,
             plt.close('all')
             
         del med_ratio
-
+    if output_units=='Jy':
+        mapdata.flux/=1000.
     return 

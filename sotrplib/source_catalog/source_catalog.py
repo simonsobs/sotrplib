@@ -26,6 +26,35 @@ def load_act_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster
     return out_dict
 
 
+def convert_gauss_fit_to_source_cat(gauss_fits:list,
+                                    uncert_prefix:str='err_'
+                                    ):
+    '''
+    gauss fits is a list of dictionaries of the output params of the gaussian fitting.
+    convert that into a dictionary of lists.
+
+    since there are uncertainties on the fits, make keys err_[blah] for those fits.
+    this is inspired by fluxJy and err_fluxJy in act table.
+    '''
+    sources = {}
+    for i in range(len(gauss_fits)):
+        for key in gauss_fits[i]:
+            if key not in sources:
+                sources[key] = []
+                sources[uncert_prefix+key] = []
+            if isinstance(gauss_fits[i][key],tuple):
+                keyval,keyvaluncert = gauss_fits[i][key]
+                sources[key].append(keyval)
+                sources[uncert_prefix+key].append(keyvaluncert)
+            else:
+                keyval = gauss_fits[i][key]
+                sources[key].append(keyval)
+    popkeys = [k for k in sources if not sources[k]]
+    for k in popkeys:
+        sources.pop(k)
+    
+    return sources
+
 def convert_json_to_act_format(json_list):
     '''
     json list is the list of dictionaries output to json file format.
@@ -134,7 +163,7 @@ def load_catalog(source_cat_file:str,
 
     '''
 
-    if 'PS_S19_f090_2pass_optimalCatalog.fits' in source_cat_file:
+    if 'PS_S19_f090_2pass_optimalCatalog.fits' in source_cat_file or 'catmaker' in source_cat_file:
         sources = load_act_catalog(source_cat_file=source_cat_file,
                                    flux_threshold=flux_threshold
                                    )
