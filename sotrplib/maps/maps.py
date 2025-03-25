@@ -550,6 +550,7 @@ def preprocess_map(mapdata,
                    plot_output_dir='./',
                    tilegrid=1.0,
                    output_units='Jy',
+                   edge_mask_arcmin=10,
                    PLOT=False
                    ):
     ## tilegrid in deg, used for setting median ratio flatfielding grid size
@@ -610,7 +611,7 @@ def preprocess_map(mapdata,
             mapdata.masked+=1
 
         try:
-            edge_mask = mask_edge(mapdata.flux,20)
+            edge_mask = mask_edge(mapdata.flux,edge_mask_arcmin/(mapdata.res/arcmin))
             mapdata.flux *= edge_mask
             mapdata.snr *= edge_mask
             del edge_mask

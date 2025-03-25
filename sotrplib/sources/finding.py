@@ -157,12 +157,9 @@ def extract_sources(inmap:ndmap,
     sigma_major = peaks["semimajor_sigma"]
     sigma_minor = peaks["semiminor_sigma"]
     orientation = peaks["orientation"]
-    '''
-    need to add these in...
-    "covar_sigx2",
-    "covar_sigy2",
-    "covar_sigxy",
-    '''
+    covar_sigx2 = peaks["covar_sigx2"]
+    covar_sigy2 = peaks["covar_sigy2"]
+    covar_sigxy = peaks["covar_sigxy"]
     kron_apertures = peaks["kron_aperture"]
     kron_fluxes = peaks["kron_flux"]
     kron_fluxerrs = peaks["kron_fluxerr"]
@@ -180,6 +177,9 @@ def extract_sources(inmap:ndmap,
                             "fwhm": fwhms[0].value*res,
                             "semimajor_sigma": sigma_major[0].value*res,
                             "semiminor_sigma": sigma_minor[0].value*res,
+                            "covar_sigx": np.sqrt(covar_sigx2[0].value)*res,
+                            "covar_sigy": np.sqrt(covar_sigy2[0].value)*res,
+                            "covar_sigxy": np.sqrt(abs(covar_sigxy[0].value))*res,
                             "orientation": orientation[0].value*degree,
                             "kron_aperture": kron_apertures[0],
                             "kron_flux": kron_fluxes[0],
@@ -222,6 +222,9 @@ def extract_sources(inmap:ndmap,
                                           "fwhm": fwhms[j].value*res,
                                           "semimajor_sigma": sigma_major[j].value*res,
                                           "semiminor_sigma": sigma_minor[j].value*res,
+                                          "covar_sigx": np.sqrt(covar_sigx2[j].value)*res,
+                                          "covar_sigy": np.sqrt(covar_sigy2[j].value)*res,
+                                          "covar_sigxy": np.sqrt(abs(covar_sigxy[j].value))*res,
                                           "orientation": orientation[j].value*degree,
                                           "kron_aperture": kron_apertures[j],
                                           "kron_flux": kron_fluxes[j],
@@ -255,6 +258,9 @@ def extract_sources(inmap:ndmap,
                                           "fwhm": fwhms[j].value*res,
                                           "semimajor_sigma": sigma_major[j].value*res,
                                           "semiminor_sigma": sigma_minor[j].value*res,
+                                          "covar_sigx": np.sqrt(covar_sigx2[j].value)*res,
+                                          "covar_sigy": np.sqrt(covar_sigy2[j].value)*res,
+                                          "covar_sigxy": np.sqrt(abs(covar_sigxy[j].value))*res,
                                           "orientation": orientation[j].value*degree,
                                           "kron_aperture": kron_apertures[j],
                                           "kron_flux": kron_fluxes[j],
