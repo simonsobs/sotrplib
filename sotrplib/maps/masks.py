@@ -110,7 +110,10 @@ def make_src_mask(imap:enmap.ndmap,
             ra_pix = int(cut_pix[1])
             dec_min = max(dec_pix - r, 0)
             dec_max = min(dec_pix + r, imap.shape[0] - 1)
-            ra_min = max(ra_pix - r, 0)
-            ra_max = min(ra_pix + r, imap.shape[1] - 1)
+            dec, _ = imap.pix2sky([dec_pix, ra_pix])
+            dec_factor = np.cos(dec)
+            ra_min = max(int(ra_pix - r / dec_factor), 0)
+            ra_max = min(int(ra_pix + r / dec_factor), imap.shape[1] - 1)
             mask[dec_min:dec_max, ra_min:ra_max] = 0
+
     return mask

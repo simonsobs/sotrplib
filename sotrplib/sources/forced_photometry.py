@@ -202,6 +202,7 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                  sourceID=catalog_sources['name'][i],
                                  crossmatch_name=catalog_sources['name'][i], 
                                  catalog_crossmatch=True,
+                                 fit_type='forced' if catalog_sources['forced'][i] else 'pointing',
                                  )
         else:
             if catalog_sources['ra_offset_arcmin'][i]:
@@ -229,7 +230,8 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                 fwhm_b=catalog_sources['fwhm_y_arcmin'][i],
                                 err_fwhm_a=catalog_sources['err_fwhm_x_arcmin'][i],
                                 err_fwhm_b=catalog_sources['err_fwhm_y_arcmin'][i],
-                                orientation=0.0
+                                orientation=0.0,
+                                fit_type='forced' if catalog_sources['forced'][i] else 'pointing',
                                 )
             
             if cs.err_flux>0.0:

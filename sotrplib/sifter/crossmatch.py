@@ -89,6 +89,7 @@ def gaia_match(cand:SourceCandidate,
 
 def sift(extracted_sources,
          catalog_sources,
+         imap:enmap.ndmap=None,
          radius1Jy:float=30.0,
          min_match_radius:float=1.5,
          ra_jitter:float=0.0,
@@ -96,7 +97,8 @@ def sift(extracted_sources,
          source_fluxes:list = None,
          map_freq:str = None,
          arr:str=None,
-         cuts:dict={'fwhm':[0.5,5.0]},
+         cuts:dict={'fwhm':[0.5,5.0],
+                    'snr':[5.0,np.inf],},
          crossmatch_with_gaia=True,
          ):
     from ..utils.utils import radec_to_str_name
@@ -208,7 +210,15 @@ def sift(extracted_sources,
                     cand.crossmatch_name=gaia_match_result['designation'][0]
             transient_candidates.append(cand)
         del cand
-        
+    if isinstance(imap,enmap.ndmap):
+        transient_candidates, new_noise_candidates = recalculate_local_snr(transient_candidates,
+                                                                           imap,
+                                                                           thumb_size_deg=0.5,
+                                                                           fwhm_arcmin=fwhm_arcmin,
+                                                                           snr_cut=cuts['snr'][0],
+                                                                          )
+        noise_candidates.extend(new_noise_candidates)
+    
     print(len(source_candidates),'catalog matches')
     print(len(transient_candidates),'transient candidates')
     print(len(noise_candidates),'probably noise') 
@@ -240,6 +250,62 @@ def get_cut_decision(candidate:SourceCandidate,
         val = getattr(candidate,c)
         cut |= (val<cuts[c][0]) | (val>cuts[c][1])
     return cut
+
+
+def recalculate_local_snr(transient_candidates:list,
+                          imap:enmap.ndmap, 
+                          thumb_size_deg:float=0.5,
+                          fwhm_arcmin:float=2.2,
+                          snr_cut:float=5.0,
+                         ):
+    """
+    Recalculate the local SNR for each transient source.
+
+    Parameters:
+    - transient_candidates: List of transient source candidates.
+    - imap: The map data object.
+    - thumb_size_deg: The size of the thumbnail in degrees.
+    - fwhm_arcmin: The band full width at half maximum in arcmin.
+
+    Returns:
+    - updated_transient_candidates: List of transient source candidates with updated SNR.
+    - updated_noise_candidates: List of noise source candidates with updated SNR.
+    """
+    from pixell.utils import degree,arcmin
+    from ..maps.maps import get_submap
+
+    updated_transient_candidates = []
+    updated_noise_candidates = []
+    ## same mask for each one
+    mask=None
+    for candidate in transient_candidates:
+        # Extract a thumbnail of the transient source
+        ra, dec = candidate.ra, candidate.dec
+        thumbnail = get_submap(imap, 
+                               ra,
+                               dec, 
+                               size_deg=thumb_size_deg,
+                              )
+        
+        # Mask the center out to 2 times the FWHM
+        if isinstance(mask,type(None)):
+            mask_radius = 2 * fwhm_arcmin / (abs(thumbnail.wcs.wcs.cdelt[0])*degree/arcmin)
+            center = tuple(int(t/2) for t in thumbnail.shape)
+            Y, X = np.ogrid[:thumbnail.shape[0], :thumbnail.shape[1]]
+            dist_from_center = np.sqrt((X - center[1])**2 + (Y - center[0])**2)
+            mask = dist_from_center >= mask_radius
+        
+        # Calculate the RMS noise of the unmasked region
+        unmasked_flux = thumbnail[mask > 0]
+        rms_noise = np.nanstd(unmasked_flux)
+        # Recalculate the SNR using the new RMS noise
+        candidate.snr = candidate.flux / rms_noise
+        if candidate.snr>snr_cut:
+            updated_transient_candidates.append(candidate)
+        else:
+            updated_noise_candidates.append(candidate)
+
+    return updated_transient_candidates, updated_noise_candidates
 
 
 ####################
