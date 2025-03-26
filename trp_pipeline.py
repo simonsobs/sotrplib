@@ -216,7 +216,8 @@ for freq_arr_idx in indexed_map_groups:
         known_sources = convert_catalog_to_source_objects(catalog_sources,
                                                           mapdata.freq,
                                                           mapdata.wafer_name,
-                                                          mapdata.map_ctime
+                                                          mapid=map_id,
+                                                          ctime=mapdata.time_map+t0
                                                          )
         
         ## update the source catalog
@@ -275,11 +276,13 @@ for freq_arr_idx in indexed_map_groups:
                         'elongation': [-1,2],
                         'fwhm_a': [0.5*band_fwhm/arcmin,2*band_fwhm/arcmin],
                         'fwhm_b': [0.5*band_fwhm/arcmin,2*band_fwhm/arcmin],
+                        'snr': [args.snr_threshold,np.inf],
                         }
         source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
                                                                        catalog_sources,
                                                                        map_freq = mapdata.freq,
                                                                        arr=mapdata.wafer_name,
+                                                                       mapid=map_id,
                                                                        cuts=default_cuts,
                                                                       )
 
@@ -292,7 +295,7 @@ for freq_arr_idx in indexed_map_groups:
             if args.save_json:
                 write_json_catalog(transient_candidates,
                                    out_dir=args.plot_output,
-                                   out_name=str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)+'_transient_candidates.json',
+                                   out_name=map_id+'_transient_candidates.json',
                                   )
             if args.plot_thumbnails:
                 for tc in transient_candidates:
