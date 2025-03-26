@@ -179,6 +179,7 @@ for freq_arr_idx in indexed_map_groups:
                                       )
             
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
+        t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
         preprocess_map(mapdata,
                        galmask_file = args.galaxy_mask,
@@ -249,7 +250,7 @@ for freq_arr_idx in indexed_map_groups:
         del catalog_mask
 
         print('Finding sources...')
-        t0 = mapdata.map_start_time if mapdata.map_start_time else 0
+        
         extracted_sources = extract_sources(mapdata.flux,
                                             timemap=mapdata.time_map+t0,
                                             maprms=mapdata.flux/mapdata.snr,
