@@ -143,6 +143,22 @@ def load_websky_csv_catalog(source_cat_file:str,
     return sources
 
 
+def load_pandas_catalog(source_cat_file:str,
+                        flux_threshold:float=0
+                        ):
+    '''
+    load the source catalog from a pandas dataframe stored in a pickle file.
+    '''
+    import pandas as pd
+    print('loading pandas catalog')
+    sources = pd.read_pickle(source_cat_file)
+    sources['RADeg'][sources["RADeg"]<0]+=360.
+    flux_cut = sources['fluxJy']>=flux_threshold
+    sources = sources[flux_cut]
+    sources['name'] = sources['sourceID']
+    return sources  
+
+
 def load_catalog(source_cat_file:str,
                  flux_threshold:float=0,
                  mask_outside_map:bool=False,
@@ -162,6 +178,11 @@ def load_catalog(source_cat_file:str,
         sources: source catalog, in astropy.table.table.Table or dict format... dumb but works for now.
 
     '''
+
+    if '.pkl' in source_cat_file:
+        sources=load_pandas_catalog(source_cat_file=source_cat_file,
+                                    flux_threshold=flux_threshold
+                                    )
 
     if 'PS_S19_f090_2pass_optimalCatalog.fits' in source_cat_file or 'catmaker' in source_cat_file:
         sources = load_act_catalog(source_cat_file=source_cat_file,
