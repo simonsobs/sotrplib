@@ -285,7 +285,7 @@ def get_cut_radius(map_res_arcmin:float,
                    arr:str, 
                    freq:str, 
                    fwhm_arcmin:float=None,
-                   match_filtered:bool=False,
+                   matched_filtered:bool=False,
                    source_amplitudes:list=[],
                    map_noise:list=[],
                    min_radius_arcmin:float=0.5,
@@ -315,7 +315,7 @@ def get_cut_radius(map_res_arcmin:float,
         fwhm_arcmin=get_fwhm(freq,arr)
     
     ## I guess this is needed for filtering wings?
-    mf_factor = 2**0.5 if match_filtered else 1.0
+    mf_factor = 2**0.5 if matched_filtered else 1.0
 
     ## sqrt amplitude scaling after some amplitude pivot
     if len(source_amplitudes)==0:
