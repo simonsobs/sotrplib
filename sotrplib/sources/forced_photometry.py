@@ -1,5 +1,5 @@
 import numpy as np
-
+from typing import Union
 from pixell import enmap
 
 
@@ -173,11 +173,13 @@ def fit_2d_gaussian(flux_map:enmap.ndmap,
 def convert_catalog_to_source_objects(catalog_sources:dict,
                                       freq:str=None,
                                       arr:str=None,
-                                      ctime:float=None
+                                      ctime:Union[float,enmap.ndmap]=None,
+                                      mapid:str='',
                                       ):
     '''
     take each source in the catalog and convert to a list 
     of Source objects.
+
     '''
     from pixell.utils import arcmin,degree
     from ..sources.sources import SourceCandidate
@@ -187,6 +189,13 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
         bad_fit=catalog_sources['gauss_fit_flag'][i]
         source_ra = catalog_sources['RADeg'][i]%360 
         source_dec = catalog_sources['decDeg'][i]
+        if isinstance(ctime,enmap.ndmap):
+            x,y=ctime.sky2pix([source_dec*degree,source_ra*degree])
+            source_ctime=ctime[int(x),int(y)]
+        elif isinstance(ctime,float):
+            source_ctime=ctime
+        else:
+            source_ctime=np.nan
         ra_uncert = np.nan
         if bad_fit:
             cs = SourceCandidate(ra=source_ra,
@@ -198,7 +207,8 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                  snr=np.nan,
                                  freq=freq,
                                  arr=arr,
-                                 ctime=ctime,
+                                 ctime=source_ctime,
+                                 mapid=mapid,
                                  sourceID=catalog_sources['name'][i],
                                  crossmatch_name=catalog_sources['name'][i], 
                                  catalog_crossmatch=True,
@@ -222,7 +232,8 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                 snr=np.nan,
                                 freq=freq,
                                 arr=arr,
-                                ctime=ctime,
+                                ctime=source_ctime,
+                                mapid=mapid,
                                 sourceID=catalog_sources['name'][i],
                                 crossmatch_name=catalog_sources['name'][i], 
                                 catalog_crossmatch=True,
