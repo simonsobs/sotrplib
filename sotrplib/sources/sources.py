@@ -12,6 +12,7 @@ class SourceCandidate(BaseModel):
     freq:str
     ctime:float
     arr:str
+    mapid:str=''
     sourceID:str=''
     match_filtered:bool=False
     renormalized: bool=False
