@@ -79,10 +79,12 @@ def gaia_match(cand:SourceCandidate,
                ):
     from ..source_catalog.query_tools import cone_query_gaia
     gaia_results = cone_query_gaia(cand.ra,cand.dec,radius_arcmin=cand.fwhm)
-
-    parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
-    gaia_valid = gaia_results[(gaia_results[mag_key]<maxmag) & parallax & (gaia_results[sep_key]<maxsep_deg)]
-
+    
+    if gaia_results:
+        parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
+        gaia_valid = gaia_results[(gaia_results[mag_key]<maxmag) & parallax & (gaia_results[sep_key]<maxsep_deg)]
+    else:
+        gaia_valid = {}
     ## calculate pvalue, sort on pvalue.
 
     return gaia_valid
@@ -186,7 +188,7 @@ def sift(extracted_sources,
                                ctime=forced_photometry_info['time'],
                                mapid=mapid,
                                sourceID=source_string_name,
-                               matched_filtered=False,
+                               matched_filtered=True,
                                renormalized=True,
                                catalog_crossmatch=isin_cat[source],
                                crossmatch_name=crossmatch_name,
@@ -207,9 +209,10 @@ def sift(extracted_sources,
         else:
             if crossmatch_with_gaia:
                 gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
-                ## just grab the first result
-                if len(gaia_match_result['designation'])>0:
-                    cand.crossmatch_name=gaia_match_result['designation'][0]
+                if gaia_match_result:
+                    ## just grab the first result
+                    if len(gaia_match_result['designation'])>0:
+                        cand.crossmatch_name=gaia_match_result['designation'][0]
             ## give the transient candidate source a name indicating that it is a transient
             cand.sourceID = '-T'.join(cand.sourceID.split('-S'))
             transient_candidates.append(cand)
@@ -321,7 +324,7 @@ def recalculate_local_snr(transient_candidates:list,
         new_snr=candidate.snr
         snr_ratio = old_snr/new_snr
         #print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux,rms_noise))
-        if candidate.snr>snr_cut and snr_ratio<ratio_cut and not np.isfinite(snr_ratio):
+        if candidate.snr>snr_cut and snr_ratio<ratio_cut and np.isfinite(snr_ratio):
             updated_transient_candidates.append(candidate)
         else:
             updated_noise_candidates.append(candidate)
