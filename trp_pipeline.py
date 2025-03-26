@@ -123,6 +123,10 @@ parser.add_argument("--simulation",
                     help="Injected sources are known and given in the source catalog. Use that to record the expected sources in each map.", 
                     action='store_true'
                     )
+parser.add_argument("--overwrite-db", 
+                    help="If not set, the mapid will be searched in the db, if found the observation will be skipped.", 
+                    action='store_true'
+                    )
 args = parser.parse_args()
 
 cataloged_sources_db = SourceCatalogDatabase('/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/so_source_catalog.pkl')
@@ -164,6 +168,11 @@ for freq_arr_idx in indexed_map_groups:
         elif len(map_group)==1:
             if args.verbose:
                 print('Loading map ',map_group[0])
+            if not args.overwrite_db:
+                map_id = '_'.join(map_group[0].split('/')[-1].split('_')[-4:-1])
+                if cataloged_sources_db.observation_exists(map_id):
+                    print('Map already exists in db... skipping.')
+                    continue
             ## need a more robust way to check this...
             if 'coadd' in str(map_group[0]):
                 mapdata = load_coadd_maps(mapfile=map_group[0],arr=arr)[0]
@@ -187,6 +196,7 @@ for freq_arr_idx in indexed_map_groups:
                        galmask_file = args.galaxy_mask,
                        plot_output_dir=args.plot_output,
                        PLOT=args.plot_all,
+                       tilegrid=float(args.gridsize),
                       )
         
         print('Loading Source Catalog')
@@ -225,7 +235,7 @@ for freq_arr_idx in indexed_map_groups:
         ## update the source catalog
         for source in known_sources:
             cataloged_sources_db.add_source(source, overwrite=False)
-
+            
         ## get source mask radius based on flux.
         source_mask_radius = get_cut_radius(mapdata.res/arcmin,
                                             mapdata.wafer_name,
@@ -233,7 +243,7 @@ for freq_arr_idx in indexed_map_groups:
                                             source_amplitudes=catalog_sources['fluxJy'],
                                             map_noise=catalog_sources['err_fluxJy'],
                                             max_radius_arcmin=120.0,
-                                            match_filtered=True
+                                            matched_filtered=True
                                             )
 
         ## simple catalog mask
@@ -256,12 +266,12 @@ for freq_arr_idx in indexed_map_groups:
         pix_rad = get_cut_radius(mapdata.res/arcmin,
                                  mapdata.wafer_name,
                                  mapdata.freq,
-                                 fwhm_arcmin=band_fwhm[mapdata.freq]/arcmin,
-                                 match_filtered=True,
+                                 matched_filtered=True,
                                  source_amplitudes=sigma_thresh_for_minrad,
                                  map_noise=np.ones(len(sigma_thresh_for_minrad)),
                                  max_radius_arcmin=120.
                                 )
+        
         extracted_sources = extract_sources(mapdata.flux,
                                             timemap=mapdata.time_map+t0,
                                             maprms=mapdata.flux/mapdata.snr,
