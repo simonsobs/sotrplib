@@ -35,7 +35,7 @@ class SourceCatalogDatabase:
             self.df = pd.concat([self.df, new_entry], ignore_index=True)
             self.df.to_pickle(self.db_path)
 
-    def source_exists(self, map_id):
+    def observation_exists(self, map_id):
         with self.lock:
             return not self.df[self.df['map_id'] == map_id].empty
 
