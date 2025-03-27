@@ -225,39 +225,41 @@ for freq_arr_idx in indexed_map_groups:
         catalog_sources = convert_gauss_fit_to_source_cat(gauss_fits)
         del gauss_fits,thumbs
         
-        known_sources = convert_catalog_to_source_objects(catalog_sources,
-                                                          mapdata.freq,
-                                                          mapdata.wafer_name,
-                                                          mapid=map_id,
-                                                          ctime=mapdata.time_map+t0
-                                                         )
-        
-        ## update the source catalog
-        for source in known_sources:
-            cataloged_sources_db.add_source(source, overwrite=False)
+        known_sources = []
+        if catalog_sources:
+            known_sources = convert_catalog_to_source_objects(catalog_sources,
+                                                            mapdata.freq,
+                                                            mapdata.wafer_name,
+                                                            mapid=map_id,
+                                                            ctime=mapdata.time_map+t0
+                                                            )
             
-        ## get source mask radius based on flux.
-        source_mask_radius = get_cut_radius(mapdata.res/arcmin,
-                                            mapdata.wafer_name,
-                                            mapdata.freq,
-                                            source_amplitudes=catalog_sources['fluxJy'],
-                                            map_noise=catalog_sources['err_fluxJy'],
-                                            max_radius_arcmin=120.0,
-                                            matched_filtered=True
-                                            )
+            ## update the source catalog
+            for source in known_sources:
+                cataloged_sources_db.add_source(source, overwrite=False)
+                
+            ## get source mask radius based on flux.
+            source_mask_radius = get_cut_radius(mapdata.res/arcmin,
+                                                mapdata.wafer_name,
+                                                mapdata.freq,
+                                                source_amplitudes=catalog_sources['fluxJy'],
+                                                map_noise=catalog_sources['err_fluxJy'],
+                                                max_radius_arcmin=120.0,
+                                                matched_filtered=True
+                                                )
 
-        ## simple catalog mask
-        catalog_mask = make_src_mask(mapdata.flux,
-                                     catalog_sources['pix'],
-                                     arr=mapdata.wafer_name,
-                                     freq=mapdata.freq,
-                                     mask_radius=source_mask_radius
-                                    )
+            ## simple catalog mask
+            catalog_mask = make_src_mask(mapdata.flux,
+                                        catalog_sources['pix'],
+                                        arr=mapdata.wafer_name,
+                                        freq=mapdata.freq,
+                                        mask_radius=source_mask_radius
+                                        )
 
-        ## mask the flux and snr after extracting via forced photometry
-        mapdata.flux*=catalog_mask
-        mapdata.snr*=catalog_mask
-        del catalog_mask
+            ## mask the flux and snr after extracting via forced photometry
+            mapdata.flux*=catalog_mask
+            mapdata.snr*=catalog_mask
+            del catalog_mask
 
         print('Finding sources...')
         ## get mask radius for each sigma such that the mask goes to the 

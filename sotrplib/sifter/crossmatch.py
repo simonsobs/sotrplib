@@ -141,13 +141,17 @@ def sift(extracted_sources,
     extracted_ra = np.asarray([extracted_sources[f]['ra'] for f in extracted_sources])
     extracted_dec = np.asarray([extracted_sources[f]['dec'] for f in extracted_sources])
 
-    crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
-    isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
-                                             np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
-                                             list(crossmatch_radius),
-                                             mode='closest',
-                                             return_matches=True
-                                            )
+    if not catalog_sources:
+        isin_cat = np.zeros(len(extracted_ra),dtype=bool)
+        catalog_match = []*len(extracted_ra)
+    else:
+        crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
+        isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
+                                                np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
+                                                list(crossmatch_radius),
+                                                mode='closest',
+                                                return_matches=True
+                                                )
 
 
     source_candidates = []

@@ -231,7 +231,8 @@ def get_fwhm(freq:str,
              arr:str=None
              ):
     #Array not used yet, but could have per array/freq fwhm
-    fwhm={'f090':2.2,'f150':1.4,'f220':1.0}
+    ## from lat white paper https://arxiv.org/pdf/2503.00636
+    fwhm={'f030':7.4,'f040':5.1,'f090':2.2,'f150':1.4,'f220':1.0}
     
     return fwhm[freq]
 
