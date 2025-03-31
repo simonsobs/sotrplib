@@ -48,8 +48,8 @@ parser.add_argument("--solarsystem",
                     help="path asteroid ephem directories",
                     default="/scratch/gpfs/snaess/actpol/ephemerides/objects",
                     )
-parser.add_argument("--plot-output",
-                    help="path to output maps and code for plots",
+parser.add_argument("--output-dir",
+                    help="path to output databases and / or plots",
                     default="/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/",
                     )
 parser.add_argument("--source-catalog",
@@ -129,9 +129,9 @@ parser.add_argument("--overwrite-db",
                     )
 args = parser.parse_args()
 
-cataloged_sources_db = SourceCatalogDatabase('/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/so_source_catalog.pkl')
-transients_db = SourceCatalogDatabase('/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/so_transient_catalog.pkl')
-noise_candidates_db = SourceCatalogDatabase('/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/so_noise_catalog.pkl')
+cataloged_sources_db = SourceCatalogDatabase(args.output_dir+'so_source_catalog.pkl')
+transients_db = SourceCatalogDatabase(args.output_dir+'so_transient_catalog.pkl')
+noise_candidates_db = SourceCatalogDatabase(args.output_dir+'so_noise_catalog.pkl')
 
     
 if len(args.maps) == 1:
@@ -187,14 +187,16 @@ for freq_arr_idx in indexed_map_groups:
                                       freq=freq,
                                       arr=arr
                                       )
-            
+        if not mapdata:
+            print('No map data found... skipping.')
+            continue    
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
         
         preprocess_map(mapdata,
                        galmask_file = args.galaxy_mask,
-                       plot_output_dir=args.plot_output,
+                       plot_output_dir=args.output_dir,
                        PLOT=args.plot_all,
                        tilegrid=float(args.gridsize),
                       )
@@ -325,7 +327,7 @@ for freq_arr_idx in indexed_map_groups:
                                         tc.ra,
                                         tc.dec,
                                         source_name='_'.join(tc.sourceID.split(' '))+'_'+str(tc.ctime)+'_'+mapdata.wafer_name+'_'+mapdata.freq,
-                                        plot_dir = args.plot_output,
+                                        plot_dir = args.output_dir,
                                         colorbar_range=args.snr_threshold
                                         )
             if args.verbose:
