@@ -129,9 +129,15 @@ parser.add_argument("--overwrite-db",
                     )
 args = parser.parse_args()
 
-cataloged_sources_db = SourceCatalogDatabase(args.output_dir+'so_source_catalog.pkl')
-transients_db = SourceCatalogDatabase(args.output_dir+'so_transient_catalog.pkl')
-noise_candidates_db = SourceCatalogDatabase(args.output_dir+'so_noise_catalog.pkl')
+
+cataloged_sources_db = SourceCatalogDatabase(args.output_dir+'so_source_catalog.csv')
+cataloged_sources_db.read_database()
+transients_db = SourceCatalogDatabase(args.output_dir+'so_transient_catalog.csv')
+noise_candidates_db = SourceCatalogDatabase(args.output_dir+'so_noise_catalog.csv')
+
+
+
+
 
     
 if len(args.maps) == 1:
@@ -190,6 +196,7 @@ for freq_arr_idx in indexed_map_groups:
         if not mapdata:
             print('No map data found... skipping.')
             continue    
+        cataloged_sources_db._initialize_database()
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
@@ -237,8 +244,7 @@ for freq_arr_idx in indexed_map_groups:
                                                             )
             
             ## update the source catalog
-            for source in known_sources:
-                cataloged_sources_db.add_source(source, overwrite=False)
+            cataloged_sources_db.add_sources(known_sources)
                 
             ## get source mask radius based on flux.
             source_mask_radius = get_cut_radius(mapdata.res/arcmin,
@@ -317,10 +323,10 @@ for freq_arr_idx in indexed_map_groups:
             ## should only be possible if the masking radius and the source matching radius are significantly different.
 
         if len(transient_candidates)<=args.candidate_limit:
-            for source in transient_candidates:
-                transients_db.add_source(source, overwrite=False)
-                ## add transients to the source catalog as well
-                cataloged_sources_db.add_source(source, overwrite=False)
+            transients_db.add_sources(transient_candidates)
+            ## add transients to the source catalog as well
+            cataloged_sources_db.add_sources(transient_candidates)
+
             if args.plot_thumbnails:
                 for tc in transient_candidates:
                     plot_map_thumbnail(mapdata.snr,
@@ -338,10 +344,16 @@ for freq_arr_idx in indexed_map_groups:
         else:
             print('Too many transient candidates (%i)... something fishy'%len(transient_candidates))
             print('Writing to noise candidates database.')
-            for source in transient_candidates:
-                noise_candidates_db.add_source(source, overwrite=False)
+            noise_candidates_db.add_sources(transient_candidates)
 
-        for source in noise_candidates:
-            noise_candidates_db.add_source(source, overwrite=False)
+        noise_candidates_db.add_sources(noise_candidates)
 
         del mapdata,source_candidates,transient_candidates,noise_candidates,extracted_sources,catalog_sources,known_sources
+
+        ## update databases and clear
+        cataloged_sources_db.write_database()
+        cataloged_sources_db.read_database()
+        noise_candidates_db.write_database()
+        noise_candidates_db._initialize_database()
+        transients_db.write_database()
+        transients_db._initialize_database()

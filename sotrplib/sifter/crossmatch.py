@@ -212,11 +212,15 @@ def sift(extracted_sources,
             noise_candidates.append(cand)
         else:
             if crossmatch_with_gaia:
-                gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
-                if gaia_match_result:
-                    ## just grab the first result
-                    if len(gaia_match_result['designation'])>0:
-                        cand.crossmatch_name=gaia_match_result['designation'][0]
+                ## if running on compute node, can't access internet, so can't query gaia.
+                try:
+                    gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
+                    if gaia_match_result:
+                        ## just grab the first result
+                        if len(gaia_match_result['designation'])>0:
+                            cand.crossmatch_name=gaia_match_result['designation'][0]
+                except Exception:
+                    pass
             ## give the transient candidate source a name indicating that it is a transient
             cand.sourceID = '-T'.join(cand.sourceID.split('-S'))
             transient_candidates.append(cand)
