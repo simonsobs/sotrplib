@@ -185,6 +185,8 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
     from ..sources.sources import SourceCandidate
 
     known_sources = []
+    if not catalog_sources:
+        return []
     for i in range(len(catalog_sources['name'])):
         bad_fit=catalog_sources['gauss_fit_flag'][i]
         source_ra = catalog_sources['RADeg'][i]%360 

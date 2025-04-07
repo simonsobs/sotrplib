@@ -79,10 +79,12 @@ def gaia_match(cand:SourceCandidate,
                ):
     from ..source_catalog.query_tools import cone_query_gaia
     gaia_results = cone_query_gaia(cand.ra,cand.dec,radius_arcmin=cand.fwhm)
-
-    parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
-    gaia_valid = gaia_results[(gaia_results[mag_key]<maxmag) & parallax & (gaia_results[sep_key]<maxsep_deg)]
-
+    
+    if gaia_results:
+        parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
+        gaia_valid = gaia_results[(gaia_results[mag_key]<maxmag) & parallax & (gaia_results[sep_key]<maxsep_deg)]
+    else:
+        gaia_valid = {}
     ## calculate pvalue, sort on pvalue.
 
     return gaia_valid
@@ -139,13 +141,17 @@ def sift(extracted_sources,
     extracted_ra = np.asarray([extracted_sources[f]['ra'] for f in extracted_sources])
     extracted_dec = np.asarray([extracted_sources[f]['dec'] for f in extracted_sources])
 
-    crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
-    isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
-                                             np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
-                                             list(crossmatch_radius),
-                                             mode='closest',
-                                             return_matches=True
-                                            )
+    if not catalog_sources:
+        isin_cat = np.zeros(len(extracted_ra),dtype=bool)
+        catalog_match = []*len(extracted_ra)
+    else:
+        crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
+        isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
+                                                np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
+                                                list(crossmatch_radius),
+                                                mode='closest',
+                                                return_matches=True
+                                                )
 
 
     source_candidates = []
@@ -186,7 +192,7 @@ def sift(extracted_sources,
                                ctime=forced_photometry_info['time'],
                                mapid=mapid,
                                sourceID=source_string_name,
-                               match_filtered=False,
+                               matched_filtered=True,
                                renormalized=True,
                                catalog_crossmatch=isin_cat[source],
                                crossmatch_name=crossmatch_name,
@@ -206,10 +212,17 @@ def sift(extracted_sources,
             noise_candidates.append(cand)
         else:
             if crossmatch_with_gaia:
-                gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
-                ## just grab the first result
-                if len(gaia_match_result['designation'])>0:
-                    cand.crossmatch_name=gaia_match_result['designation'][0]
+                ## if running on compute node, can't access internet, so can't query gaia.
+                try:
+                    gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
+                    if gaia_match_result:
+                        ## just grab the first result
+                        if len(gaia_match_result['designation'])>0:
+                            cand.crossmatch_name=gaia_match_result['designation'][0]
+                except Exception:
+                    pass
+            ## give the transient candidate source a name indicating that it is a transient
+            cand.sourceID = '-T'.join(cand.sourceID.split('-S'))
             transient_candidates.append(cand)
         del cand
     if isinstance(imap,enmap.ndmap):
@@ -259,6 +272,7 @@ def recalculate_local_snr(transient_candidates:list,
                           thumb_size_deg:float=0.5,
                           fwhm_arcmin:float=2.2,
                           snr_cut:float=5.0,
+                          ratio_cut:float=1.3,
                          ):
     """
     Recalculate the local SNR for each transient source.
@@ -268,12 +282,18 @@ def recalculate_local_snr(transient_candidates:list,
     - imap: The map data object.
     - thumb_size_deg: The size of the thumbnail in degrees.
     - fwhm_arcmin: The band full width at half maximum in arcmin.
+    - snr_cut: The SNR cut to use for the new local noise.
+    - ratio_cut: The ratio of the old SNR to the new SNR above which to cut.
+
+    assumes that if the new snr is significantly different from the old snr, the region is noisier than expected.
+    empircally 30% change seems to indicate a noisy region.
 
     Returns:
     - updated_transient_candidates: List of transient source candidates with updated SNR.
     - updated_noise_candidates: List of noise source candidates with updated SNR.
     """
     from pixell.utils import degree,arcmin
+    from ..utils.utils import get_pix_from_peak_to_noise
     from ..maps.maps import get_submap
 
     updated_transient_candidates = []
@@ -290,19 +310,29 @@ def recalculate_local_snr(transient_candidates:list,
                               )
         
         # Mask the center out to 2 times the FWHM
-        if isinstance(mask,type(None)):
-            mask_radius = 2 * fwhm_arcmin / (abs(thumbnail.wcs.wcs.cdelt[0])*degree/arcmin)
-            center = tuple(int(t/2) for t in thumbnail.shape)
-            Y, X = np.ogrid[:thumbnail.shape[0], :thumbnail.shape[1]]
-            dist_from_center = np.sqrt((X - center[1])**2 + (Y - center[0])**2)
-            mask = dist_from_center >= mask_radius
+        #if isinstance(mask,type(None)):
+        center = tuple(int(t/2) for t in thumbnail.shape)
+        fwhm_pix = fwhm_arcmin/abs(thumbnail.wcs.wcs.cdelt[0]*degree/arcmin)
         
+        mask_radius = get_pix_from_peak_to_noise(candidate.flux,
+                                                 candidate.flux/candidate.snr,
+                                                 fwhm_pix=fwhm_pix,
+                                                )[0]
+        mask_radius*=np.sqrt(2) ## for matched filter size
+        Y, X = np.ogrid[:thumbnail.shape[0], :thumbnail.shape[1]]
+        dist_from_center = np.sqrt((X - center[1])**2 + (Y - center[0])**2)
+        mask = dist_from_center >= mask_radius
+
         # Calculate the RMS noise of the unmasked region
         unmasked_flux = thumbnail[mask > 0]
         rms_noise = np.nanstd(unmasked_flux)
         # Recalculate the SNR using the new RMS noise
+        old_snr=candidate.snr
         candidate.snr = candidate.flux / rms_noise
-        if candidate.snr>snr_cut:
+        new_snr=candidate.snr
+        snr_ratio = old_snr/new_snr
+        #print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux,rms_noise))
+        if candidate.snr>snr_cut and snr_ratio<ratio_cut and np.isfinite(snr_ratio):
             updated_transient_candidates.append(candidate)
         else:
             updated_noise_candidates.append(candidate)
