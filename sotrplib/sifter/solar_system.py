@@ -309,7 +309,7 @@ def load_ephem_files(files):
         List of ephemeris objects containing SSO ephemeris data for the given
         input files.
     """
-    from astropy.ascii import read
+    from astropy.io.ascii import read
     from glob import glob
 
     if isinstance(files, str):
@@ -373,7 +373,7 @@ def interpolate_asteroid_ephem(obs_time,
         if asteroid and asteroid_name != asteroid:
             continue
         print("Checking asteroid {}".format(asteroid))
-        ephem_time = np.array([Time(t).unix for t in frame["Ephem"]['datetime_str']])
+        ephem_time = Time(frame["Ephem"]['datetime_jd'],format='jd').unix
         nearest_ephem = np.argmin(np.abs(ephem_time - int(obs_time)))
         
         first_ephem = nearest_ephem
@@ -401,3 +401,135 @@ def interpolate_asteroid_ephem(obs_time,
         
     return np.array(interp_times), np.array(interp_ra), np.array(interp_dec)
 
+
+def get_object_position_at_time(obs_times,
+                                ephem,
+                                max_ra_rate:float=30,
+                                max_dec_rate:float=30,
+                                asteroid:str=None,
+                               ):
+    """
+    Function to get the position of a SSO at a given time by 
+    interpolating over the ephemeris data.
+    The ephemeris data should be in the form of an Astropy Table or
+    list of Astropy Tables. The function will return
+    the right ascension and declination of the SSO at the given
+    observation time.
+
+    max_ra_rate, max_dec_rate  set the limits for using RA_rate and
+    DEC_rate to extrapolate the position of the SSO.
+    If the rate is higher than these limits, the function will
+    interpolate the position using scipy spline interpolation of the RA and DEC values.
+
+    Arguments
+    ---------
+    obs_times : float, str, list
+        Observation time(s) in astropy Time or unix time.
+    ephem : Astropy Table, str, or list
+        Ephemeris table, or file path, or list of tables containing ephemeris data.
+    max_ra_rate : float [30]
+        Maximum rate of change of RA in arcseconds per hour.
+    max_dec_rate : float [30]
+        Maximum rate of change of DEC in arcseconds per hour.
+    asteroid : str
+        Name of asteroid to use.
+        If None, the function will all asteroids.
+    Returns
+    -------
+    interpolated_position : dict
+        Dict keyed by object name, containing the RA, DEC, and
+        UnixTime of the object at the given observation time.
+        The RA and DEC are in degrees.
+        The UnixTime is the time of the observation in seconds.
+    """
+    arcsec_per_hour_to_deg_per_sec = 1/3600.0/3600.0
+    from astropy.time import Time
+    from astropy.table import Table
+    from tqdm import tqdm
+    ## load the ephemeris data... 
+    ## since there are so many options, there are a lot of checks.
+    if isinstance(ephem, str):
+        ephem = load_ephem_files(files=ephem)
+    elif isinstance(ephem, list):
+        if isinstance(ephem[0], str):
+            ephem = load_ephem_files(files=ephem)
+        elif isinstance(ephem[0], Table):
+            pass
+    elif isinstance(ephem, Table):
+        ephem = [ephem]
+    elif not isinstance(ephem, list):
+        raise ValueError("ephem must be a string or a list of strings or astropy tables.")
+    if len(ephem) == 0:
+        raise ValueError("No ephemeris data found.")
+    
+    for eph in tqdm(ephem,desc='calculating unix timestamps'):
+        eph['UnixTime'] = Time(eph['datetime_jd'],format='jd').unix
+
+    interpolated_positions = {}
+    if isinstance(obs_times, (str,float)):
+        obs_times = [obs_times]
+    for obs_time in tqdm(obs_times,desc='interpolating positions'):
+        if isinstance(obs_time, str):
+            obs_time = Time(obs_time).unix
+        elif isinstance(obs_time, Time):
+            obs_time = obs_time.unix
+        elif not isinstance(obs_time, float):
+            raise ValueError("obs_time must be a string or a float.")
+        if obs_time is None:
+            raise ValueError("obs_time must be a string or a float.")
+        if obs_time < 0:
+            raise ValueError("obs_time must be a positive float.")
+        
+        
+        for eph in ephem:
+            if "targetname" not in eph.colnames:
+                continue
+            asteroid_name = eph["targetname"][0]
+            if asteroid and asteroid_name != asteroid:
+                continue
+            
+            ## find nearest ephemeris time
+            ## to the observation time
+            ephem_time = eph['UnixTime']
+            nearest_ephem = np.argmin(np.abs(ephem_time - int(obs_time)))
+            ra=np.nan
+            dec=np.nan
+            if 'RA_rate' in eph.colnames and 'DEC_rate' in eph.colnames:
+                ra_rate = eph['RA_rate'][nearest_ephem]
+                dec_rate = eph['DEC_rate'][nearest_ephem]
+            else:
+                ra_rate=np.inf
+                dec_rate=np.inf
+            if abs(ra_rate)>max_ra_rate or abs(dec_rate)>max_dec_rate:
+                from scipy.interpolate import CubicSpline
+                inds = np.array([nearest_ephem-1, nearest_ephem, nearest_ephem+1])
+                ## check for out of bounds
+                if inds[0] < 0:
+                    inds[0] = 0
+                if inds[2] >= len(ephem_time):
+                    inds[2] = len(ephem_time)-1
+                ## get the ephemeris data
+                eph_times = ephem_time[inds]
+                eph_ra = np.asarray(eph['RA'])[inds]
+                eph_dec = np.asarray(eph['DEC'])[inds]
+                ## interpolate the ephemeris data
+                interp_ra = CubicSpline(eph_times, eph_ra)
+                interp_dec = CubicSpline(eph_times, eph_dec)
+                ra = interp_ra(obs_time)
+                dec = interp_dec(obs_time)
+            else:
+                ra = eph['RA'][nearest_ephem] + (obs_time - ephem_time[nearest_ephem]) * (ra_rate *arcsec_per_hour_to_deg_per_sec)
+                dec = eph['DEC'][nearest_ephem] + (obs_time - ephem_time[nearest_ephem]) * (dec_rate*arcsec_per_hour_to_deg_per_sec)
+            ra = ra % 360
+
+            if asteroid_name not in interpolated_positions:
+                interpolated_positions[asteroid_name] = {"RA": np.atleast_1d(ra),
+                                                         "DEC": np.atleast_1d(dec),
+                                                         "UnixTime": np.atleast_1d(obs_time),
+                                                        }
+            else:
+                interpolated_positions[asteroid_name]["RA"]=np.concatenate((interpolated_positions[asteroid_name]["RA"],np.atleast_1d(ra)))
+                interpolated_positions[asteroid_name]["DEC"]=np.concatenate((interpolated_positions[asteroid_name]["DEC"],np.atleast_1d(dec)))
+                interpolated_positions[asteroid_name]["UnixTime"]=np.concatenate((interpolated_positions[asteroid_name]["UnixTime"],np.atleast_1d(obs_time)))
+                 
+    return interpolated_positions
