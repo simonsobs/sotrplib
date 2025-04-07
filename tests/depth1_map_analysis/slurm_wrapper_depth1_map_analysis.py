@@ -38,10 +38,12 @@ P.add_argument("--data-dir",
                help="Data directory, where the depth1 maps live."
               )
 
-P.add_argument("--ignore-known-sources", 
-                help="Only record sources which do not have catalog matches.", 
-                action='store_true'
-                )
+P.add_argument("--flux-threshold",
+               action="store",
+               default=0.03,
+               type=float,
+               help="Flux threshold for source extraction, in Jy. Default: 0.03"
+              ) 
 
 P.add_argument("--scratch-dir",
                action="store",
@@ -111,6 +113,12 @@ P.add_argument("--nserial",
                help="Number of serial sets of `ncores` scripts to run per job. "
               )
 
+P.add_argument("--bands",
+               action="store",
+               nargs='+',
+               default=['f090','f150','f220'],
+               help="Bands to analyze, default is f090,f150,f220 but can also includ f030 or f040. "
+              )
 
 args = P.parse_args()
 
@@ -192,8 +200,9 @@ for mapfile in args.maps:
     dateid = mapfile.split('/')[-2]
     slurm_text+=(
                 f"srun --overlap python {args.script_name} --maps {mapfile} "
-                f"--plot-output {args.out_dir} --save-json -s {args.snr_threshold}"
-                f"{' --plot-thumbnails' if args.plot_thumbnails else ''}{' --ignore-known-sources' if args.ignore_known_sources else ''}"
+                f"--output-dir {args.out_dir} -s {args.snr_threshold}"
+                f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
+                f" --flux-threshold {args.flux_threshold}"
                 f" &\n sleep 1 \n"
                 )
     nmaps+=1
@@ -214,27 +223,29 @@ for mapfile in args.maps:
 
 for i in tqdm(range(len(datelist))):
     date=datelist[i].split('/')[-1]
-    globstr=args.data_dir+date+'/depth1*rho.fits'
-    slurm_text+=(
-                f"srun --overlap python {args.script_name} --maps {globstr} "
-                f"--plot-output {args.out_dir} --save-json -s {args.snr_threshold}"
-                f"{' --plot-thumbnails' if args.plot_thumbnails else ''}{' --ignore-known-sources' if args.ignore_known_sources else ''}"
-                f" &\n sleep 1 \n"
-                )
-    if i%args.ncores == 0 and i>0:
-        slurm_text+='wait\n'
+    for band in args.bands:
+        globstr=args.data_dir+date+f'/depth1*{band}*_rho.fits'
+        slurm_text+=(
+                    f"srun --overlap python {args.script_name} --maps {globstr} "
+                    f"--output-dir {args.out_dir} -s {args.snr_threshold}"
+                    f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
+                    f" --flux-threshold {args.flux_threshold}"
+                    f" &\n sleep 1 \n"
+                    )
+        if i%args.ncores == 0 and i>0:
+            slurm_text+='wait\n'
 
-    if i%nserial == 0 and i>0:
-        with open('%s/%s_sub.slurm'%(args.slurm_script_dir,str(n).zfill(4)),'w') as f:
-            f.write(slurm_text)
-            f.write('wait')
-        n+=1
-        slurm_text = generate_slurm_header(str(n).zfill(4),
-                                           args.group_name,
-                                           str(args.ncores),
-                                           args.script_dir if args.script_dir else os.getcwd(),
-                                           args.slurm_out_dir
-                                          )
+        if i%nserial == 0 and i>0:
+            with open('%s/%s_sub.slurm'%(args.slurm_script_dir,str(n).zfill(4)),'w') as f:
+                f.write(slurm_text)
+                f.write('wait')
+            n+=1
+            slurm_text = generate_slurm_header(str(n).zfill(4),
+                                            args.group_name,
+                                            str(args.ncores),
+                                            args.script_dir if args.script_dir else os.getcwd(),
+                                            args.slurm_out_dir
+                                            )
         
 with open('%s/%s_sub.slurm'%(args.slurm_script_dir,str(n).zfill(4)),'w') as f:
     f.write(slurm_text)

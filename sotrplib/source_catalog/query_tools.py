@@ -28,7 +28,7 @@ def cone_query_gaia(ra_deg:float,
                                     columns=columns
                                     ).get_results()
     if not gaia_results:
-        return []
+        return {}
     else:
         return gaia_results
     

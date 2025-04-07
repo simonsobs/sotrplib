@@ -174,7 +174,7 @@ def main():
                     snr=snr.at(np.deg2rad(c), order=0, mask_nan=True),
                     ctime=mapdata.time_map.at(np.deg2rad(c), order=0, mask_nan=True),
                     sourceID=source_string_name,
-                    match_filtered=False,
+                    matched_filtered=False,
                     renormalized=False,
                     catalog_crossmatch=crossmatch_mask(
                         np.asarray(c).T,

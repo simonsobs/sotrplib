@@ -14,7 +14,8 @@ class SourceCandidate(BaseModel):
     arr:str
     mapid:str=''
     sourceID:str=''
-    match_filtered:bool=False
+    source_type:str=''
+    matched_filtered:bool=False
     renormalized: bool=False
     catalog_crossmatch: bool=False
     crossmatch_name: str=''
