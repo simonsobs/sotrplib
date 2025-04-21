@@ -1,5 +1,36 @@
 # Simulation configuration for creating simulated maps
 
+#Most of the inputs are self explanatory. 
+#If you are creating simulated maps, the n_realizations parameter under `maps`
+#is the number of map realizations to run.
+
+#The center_ra and center_dec parameters define the center of the map in degrees.
+#The width_ra and width_dec parameters define the HALF WIDTH of the map in degrees.
+
+#map_noise is the rms of the Gaussian white noise. Currently the only option.
+#min and max times set the limits of the map Unix times. In the pipeline the 
+#current implementation is to use np.linspace to choose the times in between
+#the min and max times.
+
+# The `injected_sources` section defines the parameters for the static sources.
+# Although you can inject an arbitrary number of sources, the photutils method
+# also sets a minimum distance between sources. A warning will be raised if
+# the number of sources injected is less than the requested number due to overcrowding.
+# Sources are injected with a uniform random distribution of fluxes between the
+# min_flux and max_flux parameters. The inj_fwhm parameter sets the FWHM of the
+# sources in arcminutes. The fwhm_uncert_frac parameter sets the fractional size of
+# the range in allowed variation of FWHM, i.e. so that the FWHM of the injected sources
+# will be uniformly random between fwhm*(1-fwhm_uncert_frac) and fwhm*(1+fwhm_uncert_frac).
+
+# The `injected_transients` section defines the parameters for the transients, which 
+# just means a Gaussian flare at a certain time, with a certain width and amplitude.
+# Currently only Gaussian flares are supported (as of April 2025).
+
+# While static sources are injected into each map, the transient objects are
+# only injected into maps in which they are both visible and flaring (+- 3*flare_width).
+# The min_width and max_width parameters set the range of flare FWHMs.
+# Time ranges set the peak flare location (i.e. mean of the Gaussian).
+
 ## stuff for array, band for the sims
 array_info:
   arr: simarr

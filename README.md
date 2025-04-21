@@ -75,6 +75,12 @@ The trp_pipeline consists of the following steps:
 
 The trp_pipeline supports three modes of source / transient injection:
 
-1. Gaussian white noise map with injected sources. User inputs map / source properties via ```sims/sim_config.yaml```
-2. Inject sources directly into the input maps which are read in from disk. Uses the ```sim_config.yaml```.
-3. Use input maps to get the map extent and time map, then make gaussian noise realization and inject sources via ```sim_config.yaml```
+1. Gaussian white noise map with injected sources. User inputs map / source properties via `sims/sim_config.yaml`
+2. Inject sources directly into the input maps which are read in from disk. Uses the `sim_config.yaml`.
+3. Use input maps to get the map extent and time map, then make gaussian noise realization and inject sources via `sim_config.yaml`
+
+Running the `trp_pipeline.py` script with the `--sim` argument will perform number 1. The `--sim-config` argument should give the path to the sim config yaml file.
+The `--simulated-transient-database` argument can be passed pointing to a premade database of transient sources (see for example `tests/act_depth1_transient_sims/generate_transients_for_act.py`).
+To inject transients from the config file, use `--inject-transients`.
+If you want to inject transients directly into real maps (i.e. 2. from above) , you can use the `--inject-transients` argument without running `--sim`.
+The final option, which reads in the real maps but then generates gaussian sims using that geometry and time map, one can run in `--sim` mode with `--inject-transients`  and `--use-map-geometry` .

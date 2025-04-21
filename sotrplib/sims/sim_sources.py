@@ -54,6 +54,7 @@ class SimTransient:
         
 
 def generate_transients(n:int=None,
+                        imap:enmap.ndmap=None,
                         ra_lims:tuple=None,
                         dec_lims:tuple=None,
                         positions:list=None,
@@ -68,6 +69,7 @@ def generate_transients(n:int=None,
     Each source is represented by a SimTransient object.
     Arguments:
     - n (int): Number of transients to generate. If None, positions must be provided.
+    - imap (enmap.ndmap): Input map for generating random positions. If None, ra_lims and dec_lims must be provided.
     - ra_lims (tuple): Tuple of (min_ra, max_ra) for random RA generation. degrees
     - dec_lims (tuple): Tuple of (min_dec, max_dec) for random Dec generation. degrees
     - positions (list): List of tuples (ra, dec) for specific positions. If provided, n is ignored. degrees
@@ -81,16 +83,16 @@ def generate_transients(n:int=None,
                             generate_random_flare_amplitudes, 
                             generate_random_flare_widths,
                             generate_random_flare_times,
-                            ra_lims_valid,
-                            dec_lims_valid,
-                            )               
+                            )       
+            
     transients = []
     if n is None and not positions:
         raise ValueError("Either n or positions must be provided.")
     if n is not None and positions:
         raise ValueError("Cannot provide both n and positions.")
-    if n is not None and ra_lims_valid(ra_lims) and dec_lims_valid(dec_lims):
+    if n is not None:
         positions = generate_random_positions(n, 
+                                              imap=imap,
                                               ra_lims=ra_lims, 
                                               dec_lims=dec_lims
                                               )

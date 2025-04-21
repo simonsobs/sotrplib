@@ -1,10 +1,12 @@
 import numpy as np
 from pixell import enmap
+from pixell.utils import degree
 
 
 def generate_random_positions(n:int, 
-                              ra_lims:tuple, 
-                              dec_lims:tuple,
+                              imap:enmap.ndmap=None,
+                              ra_lims:tuple=None, 
+                              dec_lims:tuple=None,
                               ):
     """
     Generate n random positions in RA and Dec uniformly distributed on the sphere
@@ -12,12 +14,25 @@ def generate_random_positions(n:int,
 
     Arguments:
         n (int): Number of positions to generate.
+        imap (enmap.ndmap): Input map for generating random positions. If None, ra_lims and dec_lims must be provided.
         ra_lims (tuple): Limits for RA in degrees (min_ra, max_ra).
         dec_lims (tuple): Limits for Dec in degrees (min_dec, max_dec).
 
     Returns:
         tuple: Two numpy arrays containing the RA and Dec positions.
     """
+    if ra_lims is None or dec_lims is None:
+        if imap is not None:
+            shape, wcs = imap.shape, imap.wcs
+            ra_min, ra_max = enmap.box(shape, wcs)[:, 0]/degree
+            dec_min, dec_max = enmap.box(shape, wcs)[:, 1]/degree
+            ra_lims = (ra_min%360, ra_max%360)
+            dec_lims = (dec_min, dec_max)
+        else:
+            raise ValueError("Either ra_lims and dec_lims must be provided, or imap must be supplied.")
+    if not ra_lims_valid(ra_lims) or not dec_lims_valid(dec_lims):
+        raise ValueError("RA and Dec limits must be valid. RA: [0, 360], Dec: [-90, 90]")
+    
     # Convert limits to radians
     ra_min, ra_max = np.radians(ra_lims)
     dec_min, dec_max = np.radians(dec_lims)
