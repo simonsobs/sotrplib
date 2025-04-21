@@ -5,6 +5,9 @@ Creating a test setup of the SO map-domain transient pipeline which will start b
 
 Currently, the output is three pandas databases in csv format.
 
+Now supports sim mode which can create gaussian noise maps, inject and recover sources and also inject sources into depth1 maps.
+More below  in the ## simulations section
+
 
 ## extra required packages
 
@@ -22,7 +25,7 @@ An example use of the source extraction pipeline can be run using the script `so
 
 This script can also be used to coadd depth1 maps before source-finding.
 
-Right now, sources are saved in json files as `SourceCandidate` objects which will in the future be directly stored in the SO source catalog and lightcurve databases.
+Right now, sources are saved as pandas databases as `SourceCandidate` objects which will in the future be directly stored in the SO source catalog and lightcurve databases.
 
 > *You have to create the output directory before running.*
 
@@ -66,3 +69,12 @@ The trp_pipeline consists of the following steps:
 - Blind search for sources above user-input SNR threshold.
 - Compare extracted sources to external catalog(s); i.e. perform the sift operation.
 - Output the source candidates, transient candidates, and noise candidates to pandas database, sifted via the sifter
+
+
+## Simulations
+
+The trp_pipeline supports three modes of source / transient injection:
+
+1. Gaussian white noise map with injected sources. User inputs map / source properties via ```sims/sim_config.yaml```
+2. Inject sources directly into the input maps which are read in from disk. Uses the ```sim_config.yaml```.
+3. Use input maps to get the map extent and time map, then make gaussian noise realization and inject sources via ```sim_config.yaml```
