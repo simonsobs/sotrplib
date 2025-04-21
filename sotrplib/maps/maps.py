@@ -267,6 +267,24 @@ def enmap_map_union(map1,map2):
     omap.insert(map2, op=lambda a,b:a+b)
     return omap
 
+def load_sim_map(map_sim_params,ctime=0.0):
+    from ..sims import sim_maps as mapsims
+
+    empty_map = mapsims.make_enmap(center_ra=map_sim_params['maps']['center_ra'],
+                                   center_dec=map_sim_params['maps']['center_dec'],
+                                   width_ra=map_sim_params['maps']['width_ra'],
+                                   width_dec=map_sim_params['maps']['width_dec']
+                                  )
+    sim_map = Depth1Map(wafer_name=map_sim_params['array_info']['arr'],
+                        freq=map_sim_params['array_info']['freq'],
+                        map_ctime=ctime,
+                        map_start_time=0.0,
+                        res = np.abs(empty_map.wcs.wcs.cdelt[0])*degree
+                        )
+    sim_map.flux=empty_map
+    sim_map.time_map = empty_map+np.ones(empty_map.shape)*ctime
+    return sim_map
+
 def load_maps(map_path:Path)->Depth1Map:
     ## map_path should be /file/path/to/[obsid]_[arr]_[freq]_map.fits
     ## or /file/path/to/[obsid]_[arr]_[freq]_rho.fits

@@ -103,6 +103,7 @@ def sift(extracted_sources,
          cuts:dict={'fwhm':[0.5,5.0],
                     'snr':[5.0,np.inf],},
          crossmatch_with_gaia=True,
+         debug=False,
          ):
     from ..utils.utils import radec_to_str_name
     
@@ -168,6 +169,10 @@ def sift(extracted_sources,
         else:
             crossmatch_name = ''
         
+        if debug:
+            print(source_string_name,crossmatch_name)
+            print(forced_photometry_info)
+            
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
         if "err_ra" not in forced_photometry_info or "err_dec" not in forced_photometry_info:
             forced_photometry_info['err_ra'] = pixell_utils.fwhm*fwhm_arcmin*pixell_utils.arcmin /np.sqrt(forced_photometry_info['peaksig'])
@@ -205,7 +210,7 @@ def sift(extracted_sources,
                               )
         
         ## do sifting operations here...
-        is_cut = get_cut_decision(cand,cuts)
+        is_cut = get_cut_decision(cand,cuts,debug=debug)
         if isin_cat[source]:
             source_candidates.append(cand)
         elif is_cut or not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or not np.isfinite(forced_photometry_info['peakval']) :
@@ -241,7 +246,8 @@ def sift(extracted_sources,
 
 
 def get_cut_decision(candidate:SourceCandidate,
-                     cuts:dict={}
+                     cuts:dict={},
+                     debug=False
                      )->bool:
     '''
     cuts contains dictionary with key values describing the cuts.
@@ -264,6 +270,8 @@ def get_cut_decision(candidate:SourceCandidate,
     for c in cuts.keys():
         val = getattr(candidate,c)
         cut |= (val<cuts[c][0]) | (val>cuts[c][1])
+        if debug and (val<cuts[c][0]) | (val>cuts[c][1]):
+            print('cut %s: %.2f < %.2f or %.2f > %.2f'%(c,val,cuts[c][0],val,cuts[c][1]))
     return cut
 
 

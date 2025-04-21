@@ -137,7 +137,7 @@ def extract_sources(inmap:ndmap,
     peaks = find_using_photutils(np.asarray(inmap),
                                  maprms,
                                  nsigma=nsigma,
-                                 minnum=1,
+                                 minnum=2,
                                 )
     
     npeaks = peaks["n_detected"]

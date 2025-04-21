@@ -188,7 +188,10 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
     if not catalog_sources:
         return []
     for i in range(len(catalog_sources['name'])):
-        bad_fit=catalog_sources['gauss_fit_flag'][i]
+        if 'gauss_fit_flag' in catalog_sources:
+            bad_fit=catalog_sources['gauss_fit_flag'][i] 
+        else:
+            bad_fit=True
         source_ra = catalog_sources['RADeg'][i]%360 
         source_dec = catalog_sources['decDeg'][i]
         if isinstance(ctime,enmap.ndmap):
