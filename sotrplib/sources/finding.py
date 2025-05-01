@@ -143,7 +143,7 @@ def extract_sources(inmap:ndmap,
     npeaks = peaks["n_detected"]
     if npeaks == 0:
         print("No sources found")
-        return
+        return {}
 
     # gather detected peaks into output structure, ignoring repeat
     # detections of same object
