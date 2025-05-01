@@ -23,7 +23,9 @@ class Depth1Map:
         is_thumbnail: bool = False,
         res:float=None,
         map_start_time:float=None,
-        units:str=None
+        units:str=None,
+        box:np.ndarray=None,
+        map_id:str=None,
     ):
         self.inverse_variance_map = inverse_variance_map
         self.intensity_map = intensity_map
@@ -33,7 +35,7 @@ class Depth1Map:
         self.flux = None
         self.snr = None
         self.units = units
-
+        self.box = box
         self.wafer_name = wafer_name
         self.freq = freq
         self.map_ctime = map_ctime
@@ -50,6 +52,8 @@ class Depth1Map:
         self.end_ctime = None
         self.coadd_days = None
         self.map_start_time = map_start_time
+        self.map_id = map_id
+
 
     def get_map_info(self,map_path):
         if not isinstance(map_path,Path):
@@ -65,7 +69,8 @@ class Depth1Map:
     def init_empty_so_map(self,
                           res:float=None,
                           intensity:bool=False,
-                          include_half_pixel_offset=False
+                          include_half_pixel_offset=False,
+                          box:np.ndarray=None,
                          ):
         ## res in radian
         if not res:
@@ -74,10 +79,15 @@ class Depth1Map:
             res = self.res/arcmin
         elif not self.res:
             self.res = res
-        empty_map = enmap.zeros(*widefield_geometry(res=self.res,
-                                                    include_half_pixel_offset=include_half_pixel_offset
-                                                    )
-                               )
+        if box is None:
+            empty_map = enmap.zeros(*widefield_geometry(res=self.res,
+                                                        include_half_pixel_offset=include_half_pixel_offset
+                                                        )
+                                    )
+        else:
+            shape, wcs = enmap.geometry(box, res=self.res)
+            empty_map = enmap.zeros(shape,wcs=wcs)
+
         if intensity:
             self.inverse_variance_map = empty_map.copy()
             self.intensity_map = empty_map.copy()
@@ -87,7 +97,10 @@ class Depth1Map:
         self.time_map = empty_map.copy()
         
 
-    def load_map(self, map):
+    def load_map(self, 
+                 map,
+                 box:np.ndarray=None
+                 ):
         """
         Check if map is a file path and loads it dynamically if so.
 
@@ -111,10 +124,10 @@ class Depth1Map:
             if substr in str(map):
                 # load the map and update the attribute
                 try:
-                    m = enmap.read_map(str(map),sel=0)
+                    m = enmap.read_map(str(map),sel=0,box=box)
                 except Exception as e1:
                     try:
-                        m = enmap.read_map(str(map))
+                        m = enmap.read_map(str(map),box=box)
                     except Exception as e2:
                         print('Failed initially via ',e1)
                         print('Then tried without sel=0, and failed via ',e2)
@@ -124,10 +137,12 @@ class Depth1Map:
                 if not self.res:
                     self.res = np.abs(self.rho_map.wcs.wcs.cdelt[0])*degree
                 self.get_map_info(map)
+                self.box= box
                 return
 
     def load_coadd(self,
-                   map_path:Path
+                   map_path:Path,
+                   box:np.ndarray=None,
                    ):
         ## input map should be /file/path/to/obsid_arr_freq_[rho/kappa].fits
         ## only supports rho,kappa,time maps right now 
@@ -163,15 +178,15 @@ class Depth1Map:
             time_map_file = path2map + "time.fits"
             weighted_time = False
         
-        self.rho_map = enmap.read_map(path2map + "rho.fits") # whatever rho is, only I
-        self.kappa_map = enmap.read_map(path2map + "kappa.fits") # whatever kappa is, only I
-        self.time_map=enmap.read_map(time_map_file)
+        self.rho_map = enmap.read_map(path2map + "rho.fits",box=box) # whatever rho is, only I
+        self.kappa_map = enmap.read_map(path2map + "kappa.fits",box=box) # whatever kappa is, only I
+        self.time_map=enmap.read_map(time_map_file,box=box) # time map
         if weighted_time:
             self.time_map/=self.kappa_map
         
         ## load in extra info, like obs in map, freq, and Ndays coadded.
         self.load_coadd_info(map_path)
-        
+        self.box = box
         
         return
 
@@ -204,7 +219,10 @@ class Depth1Map:
         return
 
 
-    def coadd_maps(self,second_map):
+    def coadd_maps(self,
+                   second_map,
+                   box:np.ndarray=None
+                   ):
         ## input map should be /file/path/to/obsid_arr_freq_[rho/kappa].fits
         ## only supports I map right now 
         ## must be Path object
@@ -222,10 +240,10 @@ class Depth1Map:
         elif 'ivar' in str(second_map):
             maptype='ivar'    
 
-        if  isinstance(self.rho_map,type(None)):
+        if isinstance(self.rho_map,type(None)):
             if not self.res:
                 self.res = np.abs(enmap.read_map_geometry(str(second_map))[1].wcs.cdelt[0])*degree
-            self.init_empty_so_map()
+            self.init_empty_so_map(res=self.res,box=box)
             self.get_map_info(second_map)
 
         path2map = str(second_map).split(f'{maptype}.fits')[0]
@@ -236,16 +254,16 @@ class Depth1Map:
         freq2 = path2map.split("/")[-1].split("_")[3]
         ctime2 = float(path2map.split("/")[-1].split("_")[1])
 
-        second_rho = enmap.read_map(path2map + "rho.fits", sel=0) # whatever rho is, only I
-        self.load_map(self.rho_map)
+        second_rho = enmap.read_map(path2map + "rho.fits", sel=0,box=box) # whatever rho is, only I
+        self.load_map(self.rho_map,box=box)
         self.rho_map.insert(second_rho,iwcs=second_rho.wcs,op=lambda a,b:a+b)
         del second_rho
-
-        second_kappa = enmap.read_map(path2map + "kappa.fits", sel=0) # whatever kappa is, only I
-        self.load_map(self.kappa_map)
+        
+        second_kappa = enmap.read_map(path2map + "kappa.fits", sel=0,box=box) # whatever kappa is, only I
+        self.load_map(self.kappa_map,box=box)
         self.kappa_map.insert(second_kappa,iwcs=second_kappa.wcs,op=lambda a,b:a+b)
         
-        second_time = enmap.read_map(path2map + "time.fits")
+        second_time = enmap.read_map(path2map + "time.fits",box=box) # time map
         t0 = get_observation_start_time(second_map)
         if not t0:
             t0=0.0
@@ -259,6 +277,35 @@ class Depth1Map:
 
         return
     
+
+    def subtract_sources(self,
+                         sources:list,
+                         src_model:enmap.ndmap=None,
+                         verbose=False,
+                         cuts={},
+                        ):
+       ## src_model is a simulated (model) map of the sources in the list.
+       ## sources are fit using photutils, and are SourceCandidate objects
+       ## with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        if len(sources) == 0:
+            return
+        if not isinstance(self.flux,enmap.ndmap):
+            raise ValueError("self.flux is None, cannot subtract sources.")
+        if not isinstance(src_model,enmap.ndmap):
+            from ..utils.utils import get_fwhm
+            src_model = make_model_source_map(self.flux,
+                                              sources,
+                                              nominal_fwhm_arcmin=get_fwhm(self.freq),
+                                              verbose=verbose,
+                                              cuts=cuts,
+                                             )
+        
+        self.flux -= src_model
+        ## mask the snr map as well since we've subtracted the sources we want to ignore them.
+        self.snr[abs(src_model) > 1e-8] = 0.0
+        return src_model
+
+
 def enmap_map_union(map1,map2):
     ## from enmap since enmap.zeros causes it to fail.
     oshape, owcs = enmap.union_geometry([map1.geometry, map2.geometry])
@@ -281,27 +328,38 @@ def load_sim_map(map_sim_params,ctime=0.0):
                         map_start_time=0.0,
                         res = np.abs(empty_map.wcs.wcs.cdelt[0])*degree
                         )
-    sim_map.flux=empty_map
+    sim_map.flux=empty_map+mapsims.make_noise_map(empty_map,
+                                                  map_sim_params['maps']['map_noise']
+                                                 )
+    
+    sim_map.snr = empty_map+np.ones(empty_map.shape)
     sim_map.time_map = empty_map+np.ones(empty_map.shape)*ctime
     return sim_map
 
-def load_maps(map_path:Path)->Depth1Map:
+
+def load_maps(map_path:Path,
+              box:np.ndarray=None
+             )->Depth1Map:
     ## map_path should be /file/path/to/[obsid]_[arr]_[freq]_map.fits
     ## or /file/path/to/[obsid]_[arr]_[freq]_rho.fits
     ## if rho, then loads rho, kappa, time
     ## if map, then loads map, ivar, time
+
+    ## box is a bounding box in the form of the enmap box [[ra_min,dec_min],[ra_max,dec_max]]
+    ## if box is not None, then the map will be loaded only in that region.
+
     if 'map.fits' in str(map_path):
         try:
-            imap = enmap.read_map(str(map_path), sel=0) # intensity map
+            imap = enmap.read_map(str(map_path), sel=0, box=box) # intensity map
         except exception:
-            imap = enmap.read_map(str(map_path))
+            imap = enmap.read_map(str(map_path), box=box)
         # check if map is all zeros
         if np.all(imap == 0.0) or np.all(np.isnan(imap)):
             print("map is all nan or zeros, skipping")
             return None
         path = str(map_path).split('map.fits')[0]
-        ivar = enmap.read_map(path + "ivar.fits") # inverse variance map
-        time = enmap.read_map(path + "time.fits") # time map
+        ivar = enmap.read_map(path + "ivar.fits",box=box) # inverse variance map
+        time = enmap.read_map(path + "time.fits",box=box) # time map
         ## These should be contained in the map metadata in the future
         t0=get_observation_start_time(map_path)
         arr = path.split("/")[-1].split("_")[2]
@@ -315,26 +373,28 @@ def load_maps(map_path:Path)->Depth1Map:
                          freq=freq,
                          map_ctime=ctime,
                          res=res,
-                         map_start_time=t0
+                         map_start_time=t0,
+                         box=box
                         )
     elif 'rho.fits' in str(map_path):
         try:
-            rho = enmap.read_map(str(map_path), sel=0) # intensity map
+            rho = enmap.read_map(str(map_path), sel=0,box=box) # intensity map
         except Exception:
-            rho = enmap.read_map(str(map_path))
+            rho = enmap.read_map(str(map_path),box=box)
         # check if map is all zeros
         if np.all(rho == 0.0) or np.all(np.isnan(rho)):
             print("rho is all nan or zeros, skipping")
             return None
         path = str(map_path).split('rho.fits')[0]
         try:
-            kappa = enmap.read_map(path + "kappa.fits", sel=0) # whatever kappa is, only I
+            kappa = enmap.read_map(path + "kappa.fits", sel=0,box=box) 
         except Exception:
-            kappa = enmap.read_map(path + "kappa.fits")
+            kappa = enmap.read_map(path + "kappa.fits",box=box)
         try:
-            time = enmap.read_map(path + "time.fits",sel=0) # time map
+            time = enmap.read_map(path + "time.fits",box=box) 
         except Exception:
-            time = enmap.read_map(path + "time.fits")
+            ## time map shouldn't have different polarizations, but just in case.
+            time = enmap.read_map(path + "time.fits",sel=0,box=box)
         ## These should be contained in the map metadata in the future
         arr = path.split("/")[-1].split("_")[2]
         freq = path.split("/")[-1].split("_")[3]
@@ -348,7 +408,8 @@ def load_maps(map_path:Path)->Depth1Map:
                          freq=freq,
                          map_ctime=ctime,
                          res=res,
-                         map_start_time=t0
+                         map_start_time=t0,
+                         box=box
                         )
     
 
@@ -563,23 +624,83 @@ def widefield_geometry(res=None,
     return dims+(ny,nx), wcs
 
 
+def flat_field_using_pixell(mapdata,
+                            tilegrid=1.0,
+                            ):
+    '''
+    Use the tiles module to do map tiling using scan strategy. 
+    Not sure how much better (if at all) this is than using background2d
+    '''
+    from .tiles import get_medrat,get_tmap_tiles
+    try:
+        med_ratio = get_medrat(mapdata.snr,
+                                get_tmap_tiles(np.nan_to_num(mapdata.time_map)-np.nanmin(mapdata.time_map),
+                                                tilegrid,
+                                                mapdata.snr,
+                                                id=f"{mapdata.freq}",
+                                                ),
+                                )
+        
+        #mapdata.flux*=med_ratio
+        mapdata.snr*=med_ratio
+        mapdata.flatfielded=True
+    except Exception as e:
+        print(e,' Cannot flatfield at this time... need to update medrat algorithm for coadds')
+
+    return
+
+
+def flat_field_using_photutils(mapdata:Depth1Map,
+                               tilegrid:float=1.0,
+                               mask:enmap.ndmap=None,
+                              ):
+    '''
+    use photutils.background.Background2D to calculate the rms in tiles.
+    get the rms of the tiled snr map (i.e. the rms should be 1)
+    calculate the median.
+    divide the snr map by the tiled rms / median.
+
+    tilegrid is in degrees, and is the size of the tile to use for the background
+    '''
+    from photutils.background import Background2D
+    from pixell.utils import degree
+    background = Background2D(mapdata.snr,int(tilegrid*degree/mapdata.res),sigma_clip=None,mask=mask)
+    relative_rms = background.background_rms/background.background_rms_median
+    mapdata.snr /= relative_rms
+    mapdata.flatfielded=True
+
+    return 
+
+
 def preprocess_map(mapdata,
                    galmask_file='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/mask_for_sources2019_plus_dust.fits',
-                   plot_output_dir='./',
-                   tilegrid=1.0,
+                   tilegrid=0.25,
+                   flatfield_method='photutils',
                    output_units='Jy',
                    edge_mask_arcmin=10,
-                   PLOT=False
+                   skip=False,
                    ):
+    '''
+    Preprocess the map by cleaning, flatfielding, and masking.
+    Converts the rho, kappa maps to flux and snr maps.
+
+    Inputs:
+    - mapdata: Depth1Map object
+    - galmask_file: path to the galaxy mask file
+    - tilegrid: size of the tile to use for flatfielding
+    - flatfield_method: method to use for flatfielding ('photutils' or 'pixell')
+    - output_units: units of the output map ('Jy' or 'mJy')
+    - edge_mask_arcmin: size of the edge mask in arcminutes
+    - skip: skip this function, useful if simulated map
+
+
+    '''
+    if skip:
+        return 
     ## tilegrid in deg, used for setting median ratio flatfielding grid size
-    from pixell.enmap import read_map, extract
-    from .masks import mask_edge
-    from .tiles import get_medrat,get_tmap_tiles
-    
-    if PLOT:
-        import matplotlib as mpl
-        mpl.use('agg')
-        from matplotlib import pylab as plt
+    from pixell.enmap import read_map
+    from .masks import mask_edge,mask_dustgal
+   
 
     print('Cleaning maps...')
     if not mapdata.cleaned:
@@ -595,6 +716,7 @@ def preprocess_map(mapdata,
                                         fraction=0.05
                                     )
         mapdata.cleaned=True
+   
     ## ignore divide by zero warning since that will happen outside the weighted region
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -605,13 +727,17 @@ def preprocess_map(mapdata,
 
     if not mapdata.masked:
         mapdata.masked=0
+        mask = enmap.ones(mapdata.flux.shape,wcs=mapdata.flux.wcs)   
+
         print('Masking maps...')
         try:
-            galaxy_mask = read_map(galmask_file)
-            gal_mask = extract(galaxy_mask,mapdata.flux.shape,mapdata.flux.wcs)
-            mapdata.flux *= gal_mask
-            mapdata.snr *= gal_mask
-            del gal_mask,galaxy_mask
+            galaxy_mask = mask_dustgal(mapdata.flux,
+                                       read_map(galmask_file,box=mapdata.box,)
+                                      )
+            mapdata.flux *= galaxy_mask
+            mapdata.snr *= galaxy_mask
+            mask *= galaxy_mask
+            del galaxy_mask
             
         except Exception as e:
             print(e,' ... skipping galaxy mask')
@@ -623,7 +749,9 @@ def preprocess_map(mapdata,
             if planet_mask:
                 mapdata.flux *= planet_mask
                 mapdata.snr *= planet_mask
+                mask *= planet_mask
             del planet_mask
+
         except Exception as e:
             print(e,' ... skipping planet mask')
             mapdata.masked+=1
@@ -632,6 +760,7 @@ def preprocess_map(mapdata,
             edge_mask = mask_edge(mapdata.flux,edge_mask_arcmin/(mapdata.res/arcmin))
             mapdata.flux *= edge_mask
             mapdata.snr *= edge_mask
+            mask *= edge_mask
             del edge_mask
         except Exception as e:
             print(e, ' ... skipping edge mask')
@@ -639,37 +768,72 @@ def preprocess_map(mapdata,
 
     if not mapdata.flatfielded:
         print('Flatfielding maps...')
-        med_ratio=None
-        try:
-            med_ratio = get_medrat(mapdata.snr,
-                                   get_tmap_tiles(np.nan_to_num(mapdata.time_map)-np.nanmin(mapdata.time_map),
-                                                  tilegrid,
-                                                  mapdata.snr,
-                                                  id=f"{mapdata.freq}",
-                                                 ),
-                                  )
-            
-            #mapdata.flux*=med_ratio
-            mapdata.snr*=med_ratio
-            mapdata.flatfielded=True
-        except Exception as e:
-            print(e,' Cannot flatfield at this time... need to update medrat algorithm for coadds')
-        if PLOT:
-            print('Plotting flatfield...')
-            plt.figure(dpi=200)
-            plt.imshow(med_ratio,vmax=1,vmin=0)
-            plt.colorbar()
-            plt.savefig(plot_output_dir+'%i_medratio_map.png'%mapdata.map_ctime)
-            plt.close()
-        
-            plt.figure(dpi=200)
-            plt.hist(np.ndarray.flatten(med_ratio[med_ratio>0]),bins=101)
-            plt.grid()
-            plt.yscale('log')
-            plt.savefig(plot_output_dir+'%i_medratio_hist.png'%mapdata.map_ctime)
-            plt.close('all')
-            
-        del med_ratio
+        if flatfield_method == 'photutils':
+            flat_field_using_photutils(mapdata,
+                                       tilegrid=tilegrid,
+                                       mask=1.-mask,
+                                      )
+        elif flatfield_method == 'pixell':
+            flat_field_using_pixell(mapdata,
+                                    tilegrid=tilegrid,
+                                   )
+        else:
+            raise ValueError('Flatfield method %s not supported'%flatfield_method)
+
+        del mask    
+    
     if output_units=='Jy':
         mapdata.flux/=1000.
     return 
+
+
+def make_model_source_map(imap:enmap.ndmap,
+                          sources:list, 
+                          nominal_fwhm_arcmin:float=None,
+                          matched_filtered=False,
+                          verbose=False,
+                          cuts={}
+                         ):
+    '''
+    Use source list containing fwhm_a, fwhm_b, ra, dec, flux, and orientation
+    to create a model map of the sources.
+    This is used to subtract the sources from the map.
+
+    Arguments:
+        - imap: enmap object
+        - sources: list of source candidates
+        - nominal_fwhm_arcmin: nominal fwhm in arcmin
+        - matched_filtered: if True, then the fwhm is matched filtered
+        - verbose: if True, then print out the sources that are not included
+        - cuts: dictionary of cuts to apply to the sources
+    Returns:
+        - model_map: enmap object of the model map
+    '''
+    if len(sources) == 0:
+        return imap
+    from photutils.psf import GaussianPSF
+    from photutils.datasets import make_model_image
+    from pixell.utils import arcmin,degree
+
+    from ..sims.sim_utils import make_2d_gaussian_model_param_table
+
+    if matched_filtered:
+        nominal_fwhm_arcmin *= np.sqrt(2)
+    
+    res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
+    
+    model_params = make_2d_gaussian_model_param_table(imap,
+                                                      sources,
+                                                      nominal_fwhm_arcmin=nominal_fwhm_arcmin,
+                                                      cuts=cuts,
+                                                      verbose=verbose,
+                                                      )
+                                                      
+    shape = (int(5 * nominal_fwhm_arcmin/res_arcmin), int(5 * nominal_fwhm_arcmin/res_arcmin))
+    model_map = make_model_image(imap.shape,
+                                 GaussianPSF(),
+                                 model_params,
+                                 model_shape=shape,
+                                )
+    
+    return model_map

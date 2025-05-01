@@ -201,7 +201,7 @@ def get_map_groups(maps:list,
         if mintime==maxtime:
             time_bins=[mintime]
         elif full_time_range < coadd_days:
-            time_bins = [mintime,maxtime]
+            time_bins = [np.mean([mintime,maxtime])]
         else:
             time_bins = np.arange(mintime,maxtime,coadd_days*86400)
         time_idx = np.digitize(times,time_bins)-1

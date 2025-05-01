@@ -7,6 +7,7 @@ def coadd_map_group(map_group:list,
                     map_res:float=None,
                     freq:str=None,
                     arr:str=None,
+                    box:np.ndarray=None,
                    ):
     from tqdm import tqdm
     from pixell.enmap import read_map_geometry
@@ -14,7 +15,8 @@ def coadd_map_group(map_group:list,
     if not map_res:
         map_res = abs(read_map_geometry(str(map_group[0]))[1].wcs.cdelt[0])*degree
     coadd=Depth1Map()
-    coadd.init_empty_so_map(res=map_res)
+    coadd.init_empty_so_map(res=map_res,box=box)
+    coadd.box=box
     if not coadd.freq:
         coadd.freq = freq
     if not coadd.wafer_name:
@@ -22,7 +24,7 @@ def coadd_map_group(map_group:list,
     
     for mg in tqdm(range(len(map_group))):
         map_path = map_group[mg]
-        coadd.coadd_maps(map_path)
+        coadd.coadd_maps(map_path,box=box)
     coadd.time_map/=coadd.kappa_map
     coadd.map_ctime = np.nanmean(coadd.time_map)
     
@@ -63,6 +65,7 @@ def load_coadd_maps(mapfile:str=None,
                     ctime:float=None,
                     debug:bool=False,
                     arr:str=None,
+                    box:np.ndarray=None,
                    ):
     from pathlib import Path
     from glob import glob
@@ -87,7 +90,7 @@ def load_coadd_maps(mapfile:str=None,
         if debug:
             print(m,freq)
         mapstub = Depth1Map()
-        mapstub.load_coadd(Path(m))
+        mapstub.load_coadd(Path(m),box=box)
         if arr:
             mapstub.wafer_name=arr
         coadds.append(mapstub)

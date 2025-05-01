@@ -1,6 +1,6 @@
 from .sim_utils import generate_random_positions, make_gaussian_flare
-import sqlite3
-import pickle
+from pixell import enmap
+
 
 class SimTransient:
     def __init__(self, 

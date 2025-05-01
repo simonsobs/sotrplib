@@ -39,30 +39,30 @@ array_info:
 
 ## Map parameters
 maps:
-  n_realizations: 10      # Number of map realizations to create
+  n_realizations: 1      # Number of map realizations to create
   center_ra: 200          # Right Ascension of map center (degrees)
   center_dec: -5          # Declination of map center (degrees)
-  width_ra: 20            # Width of map in RA (degrees)
-  width_dec: 10           # Width of map in Dec (degrees)
+  width_ra: 1.0            # Width of map in RA (degrees)
+  width_dec: 1.0           # Width of map in Dec (degrees)
   map_noise: 0.01         # Noise level in the map (Jy)
   min_time: 1400000000    # Minimum time of map (Unix timestamp)
   max_time: 1700000000    # Maximum time of map (Unix timestamp)
 
 ## Injected sources parameters
 injected_sources:
-  n_sources: 50           # Number of sources to inject
-  min_flux: 0.1           # Minimum flux of sources (Jy)
-  max_flux: 2.0           # Maximum flux of sources (Jy)
+  n_sources: 3           # Number of sources to inject
+  min_flux: 1.999           # Minimum flux of sources (Jy)
+  max_flux: 2.001           # Maximum flux of sources (Jy)
   inj_fwhm: 2.2           # Full Width at Half Maximum of injected sources (arcmin)
-  fwhm_uncert_frac: 0.01  # Fractional uncertainty in FWHM (randomly oriented theta)
+  fwhm_uncert_frac: 0.00001  # Fractional uncertainty in FWHM (randomly oriented theta)
   
 ## Transient parameters
 injected_transients:
-    n_transients: 10           # Number of transients to inject
+    n_transients: 3           # Number of transients to inject
     min_width: 10              # Minimum duration of transients (seconds)
     max_width: 86400           # Maximum duration of transients (days)
-    min_flux: 0.1              # Minimum flux of transients (Jy)
-    max_flux: 3.0              # Maximum flux of transients (Jy)
+    min_flux: 0.2              # Minimum flux of transients (Jy)
+    max_flux: 2.0              # Maximum flux of transients (Jy)
     min_time: null       # Minimum time of flare (Unix timestamp)
     max_time: null       # Maximum time of flare (Unix timestamp)
     ra_lims: null              # RA limits for transients (degrees) will use map params if null

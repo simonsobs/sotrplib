@@ -8,21 +8,19 @@ import warnings
 warnings.simplefilter("ignore",RuntimeWarning)
 
 from sotrplib.maps.maps import load_maps, preprocess_map, load_sim_map
-from sotrplib.maps.masks import make_src_mask
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups, get_cut_radius
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit,convert_catalog_to_source_objects
-from sotrplib.source_catalog.source_catalog import load_catalog,convert_gauss_fit_to_source_cat
-from sotrplib.sifter.crossmatch import sift
+from sotrplib.source_catalog.source_catalog import load_catalog
+from sotrplib.sifter.crossmatch import sift,crossmatch_position_and_flux
 from sotrplib.utils.plot import plot_map_thumbnail
 from sotrplib.utils.utils import get_fwhm
 from sotrplib.source_catalog.database import SourceCatalogDatabase
-from sotrplib.sims.sim_utils import load_transients_from_db,load_config_yaml
-from sotrplib.sims.sim_maps import inject_sources,photutils_sim_n_sources
-from sotrplib.sims.sim_sources import generate_transients
+from sotrplib.sims.sim_utils import load_config_yaml, get_sim_map_group
+from sotrplib.sims.sim_maps import inject_simulated_sources
 
-
+from pixell import enmap
 from pixell.utils import arcmin,degree
 
 import argparse
@@ -123,6 +121,11 @@ parser.add_argument("--verbose",
                     help="Print useful things.", 
                     action='store_true'
                     )
+parser.add_argument("--box",
+                    default=[],
+                    nargs='+',
+                    help="RA and Dec limits for the map in the order of dec_min ra_min dec_max ra_max, in degrees.",
+                    )
 ## sim parameters
 parser.add_argument("--sim", 
                     help="Run in sim mode; generates sim maps on the fly using config file and injects transients.", 
@@ -146,7 +149,7 @@ parser.add_argument("--inject-transients",
                     action='store_true',
                     )
 parser.add_argument("--overwrite-db", 
-                    help="If not set, the mapid will be searched in the db, if found the observation will be skipped.", 
+                    help="If not set, the map_id will be searched in the db, if found the observation will be skipped.", 
                     action='store_true'
                     )
 args = parser.parse_args()
@@ -156,9 +159,10 @@ cataloged_sources_db = SourceCatalogDatabase(args.output_dir+'so_source_catalog.
 cataloged_sources_db.read_database()
 transients_db = SourceCatalogDatabase(args.output_dir+'so_transient_catalog.csv')
 noise_candidates_db = SourceCatalogDatabase(args.output_dir+'so_noise_catalog.csv')
+
 injected_source_db = SourceCatalogDatabase(args.output_dir+'injected_sources.csv') 
 
-
+sim_params={}
 if args.sim:
     if args.verbose:
          print('Loading sim config file: ',args.sim_config)
@@ -168,9 +172,7 @@ if args.sim:
         for k,v in sim_params.items():
             print(k,v)
     if not args.use_map_geometry:
-        freq_arr_idx = sim_params['array_info']['arr']+'_'+sim_params['array_info']['freq']
-        indexed_map_groups = {freq_arr_idx:[[i] for i in np.arange(sim_params['maps']['n_realizations'])]}
-        indexed_map_group_time_ranges = {freq_arr_idx:[[t] for t in np.linspace(float(sim_params['maps']['min_time']),float(sim_params['maps']['max_time']),int(sim_params['maps']['n_realizations']))]}
+        freq_arr_idx, indexed_map_groups, indexed_map_group_time_ranges = get_sim_map_group(sim_params)
 
 if not args.sim or args.use_map_geometry:
     if len(args.maps) == 1:
@@ -182,6 +184,7 @@ if not args.sim or args.use_map_geometry:
                                                                                     coadd_days=args.coadd_n_days,
                                                                                     restrict_to_night = args.nighttime_only,
                                                                                     )
+        
     else:
         ## only works for a single input map
         ## should have name [blah]_coadd_[freq]_rho.fits
@@ -189,6 +192,14 @@ if not args.sim or args.use_map_geometry:
         indexed_map_groups = {freq_arr_idx:[args.maps]}
         indexed_map_group_time_ranges = {freq_arr_idx:[[0,1]]}
         time_bins = {freq_arr_idx:[[0]]}
+
+## set up the map geometry for loading box region if given.
+if args.box:
+    if len(args.box) != 4:
+        raise ValueError('Box must be given as [dec_min ra_min dec_max ra_max] in degrees.')
+    box = np.array([[float(args.box[0]),float(args.box[1])],[float(args.box[2]),float(args.box[3])]])*degree
+else:
+    box = None
 
 for freq_arr_idx in indexed_map_groups:
     if args.verbose:
@@ -204,6 +215,9 @@ for freq_arr_idx in indexed_map_groups:
     for map_group in map_groups:
         if len(map_group)==0:
             continue
+
+        ## condense all of this into a single load_maps function which will
+        ## take in either coadd or single maps or sim argument.
         if args.sim and not args.use_map_geometry:
             if args.verbose:
                 print('Loading simulated map group: ',map_group[0])
@@ -222,9 +236,9 @@ for freq_arr_idx in indexed_map_groups:
                     continue
             ## need a more robust way to check this...
             if 'coadd' in str(map_group[0]):
-                mapdata = load_coadd_maps(mapfile=map_group[0],arr=arr)[0]
+                mapdata = load_coadd_maps(mapfile=map_group[0],arr=arr,box=box)[0]
             else:
-                mapdata = load_maps(map_group[0])
+                mapdata = load_maps(map_group[0],box=box)
         else:
             if args.verbose:
                 print('Coadding map group containing the following maps:')
@@ -232,178 +246,100 @@ for freq_arr_idx in indexed_map_groups:
                     print(mg)
             mapdata = coadd_map_group(map_group,
                                       freq=freq,
-                                      arr=arr
+                                      arr=arr,
+                                      box=box
                                       )
+        
+        ## end of map loading
+
         if not mapdata:
             print('No map data found... skipping.')
             continue    
+        if args.sim and args.use_map_geometry:
+            mapdata.flux = enmap.zeros(mapdata.time_map.shape,wcs=mapdata.time_map.wcs)
+            del mapdata.rho_map,mapdata.kappa_map
+        
         catalog_sources = []
         cataloged_sources_db._initialize_database()
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
         
-        if not args.sim:
-            preprocess_map(mapdata,
-                            galmask_file = args.galaxy_mask,
-                            plot_output_dir=args.output_dir,
-                            PLOT=args.plot_all,
-                            tilegrid=float(args.gridsize),
-                            )
-        else:
-            if args.verbose:
-                print('Injecting Sources into simulated map.')
-            from pixell import enmap
-            if args.use_map_geometry:
-                ## use the map geometry for the simulated map
-                mapdata.flux = enmap.zeros(mapdata.time_map.shape,wcs=mapdata.time_map.wcs)
-                del mapdata.rho_map,mapdata.kappa_map
-            ## inject static sources    
-            if args.verbose:
-                print('Injecting static sources into simulated map using sim param config.')
-            mapdata.flux,catalog_sources = photutils_sim_n_sources(mapdata.flux,
-                                                                    sim_params['injected_sources']['n_sources'],
-                                                                    min_flux_Jy=sim_params['injected_sources']['min_flux'],
-                                                                    max_flux_Jy=sim_params['injected_sources']['max_flux'],
-                                                                    map_noise_Jy=sim_params['maps']['map_noise'],
-                                                                    fwhm_uncert_frac=sim_params['injected_sources']['fwhm_uncert_frac'],
-                                                                    gauss_fwhm_arcmin=band_fwhm/arcmin,
-                                                                    )
-            mapdata.snr = mapdata.flux/sim_params['maps']['map_noise']
-            
-            injected_source_db.add_sources(convert_catalog_to_source_objects(catalog_sources,
-                                                                             mapdata.freq,
-                                                                             mapdata.wafer_name,
-                                                                             mapid=map_id,
-                                                                             ctime=mapdata.time_map+t0,
-                                                                            )
-                                          )
-            injected_source_db.write_database()
-            
-        injected_sources = []
-        if args.inject_transients:
-            if args.simulated_transient_database:
-                if args.verbose:
-                    print('Loading simulated transients from database.')
-            
-                transient_sources = load_transients_from_db(args.simulated_transient_database)
-                mapdata.flux,injected_sources = inject_sources(mapdata.flux,
-                                                            transient_sources,
-                                                            mapdata.time_map+t0,
-                                                            freq=mapdata.freq,
-                                                            arr=mapdata.wafer_name,
-                                                            debug=args.verbose,
-                                                            )
-                injected_source_db.add_sources(injected_sources)
-                injected_source_db.write_database()
-
-            if args.sim:
-                if args.verbose:
-                    print('Generating transients using sim config.')
-                
-                if args.use_map_geometry:
-                    corners = mapdata.flux.corners()/degree
-                    ra_lims = (corners[0][1]%360,corners[1][1]%360)
-                    dec_lims = (corners[0][0],corners[1][0])
-                else:
-                    ra_lims = (sim_params['maps']['center_ra']-sim_params['maps']['width_ra'],
-                            sim_params['maps']['center_ra']+sim_params['maps']['width_ra']
-                            )
-                    dec_lims = (sim_params['maps']['center_dec']-sim_params['maps']['width_dec'],
-                                sim_params['maps']['center_dec']+sim_params['maps']['width_dec']
-                            )
-                    
-                transients_to_inject = generate_transients(n=sim_params['injected_transients']['n_transients'],
-                                                          ra_lims=ra_lims,
-                                                          dec_lims=dec_lims,
-                                                          peak_amplitudes=(sim_params['injected_transients']['min_flux'],sim_params['injected_transients']['max_flux']),
-                                                          peak_times=(mapdata.map_ctime,mapdata.map_ctime),
-                                                          flare_widths=(sim_params['injected_transients']['min_width'],sim_params['injected_transients']['max_width']),
-                                                         )
-                mapdata.flux,injected_sources = inject_sources(mapdata.flux,
-                                                            transients_to_inject,
-                                                            mapdata.time_map+t0,
-                                                            freq=mapdata.freq,
-                                                            arr=mapdata.wafer_name,
-                                                            debug=args.verbose,
-                                                            )
-                if args.verbose:
-                    print(f'Injected {len(injected_sources)} transients into simulated map')
+        preprocess_map(mapdata,
+                       galmask_file = args.galaxy_mask,
+                       skip=args.sim
+                      )
         
-        from matplotlib import pyplot as plt
-        plt.figure(figsize=(20, 10), dpi=200)
-        ax = plt.subplot(projection=mapdata.flux.wcs)
-        im = ax.imshow(mapdata.flux, vmin=-0.05, vmax=1)
-        ax.scatter(catalog_sources['RADeg'], catalog_sources['decDeg'], transform=ax.get_transform('icrs'),
-                        marker='o', s=100, facecolors='none', edgecolors='cyan')
-        for t in injected_sources:
-            if t.flux>5*sim_params['maps']['map_noise']:
-                ax.scatter(t.ra, t.dec, transform=ax.get_transform('icrs'),
-                        marker='d', s=100, facecolors='none', edgecolors='r')
-            else:
-                ax.scatter(t.ra, t.dec, transform=ax.get_transform('icrs'),
-                        marker='o', s=10, facecolors='none', edgecolors='r')
-        plt.colorbar(im, ax=ax)
-        plt.savefig('/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/sim_map_%s.png'%map_id)
-        plt.close()
+        
+        catalog_sources,injected_sources = inject_simulated_sources(mapdata,
+                                                                    injected_source_db,
+                                                                    sim_params,
+                                                                    map_id,
+                                                                    t0,
+                                                                    verbose=args.verbose,
+                                                                    inject_transients=args.inject_transients,
+                                                                    use_map_geometry=args.use_map_geometry,
+                                                                    simulated_transient_database=args.simulated_transient_database,
+                                                                    )
+        
         
         if not args.sim:
             print('Loading Source Catalog')
             catalog_sources = load_catalog(args.source_catalog,
-                                        flux_threshold = args.flux_threshold,
-                                        mask_outside_map=True,
-                                        mask_map=mapdata.flux
-                                        )
+                                           flux_threshold = args.flux_threshold,
+                                           mask_outside_map=True,
+                                           mask_map=mapdata.flux,
+                                           return_source_cand_list=True,
+                                          )
 
-        gauss_fits,thumbs = photutils_2D_gauss_fit(mapdata.flux,
-                                                   mapdata.flux/mapdata.snr,
-                                                   catalog_sources,
-                                                   size_deg=band_fwhm/degree,
-                                                   PLOT=args.plot_all,
-                                                   reproject_thumb= not args.sim,
-                                                   flux_lim_fit_centroid=args.bright_flux_threshold,
-                                                   return_thumbnails=args.save_source_thumbnails
-                                                  )
+        catalog_sources,thumbs = photutils_2D_gauss_fit(mapdata.flux,
+                                                        mapdata.flux/mapdata.snr if not args.sim else mapdata.flux/sim_params['maps']['map_noise'],
+                                                        catalog_sources,
+                                                        size_deg=band_fwhm/degree,
+                                                        PLOT=args.plot_all,
+                                                        reproject_thumb= not args.sim,
+                                                        flux_lim_fit_centroid=args.bright_flux_threshold,
+                                                        return_thumbnails=args.save_source_thumbnails
+                                                        )
         
-        catalog_sources = convert_gauss_fit_to_source_cat(gauss_fits)
-        del gauss_fits,thumbs
-
+        ## Do something with the thumbnails?
+        del thumbs
+        
         known_sources = []
         if catalog_sources:
             known_sources = convert_catalog_to_source_objects(catalog_sources,
-                                                            mapdata.freq,
-                                                            mapdata.wafer_name,
-                                                            mapid=map_id,
-                                                            ctime=mapdata.time_map+t0,
-                                                            )
+                                                              mapdata.freq,
+                                                              mapdata.wafer_name,
+                                                              map_id=map_id,
+                                                              ctime=mapdata.time_map+t0,
+                                                             )
             
             ## update the source catalog
             cataloged_sources_db.add_sources(known_sources)
-                
-            ## get source mask radius based on flux.
-            source_mask_radius = get_cut_radius(mapdata.res/arcmin,
-                                                mapdata.wafer_name,
-                                                mapdata.freq,
-                                                source_amplitudes=catalog_sources['fluxJy'],
-                                                map_noise=catalog_sources['err_fluxJy'],
-                                                max_radius_arcmin=120.0,
-                                                matched_filtered=True
-                                                )
+            
+            ## subtract the detected (known) sources from the map
+            ## ignore sources with wonky fits.
+            srcmodel=mapdata.subtract_sources(known_sources,
+                                              cuts={'flux':[0.0,np.inf],
+                                                    'err_flux':[0.0,1.0],
+                                                    'fwhm_a':[0.25,6.0],
+                                                    'fwhm_b':[0.25,6.0]
+                                                    }
+                                              ) 
+            
+        from matplotlib import pyplot as plt
+        plt.figure(figsize=(10,10))
+        ax = plt.subplot(projection=mapdata.flux.wcs)
+        im = ax.imshow(mapdata.flux, vmin=-0.1,vmax=0.2)
+        plt.colorbar(im, ax=ax)
+        plt.savefig(args.output_dir+map_id+'_src_sub_map.png')
 
-            ## simple catalog mask
-            catalog_mask = make_src_mask(mapdata.flux,
-                                        catalog_sources['pix'],
-                                        arr=mapdata.wafer_name,
-                                        freq=mapdata.freq,
-                                        mask_radius=source_mask_radius
-                                        )
-
-            ## mask the flux and snr after extracting via forced photometry
-            mapdata.flux*=catalog_mask
-            mapdata.snr*=catalog_mask
-            del catalog_mask
-        
-        
+        plt.figure(figsize=(10,10))
+        ax = plt.subplot(projection=mapdata.flux.wcs)
+        im = ax.imshow(mapdata.flux/mapdata.snr, vmin=-0.1,vmax=0.2)
+        plt.colorbar(im, ax=ax)
+        plt.savefig(args.output_dir+map_id+'_src_sub_noise.png')
+       
         print('Finding sources...')
         ## get mask radius for each sigma such that the mask goes to the 
         ## noise floor.
@@ -417,9 +353,10 @@ for freq_arr_idx in indexed_map_groups:
                                  max_radius_arcmin=120.
                                 )
         
+
         extracted_sources = extract_sources(mapdata.flux,
                                             timemap=mapdata.time_map+t0,
-                                            maprms=mapdata.flux/mapdata.snr if not args.sim else sim_params['maps']['map_noise']*np.ones(mapdata.flux.shape),
+                                            maprms=abs(mapdata.flux/mapdata.snr) if not args.sim else sim_params['maps']['map_noise']*np.ones(mapdata.flux.shape),
                                             nsigma=args.snr_threshold,
                                             minrad=pix_rad/(mapdata.res/arcmin),
                                             sigma_thresh_for_minrad=sigma_thresh_for_minrad,
@@ -428,6 +365,8 @@ for freq_arr_idx in indexed_map_groups:
         
         if not extracted_sources:
             ## no sources were extracted from the map.
+            if args.verbose:
+                print('No sources found in map %s.'%map_id)
             del mapdata,known_sources
             continue
         
@@ -442,28 +381,46 @@ for freq_arr_idx in indexed_map_groups:
                         'fwhm_b': [0.5*band_fwhm/arcmin,2*band_fwhm/arcmin],
                         'snr': [args.snr_threshold,np.inf],
                         }
-        source_candidates,transient_candidates,noise_candidates = sift(extracted_sources,
-                                                                       catalog_sources,
-                                                                       imap=mapdata.flux,
-                                                                       map_freq = mapdata.freq,
-                                                                       arr=mapdata.wafer_name,
-                                                                       mapid=map_id,
-                                                                       cuts=default_cuts,
-                                                                       #debug=args.verbose
-                                                                      )
         
-        if len(source_candidates)>0:
+        catalog_matches,transient_candidates,noise_candidates = sift(extracted_sources,
+                                                                     catalog_sources,
+                                                                     imap=mapdata.flux,
+                                                                     map_freq = mapdata.freq,
+                                                                     arr=mapdata.wafer_name,
+                                                                     radius1Jy=1.5 if args.sim else 30.0, ## sims don't have filtering wings
+                                                                     map_id=map_id,
+                                                                     cuts=default_cuts,
+                                                                     crossmatch_with_gaia=not args.sim,
+                                                                     debug=args.verbose
+                                                                    )
+        
+        
+        if args.sim:
+            ## make sure the simulated sources are properly masked, and the injected transients are recovered 
+            ## including with the correct fluxes.
+            if len(catalog_matches)>0:
+                raise ValueError('Catalog matches found in simulated map... something is wrong.')
+            ## crossmatch the recovered sources with the injected sources
+            _,_ = crossmatch_position_and_flux(injected_sources,
+                                                transient_candidates,
+                                                spatial_threshold=band_fwhm/degree,
+                                                flux_threshold=5*sim_params['maps']['map_noise'],
+                                                fail_flux_mismatch=True,
+                                                fail_unmatched=True,
+                                                )
+            
+
+        if len(catalog_matches)>0:
             print('Source found in blind search which is associated with catalog... masking may have a problem.')
             ## do we do anything here? add to updated source catalog?
             ## should only be possible if the masking radius and the source matching radius are significantly different.
-
-        if len(transient_candidates)<=args.candidate_limit:
+        
+        if len(transient_candidates)<=args.candidate_limit :
             transients_db.add_sources(transient_candidates)
             ## add transients to the source catalog as well
             cataloged_sources_db.add_sources(transient_candidates)
             if args.plot_thumbnails:
                 for tc in transient_candidates:
-
                     plot_map_thumbnail(mapdata.snr if not args.sim else mapdata.flux/sim_params['maps']['map_noise'],
                                         tc.ra,
                                         tc.dec,
@@ -483,7 +440,7 @@ for freq_arr_idx in indexed_map_groups:
 
         noise_candidates_db.add_sources(noise_candidates)
 
-        del mapdata,source_candidates,transient_candidates,noise_candidates,extracted_sources,catalog_sources,known_sources,injected_sources
+        del mapdata,catalog_matches,transient_candidates,noise_candidates,extracted_sources,catalog_sources,known_sources,injected_sources
 
         ## update databases and clear
         cataloged_sources_db.write_database()

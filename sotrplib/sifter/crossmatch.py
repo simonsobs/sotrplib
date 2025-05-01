@@ -57,7 +57,7 @@ def crossmatch_mask(sources,
         source_ra = sources[i, 1] * pixell_utils.degree
         source_dec = sources[i, 0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
-        if isinstance(radius,(list,np.array)):
+        if isinstance(radius,(list,np.ndarray)):
             r = radius[i] * pixell_utils.arcmin
         else:
             r = radius * pixell_utils.arcmin
@@ -97,7 +97,7 @@ def sift(extracted_sources,
          ra_jitter:float=0.0,
          dec_jitter:float=0.0,
          source_fluxes:list = None,
-         mapid:str = '',
+         map_id:str = '',
          map_freq:str = None,
          arr:str=None,
          cuts:dict={'fwhm':[0.5,5.0],
@@ -118,8 +118,8 @@ def sift(extracted_sources,
      Args:
        extracted_sources:dict
            sources returned from extract_sources function
-       catalog_sources:astropy table
-           source catalog returned from load_act_catalog
+       catalog_sources:list
+           source catalog as list of SourceCandidate objects
        radius1Jy:float=30.0
            matching radius for a 1Jy source, arcmin
        min_match_radius:float=1.5
@@ -195,7 +195,7 @@ def sift(extracted_sources,
                                freq=str(map_freq),
                                arr=arr,
                                ctime=forced_photometry_info['time'],
-                               mapid=mapid,
+                               map_id=map_id,
                                sourceID=source_string_name,
                                matched_filtered=True,
                                renormalized=True,
@@ -347,6 +347,64 @@ def recalculate_local_snr(transient_candidates:list,
 
     return updated_transient_candidates, updated_noise_candidates
 
+
+def crossmatch_position_and_flux(injected_sources:list,
+                                 recovered_sources:list,
+                                 flux_threshold:float=0.01,
+                                 fractional_flux:float=0.01,
+                                 spatial_threshold:float=0.05,
+                                 fail_unmatched:bool=False,
+                                 fail_flux_mismatch:bool=False,
+                                ):
+    """
+    Crossmatch the injected sources and transients with the recovered ones.
+    Ensure the recovered fluxes are within 3 sigma of the injected fluxes.
+    Count and report the fraction of failures.
+
+    Parameters:
+    - injected_sources: List of injected static sources.
+    - recovered_sources: List of recovered static sources.
+    - flux_threshold: Threshold for similar fluxes (Jy).
+    - spatial_threshold: Spatial threshold for matching (degrees).
+
+    Returns:
+    - A dictionary containing the failure fractions for sources and transients.
+    """
+    from pixell.utils import degree,arcmin
+    # Convert injected and recovered sources to numpy arrays of positions
+    injected_positions = np.array([[src.dec, src.ra] for src in injected_sources])
+    recovered_positions = np.array([[src.dec, src.ra] for src in recovered_sources])
+
+    # Perform crossmatch to find matches
+    matched_mask, matches = crossmatch_mask(injected_positions, 
+                                            recovered_positions, 
+                                            radius=spatial_threshold*degree/arcmin, 
+                                            mode='closest', 
+                                            return_matches=True
+                                           ) 
+    
+    if np.sum(np.logical_not(matched_mask)) > 0 and fail_unmatched:
+        raise ValueError("Some injected sources were not recovered.")
+
+    # Check flux similarity for matched sources
+    similar_fluxes = []
+    for i, match in enumerate(matches):
+        if match:  # If there is a match
+            injected_flux = injected_sources[i].flux
+            recovered_flux = recovered_sources[match[0][1]].flux
+            print(i,injected_flux,recovered_flux, np.sqrt(flux_threshold**2 + (fractional_flux*injected_flux)**2))
+            if abs(injected_flux - recovered_flux) <=  np.sqrt(flux_threshold**2 + (fractional_flux*injected_flux)**2) :
+                similar_fluxes.append(True)
+            else:
+                similar_fluxes.append(False)
+        else:
+            print('no match to ',i,injected_sources[i])
+            similar_fluxes.append(False)
+    print(similar_fluxes)
+    if np.sum(np.logical_not(similar_fluxes)) > 0 and fail_flux_mismatch:
+        raise ValueError("Some injected sources have mismatched fluxes.")
+
+    return matched_mask, similar_fluxes
 
 ####################
 ## Act crossmatching between wafers / bands etc.

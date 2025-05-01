@@ -1,6 +1,8 @@
 from pixell import enmap
 import numpy as np
 
+from ..maps.maps import Depth1Map
+from ..source_catalog.database import SourceCatalogDatabase
 
 def make_enmap(center_ra:float=0.0,
                center_dec:float=0.0,
@@ -35,6 +37,42 @@ def make_enmap(center_ra:float=0.0,
     return zeros(shape,wcs=wcs)
 
 
+def make_noise_map(imap:enmap.ndmap,
+                   map_noise_Jy:float=0.01,
+                   map_mean_Jy:float=0.0,
+                   seed:int=None,
+                   ):
+    """
+    Create a noise map with the same shape and WCS as the input map.
+
+    Parameters:
+    - imap: enmap.ndmap, the input map to create a noise map for.
+    - map_noise_Jy: float, the standard deviation of the noise in Jy.
+    - map_mean_Jy: float, the mean of the noise in Jy.
+    - seed: int, random seed for reproducibility.
+
+    Returns:
+    - noise_map: enmap.ndmap, the generated noise map.
+    """
+    from photutils.datasets import make_noise_image
+    
+
+    shape = imap.shape
+    
+    if not seed:
+        print('No seed provided, setting seed with current ctime')
+        seed=np.random.seed()
+
+    noise_map = make_noise_image(shape, 
+                                 distribution='gaussian', 
+                                 mean=map_mean_Jy,
+                                 stddev=map_noise_Jy, 
+                                 seed=seed
+                                )
+
+    return noise_map
+
+
 def photutils_sim_n_sources(sim_map:enmap.ndmap,
                             n_sources:float,
                             min_flux_Jy:float=0.1,
@@ -47,14 +85,17 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
                             min_sep_arcmin:float=5,
                             seed:int=None,
                             freq:str='f090',
+                            arr:str='sim',
+                            map_id:str=None,
+                            ctime:float|enmap.ndmap=None,
                             ):
     '''
     
     
     '''
     from .sim_utils import convert_photutils_qtable_to_json
+    from ..sources.forced_photometry import convert_catalog_to_source_objects
     from photutils.psf import GaussianPSF, make_psf_model_image
-    from photutils.datasets import make_noise_image
     from pixell.utils import degree,arcmin
     
     model = GaussianPSF()
@@ -64,7 +105,8 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
     
     gaussfwhm = gauss_fwhm_arcmin*arcmin
     #Omega_b is the beam solid angle for a Gaussian beam in sr
-    omega_b = (np.pi / 4 / np.log(2)) * (gaussfwhm)**2
+    ## I've found that the recovered flux is low by 2% ish...
+    omega_b = 1.02*(np.pi / 4 / np.log(2)) * (gaussfwhm)**2
     
     gaussfwhm/=mapres
     minfwhm = gaussfwhm-(fwhm_uncert_frac*gaussfwhm)
@@ -78,45 +120,53 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap,
 
     if min_flux_Jy>=max_flux_Jy:
         raise ValueError("Min injected flux is less than or equal to max injected flux")
-    
-    ## set the window for each source to be 10x10 arcmin
+
+    ## set the window for each source to be 5x fwhm
+    model_window = (int(5*gaussfwhm),int(5*gaussfwhm))
     ## make the source map and add to input map
-    model_window = (int(2*minsep),int(2*minsep))
     data,params = make_psf_model_image(shape, 
-                                        model, 
-                                        n_sources, 
-                                        model_shape=model_window,
-                                        min_separation=minsep,
-                                        border_size=int(minsep),
-                                        flux=(min_flux_Jy, max_flux_Jy), 
-                                        x_fwhm=(minfwhm, maxfwhm),
-                                        y_fwhm=(minfwhm, maxfwhm), 
-                                        theta=(gauss_theta_min, gauss_theta_max), 
-                                        seed=seed,
-                                        normalize=False
-                                        )
+                                       model, 
+                                       n_sources, 
+                                       model_shape=model_window,
+                                       min_separation=minsep,
+                                       border_size=int(minsep),
+                                       flux=(min_flux_Jy, max_flux_Jy), 
+                                       x_fwhm=(minfwhm, maxfwhm),
+                                       y_fwhm=(minfwhm, maxfwhm), 
+                                       theta=(gauss_theta_min, gauss_theta_max), 
+                                       seed=seed,
+                                       normalize=False
+                                      )
     ## photutils distributes the flux over the solid angle
     ## so this map should be the intensity map in Jy/sr
     ## multiply by beam area in sq pixels
+    print('\n\n omegab',omega_b/mapres**2,'\n\n')
     sim_map+=data*(omega_b/mapres**2)
-
-    ## make white noise map with mean zero
-    ## add to input map
+    print("max of map",np.amax(sim_map))
     
-    noise = make_noise_image(shape, 
-                             distribution='gaussian', 
-                             mean=0,
-                             stddev=map_noise_Jy, 
-                             seed=seed
-                             )
-    
-    sim_map += noise
+    ## add noise to the map
+    if map_noise_Jy>0:
+        sim_map += make_noise_map(sim_map,
+                                  map_noise_Jy=map_noise_Jy,
+                                  map_mean_Jy=0.0,
+                                  seed=seed
+                                 )
 
+    params['x_fwhm'] = params['x_fwhm']*mapres/arcmin
+    params['y_fwhm'] = params['y_fwhm']*mapres/arcmin
+    
     ## photutils parameter table is in Astropy QTable
     ## convert to the json format we've been using.
     injected_sources = convert_photutils_qtable_to_json(params,
                                                         imap=sim_map
                                                         )
+    injected_sources = convert_catalog_to_source_objects(injected_sources,
+                                                         freq=freq,
+                                                         arr=arr,
+                                                         ctime=ctime,
+                                                         map_id=map_id,
+                                                        )
+    
     return sim_map, injected_sources
 
 
@@ -125,8 +175,9 @@ def inject_sources(imap:enmap.ndmap,
                    observation_time:float|enmap.ndmap,
                    freq:str='f090', 
                    arr:str=None, 
+                   map_id:str=None,
                    debug:bool=False
-                   ):
+                  ):
     """
     Inject a list of SimTransient objects into the input map.
 
@@ -136,6 +187,7 @@ def inject_sources(imap:enmap.ndmap,
     - observation_time: float or enmap.ndmap, the time of the observation.
     - freq: str, the frequency of the observation.
     - arr: str, the array name (optional).
+    - map_id: str, the map ID (optional).
     - debug: bool, if True, print debug information including tqdm.
 
     Returns:
@@ -144,27 +196,30 @@ def inject_sources(imap:enmap.ndmap,
     """
     from pixell.utils import degree, arcmin
     from photutils.psf import GaussianPSF
-    from photutils.datasets import make_model_image,make_model_params
+    from photutils.datasets import make_model_image
+    from .sim_utils import make_2d_gaussian_model_param_table
     from pixell.enmap import  sky2pix
     from tqdm import tqdm
     from ..utils.utils import get_fwhm
     from ..sources.sources import SourceCandidate
 
+    if not sources:
+        return imap, []
+    if len(sources)==0:
+        return imap, []
+    
     shape = imap.shape
     wcs = imap.wcs
     mapres = abs(wcs.wcs.cdelt[0]) * degree
     fwhm  = get_fwhm(freq, arr=arr)*arcmin
     fwhm_pixels = fwhm / mapres
-    ## calculate this to convert photutils injected flux to Jy
-    omega_b = (np.pi / 4 / np.log(2)) * (fwhm_pixels)**2
+    
     injected_sources = []
     removed_sources = {'not_flaring':0,'out_of_bounds':0}
-    
     for source in tqdm(sources,desc='Injecting sources',disable=not debug):
         # Check if source is within the map bounds
         ra, dec = source.ra, source.dec
         pix = sky2pix(shape, wcs, np.asarray([dec, ra])*degree)
-        
         if not (0 <= pix[0] < shape[-2] and 0 <= pix[1] < shape[-1]):
             removed_sources['out_of_bounds'] += 1
             continue
@@ -185,25 +240,6 @@ def inject_sources(imap:enmap.ndmap,
         
         flux = source.get_flux(source_obs_time)
         
-        # Define the PSF model parameters
-        model_params = make_model_params(shape,
-                                        1,
-                                        flux=(flux,flux),
-                                        x_0=(pix[1],pix[1]),
-                                        y_0=(pix[0],pix[0]),
-                                        x_fwhm=(fwhm_pixels,fwhm_pixels),
-                                        y_fwhm=(fwhm_pixels,fwhm_pixels),
-                                        theta=(0,0)
-                                        )
-  
-        psf_image= make_model_image(shape,
-                                    GaussianPSF(),
-                                    model_params,
-                                    model_shape=(int(3 * fwhm_pixels), int(3 * fwhm_pixels)),
-                                    )*omega_b
-        
-        imap += psf_image
-
         inj_source = SourceCandidate(ra=ra,
                                      err_ra=0.0,
                                      dec=dec,
@@ -217,8 +253,27 @@ def inject_sources(imap:enmap.ndmap,
                                      fwhm_a=fwhm/arcmin,
                                      fwhm_b=fwhm/arcmin,
                                      source_type='simulated',
+                                     orientation=0.0,
+                                     map_id=map_id if map_id else '',
                                     )
         injected_sources.append(inj_source)
+
+    model_params = make_2d_gaussian_model_param_table(imap,
+                                                      sources=injected_sources,
+                                                      nominal_fwhm_arcmin=fwhm/arcmin,
+                                                      cuts={},
+                                                      verbose=debug
+                                                     )  
+    
+    psf_image= make_model_image(shape,
+                                GaussianPSF(),
+                                model_params,
+                                model_shape=(int(5 * fwhm_pixels), int(5 * fwhm_pixels)),
+                                )
+    
+    imap += psf_image
+
+        
 
     if debug:
         print(f"Removed sources: {removed_sources}")
@@ -226,4 +281,169 @@ def inject_sources(imap:enmap.ndmap,
 
     return imap, injected_sources
 
+
+def inject_sources_from_db(mapdata:Depth1Map,
+                           injected_source_db:SourceCatalogDatabase,
+                           verbose=False,
+                           ):
+    ## inject static sources    
+    if verbose:
+        print('Injecting static sources into simulated map using sim param config.')
+    catalog_sources= injected_source_db.read_database()
+    mapdata.flux,injected_sources = inject_sources(mapdata.flux,
+                                                   catalog_sources,
+                                                   mapdata.time_map,
+                                                   freq=mapdata.freq,
+                                                   arr=mapdata.wafer_name,
+                                                   map_id=mapdata.map_id,
+                                                   debug=verbose
+                                                  )
+    return injected_sources
+    
+
+def inject_random_sources(mapdata,
+                          sim_params:dict,
+                          map_id:str,
+                          t0:float=0.0,
+                          fwhm_arcmin:float=2.2,
+                          add_noise:bool=False,
+                         ):
+    """
+    Inject sources into a map using photutils.
+    Add injected sources to the injected_source_db.
+    Parameters:
+    - mapdata: Depth1Map object containing the map to inject sources into.
+    - injected_source_db: Database object to store injected sources.
+    - sim_params: Dictionary containing simulation parameters.
+    - map_id: Unique identifier for the map.
+    - t0: Time offset for the map.
+    - fwhm_arcmin: Bandwidth full width at half maximum (FWHM) in arcminutes.
+    - return_source_object_list: bool, if True, return the list of injected source objects.
+        otherwise, return a source catalog dict.
+    - add_noise: bool, if True, add sim_params['maps']['map_noise'] to the map.
+        Assumes this is already injected since sim maps load this by default.
+    """
+    if not sim_params:
+        return []
+    mapdata.flux,injected_sources = photutils_sim_n_sources(mapdata.flux,
+                                                            sim_params['injected_sources']['n_sources'],
+                                                            min_flux_Jy=sim_params['injected_sources']['min_flux'],
+                                                            max_flux_Jy=sim_params['injected_sources']['max_flux'],
+                                                            map_noise_Jy=sim_params['maps']['map_noise'] if add_noise else 0.0,
+                                                            fwhm_uncert_frac=sim_params['injected_sources']['fwhm_uncert_frac'],
+                                                            gauss_fwhm_arcmin=fwhm_arcmin,
+                                                            freq=mapdata.freq,
+                                                            arr=mapdata.wafer_name,
+                                                            map_id=map_id,
+                                                            ctime = mapdata.time_map+t0,
+                                                            )
+    mapdata.snr = mapdata.flux/sim_params['maps']['map_noise'] if sim_params['maps']['map_noise']>0 else np.inf
+    
+    return injected_sources
+
+
+def inject_simulated_sources(mapdata:Depth1Map,
+                             injected_source_db:SourceCatalogDatabase=None,
+                             sim_params:dict={},
+                             map_id:str=None,
+                             t0:float=0.0,
+                             verbose:bool=False,
+                             inject_transients:bool=False,
+                             use_map_geometry:bool=False,
+                             simulated_transient_database:str=None,
+                            ):
+    """
+    Inject sources into a map using photutils.
+    Add injected sources to the injected_source_db.
+    Parameters:
+    - mapdata: Depth1Map object containing the map to inject sources into.
+    - injected_source_db: Database object to store injected sources.
+    - sim_params: Dictionary containing simulation parameters.
+    - map_id: Unique identifier for the map.
+    - t0: Time offset for the map.
+    - band_fwhm: Bandwidth full width at half maximum (FWHM) in arcminutes.
+    - verbose: bool, if True, print debug information.
+    - inject_transients: bool, if True, inject transients into the map.
+    - use_map_geometry: bool, if True, use the map geometry for transient injection.
+    - simulated_transient_database: str, path to the database for simulated transients.
+    """
+    if not sim_params and not injected_source_db:
+        return [],[]
+    
+    from .sim_utils import load_transients_from_db
+    from .sim_sources import generate_transients
+    from ..utils.utils import get_fwhm
+    
+    from pixell.utils import degree
+    
+    catalog_sources = []
+    if injected_source_db:
+        catalog_sources = inject_sources_from_db(mapdata,
+                                                 injected_source_db
+                                                )
+        
+    
+    catalog_sources += inject_random_sources(mapdata,
+                                             sim_params,
+                                             map_id=map_id,
+                                             t0=t0,
+                                             fwhm_arcmin=get_fwhm(mapdata.freq,arr=mapdata.wafer_name)
+                                            )
+    
+    if injected_source_db:
+        injected_source_db.add_sources(catalog_sources)
+        injected_source_db.write_database()
+
+    injected_sources = []
+    if inject_transients:
+        transient_sources = load_transients_from_db(simulated_transient_database)
+        mapdata.flux,inj_sources = inject_sources(mapdata.flux,
+                                                  transient_sources,
+                                                  mapdata.time_map+t0,
+                                                  freq=mapdata.freq,
+                                                  arr=mapdata.wafer_name,
+                                                  map_id=map_id,
+                                                  debug=verbose,
+                                                 )
+        injected_sources+=inj_sources
+        if sim_params:
+            if sim_params['injected_transients']['n_transients']>0:
+                if verbose:
+                    print('Generating transients using sim config.')
+                if use_map_geometry:
+                    corners = mapdata.flux.corners()/degree
+                    ra_lims = (corners[0][1]%360,corners[1][1]%360)
+                    dec_lims = (corners[0][0],corners[1][0])
+                else:
+                    ra_lims = (sim_params['maps']['center_ra']-sim_params['maps']['width_ra'],
+                            sim_params['maps']['center_ra']+sim_params['maps']['width_ra']
+                            )
+                    dec_lims = (sim_params['maps']['center_dec']-sim_params['maps']['width_dec'],
+                                sim_params['maps']['center_dec']+sim_params['maps']['width_dec']
+                            )
+                    
+                transients_to_inject = generate_transients(n=sim_params['injected_transients']['n_transients'],
+                                                        ra_lims=ra_lims,
+                                                        dec_lims=dec_lims,
+                                                        peak_amplitudes=(sim_params['injected_transients']['min_flux'],sim_params['injected_transients']['max_flux']),
+                                                        peak_times=(mapdata.map_ctime,mapdata.map_ctime),
+                                                        flare_widths=(sim_params['injected_transients']['min_width'],sim_params['injected_transients']['max_width']),
+                                                        )
+                mapdata.flux,inj_sources = inject_sources(mapdata.flux,
+                                                        transients_to_inject,
+                                                        mapdata.time_map+t0,
+                                                        freq=mapdata.freq,
+                                                        arr=mapdata.wafer_name,
+                                                        map_id=map_id,
+                                                        debug=verbose,
+                                                        )
+                injected_sources+=inj_sources
+   
+    injected_source_db.add_sources(injected_sources)
+    injected_source_db.write_database()
+    if verbose:
+        print(f'Injected {len(catalog_sources)} sources into simulated map')
+        print(f'Injected {len(injected_sources)} transients into simulated map')
+    
+    return catalog_sources,injected_sources
 

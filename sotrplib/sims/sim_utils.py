@@ -173,6 +173,7 @@ def convert_photutils_qtable_to_json(params,
     json_cat_out['err_fluxJy'] = imap.std() * np.ones_like(flux)
     json_cat_out['fluxJy'] = flux
     json_cat_out['forced'] = np.ones_like(flux)
+    
     return json_cat_out
 
 
@@ -268,6 +269,8 @@ def load_transients_from_db(db_path):
     import sqlite3
     import pickle as pk
     from .sim_sources import SimTransient
+    if not db_path:
+        return []
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('SELECT position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params FROM transients')
@@ -304,3 +307,79 @@ def load_config_yaml(config_path:str):
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
+
+
+def get_sim_map_group(sim_params):
+    freq_arr_idx = sim_params['array_info']['arr']+'_'+sim_params['array_info']['freq']
+    indexed_map_groups = {freq_arr_idx:[[i] for i in np.arange(sim_params['maps']['n_realizations'])]}
+    indexed_map_group_time_ranges = {freq_arr_idx:[[t] for t in np.linspace(float(sim_params['maps']['min_time']),float(sim_params['maps']['max_time']),int(sim_params['maps']['n_realizations']))]}
+    return freq_arr_idx, indexed_map_groups, indexed_map_group_time_ranges
+
+
+def make_2d_gaussian_model_param_table(imap:enmap.ndmap,
+                                      sources:list,
+                                      nominal_fwhm_arcmin:float=2.2,
+                                      verbose:bool=False,
+                                      cuts={}
+                                     ):
+    """
+    Create a 2D Gaussian model parameter table from the sources detected in the image.
+    The table contains the parameters for each source, including its position, flux, and FWHM.
+    This function also applies cuts to filter out poor fits.
+    The function returns an astropy Qtable compatible with photutils psf_image generation.
+    """
+    from astropy.table import QTable
+    from pixell.utils import degree, arcmin
+    
+    model_params = {'x_0':[],
+                    'y_0':[],
+                    'x_fwhm':[],
+                    'y_fwhm':[],
+                    'flux':[],
+                    'theta':[],
+                    'id':[]
+                    }
+    id_num = 0
+    res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
+
+    for i in range(len(sources)):
+        s = sources[i]
+        pix = imap.sky2pix(np.array([s.dec,s.ra])*degree)
+        
+        ## unfortunate naming, a,b are semi-major and semi-minor axes, 
+        ## but really they're x,y from photutils gaussian fit.
+        cut=False
+        for cutkey in cuts.keys():
+            if cutkey not in s.__dict__.keys():
+                raise ValueError(f"Cut {cutkey} not found in source attributes.")
+            if s.__dict__[cutkey] is None:
+                cut=True
+                break
+            if np.isnan(s.__dict__[cutkey]) or (s.__dict__[cutkey] < cuts[cutkey][0]) or (s.__dict__[cutkey] > cuts[cutkey][1]):
+                if verbose:
+                    print(f"Source {i} failed cut {cutkey} with value {s.__dict__[cutkey]}")
+                cut=True
+                break
+        if not cut:
+            fwhm_x = s.fwhm_a
+            fwhm_y = s.fwhm_b
+            if isinstance(fwhm_x,type(None)):
+                fwhm_x = nominal_fwhm_arcmin
+            if isinstance(fwhm_y,type(None)):
+                fwhm_y = nominal_fwhm_arcmin
+            if isinstance(s.orientation,type(None)):
+                s.orientation = 0.0
+            
+            omega_b = 1.02*(np.pi / 4 / np.log(2)) * (fwhm_x*fwhm_y / res_arcmin**2)
+            # Define the PSF model parameters
+            model_params['x_0'].append(pix[1])
+            model_params['y_0'].append(pix[0])
+            model_params['x_fwhm'].append(fwhm_x/res_arcmin)
+            model_params['y_fwhm'].append(fwhm_y/res_arcmin)
+            model_params['flux'].append(s.flux*omega_b)
+            model_params['theta'].append(s.orientation)
+            model_params['id'].append(id_num)
+            id_num += 1
+    if verbose:
+        print(model_params)
+    return QTable(model_params)
