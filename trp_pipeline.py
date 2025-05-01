@@ -18,9 +18,8 @@ from sotrplib.utils.plot import plot_map_thumbnail
 from sotrplib.utils.utils import get_fwhm
 from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sims.sim_utils import load_config_yaml, get_sim_map_group
-from sotrplib.sims.sim_maps import inject_simulated_sources
+from sotrplib.sims.sim_maps import inject_simulated_sources,make_noise_map
 
-from pixell import enmap
 from pixell.utils import arcmin,degree
 
 import argparse
@@ -163,7 +162,7 @@ noise_candidates_db = SourceCatalogDatabase(args.output_dir+'so_noise_catalog.cs
 injected_source_db = SourceCatalogDatabase(args.output_dir+'injected_sources.csv') 
 
 sim_params={}
-if args.sim:
+if args.sim or args.inject_transients:
     if args.verbose:
          print('Loading sim config file: ',args.sim_config)
     sim_params = load_config_yaml(args.sim_config)
@@ -238,7 +237,10 @@ for freq_arr_idx in indexed_map_groups:
             if 'coadd' in str(map_group[0]):
                 mapdata = load_coadd_maps(mapfile=map_group[0],arr=arr,box=box)[0]
             else:
-                mapdata = load_maps(map_group[0],box=box)
+                mapdata = load_maps(map_group[0],
+                                    box=box,
+                                    verbose=args.verbose,
+                                    )
         else:
             if args.verbose:
                 print('Coadding map group containing the following maps:')
@@ -253,10 +255,17 @@ for freq_arr_idx in indexed_map_groups:
         ## end of map loading
 
         if not mapdata:
-            print('No map data found... skipping.')
+            if args.verbose:
+                print('No map data found... skipping.')
             continue    
+
+        ## when using the real map geometry, need to load the map first
+        ## so here set the simulated map flux and snr 
         if args.sim and args.use_map_geometry:
-            mapdata.flux = enmap.zeros(mapdata.time_map.shape,wcs=mapdata.time_map.wcs)
+            mapdata.flux = make_noise_map(mapdata.time_map,
+                                          map_noise_Jy=sim_params['maps']['map_noise'],
+                                         )
+            mapdata.snr = mapdata.flux/sim_params['maps']['map_noise']
             del mapdata.rho_map,mapdata.kappa_map
         
         catalog_sources = []
@@ -269,7 +278,10 @@ for freq_arr_idx in indexed_map_groups:
                        galmask_file = args.galaxy_mask,
                        skip=args.sim
                       )
-        
+        if not mapdata:
+            if args.verbose:
+                print(f'Flux for {map_id} was all nan... skipping.')
+            continue
         
         catalog_sources,injected_sources = inject_simulated_sources(mapdata,
                                                                     injected_source_db,
@@ -285,7 +297,7 @@ for freq_arr_idx in indexed_map_groups:
         
         if not args.sim:
             print('Loading Source Catalog')
-            catalog_sources = load_catalog(args.source_catalog,
+            catalog_sources += load_catalog(args.source_catalog,
                                            flux_threshold = args.flux_threshold,
                                            mask_outside_map=True,
                                            mask_map=mapdata.flux,
@@ -321,24 +333,12 @@ for freq_arr_idx in indexed_map_groups:
             ## ignore sources with wonky fits.
             srcmodel=mapdata.subtract_sources(known_sources,
                                               cuts={'flux':[0.0,np.inf],
-                                                    'err_flux':[0.0,1.0],
+                                                    'err_flux':[-1.0,1.0],
                                                     'fwhm_a':[0.25,6.0],
                                                     'fwhm_b':[0.25,6.0]
                                                     }
                                               ) 
-            
-        from matplotlib import pyplot as plt
-        plt.figure(figsize=(10,10))
-        ax = plt.subplot(projection=mapdata.flux.wcs)
-        im = ax.imshow(mapdata.flux, vmin=-0.1,vmax=0.2)
-        plt.colorbar(im, ax=ax)
-        plt.savefig(args.output_dir+map_id+'_src_sub_map.png')
-
-        plt.figure(figsize=(10,10))
-        ax = plt.subplot(projection=mapdata.flux.wcs)
-        im = ax.imshow(mapdata.flux/mapdata.snr, vmin=-0.1,vmax=0.2)
-        plt.colorbar(im, ax=ax)
-        plt.savefig(args.output_dir+map_id+'_src_sub_noise.png')
+        
        
         print('Finding sources...')
         ## get mask radius for each sigma such that the mask goes to the 
@@ -363,12 +363,6 @@ for freq_arr_idx in indexed_map_groups:
                                             res=mapdata.res/arcmin,
                                             )
         
-        if not extracted_sources:
-            ## no sources were extracted from the map.
-            if args.verbose:
-                print('No sources found in map %s.'%map_id)
-            del mapdata,known_sources
-            continue
         
         print(len(extracted_sources.keys()),'sources found.')
 
@@ -412,6 +406,15 @@ for freq_arr_idx in indexed_map_groups:
 
         if len(catalog_matches)>0:
             print('Source found in blind search which is associated with catalog... masking may have a problem.')
+            if args.plot_thumbnails:
+                for cm in catalog_matches:
+                    plot_map_thumbnail(mapdata.snr if not args.sim else mapdata.flux/sim_params['maps']['map_noise'],
+                                        cm.ra,
+                                        cm.dec,
+                                        source_name='_'.join(cm.sourceID.split(' '))+'_'+str(cm.ctime)+'_'+mapdata.wafer_name+'_'+mapdata.freq,
+                                        plot_dir = args.output_dir,
+                                        colorbar_range=args.snr_threshold
+                                        )
             ## do we do anything here? add to updated source catalog?
             ## should only be possible if the masking radius and the source matching radius are significantly different.
         
@@ -449,4 +452,5 @@ for freq_arr_idx in indexed_map_groups:
         noise_candidates_db._initialize_database()
         transients_db.write_database()
         transients_db._initialize_database()
+        injected_source_db.write_database()
         injected_source_db._initialize_database()
