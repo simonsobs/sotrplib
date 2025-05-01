@@ -338,7 +338,8 @@ def load_sim_map(map_sim_params,ctime=0.0):
 
 
 def load_maps(map_path:Path,
-              box:np.ndarray=None
+              box:np.ndarray=None,
+              verbose=False,
              )->Depth1Map:
     ## map_path should be /file/path/to/[obsid]_[arr]_[freq]_map.fits
     ## or /file/path/to/[obsid]_[arr]_[freq]_rho.fits
@@ -355,7 +356,8 @@ def load_maps(map_path:Path,
             imap = enmap.read_map(str(map_path), box=box)
         # check if map is all zeros
         if np.all(imap == 0.0) or np.all(np.isnan(imap)):
-            print("map is all nan or zeros, skipping")
+            if verbose:
+                print("map is all nan or zeros, skipping")
             return None
         path = str(map_path).split('map.fits')[0]
         ivar = enmap.read_map(path + "ivar.fits",box=box) # inverse variance map
@@ -383,7 +385,8 @@ def load_maps(map_path:Path,
             rho = enmap.read_map(str(map_path),box=box)
         # check if map is all zeros
         if np.all(rho == 0.0) or np.all(np.isnan(rho)):
-            print("rho is all nan or zeros, skipping")
+            if verbose:
+                print("rho is all nan or zeros, skipping")
             return None
         path = str(map_path).split('rho.fits')[0]
         try:
@@ -664,11 +667,14 @@ def flat_field_using_photutils(mapdata:Depth1Map,
     '''
     from photutils.background import Background2D
     from pixell.utils import degree
-    background = Background2D(mapdata.snr,int(tilegrid*degree/mapdata.res),sigma_clip=None,mask=mask)
-    relative_rms = background.background_rms/background.background_rms_median
-    mapdata.snr /= relative_rms
-    mapdata.flatfielded=True
-
+    try:
+        background = Background2D(mapdata.snr,int(tilegrid*degree/mapdata.res),sigma_clip=None,mask=mask)
+        relative_rms = background.background_rms/background.background_rms_median
+        mapdata.snr /= relative_rms
+        mapdata.flatfielded=True
+    except Exception as e:
+        print(e,' Failed to flatfield using photutils')
+        mapdata.flatfielded=False
     return 
 
 
@@ -724,7 +730,11 @@ def preprocess_map(mapdata,
         mapdata.snr = mapdata.rho_map*mapdata.kappa_map**(-0.5)
     mapdata.kappa_map = None
     mapdata.rho_map = None
-
+    if np.all(np.isnan(mapdata.flux)) or np.all(np.isnan(mapdata.snr)) or np.all(mapdata.snr == 0.0) or np.all(mapdata.flux == 0.0):
+        print("flux or snr is all nan or zeros, skipping")
+        mapdata=None
+        return 
+    
     if not mapdata.masked:
         mapdata.masked=0
         mask = enmap.ones(mapdata.flux.shape,wcs=mapdata.flux.wcs)   
@@ -766,6 +776,11 @@ def preprocess_map(mapdata,
             print(e, ' ... skipping edge mask')
             mapdata.masked+=1
 
+    if np.all(np.isnan(mapdata.flux)) or np.all(np.isnan(mapdata.snr)) or np.all(mapdata.snr == 0.0) or np.all(mapdata.flux == 0.0):
+        print("flux or snr is all nan or zeros, skipping")
+        mapdata=None
+        return 
+    
     if not mapdata.flatfielded:
         print('Flatfielding maps...')
         if flatfield_method == 'photutils':
