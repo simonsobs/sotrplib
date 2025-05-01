@@ -36,6 +36,11 @@ def convert_gauss_fit_to_source_cat(gauss_fits:list,
     since there are uncertainties on the fits, make keys err_[blah] for those fits.
     this is inspired by fluxJy and err_fluxJy in act table.
     '''
+    if not isinstance(gauss_fits,list):
+        raise ValueError('gauss_fits should be a list of dictionaries')
+    if not gauss_fits:
+        return {}
+    
     sources = {}
     for i in range(len(gauss_fits)):
         for key in gauss_fits[i]:
@@ -213,11 +218,11 @@ def load_catalog(source_cat_file:str,
                 sources[key]  = sources[key][source_mask]
         else:
             sources = sources[source_mask]
-
+        print(sum(source_mask),' sources actually within map')
     if return_source_cand_list:
         from ..sources.forced_photometry import convert_catalog_to_source_objects
         sources = convert_catalog_to_source_objects(sources)
-
+        
     return sources
 
 
