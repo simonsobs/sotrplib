@@ -175,6 +175,7 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                       arr:str='none',
                                       ctime:Union[float,enmap.ndmap]=None,
                                       map_id:str='',
+                                      source_type:str='',
                                       ):
     '''
     take each source in the catalog and convert to a list 
@@ -231,6 +232,7 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                  crossmatch_name=catalog_sources['name'][i], 
                                  catalog_crossmatch=True,
                                  fit_type=fit_type,
+                                 source_type=source_type,
                                  )
         else:
             if catalog_sources['ra_offset_arcmin'][i]:
@@ -261,6 +263,7 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                 err_fwhm_b=catalog_sources['err_fwhm_y_arcmin'][i],
                                 orientation=catalog_sources['theta'][i],
                                 fit_type=fit_type,
+                                source_type=source_type,
                                 )
             
             if cs.err_flux>0.0:
@@ -299,7 +302,8 @@ def photutils_2D_gauss_fit(flux_map,
                            fwhm_arcmin=2.2,
                            PLOT:bool=False,
                            reproject_thumb:bool=False,
-                           return_thumbnails:bool=False
+                           return_thumbnails:bool=False,
+                           debug=False
                           ):
     '''
     
@@ -359,7 +363,8 @@ def photutils_2D_gauss_fit(flux_map,
                                                 )
                 noise_thumb = flux_thumb/snr_thumb
             except Exception as e:
-                print(source_name,e)
+                if debug:
+                    print(source_name,e)
                 fit_dict=return_initial_catalog_entry(sc,
                                                       add_dict=failed_fit_dict,
                                                       keyconv={'ra':rakey,
@@ -389,7 +394,8 @@ def photutils_2D_gauss_fit(flux_map,
             noise_thumb = noise_thumb.upgrade(factor=2)
             
         if np.any(np.isnan(flux_thumb)):
-            print(source_name,"map contains nan")
+            if debug:
+                print(source_name,"map contains nan")
             fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
                                                   keyconv={'ra':rakey,
@@ -425,7 +431,8 @@ def photutils_2D_gauss_fit(flux_map,
             gauss_fit['gauss_fit_flag']=0
             fits.append(gauss_fit)
         else:
-            print(source_name, 'failed to fit.')
+            if debug:
+                print(source_name, 'failed to fit.')
             fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
                                                   keyconv={'ra':rakey,
