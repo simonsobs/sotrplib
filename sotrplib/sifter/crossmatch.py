@@ -89,6 +89,16 @@ def gaia_match(cand:SourceCandidate,
 
     return gaia_valid
 
+def alert_on_flare(previous_flux:float,
+                   new_flux:float,
+                   ratio_threshold:float=5.0,
+                   ):
+    """
+    Check if the new flux is significantly larger than the previous flux.
+    If the ratio of new flux to previous flux is greater than the threshold, return True.
+    """
+    return new_flux/previous_flux > ratio_threshold
+
 def sift(extracted_sources,
          catalog_sources,
          imap:enmap.ndmap=None,
@@ -136,6 +146,9 @@ def sift(extracted_sources,
     from ..utils.utils import get_fwhm
     fwhm_arcmin = get_fwhm(map_freq,arr=arr)
 
+    if isinstance(extracted_sources,type(None)):
+        return [],[],[]
+    
     if isinstance(source_fluxes,type(None)):
         source_fluxes = np.asarray([extracted_sources[f]['peakval'] for f in extracted_sources])
     
@@ -170,7 +183,9 @@ def sift(extracted_sources,
             crossmatch_name = ''
         
         if debug:
-            print(source_string_name,crossmatch_name)
+            print(source_string_name)
+            if isin_cat[source]:
+                print('crossmatch:',crossmatch_name,'%.2f Jy'%catalog_sources['fluxJy'][catalog_match[source][0][1]])
             print(forced_photometry_info)
             
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
@@ -211,8 +226,13 @@ def sift(extracted_sources,
         
         ## do sifting operations here...
         is_cut = get_cut_decision(cand,cuts,debug=debug)
-        if isin_cat[source]:
-            source_candidates.append(cand)
+        if isin_cat[source] and not is_cut:
+            print(source,crossmatch_name,catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux)
+            if alert_on_flare(catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux):
+                print('ALERT: %s has increased flux from %.2f to %.2f Jy'%(crossmatch_name,catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux))
+                transient_candidates.append(cand)
+            else:
+                source_candidates.append(cand)
         elif is_cut or not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or not np.isfinite(forced_photometry_info['peakval']) :
             noise_candidates.append(cand)
         else:
@@ -392,7 +412,6 @@ def crossmatch_position_and_flux(injected_sources:list,
         if match:  # If there is a match
             injected_flux = injected_sources[i].flux
             recovered_flux = recovered_sources[match[0][1]].flux
-            print(i,injected_flux,recovered_flux, np.sqrt(flux_threshold**2 + (fractional_flux*injected_flux)**2))
             if abs(injected_flux - recovered_flux) <=  np.sqrt(flux_threshold**2 + (fractional_flux*injected_flux)**2) :
                 similar_fluxes.append(True)
             else:
@@ -400,7 +419,7 @@ def crossmatch_position_and_flux(injected_sources:list,
         else:
             print('no match to ',i,injected_sources[i])
             similar_fluxes.append(False)
-    print(similar_fluxes)
+    
     if np.sum(np.logical_not(similar_fluxes)) > 0 and fail_flux_mismatch:
         raise ValueError("Some injected sources have mismatched fluxes.")
 
