@@ -22,7 +22,7 @@ class SimTransient:
         - flare_morph: The morphology of the flare ('Gaussian' supported for now).
         - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
         """
-        self.ra,self.dec = position if position else generate_random_positions(n=1)
+        self.dec,self.ra = position if position else generate_random_positions(n=1)
         self.peak_amplitude = peak_amplitude
         self.peak_time = peak_time
         self.flare_width = flare_width
@@ -63,10 +63,15 @@ def generate_transients(n:int=None,
                         flare_widths:list|tuple=None,
                         flare_morphs:list=None,
                         beam_params:list=None,
+                        uniform_on_sky=False,
                         ):
     """
     Generate a list of simulated transient sources.
-    Each source is represented by a SimTransient object.
+    These will be either generated uniformly on sky or uniformly in the flatsky map.
+    If imap is given, only inject sources within the weighted region.
+    Each source generates a SimTransient object.
+
+
     Arguments:
     - n (int): Number of transients to generate. If None, positions must be provided.
     - imap (enmap.ndmap): Input map for generating random positions. If None, ra_lims and dec_lims must be provided.
@@ -78,25 +83,48 @@ def generate_transients(n:int=None,
     - flare_widths (list|tuple): List of flare widths for each transient or tuple of (min, max) for random generation.
     - flare_morphs (list): List of flare morphologies for each transient.
     - beam_params (list): List of dictionaries containing beam parameters for each transient.
+    - uniform_on_sky (bool): generate random positions uniform on sky or uniform on imap flatsky
     """ 
     from .sim_utils import (generate_random_positions, 
+                            generate_random_positions_in_map,
                             generate_random_flare_amplitudes, 
                             generate_random_flare_widths,
                             generate_random_flare_times,
                             )       
-            
+    from pixell.utils import degree
+    
     transients = []
     if n is None and not positions:
         raise ValueError("Either n or positions must be provided.")
     if n is not None and positions:
         raise ValueError("Cannot provide both n and positions.")
     if n is not None:
-        positions = generate_random_positions(n, 
-                                              imap=imap,
-                                              ra_lims=ra_lims, 
-                                              dec_lims=dec_lims
-                                              )
+        n_positions = 0
+        positions=[]
         
+        ntries=10
+        while n_positions<n and ntries>0:
+            if uniform_on_sky:
+                rand_pos  = generate_random_positions(n, 
+                                                    imap=imap,
+                                                    ra_lims=ra_lims, 
+                                                    dec_lims=dec_lims
+                                                    )
+            else:
+                rand_pos = generate_random_positions_in_map(n,imap)
+            
+            if isinstance(imap,enmap.ndmap):
+                for p in rand_pos:
+                    if imap.at([p[0]*degree,p[1]*degree],mode='nn') and len(positions)<n:
+                        positions.append(p)
+            else:
+                positions=rand_pos
+            
+            n_positions=len(positions)
+            ntries-=1
+            if ntries==0:
+                print(f'Failed to inject {n} sources into weighted. Only injected {n_positions}')
+
     if n is not None and isinstance(peak_amplitudes,tuple):
         peak_amplitudes = generate_random_flare_amplitudes(n,
                                                            min_amplitude=peak_amplitudes[0],

@@ -403,6 +403,9 @@ def inject_simulated_sources(mapdata:Depth1Map,
     from .sim_sources import generate_transients
     from ..utils.utils import get_fwhm
     
+    if use_map_geometry:
+        from ..maps.maps import edge_map
+
     from pixell.utils import degree
     
     catalog_sources = []
@@ -437,9 +440,15 @@ def inject_simulated_sources(mapdata:Depth1Map,
                 if verbose:
                     print('Generating transients using sim config.')
                 if use_map_geometry:
-                    corners = mapdata.flux.corners()/degree
-                    ra_lims = (corners[0][1]%360,corners[1][1]%360)
-                    dec_lims = (corners[0][0],corners[1][0])
+                    ## use imap to generate random pixels 
+                    ra_lims=None
+                    dec_lims=None
+                    ## get the hits map using the time map if it exists,
+                    ## otherwise use the flux map (setting nans to zero). Using flux hides the masked region too, though.
+                    if isinstance(mapdata.time_map,enmap.ndmap):
+                        hits_map = edge_map(mapdata.time_map) 
+                    else:
+                        hits_map = edge_map(np.nan_to_num(mapdata.flux))
                 else:
                     ra_lims = (sim_params['maps']['center_ra']-sim_params['maps']['width_ra'],
                             sim_params['maps']['center_ra']+sim_params['maps']['width_ra']
@@ -447,14 +456,17 @@ def inject_simulated_sources(mapdata:Depth1Map,
                     dec_lims = (sim_params['maps']['center_dec']-sim_params['maps']['width_dec'],
                                 sim_params['maps']['center_dec']+sim_params['maps']['width_dec']
                             )
+                    hits_map = None
                 
                 transients_to_inject = generate_transients(n=sim_params['injected_transients']['n_transients'],
-                                                        ra_lims=ra_lims,
-                                                        dec_lims=dec_lims,
-                                                        peak_amplitudes=(sim_params['injected_transients']['min_flux'],sim_params['injected_transients']['max_flux']),
-                                                        peak_times=(mapdata.map_ctime,mapdata.map_ctime),
-                                                        flare_widths=(sim_params['injected_transients']['min_width'],sim_params['injected_transients']['max_width']),
-                                                        )
+                                                           imap=hits_map,
+                                                            ra_lims=ra_lims,
+                                                            dec_lims=dec_lims,
+                                                            peak_amplitudes=(sim_params['injected_transients']['min_flux'],sim_params['injected_transients']['max_flux']),
+                                                            peak_times=(mapdata.map_ctime,mapdata.map_ctime),
+                                                            flare_widths=(sim_params['injected_transients']['min_width'],sim_params['injected_transients']['max_width']),
+                                                            uniform_on_sky=True if isinstance(hits_map,type(None)) else False
+                                                            )
                 mapdata,inj_sources = inject_sources(mapdata,
                                                     transients_to_inject,
                                                     mapdata.time_map+t0,

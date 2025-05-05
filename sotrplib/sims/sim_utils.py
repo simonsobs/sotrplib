@@ -3,6 +3,30 @@ from pixell import enmap
 from pixell.utils import degree
 
 
+def generate_random_positions_in_map(n:int,
+                                     imap:enmap.ndmap
+                                     ):
+    """
+    Generate n random positions uniformly distributed in the map.
+    Uses the mapshape, to get random pixels, then calculates ra,dec
+    using the imap.pix2sky.
+
+    Arguments:
+        n (int): Number of positions to generate.
+        imap (enmap.ndmap): Input map for generating random positions.
+
+    Returns:
+        tuple: Two numpy arrays containing the RA and Dec positions.
+    """
+    x = np.random.uniform(0,imap.shape[0],n)
+    y = np.random.uniform(0,imap.shape[1],n)
+    positions = []
+    for i in range(n):
+        positions.append(imap.pix2sky((x[i],y[i]))/degree)
+    
+    return positions
+
+
 def generate_random_positions(n:int, 
                               imap:enmap.ndmap=None,
                               ra_lims:tuple=None, 
@@ -49,7 +73,7 @@ def generate_random_positions(n:int,
     # Convert back to degrees
     ra = np.degrees(ra)
     dec = np.degrees(dec)
-    positions = list(zip(ra, dec))
+    positions = list(zip(dec, ra))
     return positions
 
 
