@@ -137,13 +137,13 @@ def extract_sources(inmap:ndmap,
     peaks = find_using_photutils(np.asarray(inmap),
                                  maprms,
                                  nsigma=nsigma,
-                                 minnum=1,
+                                 minnum=2,
                                 )
     
     npeaks = peaks["n_detected"]
     if npeaks == 0:
         print("No sources found")
-        return
+        return {}
 
     # gather detected peaks into output structure, ignoring repeat
     # detections of same object

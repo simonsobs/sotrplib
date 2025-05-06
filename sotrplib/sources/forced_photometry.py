@@ -171,10 +171,11 @@ def fit_2d_gaussian(flux_map:enmap.ndmap,
 
 
 def convert_catalog_to_source_objects(catalog_sources:dict,
-                                      freq:str=None,
-                                      arr:str=None,
+                                      freq:str='none',
+                                      arr:str='none',
                                       ctime:Union[float,enmap.ndmap]=None,
-                                      mapid:str='',
+                                      map_id:str='',
+                                      source_type:str='',
                                       ):
     '''
     take each source in the catalog and convert to a list 
@@ -183,12 +184,28 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
     '''
     from pixell.utils import arcmin,degree
     from ..sources.sources import SourceCandidate
-
-    known_sources = []
+    
+    if isinstance(catalog_sources,list):
+        return catalog_sources
     if not catalog_sources:
         return []
+    
+    known_sources = []
     for i in range(len(catalog_sources['name'])):
-        bad_fit=catalog_sources['gauss_fit_flag'][i]
+        if 'gauss_fit_flag' in catalog_sources:
+            bad_fit=catalog_sources['gauss_fit_flag'][i] 
+        else:
+            bad_fit=True
+
+        fit_type=None 
+        if 'forced' in catalog_sources:
+            if catalog_sources['forced'][i]:
+                fit_type='forced'
+            else:
+                fit_type='pointing'
+        else:
+            fit_type='none'
+
         source_ra = catalog_sources['RADeg'][i]%360 
         source_dec = catalog_sources['decDeg'][i]
         if isinstance(ctime,enmap.ndmap):
@@ -210,11 +227,12 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                  freq=freq,
                                  arr=arr,
                                  ctime=source_ctime,
-                                 mapid=mapid,
+                                 map_id=map_id,
                                  sourceID=catalog_sources['name'][i],
                                  crossmatch_name=catalog_sources['name'][i], 
                                  catalog_crossmatch=True,
-                                 fit_type='forced' if catalog_sources['forced'][i] else 'pointing',
+                                 fit_type=fit_type,
+                                 source_type=source_type,
                                  )
         else:
             if catalog_sources['ra_offset_arcmin'][i]:
@@ -235,7 +253,7 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                 freq=freq,
                                 arr=arr,
                                 ctime=source_ctime,
-                                mapid=mapid,
+                                map_id=map_id,
                                 sourceID=catalog_sources['name'][i],
                                 crossmatch_name=catalog_sources['name'][i], 
                                 catalog_crossmatch=True,
@@ -243,50 +261,59 @@ def convert_catalog_to_source_objects(catalog_sources:dict,
                                 fwhm_b=catalog_sources['fwhm_y_arcmin'][i],
                                 err_fwhm_a=catalog_sources['err_fwhm_x_arcmin'][i],
                                 err_fwhm_b=catalog_sources['err_fwhm_y_arcmin'][i],
-                                orientation=0.0,
-                                fit_type='forced' if catalog_sources['forced'][i] else 'pointing',
+                                orientation=catalog_sources['theta'][i],
+                                fit_type=fit_type,
+                                source_type=source_type,
                                 )
             
             if cs.err_flux>0.0:
                 cs.snr = cs.flux/cs.err_flux
-            known_sources.append(cs)
+        known_sources.append(cs)
 
     return known_sources
 
 
-def return_initial_catalog_entry(incat:dict,
-                                 idx:int,
+def return_initial_catalog_entry(source,
                                  add_dict:dict={},
+                                 keyconv={},
                                  ):
+    '''
+    source is a SourceCandidate object
+    '''
     outdict={}
-    for key in incat:
-        outdict[key] = incat[key][idx]
+    for item in vars(source):
+        outdict[item] = getattr(source, item)
     outdict.update(add_dict)
+    for key in keyconv:
+        if key in outdict:
+            outdict[keyconv[key]] = outdict.pop(key)
+           
     return outdict
 
 def photutils_2D_gauss_fit(flux_map,
                            snr_map,
-                           source_catalog:dict,
+                           source_catalog:list,
                            rakey:str='RADeg',
                            deckey:str='decDeg',
                            fluxkey:str='fluxJy',
+                           dfluxkey:str='err_fluxJy',
                            flux_lim_fit_centroid:float=0.3,
                            size_deg=0.1,
                            fwhm_arcmin=2.2,
                            PLOT:bool=False,
                            reproject_thumb:bool=False,
-                           return_thumbnails:bool=False
+                           return_thumbnails:bool=False,
+                           debug=False
                           ):
     '''
     
     
     '''
+    from tqdm import tqdm
     from pixell import reproject
     from pixell.utils import degree,arcmin
+    from ..source_catalog.source_catalog import convert_gauss_fit_to_source_cat
     
-    ras = source_catalog[rakey]
-    decs = source_catalog[deckey]
-    fluxes = source_catalog[fluxkey]
     fits = []
     thumbnails = []
     ## these are the keys output by the fitting function
@@ -301,16 +328,22 @@ def photutils_2D_gauss_fit(flux_map,
                        "gauss_fit_flag":1
                       }
 
-    for i in range(len(ras)):
-        source_name = source_catalog['name'][i]
+    for i in tqdm(range(len(source_catalog)),desc="Fitting sources w 2D Gaussian"):
+        sc = source_catalog[i]
+        source_name = sc.sourceID
         map_res = abs(flux_map.wcs.wcs.cdelt[0]*degree)
-        pix = flux_map.sky2pix([decs[i]*degree, ras[i]*degree])
+        pix = flux_map.sky2pix([sc.dec*degree, sc.ra*degree])
         failed_fit_dict['pix'] = pix
         thumbsize=size_deg*degree/map_res
         if pix[0]+thumbsize>flux_map.shape[0] or pix[1]+thumbsize>flux_map.shape[1] or pix[0]-thumbsize<0 or pix[1]-thumbsize<0:
-            fit_dict=return_initial_catalog_entry(source_catalog,
-                                                  i,
+            fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
+                                                  keyconv={'ra':rakey,
+                                                           'dec':deckey,
+                                                           'flux':fluxkey,
+                                                           'err_flux':dfluxkey,
+                                                           'name':'SourceID'
+                                                          },
                                                  )
             fits.append(fit_dict)
             if return_thumbnails:
@@ -319,30 +352,36 @@ def photutils_2D_gauss_fit(flux_map,
             thumbnail_center=(0,0)
             try:
                 flux_thumb = reproject.thumbnails(flux_map,
-                                                  [decs[i]*degree, ras[i]*degree], 
+                                                  [sc.dec*degree, sc.ra*degree], 
                                                   r=size_deg * degree,
                                                   res=map_res,
                                                  )
                 snr_thumb = reproject.thumbnails(snr_map,
-                                                 [decs[i]*degree, ras[i]*degree], 
+                                                 [sc.dec*degree, sc.ra*degree], 
                                                  r=size_deg * degree,
                                                  res=map_res,
                                                 )
                 noise_thumb = flux_thumb/snr_thumb
             except Exception as e:
-                print(source_name,e)
-                fit_dict=return_initial_catalog_entry(source_catalog,
-                                                  i,
-                                                  add_dict=failed_fit_dict,
-                                                 )
+                if debug:
+                    print(source_name,e)
+                fit_dict=return_initial_catalog_entry(sc,
+                                                      add_dict=failed_fit_dict,
+                                                      keyconv={'ra':rakey,
+                                                               'dec':deckey,
+                                                               'flux':fluxkey,
+                                                               'err_flux':dfluxkey,
+                                                               'name':'SourceID'
+                                                              },
+                                                     )
                 fits.append(fit_dict)
                 if return_thumbnails:
                     thumbnails.append([])
                 continue
         else:
-            thumbnail_center=(ras[i],decs[i])
-            ra = ras[i] * degree + map_res/2
-            dec = decs[i] * degree + map_res/2
+            thumbnail_center=(sc.ra,sc.dec)
+            ra = sc.ra * degree + map_res/2
+            dec = sc.dec * degree + map_res/2
             radius = size_deg  * degree
             flux_thumb = flux_map.submap([[dec - radius, ra - radius], 
                                          [dec + radius, ra + radius]],
@@ -354,11 +393,17 @@ def photutils_2D_gauss_fit(flux_map,
             flux_thumb = flux_thumb.upgrade(factor=2)
             noise_thumb = noise_thumb.upgrade(factor=2)
             
-        if np.all(np.isnan(flux_thumb)):
-            print(source_name,"map all nan")
-            fit_dict=return_initial_catalog_entry(source_catalog,
-                                                  i,
+        if np.any(np.isnan(flux_thumb)):
+            if debug:
+                print(source_name,"map contains nan")
+            fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
+                                                  keyconv={'ra':rakey,
+                                                           'dec':deckey,
+                                                           'flux':fluxkey,
+                                                           'err_flux':dfluxkey,
+                                                           'name':'SourceID'
+                                                          },
                                                  )
             fits.append(fit_dict)
             if return_thumbnails:
@@ -372,29 +417,36 @@ def photutils_2D_gauss_fit(flux_map,
                                     map_res/arcmin,
                                     fwhm_guess_arcmin=fwhm_arcmin,
                                     thumbnail_center=thumbnail_center,
-                                    force_center=True if fluxes[i]<flux_lim_fit_centroid else False,
+                                    force_center=True if sc.flux<flux_lim_fit_centroid else False,
                                     PLOT=PLOT
                                    )
         if gauss_fit:
-            gauss_fit[rakey] = ras[i]
-            gauss_fit[deckey] = decs[i] 
+            gauss_fit[rakey] = sc.ra
+            gauss_fit[deckey] = sc.dec 
             gauss_fit["pix"] = pix
-            gauss_fit['fluxJy'],gauss_fit['err_fluxJy'] =  gauss_fit.pop('amplitude')
-            for key in source_catalog:
+            gauss_fit[fluxkey],gauss_fit['err_%s'%fluxkey] =  gauss_fit.pop('amplitude')
+            for key in vars(sc):
                 if key not in gauss_fit:
-                    gauss_fit[key] = source_catalog[key][i]
+                    gauss_fit[key] = getattr(sc, key)
             gauss_fit['gauss_fit_flag']=0
             fits.append(gauss_fit)
         else:
-            print(source_name, 'failed to fit.')
-            fit_dict=return_initial_catalog_entry(source_catalog,
-                                                  i,
+            if debug:
+                print(source_name, 'failed to fit.')
+            fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
+                                                  keyconv={'ra':rakey,
+                                                           'dec':deckey,
+                                                           'flux':fluxkey,
+                                                           'err_flux':dfluxkey,
+                                                           'name':'SourceID'
+                                                          },
                                                  )
             fits.append(fit_dict)
         if return_thumbnails:
             thumbnails.append([flux_thumb,noise_thumb])
-        
+    fits = convert_gauss_fit_to_source_cat(fits)
+
     return fits,thumbnails
     
 
@@ -615,72 +667,3 @@ def photutils_gauss_slice_fit(flux_map,
         
     return np.asarray(x_offsets),np.asarray(y_offsets),np.asarray(x_uncertainties),np.asarray(y_uncertainties),np.asarray(x_fwhms),np.asarray(y_fwhms),np.asarray(x_fwhm_uncertainties),np.asarray(y_fwhm_uncertainties)
 
-
-
-def enmap_extract_fluxes(flux_map:enmap.ndmap,
-                         source_catalog:dict,
-                         snr_map:enmap.ndmap=None,
-                         dflux_map:enmap.ndmap=None,
-                         atmode:str='nn',
-                         return_pixels:bool=False,
-                         rakey:str='RADeg',
-                         deckey:str='decDeg',
-                         fluxkey:str='fluxJy',
-                         dfluxkey:str='err_fluxJy'
-                        ):
-    '''
-    input flux map will have the catalog ra,dec positions extracted using the ndmap.at function
-    if dflux_map is input, will use that to get flux uncertainty, otherwise
-    if snr_map is input, will use flux/snr to get flux uncertainty
-
-    
-    atmode is the interpolation mode used ... from pixell.utils.interpol:
-    The mode and order arguments control the interpolation type. These can be:
-	* mode=="nn"  or (mode=="spline" and order==0): Nearest neighbor interpolation
-	* mode=="lin" or (mode=="spline" and order==1): Linear interpolation
-	* mode=="cub" or (mode=="spline" and order==3): Cubic interpolation
-	* mode=="fourier": Non-uniform fourier interpolation
-
-    return two arrays, 1st is flux, 2nd is flux uncert
-    option to return pixel array as well (i.e. the pixel index for the ra,dec of each source)
-    '''
-    from pixell.utils import degree
-
-    ras = source_catalog.pop(rakey)*degree
-    decs = source_catalog.pop(deckey)*degree
-    
-    if fluxkey in source_catalog:
-        fluxes = source_catalog.pop(fluxkey)
-    else:
-        fluxes = np.zeros(len(ras))*np.nan
-    if dfluxkey in source_catalog:
-        fluxerrs = source_catalog.pop(dfluxkey)
-    else:
-        fluxerrs = np.zeros(len(ras))*np.nan
-    
-    pixels = []
-    for i in range(len(ras)):
-        pos = [decs[i],ras[i]]
-        fluxes[i] = flux_map.at(pos,
-                                mode=atmode
-                               )
-        if isinstance(dflux_map,enmap.ndmap):
-            fluxerrs[i] = dflux_map.at(pos,
-                                       mode=atmode
-                                      )
-        elif isinstance(snr_map,enmap.ndmap):
-            fluxerrs[i] = fluxes[i]/snr_map.at(pos,
-                                               mode=atmode
-                                              )
-
-        pixels.append(flux_map.sky2pix(pos))
-
-    source_catalog[fluxkey] = np.array(fluxes)
-    source_catalog[dfluxkey] = np.array(fluxerrs)
-    source_catalog[rakey] = ras/degree
-    source_catalog[deckey] = decs/degree
-    
-    if return_pixels:
-        source_catalog['pix'] = np.array(pixels)
-    
-    return source_catalog

@@ -36,6 +36,11 @@ def convert_gauss_fit_to_source_cat(gauss_fits:list,
     since there are uncertainties on the fits, make keys err_[blah] for those fits.
     this is inspired by fluxJy and err_fluxJy in act table.
     '''
+    if not isinstance(gauss_fits,list):
+        raise ValueError('gauss_fits should be a list of dictionaries')
+    if not gauss_fits:
+        return {}
+    
     sources = {}
     for i in range(len(gauss_fits)):
         for key in gauss_fits[i]:
@@ -52,7 +57,9 @@ def convert_gauss_fit_to_source_cat(gauss_fits:list,
     popkeys = [k for k in sources if not sources[k]]
     for k in popkeys:
         sources.pop(k)
-    
+    if 'name' not in sources:
+        sources['name'] = sources['sourceID']
+        
     return sources
 
 def convert_json_to_act_format(json_list):
@@ -162,7 +169,8 @@ def load_pandas_catalog(source_cat_file:str,
 def load_catalog(source_cat_file:str,
                  flux_threshold:float=0,
                  mask_outside_map:bool=False,
-                 mask_map:enmap=None
+                 mask_map:enmap=None,
+                 return_source_cand_list:bool=False
                  ):
     '''
     flux_threshold is a threshold, in Jy, below which we ignore the sources.
@@ -172,12 +180,16 @@ def load_catalog(source_cat_file:str,
         if False, do not mask the mapped region, just include all sources in catalog.
     mask_map: enmap
         map with which to do the masking; can be anything that is zero/nan outside observed region.
-
+    
     Returns:
 
         sources: source catalog, in astropy.table.table.Table or dict format... dumb but works for now.
 
     '''
+
+    ##
+    ##need a way to load frequency, array, ctime information.
+    ##
 
     if '.pkl' in source_cat_file:
         sources=load_pandas_catalog(source_cat_file=source_cat_file,
@@ -206,7 +218,11 @@ def load_catalog(source_cat_file:str,
                 sources[key]  = sources[key][source_mask]
         else:
             sources = sources[source_mask]
-
+        print(sum(source_mask),' sources actually within map')
+    if return_source_cand_list:
+        from ..sources.forced_photometry import convert_catalog_to_source_objects
+        sources = convert_catalog_to_source_objects(sources)
+        
     return sources
 
 

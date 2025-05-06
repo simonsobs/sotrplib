@@ -38,6 +38,17 @@ P.add_argument("--data-dir",
                help="Data directory, where the depth1 maps live."
               )
 
+P.add_argument("--simulated-transient-database", 
+                help="Path to transient event database, generated using the sims module.", 
+                action='store',
+                default='/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/act_depth1_transient_sim_db.db',
+                )
+
+P.add_argument("--sim-transients", 
+                help="Inject transients into the maps.", 
+                action='store_true',
+              )
+
 P.add_argument("--flux-threshold",
                action="store",
                default=0.03,
@@ -203,6 +214,7 @@ for mapfile in args.maps:
                 f"--output-dir {args.out_dir} -s {args.snr_threshold}"
                 f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
                 f" --flux-threshold {args.flux_threshold}"
+                f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
                 f" &\n sleep 1 \n"
                 )
     nmaps+=1
@@ -230,6 +242,7 @@ for i in tqdm(range(len(datelist))):
                     f"--output-dir {args.out_dir} -s {args.snr_threshold}"
                     f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
                     f" --flux-threshold {args.flux_threshold}"
+                    f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
                     f" &\n sleep 1 \n"
                     )
         if i%args.ncores == 0 and i>0:

@@ -12,7 +12,7 @@ class SourceCandidate(BaseModel):
     freq:str
     ctime:float
     arr:str
-    mapid:str=''
+    map_id:str=''
     sourceID:str=''
     source_type:str=''
     matched_filtered:bool=False
