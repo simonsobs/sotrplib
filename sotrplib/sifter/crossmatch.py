@@ -439,14 +439,16 @@ def crossmatch_position_and_flux(injected_sources:list,
     
     from ..utils.plot import ascii_scatter,ascii_vertical_histogram
     meandec=np.mean(in_dec)
-    delta_ra = np.subtract(in_ra,out_ra)/np.cos(np.degrees(meandec)) * degree / arcmin
+    delta_ra = np.subtract(in_ra,out_ra)*np.cos(np.degrees(meandec)) * degree / arcmin
     delta_dec = np.subtract(in_dec,out_dec) * degree / arcmin
-    print("RA offset (X-axis) vs DEC offset (Y-axis) in arcmin")
+    print('\n###########################################################\n')
     ascii_scatter(delta_ra,delta_dec)
-    print('###########################################################')
-    print("Injected flux (X-axis) vs Recovered flux (Y-axis) in Jy")
+    print("RA offset (X-axis) vs DEC offset (Y-axis) in arcmin")
+    print('\n###########################################################')
     ascii_scatter(in_flux,out_flux)
-    print('###########################################################')
+    print("Injected flux (X-axis) vs Recovered flux (Y-axis) in Jy")
+    
+    print('\n###########################################################')
     
     ascii_vertical_histogram(1e3*np.subtract(in_flux,out_flux),
                              bin_width=10,
@@ -454,9 +456,9 @@ def crossmatch_position_and_flux(injected_sources:list,
                              max_val=100.0,
                              height=20
                             )
-    print("Recovered Flux difference (X-axis) in mJy")
+    print("Recovered Flux difference (X-axis) in mJy\n")
     print('###########################################################')
-    
+    print('\n')
     if np.sum(np.logical_not(similar_fluxes)) > 0 and fail_flux_mismatch:
         raise ValueError("Some injected sources have mismatched fluxes.")
 
