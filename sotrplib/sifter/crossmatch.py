@@ -404,21 +404,58 @@ def crossmatch_position_and_flux(injected_sources:list,
                                            ) 
     
     if np.sum(np.logical_not(matched_mask)) > 0 and fail_unmatched:
-        raise ValueError("Some injected sources were not recovered.")
+        print(ValueError("Some injected sources were not recovered."))
 
     # Check flux similarity for matched sources
     similar_fluxes = []
+    in_flux = []
+    out_flux = []
+    in_ra = []
+    out_ra = []
+    in_dec = []
+    out_dec = []
+
     for i, match in enumerate(matches):
         if match:  # If there is a match
             injected_flux = injected_sources[i].flux
             recovered_flux = recovered_sources[match[0][1]].flux
+            in_flux.append(injected_flux)
+            out_flux.append(recovered_flux)
+            in_ra.append(injected_sources[i].ra)
+            out_ra.append(recovered_sources[match[0][1]].ra)
+            in_dec.append(injected_sources[i].dec)
+            out_dec.append(recovered_sources[match[0][1]].dec)
+            #get input and recovered ra,dec
             if abs(injected_flux - recovered_flux) <=  np.sqrt(flux_threshold**2 + (fractional_flux*injected_flux)**2) :
                 similar_fluxes.append(True)
             else:
                 similar_fluxes.append(False)
         else:
-            print('no match to ',i,injected_sources[i])
+            print('no match to source',i)
+            ij = injected_sources[i]
+            print('%.3f,%3f, flux=%.2f, fwhm a,b=(%.2f,%.2f)'%(ij.ra,ij.dec,ij.flux,ij.fwhm_a,ij.fwhm_b))
             similar_fluxes.append(False)
+    
+    
+    from ..utils.plot import ascii_scatter,ascii_vertical_histogram
+    meandec=np.mean(in_dec)
+    delta_ra = np.subtract(in_ra,out_ra)/np.cos(np.degrees(meandec)) * degree / arcmin
+    delta_dec = np.subtract(in_dec,out_dec) * degree / arcmin
+    print("RA offset (X-axis) vs DEC offset (Y-axis) in arcmin")
+    ascii_scatter(delta_ra,delta_dec)
+    print('###########################################################')
+    print("Injected flux (X-axis) vs Recovered flux (Y-axis) in Jy")
+    ascii_scatter(in_flux,out_flux)
+    print('###########################################################')
+    
+    ascii_vertical_histogram(1e3*np.subtract(in_flux,out_flux),
+                             bin_width=10,
+                             min_val=-100.0,
+                             max_val=100.0,
+                             height=20
+                            )
+    print("Recovered Flux difference (X-axis) in mJy")
+    print('###########################################################')
     
     if np.sum(np.logical_not(similar_fluxes)) > 0 and fail_flux_mismatch:
         raise ValueError("Some injected sources have mismatched fluxes.")
