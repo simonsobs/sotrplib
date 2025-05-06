@@ -231,7 +231,7 @@ for freq_arr_idx in indexed_map_groups:
             if not args.overwrite_db:
                 map_id = '_'.join(map_group[0].split('/')[-1].split('_')[-4:-1])
                 if cataloged_sources_db.observation_exists(map_id):
-                    print('Map already exists in db... skipping.')
+                    print(f'Map {map_id} already exists in db... skipping.')
                     continue
             ## need a more robust way to check this...
             if 'coadd' in str(map_group[0]):
@@ -253,7 +253,6 @@ for freq_arr_idx in indexed_map_groups:
                                       )
         
         ## end of map loading
-
         if not mapdata:
             if args.verbose:
                 print('No map data found... skipping.')
@@ -278,6 +277,7 @@ for freq_arr_idx in indexed_map_groups:
                        galmask_file = args.galaxy_mask,
                        skip=args.sim
                       )
+        
         if not mapdata:
             if args.verbose:
                 print(f'Flux for {map_id} was all nan... skipping.')
@@ -418,7 +418,7 @@ for freq_arr_idx in indexed_map_groups:
             ## do we do anything here? add to updated source catalog?
             ## should only be possible if the masking radius and the source matching radius are significantly different.
         
-        if len(transient_candidates)<=args.candidate_limit :
+        if len(transient_candidates)<=(args.candidate_limit+len(injected_sources)):
             transients_db.add_sources(transient_candidates)
             ## add transients to the source catalog as well
             cataloged_sources_db.add_sources(transient_candidates)
