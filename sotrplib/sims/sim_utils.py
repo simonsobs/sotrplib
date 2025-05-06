@@ -22,7 +22,7 @@ def generate_random_positions_in_map(n:int,
     y = np.random.uniform(0,imap.shape[1],n)
     positions = []
     for i in range(n):
-        positions.append(imap.pix2sky((x[i],y[i]))/degree)
+        positions.append(tuple(imap.pix2sky((x[i],y[i]))/degree))
     
     return positions
 

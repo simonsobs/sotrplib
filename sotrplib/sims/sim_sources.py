@@ -4,25 +4,26 @@ from pixell import enmap
 
 class SimTransient:
     def __init__(self, 
-                 position=None, 
-                 peak_amplitude=0.0, 
-                 peak_time=None, 
-                 flare_width=None, 
-                 flare_morph='Gaussian',
-                 beam_params={}
+                 position:tuple|list=None, 
+                 peak_amplitude:float=0.0, 
+                 peak_time:float=None, 
+                 flare_width:float=None, 
+                 flare_morph:str='Gaussian',
+                 beam_params:dict={}
                  ):
         """
         Initialize a simulated source.
 
         Parameters:
-        - position: Tuple (ra, dec) specifying the position of the source. If None, a random position is generated.
+        - position: Tuple|list (ra, dec) specifying the position of the source. If None, a random position is generated.
         - peak_amplitude: The peak amplitude of the flare.
         - peak_time: The time at which the flare peaks.
         - flare_width: The width of the flare (e.g., standard deviation for Gaussian).
         - flare_morph: The morphology of the flare ('Gaussian' supported for now).
         - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
         """
-        self.dec,self.ra = position if position else generate_random_positions(n=1)
+        
+        self.dec,self.ra = position if isinstance(position,(tuple,list)) else generate_random_positions(n=1)
         self.peak_amplitude = peak_amplitude
         self.peak_time = peak_time
         self.flare_width = flare_width
