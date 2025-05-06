@@ -1,0 +1,70 @@
+# Simulation configuration for creating simulated maps
+
+#Most of the inputs are self explanatory. 
+#If you are creating simulated maps, the n_realizations parameter under `maps`
+#is the number of map realizations to run.
+
+#The center_ra and center_dec parameters define the center of the map in degrees.
+#The width_ra and width_dec parameters define the HALF WIDTH of the map in degrees.
+
+#map_noise is the rms of the Gaussian white noise. Currently the only option.
+#min and max times set the limits of the map Unix times. In the pipeline the 
+#current implementation is to use np.linspace to choose the times in between
+#the min and max times.
+
+# The `injected_sources` section defines the parameters for the static sources.
+# Although you can inject an arbitrary number of sources, the photutils method
+# also sets a minimum distance between sources. A warning will be raised if
+# the number of sources injected is less than the requested number due to overcrowding.
+# Sources are injected with a uniform random distribution of fluxes between the
+# min_flux and max_flux parameters. The inj_fwhm parameter sets the FWHM of the
+# sources in arcminutes. The fwhm_uncert_frac parameter sets the fractional size of
+# the range in allowed variation of FWHM, i.e. so that the FWHM of the injected sources
+# will be uniformly random between fwhm*(1-fwhm_uncert_frac) and fwhm*(1+fwhm_uncert_frac).
+
+# The `injected_transients` section defines the parameters for the transients, which 
+# just means a Gaussian flare at a certain time, with a certain width and amplitude.
+# Currently only Gaussian flares are supported (as of April 2025).
+
+# While static sources are injected into each map, the transient objects are
+# only injected into maps in which they are both visible and flaring (+- 3*flare_width).
+# The min_width and max_width parameters set the range of flare FWHMs.
+# Time ranges set the peak flare location (i.e. mean of the Gaussian).
+
+## stuff for array, band for the sims
+array_info:
+  arr: simarr
+  freq: f090
+
+
+## Map parameters
+maps:
+  n_realizations: 1      # Number of map realizations to create
+  center_ra: 200          # Right Ascension of map center (degrees)
+  center_dec: -5          # Declination of map center (degrees)
+  width_ra: 1.0            # Width of map in RA (degrees)
+  width_dec: 1.0           # Width of map in Dec (degrees)
+  map_noise: 0.01         # Noise level in the map (Jy)
+  min_time: 1400000000    # Minimum time of map (Unix timestamp)
+  max_time: 1700000000    # Maximum time of map (Unix timestamp)
+
+## Injected sources parameters
+injected_sources:
+  n_sources: 3           # Number of sources to inject
+  min_flux: 1.999           # Minimum flux of sources (Jy)
+  max_flux: 2.001           # Maximum flux of sources (Jy)
+  inj_fwhm: 2.2           # Full Width at Half Maximum of injected sources (arcmin)
+  fwhm_uncert_frac: 0.00001  # Fractional uncertainty in FWHM (randomly oriented theta)
+  
+## Transient parameters
+injected_transients:
+    n_transients: 3           # Number of transients to inject
+    min_width: 10              # Minimum duration of transients (seconds)
+    max_width: 86400           # Maximum duration of transients (days)
+    min_flux: 0.2              # Minimum flux of transients (Jy)
+    max_flux: 2.0              # Maximum flux of transients (Jy)
+    min_time: null       # Minimum time of flare (Unix timestamp)
+    max_time: null       # Maximum time of flare (Unix timestamp)
+    ra_lims: null              # RA limits for transients (degrees) will use map params if null
+    dec_lims: null             # Dec limits for transients (degrees) will use map params if null
+    flare_morphology: Gaussian # Flare type (only Gaussian supported for now)
