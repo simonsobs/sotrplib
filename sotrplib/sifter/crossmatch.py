@@ -14,7 +14,7 @@ from ..sources.sources import SourceCandidate
 
 
 def crossmatch_mask(sources, 
-                    crosscat, 
+                    crosscat,
                     radius:float,
                     mode:str='all',
                     return_matches:bool=False
@@ -30,7 +30,6 @@ def crossmatch_mask(sources,
         mask column for sources, 1 matches with at least one source, 0 no matches
 
     """
-
     crosspos_ra = crosscat[:, 1] * pixell_utils.degree
     crosspos_dec = crosscat[:, 0] * pixell_utils.degree
     crosspos = np.array([crosspos_ra, crosspos_dec]).T
@@ -69,6 +68,37 @@ def crossmatch_mask(sources,
         return mask,matches
     else:
         return mask
+
+def crossmatch_with_million_quasar(mq_catalog,
+                                   sources,
+                                   radius_arcmin:float=0.5,
+                                   ):
+    """
+    Crossmatch the source candidates with the million quasar catalog.
+    Returns a list of source candidates that are matched with the million quasar catalog
+    and a dict with the crossmatch information.
+    
+    Parameters:
+    - mq_catalog: The million quasar catalog as an astropy table.
+    - sources: catalog of source positions [[dec, ra]] in deg (same format as crossmatch_mask).
+    - radius_arcmin: The matching radius in arcmin.
+
+    """
+    isin_cat,catalog_match = crossmatch_mask(sources,
+                                             np.asarray([mq_catalog['decDeg'], mq_catalog["RADeg"]]).T,
+                                             radius_arcmin,
+                                             mode='closest',
+                                             return_matches=True
+                                            )
+    match_info = {}
+    for i in range(len(isin_cat)):
+        match_info[i] = {}
+        if isin_cat[i]:
+            cm = catalog_match[i][0][1]
+            for key in mq_catalog.keys():
+                match_info[i][key] = mq_catalog[key][cm]
+
+    return isin_cat,match_info
 
 def gaia_match(cand:SourceCandidate,
                maxmag:float=16,
