@@ -349,7 +349,8 @@ def load_map(map_path: Optional[Path|str|list] = None,
                                map_start_time=0.0,
                                res=np.abs(empty_map.wcs.wcs.cdelt[0])*degree)
             sim_map.flux = empty_map+mapsims.make_noise_map(empty_map,
-                                                           map_sim_params['maps']['map_noise'])
+                                                            map_sim_params['maps']['map_noise']
+                                                           )
             sim_map.snr = empty_map+np.ones(empty_map.shape)
             sim_map.time_map = empty_map+np.ones(empty_map.shape)*ctime
             return sim_map
@@ -415,6 +416,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
                              map_start_time=t0,
                              box=box
                             )
+        
         elif 'rho.fits' in str(map_path):
             # Load rho map format
             try:
@@ -464,6 +466,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
                              map_start_time=t0,
                              box=box
                              )
+        
         else:
             if verbose:
                 print(f"Unsupported map format: {map_path}")

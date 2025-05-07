@@ -265,7 +265,7 @@ for freq_arr_idx in indexed_map_groups:
             del mapdata.rho_map,mapdata.kappa_map
         
         catalog_sources = []
-        cataloged_sources_db._initialize_database()
+        cataloged_sources_db.initialize_database()
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
         t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
@@ -446,8 +446,8 @@ for freq_arr_idx in indexed_map_groups:
         cataloged_sources_db.write_database()
         cataloged_sources_db.read_database()
         noise_candidates_db.write_database()
-        noise_candidates_db._initialize_database()
+        noise_candidates_db.initialize_database()
         transients_db.write_database()
-        transients_db._initialize_database()
+        transients_db.initialize_database()
         injected_source_db.write_database()
-        injected_source_db._initialize_database()
+        injected_source_db.initialize_database()

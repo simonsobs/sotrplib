@@ -20,7 +20,6 @@ def load_depth1_mapset(map_path:str,
     ##     for the inverse variance.
     ## polarization_selector is 0 for I, 1 for Q, and 2 for U 
     from pixell.enmap import read_map
-    import os.path
     
     imap = read_map(map_path, sel=polarization_selector) # intensity map
     # check if map is all zeros
