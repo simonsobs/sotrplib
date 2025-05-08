@@ -14,7 +14,7 @@ from ..sources.sources import SourceCandidate
 
 
 def crossmatch_mask(sources, 
-                    crosscat, 
+                    crosscat,
                     radius:float,
                     mode:str='all',
                     return_matches:bool=False
@@ -30,7 +30,6 @@ def crossmatch_mask(sources,
         mask column for sources, 1 matches with at least one source, 0 no matches
 
     """
-
     crosspos_ra = crosscat[:, 1] * pixell_utils.degree
     crosspos_dec = crosscat[:, 0] * pixell_utils.degree
     crosspos = np.array([crosspos_ra, crosspos_dec]).T
@@ -70,6 +69,38 @@ def crossmatch_mask(sources,
     else:
         return mask
 
+def crossmatch_with_million_quasar_catalog(mq_catalog,
+                                           sources,
+                                           radius_arcmin:float=0.5,
+                                          ):
+    """
+    Crossmatch the source candidates with the million quasar catalog.
+    Returns a list of source candidates that are matched with the million quasar catalog
+    and a dict with the crossmatch information.
+    
+    Parameters:
+    - mq_catalog: The million quasar catalog as an astropy table.
+    - sources: catalog of source positions [[dec, ra]] in deg (same format as crossmatch_mask).
+    - radius_arcmin: The matching radius in arcmin.
+
+    """
+    isin_cat,catalog_match = crossmatch_mask(sources,
+                                             np.asarray([mq_catalog['decDeg'], mq_catalog["RADeg"]]).T,
+                                             radius_arcmin,
+                                             mode='closest',
+                                             return_matches=True
+                                            )
+    match_info = {}
+    for i in range(len(isin_cat)):
+        match_info[i] = {}
+        if isin_cat[i]:
+            cm = catalog_match[i][0][1]
+            for key in mq_catalog.keys():
+                match_info[i][key] = mq_catalog[key][cm]
+            match_info[i]['pvalue'] = None ## need to calculate probability.
+    return isin_cat,match_info
+
+
 def gaia_match(cand:SourceCandidate,
                maxmag:float=16,
                maxsep_deg:float=1*pixell_utils.degree,
@@ -86,8 +117,12 @@ def gaia_match(cand:SourceCandidate,
     else:
         gaia_valid = {}
     ## calculate pvalue, sort on pvalue.
-
+    ## need to implement.
+    if len(gaia_valid)>0:
+        gaia_valid['pvalue'] = [None]*len(gaia_valid)
+        
     return gaia_valid
+
 
 def alert_on_flare(previous_flux:float,
                    new_flux:float,
@@ -98,6 +133,7 @@ def alert_on_flare(previous_flux:float,
     If the ratio of new flux to previous flux is greater than the threshold, return True.
     """
     return new_flux/previous_flux > ratio_threshold
+
 
 def sift(extracted_sources,
          catalog_sources,
@@ -113,6 +149,8 @@ def sift(extracted_sources,
          cuts:dict={'fwhm':[0.5,5.0],
                     'snr':[5.0,np.inf],},
          crossmatch_with_gaia=True,
+         crossmatch_with_million_quasar=True,
+         additional_catalogs={},
          debug=False,
          ):
     from ..utils.utils import radec_to_str_name
@@ -138,6 +176,19 @@ def sift(extracted_sources,
            a list of the fluxes of the extracted sources, if None will pull it from `extracted_sources` dict. 
        fwhm_cut = 5.0
            a simple cut on fwhm, in arcmin, above which something is considered noise.
+       ra_jitter:float=0.0
+              jitter in the ra direction, in arcmin, to add to the uncertainty of the source position.
+       dec_jitter:float=0.0
+              jitter in the dec direction, in arcmin, to add to the uncertainty of the source position. 
+       crossmatch_with_gaia:bool=True
+              if True, will crossmatch with gaia catalog and add the gaia source name to the sourceID.
+       crossmatch_with_million_quasar:bool=True
+                if True, will crossmatch with the million quasar catalog and add the source name to the sourceID.
+       additional_catalogs:dict={}
+                a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}.
+                for example: {"million_quasar":mq_catalog}
+                where catalog is loaded from source_catalog.py
+                
      Returns:
         source_candidates, transient_candidates, noise_candidates : list
             list of dictionaries with information about the detected source.
@@ -167,7 +218,20 @@ def sift(extracted_sources,
                                                 return_matches=True
                                                 )
 
-
+    if crossmatch_with_million_quasar:
+        if 'million_quasar' not in additional_catalogs:
+            if debug:
+                print('No million quasar catalog provided... cant do crossmatch')
+            isin_mq_cat = np.zeros(len(extracted_ra),dtype=bool)
+            mq_catalog_match = []*len(extracted_ra)
+        else:
+            mq_catalog = additional_catalogs['million_quasar']
+            if mq_catalog is not None:
+                isin_mq_cat,mq_catalog_match = crossmatch_with_million_quasar_catalog(mq_catalog,
+                                                                                      np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
+                                                                                      radius_arcmin=0.5
+                                                                                     )
+                
     source_candidates = []
     transient_candidates = []
     noise_candidates = []
@@ -215,7 +279,6 @@ def sift(extracted_sources,
                                matched_filtered=True,
                                renormalized=True,
                                catalog_crossmatch=isin_cat[source],
-                               crossmatch_name=crossmatch_name,
                                ellipticity=forced_photometry_info['ellipticity'],
                                elongation=forced_photometry_info['elongation'],
                                fwhm=forced_photometry_info['fwhm'],
@@ -223,7 +286,9 @@ def sift(extracted_sources,
                                fwhm_b=forced_photometry_info['semiminor_sigma']*2.355,
                                orientation=forced_photometry_info['orientation'],
                               )
-        
+        cand.update_crossmatches(match_names=[crossmatch_name],
+                                 match_probabilities=[None]
+                                )
         ## do sifting operations here...
         is_cut = get_cut_decision(cand,cuts,debug=debug)
         if isin_cat[source] and not is_cut:
@@ -243,12 +308,27 @@ def sift(extracted_sources,
                     if gaia_match_result:
                         ## just grab the first result
                         if len(gaia_match_result['designation'])>0:
-                            cand.crossmatch_name=gaia_match_result['designation'][0]
+                            cand.update_crossmatches(match_names=[gaia_match_result['designation'][0]],
+                                                     match_probabilities=[gaia_match_result['pvalue'][0]]
+                                                    )
                 except Exception:
                     pass
             ## give the transient candidate source a name indicating that it is a transient
             cand.sourceID = '-T'.join(cand.sourceID.split('-S'))
             transient_candidates.append(cand)
+        
+        if isin_mq_cat[source]:
+            mq_name_columns = ['NAME','XNAME','RNAME']
+            mq_names = []
+            mq_probs = []
+            for mq_name_column in mq_name_columns:
+                if mq_name_column in mq_catalog_match[source]:
+                    mq_names.append(mq_catalog_match[source][mq_name_column])
+                    mq_probs.append(mq_catalog_match[source]['pvalue'])
+            cand.update_crossmatches(match_names=mq_names,
+                                     match_probabilities=mq_probs ## need to calculate probability.
+                                    )
+                    
         del cand
     if isinstance(imap,enmap.ndmap):
         transient_candidates, new_noise_candidates = recalculate_local_snr(transient_candidates,

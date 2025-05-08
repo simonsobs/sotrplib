@@ -165,6 +165,14 @@ def load_pandas_catalog(source_cat_file:str,
     sources['name'] = sources['sourceID']
     return sources  
 
+def load_million_quasar_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/milliquas.fits'):
+    from astropy.table import Table
+    print('loading million quasar catalog')
+    sources = Table.read(source_cat_file)
+    sources.rename_column('RA','RADeg')
+    sources.rename_column('DEC','decDeg')
+    return sources
+
 
 def load_catalog(source_cat_file:str,
                  flux_threshold:float=0,

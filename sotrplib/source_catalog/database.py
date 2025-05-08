@@ -15,9 +15,9 @@ class SourceCatalogDatabase:
     def initialize_database(self):    
         self.df = pd.DataFrame(columns=[
             'map_id', 'source_type', 'ra', 'dec', 'err_ra', 'err_dec', 'flux', 'err_flux', 'snr', 'freq', 'ctime', 'arr',
-            'sourceID', 'matched_filtered', 'renormalized', 'catalog_crossmatch', 'crossmatch_name', 'fit_type', 'fwhm_a',
-            'fwhm_b', 'err_fwhm_a', 'err_fwhm_b', 'orientation', 'kron_flux', 'kron_fluxerr', 'kron_radius', 'ellipticity',
-            'elongation', 'fwhm'
+            'sourceID', 'matched_filtered', 'renormalized', 'catalog_crossmatch', 'crossmatch_names', 'crossmatch_probabilities',
+             'fit_type', 'fwhm_a','fwhm_b', 'err_fwhm_a', 'err_fwhm_b', 'orientation', 'kron_flux', 'kron_fluxerr', 'kron_radius', 
+             'ellipticity', 'elongation', 'fwhm'
         ])
 
     def read_database(self):
@@ -50,7 +50,8 @@ class SourceCatalogDatabase:
                                     'matched_filtered': source.matched_filtered,
                                     'renormalized': source.renormalized,
                                     'catalog_crossmatch': source.catalog_crossmatch,
-                                    'crossmatch_name': source.crossmatch_name,
+                                    'crossmatch_names': source.crossmatch_names,
+                                    'crossmatch_probabilities': source.crossmatch_probabilities,
                                     'fit_type': source.fit_type,
                                     'fwhm_a': source.fwhm_a,
                                     'fwhm_b': source.fwhm_b,
@@ -111,7 +112,8 @@ class SourceCatalogDatabase:
                                     matched_filtered=entry.get('matched_filtered', False),
                                     renormalized=entry.get('renormalized', False),
                                     catalog_crossmatch=entry.get('catalog_crossmatch', False),
-                                    crossmatch_name=entry.get('crossmatch_name', ''),
+                                    crossmatch_names=entry.get('crossmatch_names', []),
+                                    crossmatch_probabilities=entry.get('crossmatch_probabilities', []),
                                     fit_type=entry.get('fit_type', 'forced'),
                                     fwhm_a=entry.get('fwhm_a'),
                                     fwhm_b=entry.get('fwhm_b'),

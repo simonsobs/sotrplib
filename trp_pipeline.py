@@ -125,6 +125,10 @@ parser.add_argument("--box",
                     nargs='+',
                     help="RA and Dec limits for the map in the order of dec_min ra_min dec_max ra_max, in degrees.",
                     )
+parser.add_argument("--million-quasar-catalog",
+                    help="Path to the million quasar catalog.",
+                    default="/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/milliquas.fits",
+                    )
 ## sim parameters
 parser.add_argument("--sim", 
                     help="Run in sim mode; generates sim maps on the fly using config file and injects transients.", 
@@ -160,6 +164,14 @@ transients_db = SourceCatalogDatabase(args.output_dir+'so_transient_catalog.csv'
 noise_candidates_db = SourceCatalogDatabase(args.output_dir+'so_noise_catalog.csv')
 
 injected_source_db = SourceCatalogDatabase(args.output_dir+'injected_sources.csv') 
+
+
+additional_catalogs = {}
+if args.million_quasar_catalog and not args.sim:
+    from sotrplib.source_catalog.source_catalog import load_million_quasar_catalog
+    million_quasar_catalog = load_million_quasar_catalog(args.million_quasar_catalog)
+    additional_catalogs['million_quasar'] = million_quasar_catalog
+
 
 sim_params={}
 if args.sim or args.inject_transients:
@@ -382,6 +394,8 @@ for freq_arr_idx in indexed_map_groups:
                                                                      map_id=map_id,
                                                                      cuts=default_cuts,
                                                                      crossmatch_with_gaia=not args.sim,
+                                                                     crossmatch_with_million_quasar=not args.sim,
+                                                                     additional_catalogs = additional_catalogs,
                                                                      debug=args.verbose
                                                                     )
         
