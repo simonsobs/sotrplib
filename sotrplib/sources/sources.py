@@ -16,9 +16,10 @@ class SourceCandidate(BaseModel):
     sourceID:str=''
     source_type:str=''
     matched_filtered:bool=False
-    renormalized: bool=False
-    catalog_crossmatch: bool=False
-    crossmatch_name: str=''
+    renormalized:bool=False
+    catalog_crossmatch:bool=False
+    crossmatch_names:list=[]
+    crossmatch_probabilities:list=[]
     fit_type:str='forced'
     fwhm_a:float=None
     fwhm_b:float=None
@@ -32,4 +33,18 @@ class SourceCandidate(BaseModel):
     elongation:float=None
     fwhm:float=None
     
-   
+
+    def update_crossmatches(self, 
+                            match_names:list, 
+                            match_probabilities:list=None,
+                           ):
+        """
+        Update the crossmatch names and probabilities with new matches.
+        """
+        self.crossmatch_names.extend(match_names)
+        if match_probabilities is not None:
+            self.crossmatch_probabilities.extend(match_probabilities)
+        else:
+            self.crossmatch_probabilities.extend([None]*len(match_names))
+        
+        return
