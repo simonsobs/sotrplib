@@ -40,7 +40,8 @@ class Depth1Map:
         self.freq = freq
         self.map_ctime = map_ctime
         if not self.wafer_name or not self.freq or not self.map_ctime:
-            self.get_map_info(self.rho_map)
+            if self.rho_map is not None:
+                self.get_map_info(self.rho_map)
 
         self.is_thumbnail = is_thumbnail
         self.res=res
@@ -140,6 +141,7 @@ class Depth1Map:
                 self.box= box
                 return
 
+
     def load_coadd(self,
                    map_path:Path,
                    box:np.ndarray=None,
@@ -189,6 +191,7 @@ class Depth1Map:
         self.box = box
         
         return
+
 
     def load_coadd_info(self,
                         map_path:Path
@@ -284,9 +287,11 @@ class Depth1Map:
                          verbose=False,
                          cuts={},
                         ):
-       ## src_model is a simulated (model) map of the sources in the list.
-       ## sources are fit using photutils, and are SourceCandidate objects
-       ## with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        """
+        src_model is a simulated (model) map of the sources in the list.
+        sources are fit using photutils, and are SourceCandidate objects
+        with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        """
         if len(sources) == 0:
             return
         if not isinstance(self.flux,enmap.ndmap):
@@ -313,6 +318,7 @@ def enmap_map_union(map1,map2):
     omap.insert(map1)
     omap.insert(map2, op=lambda a,b:a+b)
     return omap
+
 
 def load_map(map_path: Optional[Path|str|list] = None,
              map_sim_params: Optional[dict] = None,
@@ -547,6 +553,7 @@ def get_maptype(map_path:Path):
         suffix = map_path.suffix
     return maptype,suffix
 
+
 def get_observation_start_time(map_path:Path
                               ):
     from os.path import exists
@@ -638,6 +645,7 @@ def get_time_safe(time_map:enmap.ndmap,
             mask  = thumb != 0
             vals[bad[i]] = np.sum(mask*thumb)/np.sum(mask)
     return vals
+
 
 def widefield_geometry(res=None, 
                        shape=None, 
