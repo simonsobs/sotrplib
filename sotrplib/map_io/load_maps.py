@@ -64,14 +64,14 @@ def load_depth1_mapset(
 
     map_paths = get_depth1_mapset(map_path=map_path)
 
-    def _read_map(name, value):
+    def _read_map(name, value, sel=None):
         if value is not None:
             map_paths[name] = Path(value)
 
         # pixell only supports string filenames
-        return read_map(str(map_paths[name]))
+        return read_map(str(map_paths[name]), sel=sel)
 
-    imap = _read_map("map", map_path)
+    imap = _read_map("map", map_path, sel=polarization_selector)
 
     # check if map is all zeros
     if np.all(imap == 0.0) or np.all(np.isnan(imap)):
@@ -79,11 +79,9 @@ def load_depth1_mapset(
         return None
 
     ivar = _read_map("ivar", ivar_path)
-    rho = _read_map("rho", rho_path)
-    kappa = _read_map("kappa", kappa_path)
+    rho = _read_map("rho", rho_path, sel=polarization_selector)
+    kappa = _read_map("kappa", kappa_path, sel=polarization_selector)
     time = _read_map("time", time_path)
-
-    imap = read_map(map_path, sel=polarization_selector)  # intensity map
 
     # check if map is all zeros
     if np.all(imap == 0.0) or np.all(np.isnan(imap)):
