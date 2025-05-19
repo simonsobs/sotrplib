@@ -15,7 +15,9 @@ dependencies = [
     "astroquery",
     "matplotlib",
     "pydantic",
-    "pydantic-settings"
+    "pydantic-settings",
+    "tqdm",
+    "filelock"
 ]
 
 [project.optional-dependencies]
