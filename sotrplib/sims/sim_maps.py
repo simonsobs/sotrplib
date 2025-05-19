@@ -414,7 +414,6 @@ def inject_simulated_sources(mapdata:Depth1Map,
                                                  injected_source_db
                                                 )
         
-    
     catalog_sources += inject_random_sources(mapdata,
                                              sim_params,
                                              map_id=map_id,

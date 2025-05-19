@@ -328,6 +328,9 @@ def load_config_yaml(config_path:str):
     - Dictionary containing the configuration parameters.
     """
     import yaml
+    import os
+    if not os.path.exists(config_path):
+        return {}
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
