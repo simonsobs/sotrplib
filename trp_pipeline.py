@@ -174,7 +174,7 @@ if args.million_quasar_catalog and not args.sim:
 
 
 sim_params={}
-if args.sim or args.inject_transients:
+if args.sim:
     if args.verbose:
          print('Loading sim config file: ',args.sim_config)
     sim_params = load_config_yaml(args.sim_config)
@@ -287,7 +287,9 @@ for freq_arr_idx in indexed_map_groups:
         
         preprocess_map(mapdata,
                        galmask_file = args.galaxy_mask,
-                       skip=args.sim
+                       skip=args.sim,
+                       tilegrid=0.5,
+                       sigmaclip=5.0,
                       )
         
         if not mapdata:
@@ -393,7 +395,7 @@ for freq_arr_idx in indexed_map_groups:
                                                                      imap=mapdata.flux,
                                                                      map_freq = mapdata.freq,
                                                                      arr=mapdata.wafer_name,
-                                                                     radius1Jy=1.5 if args.sim else 30.0, ## sims don't have filtering wings
+                                                                     radius1Jy=1.5 if args.sim else 2*band_fwhm/arcmin, ## sims don't have filtering wings
                                                                      map_id=map_id,
                                                                      cuts=default_cuts,
                                                                      crossmatch_with_gaia=not args.sim,
