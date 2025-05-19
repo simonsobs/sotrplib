@@ -9,7 +9,6 @@ def test_get_depth1_mapset():
         map_path="example_map/path"
     )
 
-    # TODO: Improve these assertions?
     assert len(map_list) == 5
 
 
@@ -20,3 +19,4 @@ def test_load_map(empty_map):
 
     # Ret is none becase the map is all zeros
     assert ret is None
+
