@@ -44,7 +44,7 @@ maps:
   center_dec: -5          # Declination of map center (degrees)
   width_ra: 1.0            # Width of map in RA (degrees)
   width_dec: 1.0           # Width of map in Dec (degrees)
-  map_noise: 0.01         # Noise level in the map (Jy)
+  map_noise: 0.001         # Noise level in the map (Jy)
   min_time: 1400000000    # Minimum time of map (Unix timestamp)
   max_time: 1700000000    # Maximum time of map (Unix timestamp)
 
@@ -61,7 +61,7 @@ injected_transients:
     n_transients: 3           # Number of transients to inject
     min_width: 10              # Minimum duration of transients (seconds)
     max_width: 86400           # Maximum duration of transients (days)
-    min_flux: 0.2              # Minimum flux of transients (Jy)
+    min_flux: 1              # Minimum flux of transients (Jy)
     max_flux: 2.0              # Maximum flux of transients (Jy)
     min_time: null       # Minimum time of flare (Unix timestamp)
     max_time: null       # Maximum time of flare (Unix timestamp)

@@ -55,7 +55,7 @@ def make_noise_map(imap:enmap.ndmap,
     - noise_map: enmap.ndmap, the generated noise map.
     """
     from photutils.datasets import make_noise_image
-    
+    from ..maps.maps import edge_map
 
     shape = imap.shape
     wcs = imap.wcs
@@ -63,14 +63,14 @@ def make_noise_map(imap:enmap.ndmap,
     if not seed:
         print('No seed provided, setting seed with current ctime')
         seed=np.random.seed()
-
+    mask = edge_map(imap)
     noise_map += make_noise_image(shape, 
-                                 distribution='gaussian', 
-                                 mean=map_mean_Jy,
-                                 stddev=map_noise_Jy, 
-                                 seed=seed
-                                )
-
+                                  distribution='gaussian', 
+                                  mean=map_mean_Jy,
+                                  stddev=map_noise_Jy, 
+                                  seed=seed
+                                 )
+    noise_map *= mask
     return noise_map
 
 
@@ -406,8 +406,6 @@ def inject_simulated_sources(mapdata:Depth1Map,
     if use_map_geometry:
         from ..maps.maps import edge_map
 
-    from pixell.utils import degree
-    
     catalog_sources = []
     if injected_source_db:
         catalog_sources = inject_sources_from_db(mapdata,

@@ -107,10 +107,10 @@ def generate_transients(n:int=None,
         while n_positions<n and ntries>0:
             if uniform_on_sky:
                 rand_pos  = generate_random_positions(n, 
-                                                    imap=imap,
-                                                    ra_lims=ra_lims, 
-                                                    dec_lims=dec_lims
-                                                    )
+                                                      imap=imap,
+                                                      ra_lims=ra_lims, 
+                                                      dec_lims=dec_lims
+                                                     )
             else:
                 rand_pos = generate_random_positions_in_map(n,imap)
             
