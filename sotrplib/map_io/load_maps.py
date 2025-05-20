@@ -16,11 +16,13 @@ def get_depth1_mapset(map_path: Path | str) -> dict[str, Path]:
 
     directory = map_path.parent
     filename = map_path.name
-
-    return {
-        maptype: directory / filename.replace("_map.fits", f"_{maptype}.fits")
-        for maptype in ["map", "ivar", "rho", "time", "kappa"]
-    }
+    print(directory,  filename)
+    if filename.endswith("map.fits"):
+        outdict ={maptype: directory / filename.replace("map.fits", f"{maptype}.fits") for maptype in ["map", "ivar", "rho", "time", "kappa"]}
+    elif filename.endswith("rho.fits"):
+        outdict = {maptype: directory / filename.replace("rho.fits", f"{maptype}.fits") for maptype in ["map", "ivar","rho", "kappa", "time"]}
+    
+    return outdict
 
 
 def load_depth1_mapset(map_path: Path | str,
@@ -97,8 +99,8 @@ def load_depth1_mapset(map_path: Path | str,
             return None
 
     if not path.exists(map_paths['rho']):
-        rho_path = None
-        kappa_path = None
+        rho = None
+        kappa = None
     else:
         rho = _read_map("rho", map_paths["rho"], sel=polarization_selector)
         kappa = _read_map("kappa", map_paths["kappa"], sel=polarization_selector)
