@@ -485,9 +485,10 @@ def load_map(map_path: Optional[Path|str|list] = None,
 
 
 def kappa_clean(kappa: np.ndarray, 
-                rho: np.ndarray
+                rho: np.ndarray,
+                min_frac:float=1e-3
                 ):
-    kappa = np.maximum(kappa, np.nanmax(kappa) * 1e-3)
+    kappa = np.maximum(kappa, np.nanmax(kappa) * min_frac)
     kappa[np.where(rho == 0.0)] = 0.0
     return kappa
 
@@ -501,6 +502,8 @@ def clean_map(imap: np.ndarray,
     ## which are below fraction*max or fraction*median of inverse variance map.
     if cut_on=='median' or cut_on=='med':
         imap[inverse_variance < (np.nanmedian(inverse_variance) * fraction)] = 0
+    elif cut_on=='percentile' or cut_on=='pct':
+        imap[inverse_variance < np.nanpercentile(inverse_variance, fraction)] = 0
     else:
         if cut_on!='max':
             print('%s cut_on not supported, defaulting to max cut'%cut_on)
@@ -726,7 +729,8 @@ def flat_field_using_pixell(mapdata,
 def flat_field_using_photutils(mapdata:Depth1Map,
                                tilegrid:float=1.0,
                                mask:enmap.ndmap=None,
-                              ):
+                               sigmaclip:float=5.0
+                               ):
     '''
     use photutils.background.Background2D to calculate the rms in tiles.
     get the rms of the tiled snr map (i.e. the rms should be 1)
@@ -735,25 +739,35 @@ def flat_field_using_photutils(mapdata:Depth1Map,
 
     tilegrid is in degrees, and is the size of the tile to use for the background
     '''
-    from photutils.background import Background2D
+    from photutils.background import Background2D,StdBackgroundRMS
+    from astropy.stats import SigmaClip
     from pixell.utils import degree
+
+    sigmaclip = SigmaClip(sigma=sigmaclip) if sigmaclip else None
     try:
-        background = Background2D(mapdata.snr,int(tilegrid*degree/mapdata.res),sigma_clip=None,mask=mask)
+        background = Background2D(mapdata.snr,
+                                  int(tilegrid*degree/mapdata.res),
+                                  sigma_clip=sigmaclip,
+                                  bkg_estimator=StdBackgroundRMS(sigmaclip),
+                                  mask=mask
+                                  )
         relative_rms = background.background_rms/background.background_rms_median
         mapdata.snr /= relative_rms
         mapdata.flatfielded=True
     except Exception as e:
         print(e,' Failed to flatfield using photutils')
         mapdata.flatfielded=False
+
     return 
 
 
 def preprocess_map(mapdata,
                    galmask_file='/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/mask_for_sources2019_plus_dust.fits',
-                   tilegrid=0.25,
+                   tilegrid=0.5,
                    flatfield_method='photutils',
                    output_units='Jy',
                    edge_mask_arcmin=10,
+                   sigmaclip=5.0,
                    skip=False,
                    ):
     '''
@@ -767,6 +781,7 @@ def preprocess_map(mapdata,
     - flatfield_method: method to use for flatfielding ('photutils' or 'pixell')
     - output_units: units of the output map ('Jy' or 'mJy')
     - edge_mask_arcmin: size of the edge mask in arcminutes
+    - sigmaclip: sigma clip value for flatfielding
     - skip: skip this function, useful if simulated map
 
 
@@ -857,6 +872,7 @@ def preprocess_map(mapdata,
             flat_field_using_photutils(mapdata,
                                        tilegrid=tilegrid,
                                        mask=1.-mask,
+                                       sigmaclip=sigmaclip,
                                       )
         elif flatfield_method == 'pixell':
             flat_field_using_pixell(mapdata,
