@@ -212,7 +212,7 @@ def get_map_groups(maps:list,
         freq_arr_inds = freq_arr_splits[key]
         inmaps = maps[freq_arr_inds]
         map_groups[key] = [[m] for m in inmaps]
-        map_group_time_range[key] = [[] for m in inmaps]
+        map_group_time_range[key] = [[] for _ in inmaps]
         if coadd_days>0:
             map_groups[key] = [[] for _ in range(len(time_bins))]
             freq_arr_time_inds = time_idx[freq_arr_inds]

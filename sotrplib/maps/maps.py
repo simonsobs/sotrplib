@@ -40,7 +40,8 @@ class Depth1Map:
         self.freq = freq
         self.map_ctime = map_ctime
         if not self.wafer_name or not self.freq or not self.map_ctime:
-            self.get_map_info(self.rho_map)
+            if self.rho_map is not None:
+                self.get_map_info(self.rho_map)
 
         self.is_thumbnail = is_thumbnail
         self.res=res
@@ -140,6 +141,7 @@ class Depth1Map:
                 self.box= box
                 return
 
+
     def load_coadd(self,
                    map_path:Path,
                    box:np.ndarray=None,
@@ -189,6 +191,7 @@ class Depth1Map:
         self.box = box
         
         return
+
 
     def load_coadd_info(self,
                         map_path:Path
@@ -284,9 +287,11 @@ class Depth1Map:
                          verbose=False,
                          cuts={},
                         ):
-       ## src_model is a simulated (model) map of the sources in the list.
-       ## sources are fit using photutils, and are SourceCandidate objects
-       ## with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        """
+        src_model is a simulated (model) map of the sources in the list.
+        sources are fit using photutils, and are SourceCandidate objects
+        with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        """
         if len(sources) == 0:
             return
         if not isinstance(self.flux,enmap.ndmap):
@@ -314,107 +319,170 @@ def enmap_map_union(map1,map2):
     omap.insert(map2, op=lambda a,b:a+b)
     return omap
 
-def load_sim_map(map_sim_params,ctime=0.0):
-    from ..sims import sim_maps as mapsims
 
-    empty_map = mapsims.make_enmap(center_ra=map_sim_params['maps']['center_ra'],
-                                   center_dec=map_sim_params['maps']['center_dec'],
-                                   width_ra=map_sim_params['maps']['width_ra'],
-                                   width_dec=map_sim_params['maps']['width_dec']
-                                  )
-    sim_map = Depth1Map(wafer_name=map_sim_params['array_info']['arr'],
-                        freq=map_sim_params['array_info']['freq'],
-                        map_ctime=ctime,
-                        map_start_time=0.0,
-                        res = np.abs(empty_map.wcs.wcs.cdelt[0])*degree
-                        )
-    sim_map.flux=empty_map+mapsims.make_noise_map(empty_map,
-                                                  map_sim_params['maps']['map_noise']
-                                                 )
+def load_map(map_path: Optional[Path|str|list] = None,
+             map_sim_params: Optional[dict] = None,
+             box: Optional[np.ndarray] = None,
+             use_map_geometry: bool = False,
+             ctime: float = 0.0,
+             verbose: bool = False) -> Optional[Depth1Map]:
+    """
+    Unified function to load a map from file or generate a simulation.
     
-    sim_map.snr = empty_map+np.ones(empty_map.shape)
-    sim_map.time_map = empty_map+np.ones(empty_map.shape)*ctime
-    return sim_map
-
-
-def load_maps(map_path:Path,
-              box:np.ndarray=None,
-              verbose=False,
-             )->Depth1Map:
-    ## map_path should be /file/path/to/[obsid]_[arr]_[freq]_map.fits
-    ## or /file/path/to/[obsid]_[arr]_[freq]_rho.fits
-    ## if rho, then loads rho, kappa, time
-    ## if map, then loads map, ivar, time
-
-    ## box is a bounding box in the form of the enmap box [[ra_min,dec_min],[ra_max,dec_max]]
-    ## if box is not None, then the map will be loaded only in that region.
-
-    if 'map.fits' in str(map_path):
+    Args:
+        map_path: Path to the map file (.fits)
+        map_sim_params: Parameters for simulated map (if map_path is None)
+        box: Bounding box in the form [[ra_min,dec_min],[ra_max,dec_max]]
+        use_map_geometry: Whether to use the geometry of the map
+        ctime: Creation time for simulated map
+        verbose: Whether to print verbose messages
+        
+    Returns:
+        Depth1Map object or None if loading fails
+    """
+    # Check if we're loading a simulated map
+    # if using map geometry we'll want to load the actual map.
+    if map_sim_params and (isinstance(map_path, type(None)) or not use_map_geometry):
+        from ..sims import sim_maps as mapsims
         try:
-            imap = enmap.read_map(str(map_path), sel=0, box=box) # intensity map
-        except exception:
-            imap = enmap.read_map(str(map_path), box=box)
-        # check if map is all zeros
-        if np.all(imap == 0.0) or np.all(np.isnan(imap)):
+            empty_map = mapsims.make_enmap(center_ra=map_sim_params['maps']['center_ra'],
+                                          center_dec=map_sim_params['maps']['center_dec'],
+                                          width_ra=map_sim_params['maps']['width_ra'],
+                                          width_dec=map_sim_params['maps']['width_dec'])
+            sim_map = Depth1Map(wafer_name=map_sim_params['array_info']['arr'],
+                               freq=map_sim_params['array_info']['freq'],
+                               map_ctime=ctime,
+                               map_start_time=0.0,
+                               res=np.abs(empty_map.wcs.wcs.cdelt[0])*degree)
+            sim_map.flux = empty_map+mapsims.make_noise_map(empty_map,
+                                                            map_sim_params['maps']['map_noise']
+                                                           )
+            sim_map.snr = empty_map+np.ones(empty_map.shape)
+            sim_map.time_map = empty_map+np.ones(empty_map.shape)*ctime
+            return sim_map
+        except Exception as e:
             if verbose:
-                print("map is all nan or zeros, skipping")
+                print(f"Failed to create simulated map: {e}")
             return None
-        path = str(map_path).split('map.fits')[0]
-        ivar = enmap.read_map(path + "ivar.fits",box=box) # inverse variance map
-        time = enmap.read_map(path + "time.fits",box=box) # time map
-        ## These should be contained in the map metadata in the future
-        t0=get_observation_start_time(map_path)
-        arr = path.split("/")[-1].split("_")[2]
-        freq = path.split("/")[-1].split("_")[3]
-        ctime = float(path.split("/")[-1].split("_")[1])
-        res = np.abs(imap.wcs.wcs.cdelt[0])*degree
-        return Depth1Map(intensity_map=imap, 
-                         inverse_variance_map=ivar, 
-                         time_map=time,
-                         wafer_name=arr,
-                         freq=freq,
-                         map_ctime=ctime,
-                         res=res,
-                         map_start_time=t0,
-                         box=box
-                        )
-    elif 'rho.fits' in str(map_path):
-        try:
-            rho = enmap.read_map(str(map_path), sel=0,box=box) # intensity map
-        except Exception:
-            rho = enmap.read_map(str(map_path),box=box)
-        # check if map is all zeros
-        if np.all(rho == 0.0) or np.all(np.isnan(rho)):
-            if verbose:
-                print("rho is all nan or zeros, skipping")
-            return None
-        path = str(map_path).split('rho.fits')[0]
-        try:
-            kappa = enmap.read_map(path + "kappa.fits", sel=0,box=box) 
-        except Exception:
-            kappa = enmap.read_map(path + "kappa.fits",box=box)
-        try:
-            time = enmap.read_map(path + "time.fits",box=box) 
-        except Exception:
-            ## time map shouldn't have different polarizations, but just in case.
-            time = enmap.read_map(path + "time.fits",sel=0,box=box)
-        ## These should be contained in the map metadata in the future
-        arr = path.split("/")[-1].split("_")[2]
-        freq = path.split("/")[-1].split("_")[3]
-        ctime = float(path.split("/")[-1].split("_")[1])
-        res = np.abs(rho.wcs.wcs.cdelt[0])*degree
-        t0=get_observation_start_time(map_path)
-        return Depth1Map(rho_map=rho, 
-                         kappa_map=kappa, 
-                         time_map=time,
-                         wafer_name=arr,
-                         freq=freq,
-                         map_ctime=ctime,
-                         res=res,
-                         map_start_time=t0,
-                         box=box
-                        )
     
+    # No map path provided
+    if isinstance(map_path,type(None)):
+        if verbose:
+            print("No map path or simulation parameters provided")
+        return None
+    
+    if isinstance(map_path,(Path,str)):
+        # Check if the map path exists
+        from os.path import exists
+        if not exists(map_path):
+            if verbose:
+                print(f"Map path does not exist: {str(map_path)}")
+            return None
+    
+    # Load map based on format
+    try:
+        if 'map.fits' in str(map_path):
+            # Load intensity map format
+            try:
+                imap = enmap.read_map(str(map_path), sel=0, box=box)  # intensity map
+            except Exception:
+                imap = enmap.read_map(str(map_path), box=box)
+                
+            # Check if map is all zeros or NaN
+            if np.all(imap == 0.0) or np.all(np.isnan(imap)):
+                if verbose:
+                    print("Map is all nan or zeros, skipping")
+                return None
+                
+            path = str(map_path).split('map.fits')[0]
+            
+            # Check if other required files exist
+            if not exists(path + "ivar.fits") or not exists(path + "time.fits"):
+                if verbose:
+                    print(f"Missing required files: ivar.fits or time.fits for {map_path}")
+                return None
+                
+            ivar = enmap.read_map(path + "ivar.fits", box=box)  # inverse variance map
+            time = enmap.read_map(path + "time.fits", box=box)  # time map
+            
+            # Extract metadata
+            t0 = get_observation_start_time(map_path)
+            arr = path.split("/")[-1].split("_")[2]
+            freq = path.split("/")[-1].split("_")[3]
+            ctime = float(path.split("/")[-1].split("_")[1])
+            res = np.abs(imap.wcs.wcs.cdelt[0])*degree
+            
+            return Depth1Map(intensity_map=imap,
+                             inverse_variance_map=ivar,
+                             time_map=time,
+                             wafer_name=arr,
+                             freq=freq,
+                             map_ctime=ctime,
+                             res=res,
+                             map_start_time=t0,
+                             box=box
+                            )
+        
+        elif 'rho.fits' in str(map_path):
+            # Load rho map format
+            try:
+                rho = enmap.read_map(str(map_path), sel=0, box=box)  # rho map
+            except Exception:
+                rho = enmap.read_map(str(map_path), box=box)
+                
+            # Check if map is all zeros or NaN
+            if np.all(rho == 0.0) or np.all(np.isnan(rho)):
+                if verbose:
+                    print("Rho map is all nan or zeros, skipping")
+                return None
+                
+            path = str(map_path).split('rho.fits')[0]
+            
+            # Check if other required files exist
+            if not exists(path + "kappa.fits") or not exists(path + "time.fits"):
+                if verbose:
+                    print(f"Missing required files: kappa.fits or time.fits for {map_path}")
+                return None
+                
+            try:
+                kappa = enmap.read_map(path + "kappa.fits", sel=0, box=box)
+            except Exception:
+                kappa = enmap.read_map(path + "kappa.fits", box=box)
+                
+            try:
+                time = enmap.read_map(path + "time.fits", box=box)
+            except Exception:
+                # Time map shouldn't have different polarizations, but just in case
+                time = enmap.read_map(path + "time.fits", sel=0, box=box)
+                
+            # Extract metadata
+            arr = path.split("/")[-1].split("_")[2]
+            freq = path.split("/")[-1].split("_")[3]
+            ctime = float(path.split("/")[-1].split("_")[1])
+            res = np.abs(rho.wcs.wcs.cdelt[0])*degree
+            t0 = get_observation_start_time(map_path)
+            
+            return Depth1Map(rho_map=rho,
+                             kappa_map=kappa,
+                             time_map=time,
+                             wafer_name=arr,
+                             freq=freq,
+                             map_ctime=ctime,
+                             res=res,
+                             map_start_time=t0,
+                             box=box
+                             )
+        
+        else:
+            if verbose:
+                print(f"Unsupported map format: {map_path}")
+            return None
+            
+    except Exception as e:
+        if verbose:
+            print(f"Error loading map {map_path}: {e}")
+        return None
+
 
 def kappa_clean(kappa: np.ndarray, 
                 rho: np.ndarray,
@@ -487,6 +555,7 @@ def get_maptype(map_path:Path):
     else:
         suffix = map_path.suffix
     return maptype,suffix
+
 
 def get_observation_start_time(map_path:Path
                               ):
@@ -579,6 +648,7 @@ def get_time_safe(time_map:enmap.ndmap,
             mask  = thumb != 0
             vals[bad[i]] = np.sum(mask*thumb)/np.sum(mask)
     return vals
+
 
 def widefield_geometry(res=None, 
                        shape=None, 
