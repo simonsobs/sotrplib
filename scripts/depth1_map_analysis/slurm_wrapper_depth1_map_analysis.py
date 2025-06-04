@@ -110,6 +110,12 @@ P.add_argument("--thumbnail-radius",
                type=float,
                help="Thumbnail radius (half-width of square map), in deg. "
               )
+P.add_argument("--coadd-n-days",
+               action="store",
+               default=0,
+               type=int,
+               help="Number of days to coadd maps over."
+              )
 
 P.add_argument("--ncores",
                action="store",
@@ -148,7 +154,8 @@ def generate_slurm_header(jobname,
 #SBATCH --mem-per-cpu=24G         # memory per cpu-core (4G is default)
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
-module load soconda/3.10/20241017
+
+module load soconda/3.11/v0.6.3
 
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
 cd {script_dir}
@@ -215,6 +222,7 @@ for mapfile in args.maps:
                 f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
                 f" --flux-threshold {args.flux_threshold}"
                 f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
+                f" --coadd-n-days {args.coadd_n_days}"
                 f" &\n sleep 1 \n"
                 )
     nmaps+=1
@@ -242,6 +250,7 @@ for i in tqdm(range(len(datelist))):
                     f"--output-dir {args.out_dir} -s {args.snr_threshold}"
                     f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
                     f" --flux-threshold {args.flux_threshold}"
+                    f" --coadd-n-days {args.coadd_n_days}"
                     f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
                     f" &\n sleep 1 \n"
                     )
