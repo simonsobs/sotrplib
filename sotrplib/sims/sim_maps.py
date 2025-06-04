@@ -314,6 +314,7 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
 
 def inject_sources_from_db(mapdata:Depth1Map,
                            injected_source_db:SourceCatalogDatabase,
+                           t0:float=0.0,
                            verbose=False,
                            ):
     ## inject static sources    
@@ -322,7 +323,7 @@ def inject_sources_from_db(mapdata:Depth1Map,
     catalog_sources= injected_source_db.read_database()
     mapdata,injected_sources = inject_sources(mapdata,
                                                 catalog_sources,
-                                                mapdata.time_map,
+                                                mapdata.time_map+t0,
                                                 freq=mapdata.freq,
                                                 arr=mapdata.wafer_name,
                                                 map_id=mapdata.map_id,
@@ -396,7 +397,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
     - use_map_geometry: bool, if True, use the map geometry for transient injection.
     - simulated_transient_database: str, path to the database for simulated transients.
     """
-    if not sim_params and not injected_source_db:
+    if not sim_params and not injected_source_db and not simulated_transient_database:
         return [],[]
     
     from .sim_utils import load_transients_from_db
@@ -409,7 +410,8 @@ def inject_simulated_sources(mapdata:Depth1Map,
     catalog_sources = []
     if injected_source_db:
         catalog_sources = inject_sources_from_db(mapdata,
-                                                 injected_source_db
+                                                 injected_source_db,
+                                                 t0=t0,
                                                 )
         
     catalog_sources += inject_random_sources(mapdata,
@@ -478,9 +480,10 @@ def inject_simulated_sources(mapdata:Depth1Map,
         print(f'Injected {len(catalog_sources)} sources into simulated map')
         print(f'Injected {len(injected_sources)} transients into simulated map')
     
-    
-    injected_source_db.add_sources(injected_sources)
-    injected_source_db.add_sources(catalog_sources)
+    if isinstance(injected_source_db,SourceCatalogDatabase):
+        ## add the catalog sources to the injected_source_db
+        injected_source_db.add_sources(injected_sources)
+        injected_source_db.add_sources(catalog_sources)
 
     return catalog_sources,injected_sources
 
