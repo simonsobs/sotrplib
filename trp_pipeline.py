@@ -279,7 +279,6 @@ for freq_arr_idx in indexed_map_groups:
         catalog_sources = []
         cataloged_sources_db.initialize_database()
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
-        t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
         
         preprocess_map(mapdata,
@@ -298,7 +297,6 @@ for freq_arr_idx in indexed_map_groups:
                                                                     injected_source_db,
                                                                     sim_params,
                                                                     map_id,
-                                                                    t0,
                                                                     verbose=args.verbose,
                                                                     inject_transients=args.inject_transients,
                                                                     use_map_geometry=args.use_map_geometry,
@@ -334,7 +332,7 @@ for freq_arr_idx in indexed_map_groups:
                                                               mapdata.freq,
                                                               mapdata.wafer_name,
                                                               map_id=map_id,
-                                                              ctime=mapdata.time_map+t0,
+                                                              ctime=mapdata.time_map,
                                                              )
             
             ## update the source catalog
@@ -366,7 +364,7 @@ for freq_arr_idx in indexed_map_groups:
         
 
         extracted_sources = extract_sources(mapdata.flux,
-                                            timemap=mapdata.time_map+t0,
+                                            timemap=mapdata.time_map,
                                             maprms=abs(mapdata.flux/mapdata.snr) if not args.sim else sim_params['maps']['map_noise']*np.ones(mapdata.flux.shape),
                                             nsigma=args.snr_threshold,
                                             minrad=pix_rad/(mapdata.res/arcmin),
