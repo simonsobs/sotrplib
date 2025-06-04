@@ -43,7 +43,7 @@ def generate_random_positions(n:int,
         dec_lims (tuple): Limits for Dec in degrees (min_dec, max_dec).
 
     Returns:
-        tuple: Two numpy arrays containing the RA and Dec positions.
+        array: zipped array of tuples containing (dec,ra) pairs.
     """
     if ra_lims is None or dec_lims is None:
         if imap is not None:
@@ -269,7 +269,7 @@ def save_transients_to_db(transients, db_path):
             INSERT INTO transients (position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (
-            pk.dumps((transient.ra, transient.dec)),
+            pk.dumps((transient.dec, transient.ra)),
             transient.peak_amplitude,
             transient.peak_time,
             transient.flare_width,

@@ -15,7 +15,7 @@ class SimTransient:
         Initialize a simulated source.
 
         Parameters:
-        - position: Tuple|list (ra, dec) specifying the position of the source. If None, a random position is generated.
+        - position: Tuple|list (dec, ra) specifying the position of the source. If None, a random position is generated.
         - peak_amplitude: The peak amplitude of the flare.
         - peak_time: The time at which the flare peaks.
         - flare_width: The width of the flare (e.g., standard deviation for Gaussian).
