@@ -26,7 +26,7 @@ class SimTransient:
         self.dec,self.ra = position if isinstance(position,(tuple,list)) else generate_random_positions(n=1,
                                                                                                         ra_lims=(0,360),
                                                                                                         dec_lims=(-60,20)
-                                                                                                        )
+                                                                                                        )[0]
         self.peak_amplitude = peak_amplitude
         self.peak_time = peak_time
         self.flare_width = flare_width
