@@ -182,7 +182,7 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap|Depth1Map,
                                                          freq=freq,
                                                          arr=arr,
                                                          ctime=ctime,
-                                                         map_id=map_id,
+                                                         map_id=map_id if map_id else '',
                                                          source_type='simulated',
                                                         )
     
@@ -364,7 +364,7 @@ def inject_random_sources(mapdata,
                                                             gauss_fwhm_arcmin=fwhm_arcmin,
                                                             freq=mapdata.freq,
                                                             arr=mapdata.wafer_name,
-                                                            map_id=map_id,
+                                                            map_id=map_id if map_id else '',
                                                             ctime = mapdata.time_map+t0,
                                                             )
     
@@ -416,7 +416,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
         
     catalog_sources += inject_random_sources(mapdata,
                                              sim_params,
-                                             map_id=map_id,
+                                             map_id=map_id if map_id else '',
                                              t0=t0,
                                              fwhm_arcmin=get_fwhm(mapdata.freq,arr=mapdata.wafer_name),
                                              add_noise=False,
@@ -430,7 +430,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
                                             mapdata.time_map+t0,
                                             freq=mapdata.freq,
                                             arr=mapdata.wafer_name,
-                                            map_id=map_id,
+                                            map_id=map_id if map_id else '',
                                             debug=verbose,
                                             )
         injected_sources+=inj_sources
@@ -471,7 +471,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
                                                     mapdata.time_map+t0,
                                                     freq=mapdata.freq,
                                                     arr=mapdata.wafer_name,
-                                                    map_id=map_id,
+                                                    map_id=map_id if map_id else '',
                                                     debug=verbose,
                                                     )
                 injected_sources+=inj_sources
