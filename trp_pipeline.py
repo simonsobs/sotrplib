@@ -7,7 +7,7 @@ from glob import glob
 import warnings
 warnings.simplefilter("ignore",RuntimeWarning)
 
-from sotrplib.maps.maps import load_maps, preprocess_map, load_sim_map
+from sotrplib.maps.maps import load_map, preprocess_map
 from sotrplib.maps.coadding import coadd_map_group,load_coadd_maps
 from sotrplib.utils.utils import get_map_groups, get_cut_radius
 from sotrplib.sources.finding import extract_sources
@@ -188,7 +188,10 @@ if args.sim:
 if not args.sim or args.use_map_geometry:
     if len(args.maps) == 1:
         if '*' in args.maps[0]:
-            args.maps = glob(args.maps[0])
+            all_maps = glob(args.maps[0])
+            if len(all_maps) == 0:
+                raise ValueError('No maps found with the given pattern. ',args.maps)
+            args.maps = all_maps
 
     if not args.is_coadd:
         indexed_map_groups,indexed_map_group_time_ranges,time_bins = get_map_groups(args.maps,
@@ -213,8 +216,7 @@ else:
     box = None
 
 for freq_arr_idx in indexed_map_groups:
-    if args.verbose:
-        print(freq_arr_idx)
+    print(freq_arr_idx)
     if '_' in freq_arr_idx:
         ## assume it's [arr]_[freq]
         arr,freq=freq_arr_idx.split('_')
@@ -226,18 +228,7 @@ for freq_arr_idx in indexed_map_groups:
     for map_group in map_groups:
         if len(map_group)==0:
             continue
-
-        ## condense all of this into a single load_maps function which will
-        ## take in either coadd or single maps or sim argument.
-        if args.sim and not args.use_map_geometry:
-            if args.verbose:
-                print('Loading simulated map group: ',map_group[0])
-            mapdata = load_sim_map(sim_params,
-                                   ctime=map_group_time_ranges[map_group[0]][0]
-                                   )    
-            if args.verbose:
-                print('Simulated map time: ',mapdata.map_ctime)
-        elif len(map_group)==1:
+        if len(map_group)==1:
             if args.verbose:
                 print('Loading map ',map_group[0])
             if not args.overwrite_db:
@@ -245,14 +236,22 @@ for freq_arr_idx in indexed_map_groups:
                 if cataloged_sources_db.observation_exists(map_id):
                     print(f'Map {map_id} already exists in db... skipping.')
                     continue
+            
             ## need a more robust way to check this...
             if 'coadd' in str(map_group[0]):
-                mapdata = load_coadd_maps(mapfile=map_group[0],arr=arr,box=box)[0]
-            else:
-                mapdata = load_maps(map_group[0],
-                                    box=box,
-                                    verbose=args.verbose,
-                                    )
+                mapdata = load_coadd_maps(mapfile=map_group[0],
+                                          arr=arr,
+                                          box=box
+                                          )[0]
+            else:  
+                mapdata = load_map(map_path=map_group[0],
+                                   map_sim_params=sim_params,
+                                   box=box,
+                                   use_map_geometry=args.use_map_geometry,
+                                   ctime=None,
+                                   verbose=args.verbose
+                                  )
+
         else:
             if args.verbose:
                 print('Coadding map group containing the following maps:')
@@ -270,19 +269,19 @@ for freq_arr_idx in indexed_map_groups:
                 print('No map data found... skipping.')
             continue    
 
+        
         ## when using the real map geometry, need to load the map first
         ## so here set the simulated map flux and snr 
         if args.sim and args.use_map_geometry:
             mapdata.flux = make_noise_map(mapdata.time_map,
                                           map_noise_Jy=sim_params['maps']['map_noise'],
                                          )
-            mapdata.snr = mapdata.flux/sim_params['maps']['map_noise']
+            mapdata.snr = mapdata.flux/sim_params['maps']['map_noise'] if sim_params['maps']['map_noise']>0 else np.ones(mapdata.flux.shape)
             del mapdata.rho_map,mapdata.kappa_map
         
         catalog_sources = []
-        cataloged_sources_db._initialize_database()
+        cataloged_sources_db.initialize_database()
         map_id = str(int(mapdata.map_ctime))+'_'+str(mapdata.wafer_name)+'_'+str(mapdata.freq)
-        t0 = mapdata.map_start_time if mapdata.map_start_time else 0.0
         band_fwhm = get_fwhm(mapdata.freq,mapdata.wafer_name)*arcmin
         
         preprocess_map(mapdata,
@@ -301,7 +300,6 @@ for freq_arr_idx in indexed_map_groups:
                                                                     injected_source_db,
                                                                     sim_params,
                                                                     map_id,
-                                                                    t0,
                                                                     verbose=args.verbose,
                                                                     inject_transients=args.inject_transients,
                                                                     use_map_geometry=args.use_map_geometry,
@@ -337,7 +335,7 @@ for freq_arr_idx in indexed_map_groups:
                                                               mapdata.freq,
                                                               mapdata.wafer_name,
                                                               map_id=map_id,
-                                                              ctime=mapdata.time_map+t0,
+                                                              ctime=mapdata.time_map,
                                                              )
             
             ## update the source catalog
@@ -369,7 +367,7 @@ for freq_arr_idx in indexed_map_groups:
         
 
         extracted_sources = extract_sources(mapdata.flux,
-                                            timemap=mapdata.time_map+t0,
+                                            timemap=mapdata.time_map,
                                             maprms=abs(mapdata.flux/mapdata.snr) if not args.sim else sim_params['maps']['map_noise']*np.ones(mapdata.flux.shape),
                                             nsigma=args.snr_threshold,
                                             minrad=pix_rad/(mapdata.res/arcmin),
@@ -465,8 +463,8 @@ for freq_arr_idx in indexed_map_groups:
         cataloged_sources_db.write_database()
         cataloged_sources_db.read_database()
         noise_candidates_db.write_database()
-        noise_candidates_db._initialize_database()
+        noise_candidates_db.initialize_database()
         transients_db.write_database()
-        transients_db._initialize_database()
+        transients_db.initialize_database()
         injected_source_db.write_database()
-        injected_source_db._initialize_database()
+        injected_source_db.initialize_database()

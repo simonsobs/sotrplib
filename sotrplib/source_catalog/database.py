@@ -10,9 +10,9 @@ class SourceCatalogDatabase:
         self.db_path = db_path
         self.lock = threading.Lock()
         self.file_lock = FileLock(f"{db_path}.lock",timeout=1)  # Create a file-based lock
-        self._initialize_database()
+        self.initialize_database()
         
-    def _initialize_database(self):    
+    def initialize_database(self):    
         self.df = pd.DataFrame(columns=[
             'map_id', 'source_type', 'ra', 'dec', 'err_ra', 'err_dec', 'flux', 'err_flux', 'snr', 'freq', 'ctime', 'arr',
             'sourceID', 'matched_filtered', 'renormalized', 'catalog_crossmatch', 'crossmatch_names', 'crossmatch_probabilities',
@@ -28,7 +28,7 @@ class SourceCatalogDatabase:
             try:
                 self.df = pd.read_csv(self.db_path)
             except FileNotFoundError:
-                self._initialize_database()
+                self.initialize_database()
         
         
     def add_sources(self, sources: list):
