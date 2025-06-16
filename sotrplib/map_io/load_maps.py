@@ -21,6 +21,7 @@ def get_depth1_mapset(map_path: Path | str) -> dict[str, Path]:
         outdict ={maptype: directory / filename.replace("map.fits", f"{maptype}.fits") for maptype in ["map", "ivar", "rho", "time", "kappa"]}
     elif filename.endswith("rho.fits"):
         outdict = {maptype: directory / filename.replace("rho.fits", f"{maptype}.fits") for maptype in ["map", "ivar","rho", "kappa", "time"]}
+
     
     return outdict
 
