@@ -222,7 +222,7 @@ for mapfile in args.maps:
                 f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
                 f" --flux-threshold {args.flux_threshold}"
                 f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
-                f"{f'--inject-transients' if args.sim_transients else ''}"
+                f"{f' --inject-transients' if args.sim_transients else ''}"
                 f" --coadd-n-days {args.coadd_n_days}"
                 f" &\n sleep 1 \n"
                 )
@@ -253,7 +253,7 @@ for i in tqdm(range(len(datelist))):
                     f" --flux-threshold {args.flux_threshold}"
                     f" --coadd-n-days {args.coadd_n_days}"
                     f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
-                    f"{f'--inject-transients' if args.sim_transients else ''}"
+                    f"{f' --inject-transients' if args.sim_transients else ''}"
                     f" &\n sleep 1 \n"
                     )
         if i%args.ncores == 0 and i>0:

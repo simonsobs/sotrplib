@@ -188,7 +188,10 @@ if args.sim:
 if not args.sim or args.use_map_geometry:
     if len(args.maps) == 1:
         if '*' in args.maps[0]:
-            args.maps = glob(args.maps[0])
+            all_maps = glob(args.maps[0])
+            if len(all_maps) == 0:
+                raise ValueError('No maps found with the given pattern. ',args.maps)
+            args.maps = all_maps
 
     if not args.is_coadd:
         indexed_map_groups,indexed_map_group_time_ranges,time_bins = get_map_groups(args.maps,
