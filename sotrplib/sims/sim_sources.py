@@ -57,6 +57,7 @@ class SimTransient:
             raise NotImplementedError(f"Flare morphology '{self.flare_morph}' is not supported.")
         
 
+
 def generate_transients(n:int=None,
                         imap:enmap.ndmap=None,
                         ra_lims:tuple=None,
@@ -89,6 +90,7 @@ def generate_transients(n:int=None,
     - beam_params (list): List of dictionaries containing beam parameters for each transient.
     - uniform_on_sky (bool): generate random positions uniform on sky or uniform on imap flatsky
     """ 
+    
     from .sim_utils import (generate_random_positions, 
                             generate_random_positions_in_map,
                             generate_random_flare_amplitudes, 
@@ -102,13 +104,14 @@ def generate_transients(n:int=None,
         raise ValueError("Either n or positions must be provided.")
     if n is not None and positions:
         raise ValueError("Cannot provide both n and positions.")
+    
     if n is not None:
         n_positions = 0
         positions=[]
         
         ntries=10
         while n_positions<n and ntries>0:
-            if uniform_on_sky:
+            if uniform_on_sky or imap is None:
                 rand_pos  = generate_random_positions(n, 
                                                       imap=imap,
                                                       ra_lims=ra_lims, 
@@ -128,7 +131,7 @@ def generate_transients(n:int=None,
             ntries-=1
             if ntries==0:
                 print(f'Failed to inject {n} sources into weighted. Only injected {n_positions}')
-
+    n=n_positions
     if n is not None and isinstance(peak_amplitudes,tuple):
         peak_amplitudes = generate_random_flare_amplitudes(n,
                                                            min_amplitude=peak_amplitudes[0],
