@@ -9,6 +9,7 @@ def make_enmap(center_ra:float=0.0,
                width_ra:float=1.0,
                width_dec:float=1.0,
                resolution:float=0.5,
+               map_noise:float=None
                ):
     '''
     
@@ -33,8 +34,14 @@ def make_enmap(center_ra:float=0.0,
 
     box = np.array([[min_dec,min_ra],[max_dec,max_ra]])
     shape, wcs = geometry(box*degree, res=resolution*arcmin)
-
-    return zeros(shape,wcs=wcs)
+    if map_noise:
+        return make_noise_map(zeros(shape, wcs=wcs),
+                              map_noise_Jy=map_noise,
+                              map_mean_Jy=0.0,
+                              seed=None
+                             )
+    else:
+        return zeros(shape,wcs=wcs)
 
 
 def make_noise_map(imap:enmap.ndmap,
@@ -61,9 +68,11 @@ def make_noise_map(imap:enmap.ndmap,
     wcs = imap.wcs
     noise_map = enmap.zeros(shape, wcs=wcs)
     if not seed:
-        print('No seed provided, setting seed with current ctime')
+        #print('No seed provided, setting seed with current ctime')
         seed=np.random.seed()
     mask = edge_map(imap)
+    if np.all(mask==0):
+        mask = np.ones(shape)  # If the mask is all zeros, invert it to create a full mask.
     noise_map += make_noise_image(shape, 
                                   distribution='gaussian', 
                                   mean=map_mean_Jy,
@@ -122,7 +131,7 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap|Depth1Map,
     minsep=min_sep_arcmin*arcmin/mapres
 
     if not seed:
-        print('No seed provided, setting seed with current ctime')
+        #print('No seed provided, setting seed with current ctime')
         seed=np.random.seed()
 
     if min_flux_Jy>=max_flux_Jy:
@@ -154,7 +163,7 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap|Depth1Map,
         
     elif isinstance(sim_map,enmap.ndmap):
         sim_map += simflux
-        
+       
     ## add noise to the map
     if map_noise_Jy>0:
         if isinstance(sim_map,Depth1Map):
@@ -224,8 +233,6 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
 
     if not sources:
         return imap, []
-    if len(sources)==0:
-        return imap, []
     
     if isinstance(imap,Depth1Map):
         shape = imap.flux.shape
@@ -233,7 +240,9 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
     elif isinstance(imap,enmap.ndmap):
         shape = imap.shape
         wcs = imap.wcs
-   
+    else:
+        raise ValueError("Input map must be a Depth1Map or enmap.ndmap object")
+
     mapres = abs(wcs.wcs.cdelt[0]) * degree
     fwhm  = get_fwhm(freq, arr=arr)*arcmin
     fwhm_pixels = fwhm / mapres
@@ -456,7 +465,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
                                 sim_params['maps']['center_dec']+sim_params['maps']['width_dec']
                             )
                     hits_map = None
-                
+
                 transients_to_inject = generate_transients(n=sim_params['injected_transients']['n_transients'],
                                                            imap=hits_map,
                                                             ra_lims=ra_lims,
