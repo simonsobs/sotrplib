@@ -59,3 +59,4 @@ def dummy_depth1_map(sim_map_params):
     DummyMap.map_id = "test"
     DummyMap.map_ctime = 0.0
     return DummyMap
+

@@ -4,6 +4,12 @@ from pixell import enmap
 from sotrplib.sims import sim_maps
 
 
+def test_make_enmap_defaults():
+    # Test default parameters
+    test_map = sim_maps.make_enmap()
+    assert isinstance(test_map, enmap.ndmap)
+    assert np.all(test_map==0.0) ## noise is None by default
+
 
 def test_make_enmap_shape_and_type(sim_map_params):
     test_map = sim_maps.make_enmap(**sim_map_params['maps'])
