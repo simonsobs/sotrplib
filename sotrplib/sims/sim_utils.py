@@ -48,15 +48,16 @@ def generate_random_positions(n:int,
     if ra_lims is None or dec_lims is None:
         if imap is not None:
             shape, wcs = imap.shape, imap.wcs
-            ra_min, ra_max = enmap.box(shape, wcs)[:, 0]/degree
-            dec_min, dec_max = enmap.box(shape, wcs)[:, 1]/degree
-            ra_lims = (ra_min%360, ra_max%360)
+            dec_min, dec_max = enmap.box(shape, wcs)[:, 0]/degree
+            ra_min, ra_max = enmap.box(shape, wcs)[:, 1]/degree
+            ra_lims = (ra_min, ra_max)
             dec_lims = (dec_min, dec_max)
         else:
             raise ValueError("Either ra_lims and dec_lims must be provided, or imap must be supplied.")
-    if not ra_lims_valid(ra_lims) or not dec_lims_valid(dec_lims):
-        raise ValueError("RA and Dec limits must be valid. RA: [0, 360], Dec: [-90, 90]")
-    
+    ## assume that if limits are something like (350,10) that the ra limits wrap 0, so -10,10
+    if ra_lims[0] > ra_lims[1]:
+        if ra_lims[0]>180:
+            ra_lims[0]-=360
     # Convert limits to radians
     ra_min, ra_max = np.radians(ra_lims)
     dec_min, dec_max = np.radians(dec_lims)
@@ -71,7 +72,7 @@ def generate_random_positions(n:int,
     dec = np.arcsin(z)
 
     # Convert back to degrees
-    ra = np.degrees(ra)
+    ra = np.degrees(ra)%360
     dec = np.degrees(dec)
     positions = list(zip(dec, ra))
     return positions
