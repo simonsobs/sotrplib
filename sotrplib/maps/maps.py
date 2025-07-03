@@ -4,6 +4,11 @@ from typing import Optional
 from pathlib import Path
 
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+
 import numpy as np
 from pixell import enmap
 from pixell.utils import arcmin,degree

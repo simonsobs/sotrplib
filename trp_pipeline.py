@@ -23,6 +23,8 @@ from sotrplib.sims.sim_maps import inject_simulated_sources,make_noise_map
 from pixell.utils import arcmin,degree
 
 import argparse
+import structlog
+logger = structlog.get_logger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-m",
@@ -176,12 +178,10 @@ if args.million_quasar_catalog and not args.sim:
 sim_params={}
 if args.sim:
     if args.verbose:
-         print('Loading sim config file: ',args.sim_config)
+         logger.info('Loading sim config file', sim_config=args.sim_config)
     sim_params = load_config_yaml(args.sim_config)
     if args.verbose:
-        print('Sim params: ')
-        for k,v in sim_params.items():
-            print(k,v)
+        logger.info('Sim params', params=sim_params)
     if not args.use_map_geometry:
         freq_arr_idx, indexed_map_groups, indexed_map_group_time_ranges = get_sim_map_group(sim_params)
 
@@ -190,6 +190,7 @@ if not args.sim or args.use_map_geometry:
         if '*' in args.maps[0]:
             all_maps = glob(args.maps[0])
             if len(all_maps) == 0:
+                logger.error('No maps found with the given pattern', pattern=args.maps)
                 raise ValueError('No maps found with the given pattern. ',args.maps)
             args.maps = all_maps
 
@@ -210,13 +211,14 @@ if not args.sim or args.use_map_geometry:
 ## set up the map geometry for loading box region if given.
 if args.box:
     if len(args.box) != 4:
+        logger.error('Box must be given as [dec_min ra_min dec_max ra_max] in degrees.', box=args.box)
         raise ValueError('Box must be given as [dec_min ra_min dec_max ra_max] in degrees.')
     box = np.array([[float(args.box[0]),float(args.box[1])],[float(args.box[2]),float(args.box[3])]])*degree
 else:
     box = None
 
 for freq_arr_idx in indexed_map_groups:
-    print(freq_arr_idx)
+    logger.info("Processing freq_arr_idx", freq_arr_idx=freq_arr_idx)
     if '_' in freq_arr_idx:
         ## assume it's [arr]_[freq]
         arr,freq=freq_arr_idx.split('_')
@@ -230,11 +232,11 @@ for freq_arr_idx in indexed_map_groups:
             continue
         if len(map_group)==1:
             if args.verbose:
-                print('Loading map ',map_group[0])
+                logger.info('Loading map', map=map_group[0])
             if not args.overwrite_db:
                 map_id = '_'.join(map_group[0].split('/')[-1].split('_')[-4:-1])
                 if cataloged_sources_db.observation_exists(map_id):
-                    print(f'Map {map_id} already exists in db... skipping.')
+                    logger.info('Map already exists in db, skipping', map_id=map_id)
                     continue
             
             ## need a more robust way to check this...
@@ -254,9 +256,7 @@ for freq_arr_idx in indexed_map_groups:
 
         else:
             if args.verbose:
-                print('Coadding map group containing the following maps:')
-                for mg in map_group:
-                    print(mg)
+                logger.info('Coadding map group containing the following maps', maps=map_group)
             mapdata = coadd_map_group(map_group,
                                       freq=freq,
                                       arr=arr,
@@ -266,7 +266,7 @@ for freq_arr_idx in indexed_map_groups:
         ## end of map loading
         if not mapdata:
             if args.verbose:
-                print('No map data found... skipping.')
+                logger.warning('No map data found, skipping')
             continue    
 
         
@@ -293,7 +293,7 @@ for freq_arr_idx in indexed_map_groups:
         
         if not mapdata:
             if args.verbose:
-                print(f'Flux for {map_id} was all nan... skipping.')
+                logger.warning('Flux for map was all nan, skipping', map_id=map_id)
             continue
         
         catalog_sources,injected_sources = inject_simulated_sources(mapdata,
@@ -308,7 +308,7 @@ for freq_arr_idx in indexed_map_groups:
         
         
         if not args.sim:
-            print('Loading Source Catalog')
+            logger.info('Loading Source Catalog')
             catalog_sources += load_catalog(args.source_catalog,
                                            flux_threshold = args.flux_threshold,
                                            mask_outside_map=True,
@@ -352,7 +352,7 @@ for freq_arr_idx in indexed_map_groups:
                                               ) 
         
        
-        print('Finding sources...')
+        logger.info('Finding sources...')
         ## get mask radius for each sigma such that the mask goes to the 
         ## noise floor.
         sigma_thresh_for_minrad = np.arange(100)
@@ -376,9 +376,9 @@ for freq_arr_idx in indexed_map_groups:
                                             )
         
         
-        print(len(extracted_sources.keys()),'sources found.')
+        logger.info(len(extracted_sources.keys()),'sources found.')
 
-        print('Cross-matching found sources with catalog...')
+        logger.info('Cross-matching found sources with catalog...')
         ## need to figure out what distribution "good" sources have to set the cuts.
         default_cuts = {'fwhm':[0.5,2*band_fwhm/arcmin],
                         'ellipticity':[-1,1],
@@ -407,6 +407,7 @@ for freq_arr_idx in indexed_map_groups:
             ## make sure the simulated sources are properly masked, and the injected transients are recovered 
             ## including with the correct fluxes.
             if len(catalog_matches)>0:
+                logger.error('Catalog matches found in simulated map, something is wrong.')
                 raise ValueError('Catalog matches found in simulated map... something is wrong.')
             ## crossmatch the recovered sources with the injected sources
             _,_ = crossmatch_position_and_flux(injected_sources,
@@ -419,9 +420,10 @@ for freq_arr_idx in indexed_map_groups:
             
 
         if len(catalog_matches)>0:
-            print('Source found in blind search which is associated with catalog... masking may have a problem.')
+            logger.warning('Source found in blind search which is associated with catalog, masking may have a problem.')
             if args.plot_thumbnails:
                 for cm in catalog_matches:
+                    logger.info('Plotting thumbnail for catalog match', ra=cm.ra, dec=cm.dec)
                     plot_map_thumbnail(mapdata.snr if not args.sim else mapdata.flux/sim_params['maps']['map_noise'],
                                         cm.ra,
                                         cm.dec,
@@ -438,6 +440,7 @@ for freq_arr_idx in indexed_map_groups:
             cataloged_sources_db.add_sources(transient_candidates)
             if args.plot_thumbnails:
                 for tc in transient_candidates:
+                    logger.info('Plotting thumbnail for transient candidate', ra=tc.ra, dec=tc.dec)
                     plot_map_thumbnail(mapdata.snr if not args.sim else mapdata.flux/sim_params['maps']['map_noise'],
                                         tc.ra,
                                         tc.dec,
@@ -447,12 +450,10 @@ for freq_arr_idx in indexed_map_groups:
                                         )
             if args.verbose:
                 if len(transient_candidates)>0:
-                    print('To extract lightcurves for transient candidates, run the following: ')
-                    executable=['python','slurm_wrapper_depth1_lightcurves.py','--ra']+['%.5f'%tc.ra for tc in transient_candidates]+['--dec']+['%.5f'%tc.dec for tc in transient_candidates]+['--data-dir',args.map_dir, '--save-thumbnails']
-                    print(' '.join(executable))
+                    logger.info('To extract lightcurves for transient candidates, run the following command', command='python slurm_wrapper_depth1_lightcurves.py ...')
         else:
-            print('Too many transient candidates (%i)... something fishy'%len(transient_candidates))
-            print('Writing to noise candidates database.')
+            logger.warning('Too many transient candidates, something fishy', count=len(transient_candidates))
+            logger.info('Writing to noise candidates database.')
             noise_candidates_db.add_sources(transient_candidates)
 
         noise_candidates_db.add_sources(noise_candidates)

@@ -1,5 +1,8 @@
 from .sim_utils import generate_random_positions, make_gaussian_flare
 from pixell import enmap
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class SimTransient:
@@ -98,17 +101,18 @@ def generate_transients(n:int=None,
                             generate_random_flare_times,
                             )       
     from pixell.utils import degree
-    
+
     transients = []
     if n is None and not positions:
+        logger.error("Either n or positions must be provided to generate_transients")
         raise ValueError("Either n or positions must be provided.")
     if n is not None and positions:
+        logger.error("Cannot provide both n and positions to generate_transients")
         raise ValueError("Cannot provide both n and positions.")
-    
+
     if n is not None:
         n_positions = 0
         positions=[]
-        
         ntries=10
         while n_positions<n and ntries>0:
             if uniform_on_sky or imap is None:
@@ -119,18 +123,16 @@ def generate_transients(n:int=None,
                                                      )
             else:
                 rand_pos = generate_random_positions_in_map(n,imap)
-            
             if isinstance(imap,enmap.ndmap):
                 for p in rand_pos:
                     if imap.at([p[0]*degree,p[1]*degree],mode='nn') and len(positions)<n:
                         positions.append(p)
             else:
                 positions=rand_pos
-            
             n_positions=len(positions)
             ntries-=1
-            if ntries==0:
-                print(f'Failed to inject {n} sources into weighted. Only injected {n_positions}')
+            if ntries==0 and n_positions<n:
+                logger.warning("Failed to inject all sources into weighted region", requested=n, injected=n_positions)
     n=n_positions
     if n is not None and isinstance(peak_amplitudes,tuple):
         peak_amplitudes = generate_random_flare_amplitudes(n,
@@ -163,6 +165,9 @@ def generate_transients(n:int=None,
         beam_params = [{}] * n
     
     if len(positions) != len(peak_amplitudes) or len(positions) != len(peak_times) or len(positions) != len(flare_widths):
+        logger.error("All input lists must be of the same length in generate_transients",
+                     positions=len(positions), peak_amplitudes=len(peak_amplitudes),
+                     peak_times=len(peak_times), flare_widths=len(flare_widths))
         raise ValueError("All input lists must be of the same length.")
     
     for i in range(len(positions)):
