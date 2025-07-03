@@ -3,11 +3,8 @@ import warnings
 from typing import Optional
 from pathlib import Path
 
-
 import structlog
-
 logger = structlog.get_logger(__name__)
-
 
 import numpy as np
 from pixell import enmap
@@ -135,6 +132,7 @@ class Depth1Map:
                     try:
                         m = enmap.read_map(str(map),box=box)
                     except Exception as e2:
+                        logger.warning()
                         print('Failed initially via ',e1)
                         print('Then tried without sel=0, and failed via ',e2)
                         return False
@@ -797,8 +795,7 @@ def preprocess_map(mapdata,
     from pixell.enmap import read_map
     from .masks import mask_edge,mask_dustgal
    
-
-    print('Cleaning maps...')
+    logger.info('Cleaning and flatfielding maps...')
     if not mapdata.cleaned:
         ## ignore divide by zero warning since that will happen outside the weighted region
         with warnings.catch_warnings():

@@ -24,6 +24,24 @@ from pixell.utils import arcmin,degree
 
 import argparse
 import structlog
+import logging
+
+# Set up standard logging
+logging.basicConfig(
+    format="%(message)s",
+    stream=None,
+    level=logging.INFO,  # Change to logging.DEBUG for debug output
+)
+
+# Set up structlog to use standard logging
+structlog.configure(
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),  # or logging.DEBUG
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
+
 logger = structlog.get_logger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -157,8 +175,19 @@ parser.add_argument("--overwrite-db",
                     help="If not set, the map_id will be searched in the db, if found the observation will be skipped.", 
                     action='store_true'
                     )
-args = parser.parse_args()
+parser.add_argument("--log-level", 
+                    default="INFO", 
+                    choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+                    )
 
+args = parser.parse_args()
+log_level = getattr(logging, args.log_level.upper())
+logging.basicConfig(level=log_level)
+structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(log_level), processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
 
 cataloged_sources_db = SourceCatalogDatabase(args.output_dir+'so_source_catalog.csv')
 cataloged_sources_db.read_database()
@@ -376,7 +405,7 @@ for freq_arr_idx in indexed_map_groups:
                                             )
         
         
-        logger.info(len(extracted_sources.keys()),'sources found.')
+        logger.info('sources found', count=len(extracted_sources.keys()))
 
         logger.info('Cross-matching found sources with catalog...')
         ## need to figure out what distribution "good" sources have to set the cuts.
