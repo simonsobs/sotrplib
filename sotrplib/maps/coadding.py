@@ -21,7 +21,7 @@ def coadd_map_group(map_group:list,
         coadd.freq = freq
     if not coadd.wafer_name:
         coadd.wafer_name = arr
-    
+        
     for mg in tqdm(range(len(map_group))):
         map_path = map_group[mg]
         coadd.coadd_maps(map_path,box=box)
@@ -69,11 +69,13 @@ def load_coadd_maps(mapfile:str=None,
                    ):
     from pathlib import Path
     from glob import glob
+    import structlog
+    logger = structlog.get_logger(__name__)
     
     if not isinstance(mapfile,type(None)):
         maps = [mapfile]
     elif isinstance(map_dir,type(None)):
-        print('One of mapfile, map_dir needs to be input.')
+        logger.warning('One of mapfile, map_dir needs to be input.')
         return []
     else:
         if ctime:
@@ -81,14 +83,14 @@ def load_coadd_maps(mapfile:str=None,
         else:
             globstr = map_dir+'*_rho.fits'
         if debug:
-            print(globstr)
+            logger.debug(globstr)
         maps = glob(globstr)
 
     coadds = []
     for m in maps:
         freq = 'f'+m.split('_f')[-1].split('_')[0]
         if debug:
-            print(m,freq)
+            logger.debug(f"{m} {freq}")
         mapstub = Depth1Map()
         mapstub.load_coadd(Path(m),box=box)
         if arr:
