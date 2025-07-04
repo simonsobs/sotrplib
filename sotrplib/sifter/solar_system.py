@@ -375,7 +375,7 @@ def interpolate_asteroid_ephem(obs_time,
         asteroid_name = frame["targetname"]
         if asteroid and asteroid_name != asteroid:
             continue
-        print("Checking asteroid {}".format(asteroid))
+        logger.info("Checking asteroid", asteroid=asteroid)
         ephem_time = Time(frame["Ephem"]['datetime_jd'],format='jd').unix
         nearest_ephem = np.argmin(np.abs(ephem_time - int(obs_time)))
         
