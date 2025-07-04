@@ -132,9 +132,10 @@ class Depth1Map:
                     try:
                         m = enmap.read_map(str(map),box=box)
                     except Exception as e2:
-                        logger.warning()
-                        print('Failed initially via ',e1)
-                        print('Then tried without sel=0, and failed via ',e2)
+                        logger.warning("Failed to load map", 
+                                       map=str(map), 
+                                       error1=str(e1), 
+                                       error2=str(e2))
                         return False
                 
                 setattr(self, attr_name,m)
@@ -174,7 +175,7 @@ class Depth1Map:
             from glob import glob
             timefiles = glob(path2map+'*time.fits')
             if len(timefiles) == 0:
-                print(str(path2map)+'*time.fits')
+                logger.warning(str(path2map)+'*time.fits')
                 raise FileNotFoundError("No time map found!")
             elif 'weighted' in timefiles[0]:
                 time_map_file = timefiles[0]
@@ -205,17 +206,17 @@ class Depth1Map:
             obsids = [float(o.split('_')[0]) for o in h[0].header['OBSIDS'].split(',')]
             self.maps_included = obsids
         except Exception as e:
-            print(e,'Failed to read OBSIDS')
+            logger.warning(f"Failed to read OBSIDS: {e}")
         
         try:
             self.coadd_days  = float(h[0].header['NDAYS'])
         except Exception as e:
-            print(e,'Failed to read NDAYS')
+            logger.warning(f"Failed to read NDAYS: {e}")
         
         try:
             self.freq  = h[0].header['FREQ']
         except Exception as e:
-            print(e,'Failed to read FREQ')
+            logger.warning(f"Failed to read FREQ: {e}")
             self.freq = str(map_path).split('/')[-1].split('_')[3]
 
         if not self.res:
@@ -365,13 +366,13 @@ def load_map(map_path: Optional[Path|str|list] = None,
             return sim_map
         except Exception as e:
             if verbose:
-                print(f"Failed to create simulated map: {e}")
+                logger.warning(f"Failed to create simulated map: {e}")
             return None
     
     # No map path provided
     if isinstance(map_path,type(None)):
         if verbose:
-            print("No map path or simulation parameters provided")
+            logger.warning("No map path or simulation parameters provided")
         return None
     
     if isinstance(map_path,(Path,str)):
@@ -379,7 +380,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
         from os.path import exists
         if not exists(map_path):
             if verbose:
-                print(f"Map path does not exist: {str(map_path)}")
+                logger.warning(f"Map path does not exist: {str(map_path)}")
             return None
     
     # Load map based on format
@@ -394,7 +395,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
             # Check if map is all zeros or NaN
             if np.all(imap == 0.0) or np.all(np.isnan(imap)):
                 if verbose:
-                    print("Map is all nan or zeros, skipping")
+                    logger.warning("Map is all nan or zeros, skipping")
                 return None
                 
             path = str(map_path).split('map.fits')[0]
@@ -402,7 +403,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
             # Check if other required files exist
             if not exists(path + "ivar.fits") or not exists(path + "time.fits"):
                 if verbose:
-                    print(f"Missing required files: ivar.fits or time.fits for {map_path}")
+                    logger.warning(f"Missing required files: ivar.fits or time.fits for {map_path}")
                 return None
                 
             ivar = enmap.read_map(path + "ivar.fits", box=box)  # inverse variance map
@@ -436,7 +437,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
             # Check if map is all zeros or NaN
             if np.all(rho == 0.0) or np.all(np.isnan(rho)):
                 if verbose:
-                    print("Rho map is all nan or zeros, skipping")
+                    logger.warning("Rho map is all nan or zeros, skipping")
                 return None
                 
             path = str(map_path).split('rho.fits')[0]
@@ -444,7 +445,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
             # Check if other required files exist
             if not exists(path + "kappa.fits") or not exists(path + "time.fits"):
                 if verbose:
-                    print(f"Missing required files: kappa.fits or time.fits for {map_path}")
+                    logger.warning(f"Missing required files: kappa.fits or time.fits for {map_path}")
                 return None
                 
             try:
@@ -478,12 +479,12 @@ def load_map(map_path: Optional[Path|str|list] = None,
         
         else:
             if verbose:
-                print(f"Unsupported map format: {map_path}")
+                logger.warning(f"Unsupported map format: {map_path}")
             return None
             
     except Exception as e:
         if verbose:
-            print(f"Error loading map {map_path}: {e}")
+            logger.warning(f"Error loading map {map_path}: {e}")
         return None
 
 
@@ -509,7 +510,7 @@ def clean_map(imap: np.ndarray,
         imap[inverse_variance < np.nanpercentile(inverse_variance, fraction)] = 0
     else:
         if cut_on!='max':
-            print('%s cut_on not supported, defaulting to max cut'%cut_on)
+            logger.warning('%s cut_on not supported, defaulting to max cut'%cut_on)
         imap[inverse_variance < (np.nanmax(inverse_variance) * fraction)] = 0
     return imap
 
@@ -661,9 +662,9 @@ def widefield_geometry(res=None,
                        include_half_pixel_offset=False
                       ):
     """Build an enmap covering the full sky, with the outermost pixel centers
-	at the poles and wrap-around points. Only the car projection is
-	supported for now, but the variants CC and fejer1 can be selected using
-	the variant keyword. This currently defaults to CC, but will likely
+    at the poles and wrap-around points. Only the car projection is
+    supported for now, but the variants CC and fejer1 can be selected using
+    the variant keyword. This currently defaults to CC, but will likely
     change to fejer1 in the future.
     """
     from pixell import wcsutils
@@ -689,8 +690,8 @@ def widefield_geometry(res=None,
     assert abs(res[0]*(ny-yo) - dec_width) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
     assert abs(res[1]*nx - ra_width) < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
     wcs   = wcsutils.WCS(naxis=2)
-	# Note the reference point is shifted by half a pixel to keep
-	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
+    # Note the reference point is shifted by half a pixel to keep
+    # the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
     #
     wcs.wcs.crval = [0,0]
     if include_half_pixel_offset:
@@ -724,7 +725,7 @@ def flat_field_using_pixell(mapdata,
         mapdata.snr*=med_ratio
         mapdata.flatfielded=True
     except Exception as e:
-        print(e,' Cannot flatfield at this time... need to update medrat algorithm for coadds')
+        logger.error(f"Cannot flatfield at this time... need to update medrat algorithm for coadds: {e}")
 
     return
 
@@ -758,7 +759,7 @@ def flat_field_using_photutils(mapdata:Depth1Map,
         mapdata.snr /= relative_rms
         mapdata.flatfielded=True
     except Exception as e:
-        print(e,' Failed to flatfield using photutils')
+        logger.warning(f"Failed to flatfield using photutils: {e}")
         mapdata.flatfielded=False
 
     return 
@@ -818,7 +819,7 @@ def preprocess_map(mapdata,
     mapdata.kappa_map = None
     mapdata.rho_map = None
     if np.all(np.isnan(mapdata.flux)) or np.all(np.isnan(mapdata.snr)) or np.all(mapdata.snr == 0.0) or np.all(mapdata.flux == 0.0):
-        print("flux or snr is all nan or zeros, skipping")
+        logger.warning("flux or snr is all nan or zeros, skipping")
         mapdata=None
         return 
     
@@ -826,7 +827,7 @@ def preprocess_map(mapdata,
         mapdata.masked=0
         mask = enmap.ones(mapdata.flux.shape,wcs=mapdata.flux.wcs)   
 
-        print('Masking maps...')
+        logger.info('Masking maps...')
         try:
             galaxy_mask = mask_dustgal(mapdata.flux,
                                        read_map(galmask_file,box=mapdata.box,)
@@ -837,7 +838,7 @@ def preprocess_map(mapdata,
             del galaxy_mask
             
         except Exception as e:
-            print(e,' ... skipping galaxy mask')
+            logger.warning(f"... skipping galaxy mask: {e}")
             mapdata.masked+=1
         
         try:
@@ -850,7 +851,7 @@ def preprocess_map(mapdata,
             del planet_mask
 
         except Exception as e:
-            print(e,' ... skipping planet mask')
+            logger.warning(f"... skipping planet mask: {e}")
             mapdata.masked+=1
 
         try:
@@ -860,16 +861,16 @@ def preprocess_map(mapdata,
             mask *= edge_mask
             del edge_mask
         except Exception as e:
-            print(e, ' ... skipping edge mask')
+            logger.warning(f"... skipping edge mask: {e}")
             mapdata.masked+=1
 
     if np.all(np.isnan(mapdata.flux)) or np.all(np.isnan(mapdata.snr)) or np.all(mapdata.snr == 0.0) or np.all(mapdata.flux == 0.0):
-        print("flux or snr is all nan or zeros, skipping")
+        logger.warning("flux or snr is all nan or zeros, skipping")
         mapdata=None
         return 
     
     if not mapdata.flatfielded:
-        print('Flatfielding maps...')
+        logger.info('Flatfielding maps...')
         if flatfield_method == 'photutils':
             flat_field_using_photutils(mapdata,
                                        tilegrid=tilegrid,
