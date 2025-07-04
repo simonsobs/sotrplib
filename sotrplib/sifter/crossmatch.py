@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 import math
 import os
 import os.path as op
@@ -221,7 +223,7 @@ def sift(extracted_sources,
     if crossmatch_with_million_quasar:
         if 'million_quasar' not in additional_catalogs:
             if debug:
-                print('No million quasar catalog provided... cant do crossmatch')
+                logger.warning('No million quasar catalog provided... cant do crossmatch')
             isin_mq_cat = np.zeros(len(extracted_ra),dtype=bool)
             mq_catalog_match = []*len(extracted_ra)
         else:
@@ -247,11 +249,11 @@ def sift(extracted_sources,
             crossmatch_name = ''
         
         if debug:
-            print(source_string_name)
+            logger.debug("source_string_name", name=source_string_name)
             if isin_cat[source]:
-                print('crossmatch:',crossmatch_name,'%.2f Jy'%catalog_sources['fluxJy'][catalog_match[source][0][1]])
-            print(forced_photometry_info)
-            
+                logger.debug("crossmatch", crossmatch_name=crossmatch_name, flux=float(catalog_sources['fluxJy'][catalog_match[source][0][1]]))
+            logger.debug("forced_photometry_info", info=forced_photometry_info)
+
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
         if "err_ra" not in forced_photometry_info or "err_dec" not in forced_photometry_info:
             forced_photometry_info['err_ra'] = pixell_utils.fwhm*fwhm_arcmin*pixell_utils.arcmin /np.sqrt(forced_photometry_info['peaksig'])
@@ -292,9 +294,9 @@ def sift(extracted_sources,
         ## do sifting operations here...
         is_cut = get_cut_decision(cand,cuts,debug=debug)
         if isin_cat[source] and not is_cut:
-            print(source,crossmatch_name,catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux)
+            logger.debug("catalog_match", source=source, crossmatch_name=crossmatch_name, catalog_flux=float(catalog_sources['fluxJy'][catalog_match[source][0][1]]), candidate_flux=float(cand.flux))
             if alert_on_flare(catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux):
-                print('ALERT: %s has increased flux from %.2f to %.2f Jy'%(crossmatch_name,catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux))
+                logger.warning('ALERT: increased flux', crossmatch_name=crossmatch_name, old_flux=float(catalog_sources['fluxJy'][catalog_match[source][0][1]]), new_flux=float(cand.flux))
                 transient_candidates.append(cand)
             else:
                 source_candidates.append(cand)
@@ -339,9 +341,9 @@ def sift(extracted_sources,
                                                                           )
         noise_candidates.extend(new_noise_candidates)
     
-    print(len(source_candidates),'catalog matches')
-    print(len(transient_candidates),'transient candidates')
-    print(len(noise_candidates),'probably noise') 
+    logger.info('catalog matches', count=len(source_candidates))
+    logger.info('transient candidates', count=len(transient_candidates))
+    logger.info('probably noise', count=len(noise_candidates))
     return source_candidates, transient_candidates, noise_candidates
 
 
@@ -371,7 +373,7 @@ def get_cut_decision(candidate:SourceCandidate,
         val = getattr(candidate,c)
         cut |= (val<cuts[c][0]) | (val>cuts[c][1])
         if debug and (val<cuts[c][0]) | (val>cuts[c][1]):
-            print('cut %s: %.2f < %.2f or %.2f > %.2f'%(c,val,cuts[c][0],val,cuts[c][1]))
+            logger.info('cut', cut_key=c, value=val, min=cuts[c][0], max=cuts[c][1])
     return cut
 
 
@@ -484,7 +486,7 @@ def crossmatch_position_and_flux(injected_sources:list,
                                            ) 
     
     if np.sum(np.logical_not(matched_mask)) > 0 and fail_unmatched:
-        print(ValueError("Some injected sources were not recovered."))
+        logger.warning("Some injected sources were not recovered.")
 
     # Check flux similarity for matched sources
     similar_fluxes = []
@@ -511,9 +513,9 @@ def crossmatch_position_and_flux(injected_sources:list,
             else:
                 similar_fluxes.append(False)
         else:
-            print('no match to source',i)
+            logger.warning('no match to source', index=i)
             ij = injected_sources[i]
-            print('%.3f,%3f, flux=%.2f, fwhm a,b=(%.2f,%.2f)'%(ij.ra,ij.dec,ij.flux,ij.fwhm_a,ij.fwhm_b))
+            logger.info('injected_source_info', ra=ij.ra, dec=ij.dec, flux=ij.flux, fwhm_a=ij.fwhm_a, fwhm_b=ij.fwhm_b)
             similar_fluxes.append(False)
     
     
