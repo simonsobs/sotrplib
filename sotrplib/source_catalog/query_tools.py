@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 import numpy as np
 import pandas as pd
 from astropy import units as u
@@ -103,19 +105,16 @@ def simdist(sim, verbose=False):
     if sim["PLX_VALUE"]:
         # Parallax distance:
         if verbose:
-            print(
-                "  Parallax distance is {:0.1f} pc.".format(1000.0 / sim["PLX_VALUE"])
-            )
+            logger.info("Parallax distance", distance_pc=1000.0 / sim["PLX_VALUE"])
         dist = 1000.0 / sim["PLX_VALUE"]
     # but if no parallax we'll take any other distance:
     elif sim["Distance_distance"]:
         if verbose:
-            print(
-                "  Distance from reference {} is {} {}.".format(
-                    sim["Distance_bibcode"],
-                    sim["Distance_distance"],
-                    sim["Distance_unit"],
-                )
+            logger.info(
+                "Distance from reference",
+                bibcode=sim["Distance_bibcode"],
+                distance=sim["Distance_distance"],
+                unit=sim["Distance_unit"]
             )
         if sim["Distance_unit"] == "kpc":
             dist = sim["Distance_distance"] * 1000
@@ -124,7 +123,7 @@ def simdist(sim, verbose=False):
 
     else:
         if verbose:
-            print("  No distance available in Simbad.")
+            logger.info("No distance available in Simbad.")
         dist = np.nan
 
     return dist
@@ -157,12 +156,12 @@ def pvalue(df, radius=2.0):
                     mags.append(float(dfi["mag"].iloc[j]))
                 # if not, continue
                 except ValueError:
-                    print(f"{i + j} Simbad mag not float")
+                    logger.warning("Simbad mag not float", index=i + j)
                     mags.append(np.nan)
                     continue
 
             else:
-                print(f"{i + j} mag is nan")
+                logger.warning("mag is nan", index=i + j)
                 mags.append(np.nan)
                 continue
 
@@ -216,7 +215,7 @@ def pvalue(df, radius=2.0):
             p[i + j] = 1 - np.exp(-rho * sep.to(u.rad).value ** 2 * np.pi)
 
             # print pvalue
-            print(f"pvalue of object {i + j} is {p[i + j]}")
+            logger.info("pvalue of object", index=i + j, pvalue=p[i + j])
 
     # add p-value  to df
     df["pvalue"] = p
