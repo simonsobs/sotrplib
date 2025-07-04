@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 from glob import glob
 from tqdm import tqdm
 from getpass import getuser
@@ -148,7 +150,7 @@ else:
     for o in args.obsids:
         datelist += sorted(glob(args.data_dir+o))
 
-print('There are ',len(datelist),' date directories total')
+logger.info('date directories total', count=len(datelist))
 
 ## make scratch output directory
 user_scratch = args.scratch_dir
@@ -163,7 +165,7 @@ if not args.out_dir:
     random_string = ''.join(random.choice(letters) for i in range(6))
 
     args.out_dir = user_scratch+f'tmp_lightcurve_{random_string}/'
-    print('Creating temp output directory: ',args.out_dir)
+    logger.info('Creating temp output directory', out_dir=args.out_dir)
 
 ## set slurm output dir to live in the temp directory
 if args.slurm_out_dir == P.get_default('slurm_out_dir'):
@@ -210,13 +212,10 @@ with open('%s/%s_sub.slurm'%(args.slurm_script_dir,str(n).zfill(4)),'w') as f:
     f.write(slurm_text)
     f.write('wait')
 
-print('#'*50)
-print('Slurm scripts saved to :',args.slurm_script_dir)
-print('Slurm output saved to :',args.slurm_out_dir)
-
-print('Lightcurve files saved to :',args.out_dir)
-
-print('To run the slurm jobs, point slurm_submitter.py to the slurm script location stated above.')
-
-print('Once run, the lightcurve collator can be pointed to the lightcurve output directory.')
-print('#'*50)
+logger.info('slurm_job_scripts_header', header='#'*50)
+logger.info('Slurm scripts saved', slurm_script_dir=args.slurm_script_dir)
+logger.info('Slurm output saved', slurm_out_dir=args.slurm_out_dir)
+logger.info('Lightcurve files saved', out_dir=args.out_dir)
+logger.info('slurm_submitter_instructions', msg='To run the slurm jobs, point slurm_submitter.py to the slurm script location stated above.')
+logger.info('lightcurve_collator_instructions', msg='Once run, the lightcurve collator can be pointed to the lightcurve output directory.')
+logger.info('slurm_job_scripts_footer', footer='#'*50)

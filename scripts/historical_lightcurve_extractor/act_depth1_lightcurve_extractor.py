@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 ## initially from Sigurd Naess, downloaded from https://phy-act1.princeton.edu/~snaess/actpol/lightcurves/20220624/depth1_lightcurves.py
 
 import argparse, os
@@ -63,10 +65,10 @@ for fi in range(nfile):
     pixs       = enmap.sky2pix(shape, wcs, poss)
     inside     = np.where(np.all((pixs.T >= 0)&(pixs.T<shape[-2:]),-1))[0]
     if len(inside) == 0:
-        print("No sources in %s, skipping."%name)
+        logger.info("No sources in file, skipping", file=name)
         continue
     
-    print("Processing %s with %4d srcs" % ( name, len(inside)))
+    logger.info("Processing file", file=name, n_sources=len(inside))
     
     ra = np.asarray(args.ra)[inside]
     dec = np.asarray(args.dec)[inside]
