@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 import glob as glob
 import math
 import os
@@ -58,8 +60,8 @@ def radec_to_str_name(ra: float,
     elif source_class in ["none", "short"]:
         source_class = "short"
     else:
-        print("Unrecognized source class {}".format(source_class))
-        print("Defaulting to [ S ]")
+        logger.warning("Unrecognized source class", source_class=source_class)
+        logger.warning("Defaulting to [ S ]")
         source_class = "S"
 
     # ra in (0, 360)
@@ -192,11 +194,11 @@ def get_map_groups(maps:list,
     maxtime = np.max(times)
     full_time_range = (maxtime-mintime)/86400.
     if full_time_range>1:
-        print('Full time range: %.1f days'%(full_time_range))
+        logger.info('Full time range', days=full_time_range)
     elif full_time_range>1/24.:
-        print('Full time range: %.1f hours'%(full_time_range*24))
+        logger.info('Full time range', hours=full_time_range*24)
     else:
-        print('Full time range: %.1f minutes'%(full_time_range*24*60))
+        logger.info('Full time range', minutes=full_time_range*24*60)
     if coadd_days !=0:
         if mintime==maxtime:
             time_bins=[mintime]
@@ -605,10 +607,10 @@ def ctime_to_pos(ctime:float,
     # find closest ctime that is less than tmid
     ctimes = ctimes[ctimes < ctime]
     if len(ctimes) == 0:
-        print(f"No maps in {op.join(mapdir, subdir)}")
+        logger.warning("No maps in directory", directory=op.join(mapdir, subdir))
         return None, None, None
     ctime_map = ctimes[np.argmin(np.abs(ctimes - ctime))]
-    print(f"Using ctime {ctime}")
+    logger.info("Using ctime", ctime=ctime)
 
     # get deltat a midpoint
     deltat = ctime - ctime_map
@@ -616,19 +618,19 @@ def ctime_to_pos(ctime:float,
     tmap_path = op.join(mapdir, subdir, f"depth1_{ctime_map}_{arr}_{freq}_time.fits")
 
     if not op.exists(tmap_path):
-        print(f"No time map for {tmap_path}")
+        logger.warning("No time map", tmap_path=tmap_path)
         return None, None, None
 
     tmap = enmap.read_map(tmap_path)
 
     # Find if there is a time within deltat
     if deltat < np.min(tmap[tmap > 0]) or deltat > np.max(tmap):
-        print(f"No time within {deltat} of {ctime} in {tmap_path}")
+        logger.warning("No time within range", deltat=deltat, ctime=ctime, tmap_path=tmap_path)
         return None, None, None
 
     # Make sure there exists a time within 1 second of deltat
     if np.min(np.abs(tmap - deltat)) > 1:
-        print(f"No time within 1 second of {deltat} in {tmap_path}")
+        logger.warning("No time within 1 second", deltat=deltat, tmap_path=tmap_path)
         return None, None, None
 
     # If deltat is in the map, find the closest time
