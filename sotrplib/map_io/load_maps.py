@@ -1,5 +1,6 @@
 from pathlib import Path
-
+from structlog import getLogger
+logger = getLogger(__name__)
 import numpy as np
 from os import path
 from ..maps.maps import Depth1Map
@@ -16,7 +17,7 @@ def get_depth1_mapset(map_path: Path | str) -> dict[str, Path]:
 
     directory = map_path.parent
     filename = map_path.name
-    print(directory,  filename)
+    logger.debug("get_depth1_mapset", directory=directory, filename=filename)
     if filename.endswith("map.fits"):
         outdict ={maptype: directory / filename.replace("map.fits", f"{maptype}.fits") for maptype in ["map", "ivar", "rho", "time", "kappa"]}
     elif filename.endswith("rho.fits"):
@@ -96,7 +97,7 @@ def load_depth1_mapset(map_path: Path | str,
         ivar = _read_map("ivar", map_paths["ivar"], sel=polarization_selector)
         # check if map is all zeros
         if np.all(imap == 0.0) or np.all(np.isnan(imap)):
-            print("map is all nan or zeros, skipping")
+            logger.warning("map is all zeros or nan, skipping", map_path=map_paths["map"])
             return None
 
     if not path.exists(map_paths['rho']):

@@ -1001,7 +1001,7 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
                 dec += dec_src / pos_err**2.0
                 invar += 1 / pos_err**2.0
         if invar == 0:
-            print("ZeroDivisionError: Candidate Removed")
+            logger.warning("ZeroDivisionError: Candidate Removed")
             continue
         ra /= invar
         dec /= invar
@@ -1144,8 +1144,8 @@ def candidate_output(
         )
 
         if verbosity > 0:
-            print(f'Wrote {op.join(can_odir, f"{ctime}_{str(i)}_ocat.fits")}')
-
+            logger.debug(f'Wrote {op.join(can_odir, f"{ctime}_{str(i)}_ocat.fits")}')
+            
     return
 
 
