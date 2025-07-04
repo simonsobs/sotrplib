@@ -2,6 +2,8 @@ import numpy as np
 from pixell import enmap
 from pixell.utils import degree
 
+from structlog import get_logger
+logger = get_logger(__name__)
 
 def generate_random_positions_in_map(n:int,
                                      imap:enmap.ndmap
@@ -385,7 +387,7 @@ def make_2d_gaussian_model_param_table(imap:enmap.ndmap,
                 break
             if np.isnan(s.__dict__[cutkey]) or (s.__dict__[cutkey] < cuts[cutkey][0]) or (s.__dict__[cutkey] > cuts[cutkey][1]):
                 if verbose:
-                    print(f"Source {i} failed cut {cutkey} with value {s.__dict__[cutkey]}")
+                    logger.warning(f"Source {i} failed cut {cutkey} with value {s.__dict__[cutkey]}")
                 cut=True
                 break
         if not cut:
@@ -409,5 +411,6 @@ def make_2d_gaussian_model_param_table(imap:enmap.ndmap,
             model_params['id'].append(id_num)
             id_num += 1
     if verbose:
-        print(model_params)
+        logger.debug("Generated model parameters for sources", count=len(model_params['id']))
+        logger.debug(model_params)
     return QTable(model_params)

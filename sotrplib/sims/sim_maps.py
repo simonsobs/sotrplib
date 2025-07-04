@@ -1,8 +1,11 @@
 from pixell import enmap
 import numpy as np
+import structlog
 
 from ..maps.maps import Depth1Map
 from ..source_catalog.database import SourceCatalogDatabase
+
+logger = structlog.get_logger(__name__)
 
 def make_enmap(center_ra:float=0.0,
                center_dec:float=0.0,
@@ -19,13 +22,16 @@ def make_enmap(center_ra:float=0.0,
     from pixell.utils import degree, arcmin
 
     if (width_ra<=0) or (width_dec<=0):
+        logger.error("Map width must be positive", width_ra=width_ra, width_dec=width_dec)
         raise ValueError("Map width must be positive")
     
     min_dec = center_dec-width_dec
     max_dec = center_dec+width_dec
     if min_dec<-90:
+        logger.error("Minimum declination is below -90", min_dec=min_dec)
         raise ValueError("Minimum declination, %.1f, is below -90"%min_dec)
     if max_dec>90:
+        logger.error("Maximum declination is above 90", max_dec=max_dec)
         raise ValueError("Maximum declination, %.1f, is above 90"%max_dec)
     
     min_ra = center_ra-width_ra
@@ -68,10 +74,11 @@ def make_noise_map(imap:enmap.ndmap,
     wcs = imap.wcs
     noise_map = enmap.zeros(shape, wcs=wcs)
     if not seed:
-        #print('No seed provided, setting seed with current ctime')
+        logger.debug("No seed provided, setting seed with current ctime")
         seed=np.random.seed()
     mask = edge_map(imap)
     if np.all(mask==0):
+        logger.warning("Mask is all zeros, using full mask")
         mask = np.ones(shape)  # If the mask is all zeros, invert it to create a full mask.
     noise_map += make_noise_image(shape, 
                                   distribution='gaussian', 
@@ -131,10 +138,11 @@ def photutils_sim_n_sources(sim_map:enmap.ndmap|Depth1Map,
     minsep=min_sep_arcmin*arcmin/mapres
 
     if not seed:
-        #print('No seed provided, setting seed with current ctime')
+        logger.debug("No seed provided, setting seed with current ctime")
         seed=np.random.seed()
 
     if min_flux_Jy>=max_flux_Jy:
+        logger.error("Min injected flux is less than or equal to max injected flux", min_flux_Jy=min_flux_Jy, max_flux_Jy=max_flux_Jy)
         raise ValueError("Min injected flux is less than or equal to max injected flux")
 
     ## set the window for each source to be 5x fwhm
@@ -232,6 +240,8 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
     from ..sources.sources import SourceCandidate
 
     if not sources:
+        if debug:
+            logger.info("No sources provided to inject_sources")
         return imap, []
     
     if isinstance(imap,Depth1Map):
@@ -255,6 +265,8 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
         pix = sky2pix(shape, wcs, np.asarray([dec, ra])*degree)
         if not (0 <= pix[0] < shape[-2] and 0 <= pix[1] < shape[-1]):
             removed_sources['out_of_bounds'] += 1
+            if debug:
+                logger.debug("Source out of bounds", ra=ra, dec=dec)
             continue
         if isinstance(imap,Depth1Map):
             mapval=imap.flux[int(pix[0]),int(pix[1])]
@@ -263,6 +275,8 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
         
         if not np.isfinite(mapval) or abs(mapval)==0:
             removed_sources['out_of_bounds'] += 1
+            if debug:
+                logger.debug("Source at invalid map value", ra=ra, dec=dec)
             continue
         
         # Check if the source is flaring at the observation time
@@ -273,6 +287,8 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
        
         if abs(source.peak_time - source_obs_time) > 3*source.flare_width:
             removed_sources['not_flaring'] += 1
+            if debug:
+                logger.debug("Source not flaring at observation time", ra=ra, dec=dec, peak_time=source.peak_time, obs_time=source_obs_time)
             continue
         
         flux = source.get_flux(source_obs_time)
@@ -315,8 +331,8 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
         imap += psf_image
 
     if debug:
-        print(f"Removed sources: {removed_sources}")
-        print(f"Injected sources: {len(injected_sources)}")
+        logger.info("Removed sources", removed_sources=removed_sources)
+        logger.info("Injected sources", count=len(injected_sources))
 
     return imap, injected_sources
 
@@ -328,7 +344,7 @@ def inject_sources_from_db(mapdata:Depth1Map,
                            ):
     ## inject static sources    
     if verbose:
-        print('Injecting static sources into simulated map using sim param config.')
+        logger.info("Injecting static sources into simulated map using sim param config.")
     catalog_sources= injected_source_db.read_database()
     mapdata,injected_sources = inject_sources(mapdata,
                                                 catalog_sources,
@@ -446,7 +462,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
         if sim_params:
             if sim_params['injected_transients']['n_transients']>0:
                 if verbose:
-                    print('Generating transients using sim config.')
+                    logger.info('Generating transients using sim config.')
                 if use_map_geometry:
                     ## use imap to generate random pixels 
                     ra_lims=None
@@ -486,8 +502,7 @@ def inject_simulated_sources(mapdata:Depth1Map,
                 injected_sources+=inj_sources
    
     if verbose:
-        print(f'Injected {len(catalog_sources)} sources into simulated map')
-        print(f'Injected {len(injected_sources)} transients into simulated map')
+        logger.info("Injected sources into simulated map", catalog_sources=len(catalog_sources), injected_sources=len(injected_sources))
     
     if isinstance(injected_source_db,SourceCatalogDatabase):
         ## add the catalog sources to the injected_source_db

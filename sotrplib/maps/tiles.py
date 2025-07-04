@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 import warnings
 
 import numpy as np
@@ -5,7 +7,11 @@ from pixell import enmap, utils
 from scipy import ndimage
 
 
-def get_tmap_tiles(tmap: enmap.ndmap, grid_deg: float, zeromap: enmap.ndmap, id=None):
+def get_tmap_tiles(tmap: enmap.ndmap, 
+                   grid_deg: float, 
+                   zeromap: enmap.ndmap, 
+                   id=None
+                   ):
     tile_map = tiles_t_quick(tmap, grid_deg, id=id)
     tile_map[np.where(zeromap == 0.0)] = 0.0
     return tile_map
@@ -227,9 +233,7 @@ def tiles_t_quick(tmap, grid_deg, id=None):
     t_shift = t_shift_1deg * grid_deg
     if t_shift == 0.0:
         if id is not None:
-            print(
-                f"Warning: did not find proper non zero pixel to measure t_shift for {id}"
-            )
+            logger.warning("did not find proper non zero pixel to measure t_shift", id=id)
         raise ValueError("did not find proper non zero pixel to measure t_shift")
     t_offsets = int(t_max / t_shift) + 1
     decs_pix = get_decs(tmap, grid_deg)

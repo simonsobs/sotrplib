@@ -1,5 +1,8 @@
 import astropy.units as u
 import numpy as np
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 ## used in generate_asteroid_ephem to provide location of observatory.
 SO_LAT = {"lat": -22.96098*u.deg,
@@ -277,7 +280,7 @@ def generate_asteroid_ephem(
             
                 eph[keyname] = pred_flux.value * u.mJy
             except Exception:
-                print(asteroid,frame['Diameter'])
+                logger.warning("Failed to estimate flux for asteroid", asteroid=asteroid, diameter=frame.get('Diameter', None))
                 eph[keyname] = np.nan
             
     frame["Ephem"] = eph
@@ -372,7 +375,7 @@ def interpolate_asteroid_ephem(obs_time,
         asteroid_name = frame["targetname"]
         if asteroid and asteroid_name != asteroid:
             continue
-        print("Checking asteroid {}".format(asteroid))
+        logger.info("Checking asteroid", asteroid=asteroid)
         ephem_time = Time(frame["Ephem"]['datetime_jd'],format='jd').unix
         nearest_ephem = np.argmin(np.abs(ephem_time - int(obs_time)))
         

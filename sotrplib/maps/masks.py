@@ -1,6 +1,8 @@
 import numpy as np
 from pixell import enmap
 
+from structlog import get_logger
+logger = get_logger(__name__)
 
 def mask_dustgal(imap: enmap.ndmap, galmask: enmap.ndmap):
     return enmap.extract(galmask, imap.shape, imap.wcs)
@@ -16,7 +18,7 @@ def mask_planets(
     try:
         from enlib import planet9
     except ModuleNotFoundError:
-        print('enlib not found, cannot mask planets')
+        logger.warning('enlib not found, cannot mask planets')
         return np.ones(tmap.shape)
     
     mjd_min = ctime2mjd(ctime)

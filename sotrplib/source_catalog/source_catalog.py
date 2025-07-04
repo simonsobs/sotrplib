@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 from pixell.enmap import enmap
 
 class SourceCatalog():
@@ -17,11 +19,11 @@ def load_act_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster
     '''
     from astropy.table import Table 
     sourcecat=None
-    print("Extracting known sources from ACT catalog")
+    logger.info("Extracting known sources from ACT catalog")
     sourcecat = Table.read(source_cat_file)
     sources = sourcecat[sourcecat["fluxJy"] >= (flux_threshold)]
     sources['RADeg'][sources["RADeg"]<0]+=360.
-    print(len(sources["decDeg"]), 'sources above flux threshold %.1f mJy'%(flux_threshold*1000))
+    logger.info("Sources above flux threshold", count=len(sources["decDeg"]), threshold_mJy=flux_threshold*1000)
     out_dict = {key:sources[key] for key in sources.colnames}
     return out_dict
 
@@ -132,7 +134,7 @@ def load_websky_csv_catalog(source_cat_file:str,
     '''
     from numpy import loadtxt, asarray
     from ..utils.utils import radec_to_str_name
-    print('loading websky catalog')
+    logger.info('Loading websky catalog')
     websky_flux,websky_ra,websky_dec = loadtxt(source_cat_file,
                                                delimiter=',',
                                                unpack=True,
@@ -140,7 +142,7 @@ def load_websky_csv_catalog(source_cat_file:str,
                                               )
     websky_ra[websky_ra>180.]-=360
     inds = websky_flux>flux_threshold
-    print(sum(inds),' sources above %.0f mJy'%(flux_threshold*1000))
+    logger.info('Sources above threshold', count=int(sum(inds)), threshold_mJy=flux_threshold*1000)
     sources = {}
     sources['RADeg'] = websky_ra[inds]
     sources['decDeg'] = websky_dec[inds]
@@ -157,7 +159,7 @@ def load_pandas_catalog(source_cat_file:str,
     load the source catalog from a pandas dataframe stored in a pickle file.
     '''
     import pandas as pd
-    print('loading pandas catalog')
+    logger.info('Loading pandas catalog')
     sources = pd.read_pickle(source_cat_file)
     sources['RADeg'][sources["RADeg"]<0]+=360.
     flux_cut = sources['fluxJy']>=flux_threshold
@@ -167,7 +169,7 @@ def load_pandas_catalog(source_cat_file:str,
 
 def load_million_quasar_catalog(source_cat_file:str='/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/milliquas.fits'):
     from astropy.table import Table
-    print('loading million quasar catalog')
+    logger.info('Loading million quasar catalog')
     sources = Table.read(source_cat_file)
     sources.rename_column('RA','RADeg')
     sources.rename_column('DEC','decDeg')
@@ -226,7 +228,7 @@ def load_catalog(source_cat_file:str,
                 sources[key]  = sources[key][source_mask]
         else:
             sources = sources[source_mask]
-        print(sum(source_mask),' sources actually within map')
+        logger.info('Sources actually within map', count=int(sum(source_mask)))
     if return_source_cand_list:
         from ..sources.forced_photometry import convert_catalog_to_source_objects
         sources = convert_catalog_to_source_objects(sources)

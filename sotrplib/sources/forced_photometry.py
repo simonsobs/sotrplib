@@ -1,3 +1,5 @@
+import structlog
+logger = structlog.get_logger(__name__)
 import numpy as np
 from typing import Union
 from pixell import enmap
@@ -165,7 +167,7 @@ def fit_2d_gaussian(flux_map:enmap.ndmap,
         plt.ylabel(r"$\Delta$Dec (arcmin)")
         plt.title("2D Gaussian Fit with Contours")
         plt.show()
-        print(gauss_fit)
+        logger.info("gauss_fit", fit=gauss_fit)
     
     return gauss_fit
 
@@ -366,7 +368,7 @@ def photutils_2D_gauss_fit(flux_map,
                 noise_thumb = flux_thumb/snr_thumb
             except Exception as e:
                 if debug:
-                    print(source_name,e)
+                    logger.warning("thumbnail reprojection failed", source_name=source_name, error=str(e))
                 fit_dict=return_initial_catalog_entry(sc,
                                                       add_dict=failed_fit_dict,
                                                       keyconv={'ra':rakey,
@@ -397,7 +399,7 @@ def photutils_2D_gauss_fit(flux_map,
             
         if np.any(np.isnan(flux_thumb)):
             if debug:
-                print(source_name,"map contains nan")
+                logger.warning("map contains nan", source_name=source_name)
             fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
                                                   keyconv={'ra':rakey,
@@ -434,7 +436,7 @@ def photutils_2D_gauss_fit(flux_map,
             fits.append(gauss_fit)
         else:
             if debug:
-                print(source_name, 'failed to fit.')
+                logger.warning("failed to fit", source_name=source_name)
             fit_dict=return_initial_catalog_entry(sc,
                                                   add_dict=failed_fit_dict,
                                                   keyconv={'ra':rakey,
@@ -479,7 +481,7 @@ def fit_xy_slices(image:enmap.ndmap,
     centroid_x,centroid_y = centroid_2dg(image,error=noise)
     mid_y, mid_x = ny // 2, nx // 2
     if centroid_x>nx or centroid_x<0 or centroid_y>ny or centroid_y<0:
-        print('Centroiding failed, defaulting to map center')
+        logger.warning('Centroiding failed, defaulting to map center')
         centroid_x=mid_x
         centroid_y=mid_y
     # Define extent so center of image is (0,0)
@@ -625,10 +627,9 @@ def photutils_gauss_slice_fit(flux_map,
     
     for i in range(len(ras)):
         map_res = abs(flux_map.wcs.wcs.cdelt[0]*degree)
-        print(ras[i],decs[i],fluxes[i])
+        logger.info("source_position_flux", ra=ras[i], dec=decs[i], flux=fluxes[i])
         pix = flux_map.sky2pix([decs[i]*degree, ras[i]*degree])
         thumbsize=size_deg*degree/map_res
-        #print(flux_map.shape,pix,thumbsize)
         if pix[0]+thumbsize>flux_map.shape[0] or pix[1]+thumbsize>flux_map.shape[1] or pix[0]-thumbsize<0 or pix[1]-thumbsize<0:
             continue
         try:
@@ -644,10 +645,10 @@ def photutils_gauss_slice_fit(flux_map,
                                         )
             noise_thumb = flux_thumb/snr_thumb
         except Exception as e:
-            print(e)
+            logger.warning("thumbnail extraction failed", error=str(e))
             continue
         if np.all(np.isnan(flux_thumb)):
-            print("map all nan")
+            logger.warning("map all nan", ra=ras[i], dec=decs[i])
             continue
         
         map_res = abs(flux_thumb.wcs.wcs.cdelt[0]*degree)

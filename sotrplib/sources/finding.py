@@ -2,6 +2,8 @@ import numpy as np
 from typing import Union
 from pixell.enmap import ndmap
 
+from structlog import get_logger
+logger = get_logger(__name__)
 
 '''
 Source finding routines from spt3g_software.
@@ -142,7 +144,7 @@ def extract_sources(inmap:ndmap,
     
     npeaks = peaks["n_detected"]
     if npeaks == 0:
-        print("No sources found")
+        logger.warning("No sources found in map")
         return {}
 
     # gather detected peaks into output structure, ignoring repeat
