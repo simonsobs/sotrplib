@@ -1,0 +1,8 @@
+{
+	"maps": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/15386/depth1_1538613353_pa5_f150_map.fits",
+	"map_dir": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/",
+	"solar_system": "/scratch/gpfs/snaess/actpol/ephemerides/objects",
+	"output_dir": "/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/"
+}
+
+// Source catalogues, databases
