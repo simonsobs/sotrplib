@@ -8,6 +8,19 @@ Currently, the output is three pandas databases in csv format.
 Now supports sim mode which can create gaussian noise maps, inject and recover sources and also inject sources into depth1 maps.
 More below  in the ## simulations section
 
+## Development requirements
+
+To get ready for development, create a virtual enviroment and install the package:
+```
+uv venv --python=3.12
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+pre-commit install
+```
+We use `ruff` for formatting. When you go to commit your code, it will automatically be 
+formatted thanks to the pre-commit hook.
+
+Tests are performed using `pytest`.
 
 ## extra required packages
 
