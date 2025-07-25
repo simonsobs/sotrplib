@@ -9,16 +9,14 @@ from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from pixell import enmap
 from pixell import utils as pixell_utils
+from scipy import spatial
 
 from ..sources.sources import SourceCandidate
 
 
-def crossmatch_mask(sources, 
-                    crosscat,
-                    radius:float,
-                    mode:str='all',
-                    return_matches:bool=False
-                    ):
+def crossmatch_mask(
+    sources, crosscat, radius: float, mode: str = "all", return_matches: bool = False
+):
     """Determines if source matches with masked objects
 
     Args:
@@ -39,16 +37,16 @@ def crossmatch_mask(sources,
         source_ra = sources[1] * pixell_utils.degree
         source_dec = sources[0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
-        if isinstance(radius,(list,np.ndarray)):
+        if isinstance(radius, (list, np.ndarray)):
             r = radius[0] * pixell_utils.arcmin
         else:
             r = radius * pixell_utils.arcmin
         match = pixell_utils.crossmatch(sourcepos, crosspos, r, mode=mode)
-        
+
         if len(match) > 0:
-            return True if not return_matches else True,match
+            return True if not return_matches else True, match
         else:
-            return False if not return_matches else False,match
+            return False if not return_matches else False, match
 
     mask = np.zeros(len(sources), dtype=bool)
     matches = []
@@ -56,40 +54,43 @@ def crossmatch_mask(sources,
         source_ra = sources[i, 1] * pixell_utils.degree
         source_dec = sources[i, 0] * pixell_utils.degree
         sourcepos = np.array([[source_ra, source_dec]])
-        if isinstance(radius,(list,np.ndarray)):
+        if isinstance(radius, (list, np.ndarray)):
             r = radius[i] * pixell_utils.arcmin
         else:
             r = radius * pixell_utils.arcmin
         match = pixell_utils.crossmatch(sourcepos, crosspos, r, mode=mode)
         if len(match) > 0:
             mask[i] = True
-        matches.append([(i,m[1]) for m in match])
+        matches.append([(i, m[1]) for m in match])
     if return_matches:
-        return mask,matches
+        return mask, matches
     else:
         return mask
 
-def crossmatch_with_million_quasar_catalog(mq_catalog,
-                                           sources,
-                                           radius_arcmin:float=0.5,
-                                          ):
+
+def crossmatch_with_million_quasar_catalog(
+    mq_catalog,
+    sources,
+    radius_arcmin: float = 0.5,
+):
     """
     Crossmatch the source candidates with the million quasar catalog.
     Returns a list of source candidates that are matched with the million quasar catalog
     and a dict with the crossmatch information.
-    
+
     Parameters:
     - mq_catalog: The million quasar catalog as an astropy table.
     - sources: catalog of source positions [[dec, ra]] in deg (same format as crossmatch_mask).
     - radius_arcmin: The matching radius in arcmin.
 
     """
-    isin_cat,catalog_match = crossmatch_mask(sources,
-                                             np.asarray([mq_catalog['decDeg'], mq_catalog["RADeg"]]).T,
-                                             radius_arcmin,
-                                             mode='closest',
-                                             return_matches=True
-                                            )
+    isin_cat, catalog_match = crossmatch_mask(
+        sources,
+        np.asarray([mq_catalog["decDeg"], mq_catalog["RADeg"]]).T,
+        radius_arcmin,
+        mode="closest",
+        return_matches=True,
+    )
     match_info = {}
     for i in range(len(isin_cat)):
         match_info[i] = {}
@@ -97,65 +98,78 @@ def crossmatch_with_million_quasar_catalog(mq_catalog,
             cm = catalog_match[i][0][1]
             for key in mq_catalog.keys():
                 match_info[i][key] = mq_catalog[key][cm]
-            match_info[i]['pvalue'] = None ## need to calculate probability.
-    return isin_cat,match_info
+            match_info[i]["pvalue"] = None  ## need to calculate probability.
+    return isin_cat, match_info
 
 
-def gaia_match(cand:SourceCandidate,
-               maxmag:float=16,
-               maxsep_deg:float=1*pixell_utils.degree,
-               parallax_required=True,
-               mag_key = 'phot_g_mean_mag',
-               sep_key = 'dist',
-               ):
+def gaia_match(
+    cand: SourceCandidate,
+    maxmag: float = 16,
+    maxsep_deg: float = 1 * pixell_utils.degree,
+    parallax_required=True,
+    mag_key="phot_g_mean_mag",
+    sep_key="dist",
+):
     from ..source_catalog.query_tools import cone_query_gaia
-    gaia_results = cone_query_gaia(cand.ra,cand.dec,radius_arcmin=cand.fwhm)
-    
+
+    gaia_results = cone_query_gaia(cand.ra, cand.dec, radius_arcmin=cand.fwhm)
+
     if gaia_results:
-        parallax = (np.isfinite(gaia_results['parallax'])) if parallax_required else (np.ones(len(gaia_results['parallax']),dtype=bool))
-        gaia_valid = gaia_results[(gaia_results[mag_key]<maxmag) & parallax & (gaia_results[sep_key]<maxsep_deg)]
+        parallax = (
+            (np.isfinite(gaia_results["parallax"]))
+            if parallax_required
+            else (np.ones(len(gaia_results["parallax"]), dtype=bool))
+        )
+        gaia_valid = gaia_results[
+            (gaia_results[mag_key] < maxmag)
+            & parallax
+            & (gaia_results[sep_key] < maxsep_deg)
+        ]
     else:
         gaia_valid = {}
     ## calculate pvalue, sort on pvalue.
     ## need to implement.
-    if len(gaia_valid)>0:
-        gaia_valid['pvalue'] = [None]*len(gaia_valid)
-        
+    if len(gaia_valid) > 0:
+        gaia_valid["pvalue"] = [None] * len(gaia_valid)
+
     return gaia_valid
 
 
-def alert_on_flare(previous_flux:float,
-                   new_flux:float,
-                   ratio_threshold:float=5.0,
-                   ):
+def alert_on_flare(
+    previous_flux: float,
+    new_flux: float,
+    ratio_threshold: float = 5.0,
+):
     """
     Check if the new flux is significantly larger than the previous flux.
     If the ratio of new flux to previous flux is greater than the threshold, return True.
     """
-    return new_flux/previous_flux > ratio_threshold
+    return new_flux / previous_flux > ratio_threshold
 
 
-def sift(extracted_sources,
-         catalog_sources,
-         imap:enmap.ndmap=None,
-         radius1Jy:float=30.0,
-         min_match_radius:float=1.5,
-         ra_jitter:float=0.0,
-         dec_jitter:float=0.0,
-         source_fluxes:list = None,
-         map_id:str = '',
-         map_freq:str = None,
-         arr:str=None,
-         cuts:dict={'fwhm':[0.5,5.0],
-                    'snr':[5.0,np.inf],},
-         crossmatch_with_gaia=True,
-         crossmatch_with_million_quasar=True,
-         additional_catalogs={},
-         debug=False,
-         ):
+def sift(
+    extracted_sources,
+    catalog_sources,
+    imap: enmap.ndmap = None,
+    radius1Jy: float = 30.0,
+    min_match_radius: float = 1.5,
+    ra_jitter: float = 0.0,
+    dec_jitter: float = 0.0,
+    source_fluxes: list = None,
+    map_id: str = "",
+    map_freq: str = None,
+    arr: str = None,
+    cuts: dict = {
+        "fwhm": [0.5, 5.0],
+        "snr": [5.0, np.inf],
+    },
+    crossmatch_with_gaia=True,
+    crossmatch_with_million_quasar=True,
+    additional_catalogs={},
+    debug=False,
+):
     from ..utils.utils import radec_to_str_name
-    
-    
+
     """
      Perform crossmatching of extracted sources from `extract_sources` and the cataloged sources.
      Return lists of dictionaries containing each source which matches the catalog, may be noise, or appears to be a transient.
@@ -193,170 +207,234 @@ def sift(extracted_sources,
         source_candidates, transient_candidates, noise_candidates : list
             list of dictionaries with information about the detected source.
 
-    """    
+    """
     from ..utils.utils import get_fwhm
-    fwhm_arcmin = get_fwhm(map_freq,arr=arr)
 
-    if isinstance(extracted_sources,type(None)):
-        return [],[],[]
-    
-    if isinstance(source_fluxes,type(None)):
-        source_fluxes = np.asarray([extracted_sources[f]['peakval'] for f in extracted_sources])
-    
-    extracted_ra = np.asarray([extracted_sources[f]['ra'] for f in extracted_sources])
-    extracted_dec = np.asarray([extracted_sources[f]['dec'] for f in extracted_sources])
+    fwhm_arcmin = get_fwhm(map_freq, arr=arr)
+
+    if isinstance(extracted_sources, type(None)):
+        return [], [], []
+
+    if isinstance(source_fluxes, type(None)):
+        source_fluxes = np.asarray(
+            [extracted_sources[f]["peakval"] for f in extracted_sources]
+        )
+
+    extracted_ra = np.asarray([extracted_sources[f]["ra"] for f in extracted_sources])
+    extracted_dec = np.asarray([extracted_sources[f]["dec"] for f in extracted_sources])
 
     if not catalog_sources:
-        isin_cat = np.zeros(len(extracted_ra),dtype=bool)
-        catalog_match = []*len(extracted_ra)
+        isin_cat = np.zeros(len(extracted_ra), dtype=bool)
+        catalog_match = [] * len(extracted_ra)
     else:
-        crossmatch_radius = np.minimum(np.maximum(source_fluxes*radius1Jy,min_match_radius),120)
-        isin_cat,catalog_match = crossmatch_mask(np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
-                                                np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
-                                                list(crossmatch_radius),
-                                                mode='closest',
-                                                return_matches=True
-                                                )
+        crossmatch_radius = np.minimum(
+            np.maximum(source_fluxes * radius1Jy, min_match_radius), 120
+        )
+        isin_cat, catalog_match = crossmatch_mask(
+            np.asarray(
+                [
+                    extracted_dec / pixell_utils.degree,
+                    extracted_ra / pixell_utils.degree,
+                ]
+            ).T,
+            np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]]).T,
+            list(crossmatch_radius),
+            mode="closest",
+            return_matches=True,
+        )
 
     if crossmatch_with_million_quasar:
-        if 'million_quasar' not in additional_catalogs:
+        if "million_quasar" not in additional_catalogs:
             if debug:
-                print('No million quasar catalog provided... cant do crossmatch')
-            isin_mq_cat = np.zeros(len(extracted_ra),dtype=bool)
-            mq_catalog_match = []*len(extracted_ra)
+                print("No million quasar catalog provided... cant do crossmatch")
+            isin_mq_cat = np.zeros(len(extracted_ra), dtype=bool)
+            mq_catalog_match = [] * len(extracted_ra)
         else:
-            mq_catalog = additional_catalogs['million_quasar']
+            mq_catalog = additional_catalogs["million_quasar"]
             if mq_catalog is not None:
-                isin_mq_cat,mq_catalog_match = crossmatch_with_million_quasar_catalog(mq_catalog,
-                                                                                      np.asarray([extracted_dec/ pixell_utils.degree,extracted_ra/ pixell_utils.degree ]).T,
-                                                                                      radius_arcmin=0.5
-                                                                                     )
-                
+                isin_mq_cat, mq_catalog_match = crossmatch_with_million_quasar_catalog(
+                    mq_catalog,
+                    np.asarray(
+                        [
+                            extracted_dec / pixell_utils.degree,
+                            extracted_ra / pixell_utils.degree,
+                        ]
+                    ).T,
+                    radius_arcmin=0.5,
+                )
+
     source_candidates = []
     transient_candidates = []
     noise_candidates = []
-    for source,cand_pos in enumerate(zip(extracted_ra,extracted_dec)):
+    for source, cand_pos in enumerate(zip(extracted_ra, extracted_dec)):
         forced_photometry_info = extracted_sources[source]
-        source_string_name = radec_to_str_name(cand_pos[0]/pixell_utils.degree,
-                                               cand_pos[1]/pixell_utils.degree
-                                              )
-            
+        source_string_name = radec_to_str_name(
+            cand_pos[0] / pixell_utils.degree, cand_pos[1] / pixell_utils.degree
+        )
+
         if isin_cat[source]:
-            crossmatch_name = catalog_sources['name'][catalog_match[source][0][1]]
+            crossmatch_name = catalog_sources["name"][catalog_match[source][0][1]]
         else:
-            crossmatch_name = ''
-        
+            crossmatch_name = ""
+
         if debug:
             print(source_string_name)
             if isin_cat[source]:
-                print('crossmatch:',crossmatch_name,'%.2f Jy'%catalog_sources['fluxJy'][catalog_match[source][0][1]])
+                print(
+                    "crossmatch:",
+                    crossmatch_name,
+                    "%.2f Jy" % catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                )
             print(forced_photometry_info)
-            
+
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
-        if "err_ra" not in forced_photometry_info or "err_dec" not in forced_photometry_info:
-            forced_photometry_info['err_ra'] = pixell_utils.fwhm*fwhm_arcmin*pixell_utils.arcmin /np.sqrt(forced_photometry_info['peaksig'])
-            forced_photometry_info['err_dec'] = pixell_utils.fwhm*fwhm_arcmin*pixell_utils.arcmin /np.sqrt(forced_photometry_info['peaksig'])
-            forced_photometry_info['err_ra'] = np.sqrt(forced_photometry_info['err_ra']**2+ra_jitter**2)
-            forced_photometry_info['err_dec'] = np.sqrt(forced_photometry_info['err_dec']**2+dec_jitter**2)
-            
+        if (
+            "err_ra" not in forced_photometry_info
+            or "err_dec" not in forced_photometry_info
+        ):
+            forced_photometry_info["err_ra"] = (
+                pixell_utils.fwhm
+                * fwhm_arcmin
+                * pixell_utils.arcmin
+                / np.sqrt(forced_photometry_info["peaksig"])
+            )
+            forced_photometry_info["err_dec"] = (
+                pixell_utils.fwhm
+                * fwhm_arcmin
+                * pixell_utils.arcmin
+                / np.sqrt(forced_photometry_info["peaksig"])
+            )
+            forced_photometry_info["err_ra"] = np.sqrt(
+                forced_photometry_info["err_ra"] ** 2 + ra_jitter**2
+            )
+            forced_photometry_info["err_dec"] = np.sqrt(
+                forced_photometry_info["err_dec"] ** 2 + dec_jitter**2
+            )
+
         ## peakval is the max value within the kron radius while kron_flux is the integrated flux (i.e. assuming resolved)
         ## since filtered maps are convolved w beam, use max pixel value.
-        cand = SourceCandidate(ra=cand_pos[0]/pixell_utils.degree%360,
-                               dec=cand_pos[1]/pixell_utils.degree,
-                               err_ra=forced_photometry_info['err_ra']/pixell_utils.degree,
-                               err_dec=forced_photometry_info['err_dec']/pixell_utils.degree,
-                               flux=forced_photometry_info['peakval'],
-                               err_flux=forced_photometry_info['peakval']/forced_photometry_info['peaksig'],
-                               kron_flux=forced_photometry_info['kron_flux'],
-                               kron_fluxerr=forced_photometry_info['kron_fluxerr'],
-                               kron_radius = forced_photometry_info['kron_radius'],
-                               snr=forced_photometry_info['peaksig'], 
-                               freq=str(map_freq),
-                               arr=arr,
-                               ctime=forced_photometry_info['time'],
-                               map_id=map_id,
-                               sourceID=source_string_name,
-                               matched_filtered=True,
-                               renormalized=True,
-                               catalog_crossmatch=isin_cat[source],
-                               ellipticity=forced_photometry_info['ellipticity'],
-                               elongation=forced_photometry_info['elongation'],
-                               fwhm=forced_photometry_info['fwhm'],
-                               fwhm_a=forced_photometry_info['semimajor_sigma']*2.355,
-                               fwhm_b=forced_photometry_info['semiminor_sigma']*2.355,
-                               orientation=forced_photometry_info['orientation'],
-                              )
-        cand.update_crossmatches(match_names=[crossmatch_name],
-                                 match_probabilities=[None]
-                                )
+        cand = SourceCandidate(
+            ra=cand_pos[0] / pixell_utils.degree % 360,
+            dec=cand_pos[1] / pixell_utils.degree,
+            err_ra=forced_photometry_info["err_ra"] / pixell_utils.degree,
+            err_dec=forced_photometry_info["err_dec"] / pixell_utils.degree,
+            flux=forced_photometry_info["peakval"],
+            err_flux=forced_photometry_info["peakval"]
+            / forced_photometry_info["peaksig"],
+            kron_flux=forced_photometry_info["kron_flux"],
+            kron_fluxerr=forced_photometry_info["kron_fluxerr"],
+            kron_radius=forced_photometry_info["kron_radius"],
+            snr=forced_photometry_info["peaksig"],
+            freq=str(map_freq),
+            arr=arr,
+            ctime=forced_photometry_info["time"],
+            map_id=map_id,
+            sourceID=source_string_name,
+            matched_filtered=True,
+            renormalized=True,
+            catalog_crossmatch=isin_cat[source],
+            ellipticity=forced_photometry_info["ellipticity"],
+            elongation=forced_photometry_info["elongation"],
+            fwhm=forced_photometry_info["fwhm"],
+            fwhm_a=forced_photometry_info["semimajor_sigma"] * 2.355,
+            fwhm_b=forced_photometry_info["semiminor_sigma"] * 2.355,
+            orientation=forced_photometry_info["orientation"],
+        )
+        cand.update_crossmatches(
+            match_names=[crossmatch_name], match_probabilities=[None]
+        )
         ## do sifting operations here...
-        is_cut = get_cut_decision(cand,cuts,debug=debug)
+        is_cut = get_cut_decision(cand, cuts, debug=debug)
         if isin_cat[source] and not is_cut:
-            print(source,crossmatch_name,catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux)
-            if alert_on_flare(catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux):
-                print('ALERT: %s has increased flux from %.2f to %.2f Jy'%(crossmatch_name,catalog_sources['fluxJy'][catalog_match[source][0][1]],cand.flux))
+            print(
+                source,
+                crossmatch_name,
+                catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                cand.flux,
+            )
+            if alert_on_flare(
+                catalog_sources["fluxJy"][catalog_match[source][0][1]], cand.flux
+            ):
+                print(
+                    "ALERT: %s has increased flux from %.2f to %.2f Jy"
+                    % (
+                        crossmatch_name,
+                        catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                        cand.flux,
+                    )
+                )
                 transient_candidates.append(cand)
             else:
                 source_candidates.append(cand)
-        elif is_cut or not np.isfinite(forced_photometry_info['kron_flux']) or not np.isfinite(forced_photometry_info['kron_fluxerr']) or not np.isfinite(forced_photometry_info['peakval']) :
+        elif (
+            is_cut
+            or not np.isfinite(forced_photometry_info["kron_flux"])
+            or not np.isfinite(forced_photometry_info["kron_fluxerr"])
+            or not np.isfinite(forced_photometry_info["peakval"])
+        ):
             noise_candidates.append(cand)
         else:
             if crossmatch_with_gaia:
                 ## if running on compute node, can't access internet, so can't query gaia.
                 try:
-                    gaia_match_result = gaia_match(cand,maxsep_deg=cand.fwhm*pixell_utils.arcmin/pixell_utils.degree)
+                    gaia_match_result = gaia_match(
+                        cand,
+                        maxsep_deg=cand.fwhm
+                        * pixell_utils.arcmin
+                        / pixell_utils.degree,
+                    )
                     if gaia_match_result:
                         ## just grab the first result
-                        if len(gaia_match_result['designation'])>0:
-                            cand.update_crossmatches(match_names=[gaia_match_result['designation'][0]],
-                                                     match_probabilities=[gaia_match_result['pvalue'][0]]
-                                                    )
+                        if len(gaia_match_result["designation"]) > 0:
+                            cand.update_crossmatches(
+                                match_names=[gaia_match_result["designation"][0]],
+                                match_probabilities=[gaia_match_result["pvalue"][0]],
+                            )
                 except Exception:
                     pass
             ## give the transient candidate source a name indicating that it is a transient
-            cand.sourceID = '-T'.join(cand.sourceID.split('-S'))
+            cand.sourceID = "-T".join(cand.sourceID.split("-S"))
             transient_candidates.append(cand)
-        
+
         if isin_mq_cat[source]:
-            mq_name_columns = ['NAME','XNAME','RNAME']
+            mq_name_columns = ["NAME", "XNAME", "RNAME"]
             mq_names = []
             mq_probs = []
             for mq_name_column in mq_name_columns:
                 if mq_name_column in mq_catalog_match[source]:
                     mq_names.append(mq_catalog_match[source][mq_name_column])
-                    mq_probs.append(mq_catalog_match[source]['pvalue'])
-            cand.update_crossmatches(match_names=mq_names,
-                                     match_probabilities=mq_probs ## need to calculate probability.
-                                    )
-                    
+                    mq_probs.append(mq_catalog_match[source]["pvalue"])
+            cand.update_crossmatches(
+                match_names=mq_names,
+                match_probabilities=mq_probs,  ## need to calculate probability.
+            )
+
         del cand
-    if isinstance(imap,enmap.ndmap):
-        transient_candidates, new_noise_candidates = recalculate_local_snr(transient_candidates,
-                                                                           imap,
-                                                                           thumb_size_deg=0.5,
-                                                                           fwhm_arcmin=fwhm_arcmin,
-                                                                           snr_cut=cuts['snr'][0],
-                                                                          )
+    if isinstance(imap, enmap.ndmap):
+        transient_candidates, new_noise_candidates = recalculate_local_snr(
+            transient_candidates,
+            imap,
+            thumb_size_deg=0.5,
+            fwhm_arcmin=fwhm_arcmin,
+            snr_cut=cuts["snr"][0],
+        )
         noise_candidates.extend(new_noise_candidates)
-    
-    print(len(source_candidates),'catalog matches')
-    print(len(transient_candidates),'transient candidates')
-    print(len(noise_candidates),'probably noise') 
+
+    print(len(source_candidates), "catalog matches")
+    print(len(transient_candidates), "transient candidates")
+    print(len(noise_candidates), "probably noise")
     return source_candidates, transient_candidates, noise_candidates
 
 
-def get_cut_decision(candidate:SourceCandidate,
-                     cuts:dict={},
-                     debug=False
-                     )->bool:
-    '''
+def get_cut_decision(candidate: SourceCandidate, cuts: dict = {}, debug=False) -> bool:
+    """
     cuts contains dictionary with key values describing the cuts.
 
     acceptable cut keys : ['fwhm']
 
     each cut key has [min,max] value on which to make cuts.
 
-    for example, 
+    for example,
     if i want a source iwth measured fwhm >0.5 arcmin and less than 5 arcmin
     cuts={'fwhm':[0.5,5.0]}
     cut = (candidate['fwhm']<cuts['fwhm'][0]) | (candidate['fwhm']>cuts['fwhm'][1])
@@ -365,23 +443,27 @@ def get_cut_decision(candidate:SourceCandidate,
 
     True : cut source
     False : within ranges
-    '''
+    """
     cut = False
     for c in cuts.keys():
-        val = getattr(candidate,c)
-        cut |= (val<cuts[c][0]) | (val>cuts[c][1])
-        if debug and (val<cuts[c][0]) | (val>cuts[c][1]):
-            print('cut %s: %.2f < %.2f or %.2f > %.2f'%(c,val,cuts[c][0],val,cuts[c][1]))
+        val = getattr(candidate, c)
+        cut |= (val < cuts[c][0]) | (val > cuts[c][1])
+        if debug and (val < cuts[c][0]) | (val > cuts[c][1]):
+            print(
+                "cut %s: %.2f < %.2f or %.2f > %.2f"
+                % (c, val, cuts[c][0], val, cuts[c][1])
+            )
     return cut
 
 
-def recalculate_local_snr(transient_candidates:list,
-                          imap:enmap.ndmap, 
-                          thumb_size_deg:float=0.5,
-                          fwhm_arcmin:float=2.2,
-                          snr_cut:float=5.0,
-                          ratio_cut:float=1.3,
-                         ):
+def recalculate_local_snr(
+    transient_candidates: list,
+    imap: enmap.ndmap,
+    thumb_size_deg: float = 0.5,
+    fwhm_arcmin: float = 2.2,
+    snr_cut: float = 5.0,
+    ratio_cut: float = 1.3,
+):
     """
     Recalculate the local SNR for each transient source.
 
@@ -400,47 +482,50 @@ def recalculate_local_snr(transient_candidates:list,
     - updated_transient_candidates: List of transient source candidates with updated SNR.
     - updated_noise_candidates: List of noise source candidates with updated SNR.
     """
-    from pixell.utils import degree,arcmin
-    from ..utils.utils import get_pix_from_peak_to_noise
+    from pixell.utils import arcmin, degree
+
     from ..maps.maps import get_submap
+    from ..utils.utils import get_pix_from_peak_to_noise
 
     updated_transient_candidates = []
     updated_noise_candidates = []
     ## same mask for each one
-    mask=None
+    mask = None
     for candidate in transient_candidates:
         # Extract a thumbnail of the transient source
         ra, dec = candidate.ra, candidate.dec
-        thumbnail = get_submap(imap, 
-                               ra,
-                               dec, 
-                               size_deg=thumb_size_deg,
-                              )
-        
+        thumbnail = get_submap(
+            imap,
+            ra,
+            dec,
+            size_deg=thumb_size_deg,
+        )
+
         # Mask the center out to 2 times the FWHM
-        #if isinstance(mask,type(None)):
-        center = tuple(int(t/2) for t in thumbnail.shape)
-        fwhm_pix = fwhm_arcmin/abs(thumbnail.wcs.wcs.cdelt[0]*degree/arcmin)
-        
-        mask_radius = get_pix_from_peak_to_noise(candidate.flux,
-                                                 candidate.flux/candidate.snr,
-                                                 fwhm_pix=fwhm_pix,
-                                                )[0]
-        mask_radius*=np.sqrt(2) ## for matched filter size
-        Y, X = np.ogrid[:thumbnail.shape[0], :thumbnail.shape[1]]
-        dist_from_center = np.sqrt((X - center[1])**2 + (Y - center[0])**2)
+        # if isinstance(mask,type(None)):
+        center = tuple(int(t / 2) for t in thumbnail.shape)
+        fwhm_pix = fwhm_arcmin / abs(thumbnail.wcs.wcs.cdelt[0] * degree / arcmin)
+
+        mask_radius = get_pix_from_peak_to_noise(
+            candidate.flux,
+            candidate.flux / candidate.snr,
+            fwhm_pix=fwhm_pix,
+        )[0]
+        mask_radius *= np.sqrt(2)  ## for matched filter size
+        Y, X = np.ogrid[: thumbnail.shape[0], : thumbnail.shape[1]]
+        dist_from_center = np.sqrt((X - center[1]) ** 2 + (Y - center[0]) ** 2)
         mask = dist_from_center >= mask_radius
 
         # Calculate the RMS noise of the unmasked region
         unmasked_flux = thumbnail[mask > 0]
         rms_noise = np.nanstd(unmasked_flux)
         # Recalculate the SNR using the new RMS noise
-        old_snr=candidate.snr
+        old_snr = candidate.snr
         candidate.snr = candidate.flux / rms_noise
-        new_snr=candidate.snr
-        snr_ratio = old_snr/new_snr
-        #print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux,rms_noise))
-        if candidate.snr>snr_cut and snr_ratio<ratio_cut and np.isfinite(snr_ratio):
+        new_snr = candidate.snr
+        snr_ratio = old_snr / new_snr
+        # print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux,rms_noise))
+        if candidate.snr > snr_cut and snr_ratio < ratio_cut and np.isfinite(snr_ratio):
             updated_transient_candidates.append(candidate)
         else:
             updated_noise_candidates.append(candidate)
@@ -448,14 +533,15 @@ def recalculate_local_snr(transient_candidates:list,
     return updated_transient_candidates, updated_noise_candidates
 
 
-def crossmatch_position_and_flux(injected_sources:list,
-                                 recovered_sources:list,
-                                 flux_threshold:float=0.01,
-                                 fractional_flux:float=0.01,
-                                 spatial_threshold:float=0.05,
-                                 fail_unmatched:bool=False,
-                                 fail_flux_mismatch:bool=False,
-                                ):
+def crossmatch_position_and_flux(
+    injected_sources: list,
+    recovered_sources: list,
+    flux_threshold: float = 0.01,
+    fractional_flux: float = 0.01,
+    spatial_threshold: float = 0.05,
+    fail_unmatched: bool = False,
+    fail_flux_mismatch: bool = False,
+):
     """
     Crossmatch the injected sources and transients with the recovered ones.
     Ensure the recovered fluxes are within 3 sigma of the injected fluxes.
@@ -470,19 +556,21 @@ def crossmatch_position_and_flux(injected_sources:list,
     Returns:
     - A dictionary containing the failure fractions for sources and transients.
     """
-    from pixell.utils import degree,arcmin
+    from pixell.utils import arcmin, degree
+
     # Convert injected and recovered sources to numpy arrays of positions
     injected_positions = np.array([[src.dec, src.ra] for src in injected_sources])
     recovered_positions = np.array([[src.dec, src.ra] for src in recovered_sources])
 
     # Perform crossmatch to find matches
-    matched_mask, matches = crossmatch_mask(injected_positions, 
-                                            recovered_positions, 
-                                            radius=spatial_threshold*degree/arcmin, 
-                                            mode='closest', 
-                                            return_matches=True
-                                           ) 
-    
+    matched_mask, matches = crossmatch_mask(
+        injected_positions,
+        recovered_positions,
+        radius=spatial_threshold * degree / arcmin,
+        mode="closest",
+        return_matches=True,
+    )
+
     if np.sum(np.logical_not(matched_mask)) > 0 and fail_unmatched:
         print(ValueError("Some injected sources were not recovered."))
 
@@ -505,50 +593,57 @@ def crossmatch_position_and_flux(injected_sources:list,
             out_ra.append(recovered_sources[match[0][1]].ra)
             in_dec.append(injected_sources[i].dec)
             out_dec.append(recovered_sources[match[0][1]].dec)
-            #get input and recovered ra,dec
-            if abs(injected_flux - recovered_flux) <=  np.sqrt(flux_threshold**2 + (fractional_flux*injected_flux)**2) :
+            # get input and recovered ra,dec
+            if abs(injected_flux - recovered_flux) <= np.sqrt(
+                flux_threshold**2 + (fractional_flux * injected_flux) ** 2
+            ):
                 similar_fluxes.append(True)
             else:
                 similar_fluxes.append(False)
         else:
-            print('no match to source',i)
+            print("no match to source", i)
             ij = injected_sources[i]
-            print('%.3f,%3f, flux=%.2f, fwhm a,b=(%.2f,%.2f)'%(ij.ra,ij.dec,ij.flux,ij.fwhm_a,ij.fwhm_b))
+            print(
+                "%.3f,%3f, flux=%.2f, fwhm a,b=(%.2f,%.2f)"
+                % (ij.ra, ij.dec, ij.flux, ij.fwhm_a, ij.fwhm_b)
+            )
             similar_fluxes.append(False)
-    
-    
-    from ..utils.plot import ascii_scatter,ascii_vertical_histogram
-    meandec=np.mean(in_dec)
-    delta_ra = np.subtract(in_ra,out_ra)*np.cos(np.degrees(meandec)) * degree / arcmin
-    delta_dec = np.subtract(in_dec,out_dec) * degree / arcmin
-    print('\n###########################################################\n')
-    ascii_scatter(delta_ra,delta_dec)
+
+    from ..utils.plot import ascii_scatter, ascii_vertical_histogram
+
+    meandec = np.mean(in_dec)
+    delta_ra = (
+        np.subtract(in_ra, out_ra) * np.cos(np.degrees(meandec)) * degree / arcmin
+    )
+    delta_dec = np.subtract(in_dec, out_dec) * degree / arcmin
+    print("\n###########################################################\n")
+    ascii_scatter(delta_ra, delta_dec)
     print("RA offset (X-axis) vs DEC offset (Y-axis) in arcmin")
-    print('\n###########################################################')
-    ascii_scatter(in_flux,out_flux)
+    print("\n###########################################################")
+    ascii_scatter(in_flux, out_flux)
     print("Injected flux (X-axis) vs Recovered flux (Y-axis) in Jy")
-    
-    print('\n###########################################################')
-    
-    ascii_vertical_histogram(1e3*np.subtract(in_flux,out_flux),
-                             bin_width=10,
-                             min_val=-100.0,
-                             max_val=100.0,
-                             height=20
-                            )
+
+    print("\n###########################################################")
+
+    ascii_vertical_histogram(
+        1e3 * np.subtract(in_flux, out_flux),
+        bin_width=10,
+        min_val=-100.0,
+        max_val=100.0,
+        height=20,
+    )
     print("Recovered Flux difference (X-axis) in mJy\n")
-    print('###########################################################')
-    print('\n')
+    print("###########################################################")
+    print("\n")
     if np.sum(np.logical_not(similar_fluxes)) > 0 and fail_flux_mismatch:
         raise ValueError("Some injected sources have mismatched fluxes.")
 
     return matched_mask, similar_fluxes
 
+
 ####################
 ## Act crossmatching between wafers / bands etc.
 ####################
-
-
 
 
 def get_cats(
@@ -782,11 +877,17 @@ def crossmatch_array_new(cats_in_order, N, radius, ctime):
                         if enmap.contains(
                             ivar.shape,
                             ivar.wcs,
-                            [dec_deg * pixell_utilsdegree, ra_deg * pixell_utilsdegree],
+                            [
+                                dec_deg * pixell_utils.degree,
+                                ra_deg * pixell_utils.degree,
+                            ],
                         ):
                             dist = obj_dist(ivar, np.array([[dec_deg, ra_deg]]))[0]
                             dec_pix, ra_pix = ivar.sky2pix(
-                                [dec_deg * pixell_utilsdegree, ra_deg * pixell_utilsdegree]
+                                [
+                                    dec_deg * pixell_utils.degree,
+                                    ra_deg * pixell_utils.degree,
+                                ]
                             )
                             ivar_src = ivar[int(dec_pix), int(ra_pix)]
                             if ivar_src != 0.0 and dist > 10.0:
@@ -1023,9 +1124,9 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
                 idx_src = int(matched_inds[key][i])
                 ra_src = full_cats_in_order[j].ra[idx_src]
                 dec_src = full_cats_in_order[j].dec[idx_src]
-                dist = pixell_utilsangdist(
-                    np.array([ra_src, dec_src]) * pixell_utilsdegree,
-                    np.array([ra, dec]) * pixell_utilsdegree,
+                dist = pixell_utils.angdist(
+                    np.array([ra_src, dec_src]) * pixell_utils.degree,
+                    np.array([ra, dec]) * pixell_utils.degree,
                 )
                 inputs = None  # TODO: FIX
                 fwhm = inputs.get_fwhm_arcmin(arr, freq)
@@ -1033,7 +1134,7 @@ def merge_cats(full_cats_in_order, N, radius, saveps=False, type="arr", ctime=No
                 pos_err = fwhm_deg / snr_src
                 var_w += (dist**2.0) * (1 / pos_err**2.0)
         var_w /= invar
-        pos_err_arcmin = var_w**0.5 * 60 / pixell_utilsdegree
+        pos_err_arcmin = var_w**0.5 * 60 / pixell_utils.degree
         cat_merge.append(
             np.array(
                 [
@@ -1142,7 +1243,7 @@ def candidate_output(
         )
 
         if verbosity > 0:
-            print(f'Wrote {op.join(can_odir, f"{ctime}_{str(i)}_ocat.fits")}')
+            print(f"Wrote {op.join(can_odir, f'{ctime}_{str(i)}_ocat.fits')}")
 
     return
 

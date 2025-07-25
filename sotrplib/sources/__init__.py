@@ -1,3 +1,3 @@
-from . import sources 
-from . import finding
-from . import forced_photometry
+from . import finding, forced_photometry, sources
+
+__all__ = ["finding", "forced_photometry", "sources"]

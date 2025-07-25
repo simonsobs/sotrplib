@@ -5,12 +5,16 @@
 ## the plan is to migrate most fo the constants in utils which used to live in inputs.py
 ## AF 23 Oct 24
 
-import json
 from typing import Optional
 
+import numpy as np
+
+observatory_info = None
+observatory_name_alias = None
+instrument_name_alias = None
 
 ## Example usage:
-'''
+"""
 import os
 cwd = os.getcwd()
 with open(os.path.join(cwd,'observatory_information.json'), 'r') as file:
@@ -33,21 +37,21 @@ actpol = Instrument.from_name(act,'ACTpol')
 
 ## get pa5 f150 beam fwhm
 pa5_f150_fwhm=actpol.get_fwhm('pa5','f150')
-'''
+"""
 
 
 class Observatory:
-    def __init__(self, 
-                name:str, 
-                location:str, 
-                latitude:float, 
-                longitude:float, 
-                elevation:float, 
-                observing_bands:list[str], 
-                primary_aperture:float, 
-                instruments:list[str]
-                ):
-        
+    def __init__(
+        self,
+        name: str,
+        location: str,
+        latitude: float,
+        longitude: float,
+        elevation: float,
+        observing_bands: list[str],
+        primary_aperture: float,
+        instruments: list[str],
+    ):
         self.name = name
         self.location = location
         self.latitude = latitude
@@ -56,7 +60,6 @@ class Observatory:
         self.observing_bands = observing_bands
         self.primary_aperture = primary_aperture
         self.instruments = instruments
-        
 
     @classmethod
     def from_name(cls, name):
