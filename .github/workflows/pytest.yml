@@ -28,5 +28,5 @@ jobs:
         run: uv pip install pixell; uv pip install ".[dev]"
 
       - name: Run tests
-        run: uv run pytest
+        run: pytest --cov
         
