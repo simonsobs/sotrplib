@@ -6,6 +6,9 @@ jobs:
   runtest:
     env:
       UV_SYSTEM_PYTHON: 1
+      FC: gfortran
+      CXX: g++
+      CC: gcc
 
     runs-on: ubuntu-latest
     strategy:
@@ -20,6 +23,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
         uses: astral-sh/setup-uv@v6
+
+      - name: Sync uv
+        run: uv pip intstall ".[dev]"
 
       - name: Run tests
         run: uv run pytest
