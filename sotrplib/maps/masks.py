@@ -16,9 +16,9 @@ def mask_planets(
     try:
         from enlib import planet9
     except ModuleNotFoundError:
-        print('enlib not found, cannot mask planets')
+        print("enlib not found, cannot mask planets")
         return np.ones(tmap.shape)
-    
+
     mjd_min = ctime2mjd(ctime)
     mjd_max = ctime2mjd(ctime + np.amax(tmap))
     mjds = np.linspace(mjd_min, mjd_max, 10)
@@ -81,31 +81,33 @@ def get_masked_map(
         return imap * edgemask * galmask * planet_mask
 
 
-def make_src_mask(imap:enmap.ndmap, 
-                  srcs_pix:list=None, 
-                  fwhm:float=None, 
-                  mask_radius:list=[], 
-                  arr:str=None, 
-                  freq:str=None
-                  ):
-    '''
+def make_src_mask(
+    imap: enmap.ndmap,
+    srcs_pix: list = None,
+    fwhm: float = None,
+    mask_radius: list = [],
+    arr: str = None,
+    freq: str = None,
+):
+    """
     mask_radius in pixels, can be gotten using
     sotrplib.utils.utils.get_pix_from_peak_to_noise
-    
-    '''
+
+    """
+    from pixell.utils import arcmin, degree
+
     from ..utils.utils import get_cut_radius
-    from pixell.utils import degree,arcmin
 
     mask = enmap.ones(imap.shape, wcs=imap.wcs, dtype=None)
-    map_res = np.abs(imap.wcs.wcs.cdelt[0])*degree
-    if arr and freq and len(mask_radius)==0:
-        r_pix = get_cut_radius(map_res/arcmin, arr, freq, fwhm)
+    map_res = np.abs(imap.wcs.wcs.cdelt[0]) * degree
+    if arr and freq and len(mask_radius) == 0:
+        r_pix = get_cut_radius(map_res / arcmin, arr, freq, fwhm)
     else:
-        r_pix = np.asarray(mask_radius) 
+        r_pix = np.asarray(mask_radius)
 
     if len(srcs_pix) > 0:
-        for i,cut_pix in enumerate(srcs_pix):
-            r = round(r_pix[i])+1
+        for i, cut_pix in enumerate(srcs_pix):
+            r = round(r_pix[i]) + 1
             dec_pix = round(cut_pix[0])
             ra_pix = round(cut_pix[1])
             dec_min = max(dec_pix - r, 0)

@@ -2,9 +2,11 @@
 Map testing
 """
 
+import os
+
 import pytest
 from pixell import enmap
-import os
+
 
 def create_map(full_path, shape=(64, 128), on: bool = False):
     if not on:
@@ -19,7 +21,9 @@ def ones_map_set(tmp_path):
     Creates a set of five maps: map, ivar, rho, kappa and time.
     time is just a map of zeros.
     """
-    map_paths = {x: tmp_path / f"{x}.fits" for x in ["map", "ivar", "rho", "kappa", "time"]}
+    map_paths = {
+        x: tmp_path / f"{x}.fits" for x in ["map", "ivar", "rho", "kappa", "time"]
+    }
 
     create_map(map_paths["map"], on=True)
     create_map(map_paths["ivar"], on=True)

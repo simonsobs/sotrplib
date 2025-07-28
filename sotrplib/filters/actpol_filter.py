@@ -26,12 +26,13 @@ def matched_filter(
 
     """
     import warnings
-    from pixell.utils import arcmin
-    from pixell.analysis import matched_filter_constcorr_dual
 
-    from ..utils.utils import get_ps_inmap
-    from ..utils.actpol_utils import get_sourceflux_threshold
+    from pixell.analysis import matched_filter_constcorr_dual
+    from pixell.utils import arcmin
+
     from ..maps.masks import make_circle_mask
+    from ..utils.actpol_utils import get_sourceflux_threshold
+    from ..utils.utils import get_ps_inmap
 
     mask_base = enmap.zeros(thumb_temp.shape, wcs=thumb_temp.wcs, dtype=None)
     mask_base[np.where(thumb_ivar > 0)] = 1

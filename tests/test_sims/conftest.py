@@ -1,8 +1,10 @@
 import pytest
 
+
 @pytest.fixture
 def sim_map_params():
-    return {"maps": {
+    return {
+        "maps": {
             "map_noise": 0.01,
             "center_ra": 2.0,
             "center_dec": -2.0,
@@ -11,10 +13,12 @@ def sim_map_params():
             "resolution": 0.5,
         }
     }
-        
+
+
 @pytest.fixture
 def sim_source_params():
-    return {"injected_sources": {
+    return {
+        "injected_sources": {
             "n_sources": 2,
             "min_flux": 0.1,
             "max_flux": 0.2,
@@ -22,9 +26,11 @@ def sim_source_params():
         }
     }
 
+
 @pytest.fixture
 def sim_transient_params():
-    return {"injected_transients": {
+    return {
+        "injected_transients": {
             "n_transients": 1,
             "min_flux": 0.1,
             "max_flux": 0.2,
@@ -35,9 +41,11 @@ def sim_transient_params():
         }
     }
 
+
 @pytest.fixture
 def dummy_source():
     from sotrplib.sims.sim_sources import SimTransient
+
     ds = SimTransient()
     ds.ra = 0.4
     ds.dec = -0.4
@@ -50,13 +58,15 @@ def dummy_source():
 @pytest.fixture
 def dummy_depth1_map(sim_map_params):
     from sotrplib.sims import sim_maps
+
     DummyMap = sim_maps.Depth1Map()
-    DummyMap.flux = sim_maps.make_enmap(**sim_map_params['maps'])
-    DummyMap.snr = 10+abs(sim_maps.make_enmap(**sim_map_params['maps']))## just keep above 0
-    DummyMap.time_map = 0*sim_maps.make_enmap(**sim_map_params['maps'])
+    DummyMap.flux = sim_maps.make_enmap(**sim_map_params["maps"])
+    DummyMap.snr = 10 + abs(
+        sim_maps.make_enmap(**sim_map_params["maps"])
+    )  ## just keep above 0
+    DummyMap.time_map = 0 * sim_maps.make_enmap(**sim_map_params["maps"])
     DummyMap.freq = "f090"
     DummyMap.wafer_name = "sim"
     DummyMap.map_id = "test"
     DummyMap.map_ctime = 0.0
     return DummyMap
-

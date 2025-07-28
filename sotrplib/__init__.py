@@ -1,9 +1,23 @@
-from . import source_catalog
-from . import filters
-from . import lightcurves 
-from . import maps
-from . import map_io
-from . import observatories
-from . import sifter
-from . import sources
-from . import utils
+from . import (
+    filters,
+    lightcurves,
+    map_io,
+    maps,
+    observatories,
+    sifter,
+    source_catalog,
+    sources,
+    utils,
+)
+
+__all__ = [
+    "filters",
+    "lightcurves",
+    "map_io",
+    "maps",
+    "observatories",
+    "sifter",
+    "source_catalog",
+    "sources",
+    "utils",
+]

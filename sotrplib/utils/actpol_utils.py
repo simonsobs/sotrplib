@@ -1,9 +1,9 @@
-import numpy as np
 import os.path as op
 
+import numpy as np
+from astropy.table import Table
 from pixell import enmap
 
-from astropy.table import Table
 
 def get_sourceflux_threshold(freq):
     """
@@ -79,9 +79,9 @@ def get_sourcecats():
     }
     return sourcecats
 
+
 @np.vectorize
 def planck_fluxcal(arr, freq):
-
     """
     Get flux calibration factor for a given frequency
 
@@ -118,6 +118,7 @@ def planck_fluxcal(arr, freq):
 
     return calib_dict[arr][freq][0], calib_dict[arr][freq][1]
 
+
 def get_mean_flux(ra_deg, dec_deg, freq, size):
     """calculates mean flux given position and band
 
@@ -129,6 +130,7 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
         flux [mJy], snr
     """
     from filters import matched_filter_1overf
+
     ra = ra_deg * np.pi / 180.0
     dec = dec_deg * np.pi / 180.0
     mean_map_file = (
@@ -154,6 +156,7 @@ def get_mean_flux(ra_deg, dec_deg, freq, size):
     snr = snr_map.at([dec, ra])
     return flux, snr
 
+
 def merge_result(flux_data):  # merge pa4 and pa5 result
     result_merged = np.array(
         [[225.0 * 1e9, 0.0, 0.0], [150.0 * 1e9, 0.0, 0.0], [98.0 * 1e9, 0.0, 0.0]]
@@ -171,6 +174,7 @@ def merge_result(flux_data):  # merge pa4 and pa5 result
         result_merged[1, 1] /= ivar_150
         result_merged[1, 2] = 1 / ivar_150**0.5
     return result_merged
+
 
 def merge_result_all(flux_data):  # merge same band results from all array
     result_merged = np.array(
@@ -206,12 +210,16 @@ def merge_result_all(flux_data):  # merge same band results from all array
         result_merged[2, 2] = 1 / ivar_090**0.5
     return result_merged
 
+
 def get_spectra_index(flux_data, ctime, data_type="pa4pa5_or_third"):
     def func(x, a, b):
         y = a * x**b
         return y
-    from .utils import calculate_alpha
+
     from scipy.interpolate import curve_fit
+
+    from .utils import calculate_alpha
+
     if data_type == "pa4pa5_or_third":
         merged_data = merge_result(flux_data)
         result_merged_sel = merged_data[np.where(merged_data[:, 1] > 0.0)]
@@ -293,4 +301,3 @@ def get_spectra_index(flux_data, ctime, data_type="pa4pa5_or_third"):
             alpha = 0
             err = 0
     return alpha, err
-

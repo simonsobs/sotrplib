@@ -1,39 +1,38 @@
-import numpy as np
 from typing import Union
+
+import numpy as np
 from pixell import enmap
 
 
-
-def gaussian_2d(xy, 
-                amplitude, 
-                x0, 
-                y0, 
-                sigma_x, 
-                sigma_y, 
-                theta, 
-                offset
-               ):
+def gaussian_2d(xy, amplitude, x0, y0, sigma_x, sigma_y, theta, offset):
     """
     2D Gaussian function.
-    
+
     """
     x, y = xy
     x0 = float(x0)
     y0 = float(y0)
-    a = (np.cos(theta)**2) / (2 * sigma_x**2) + (np.sin(theta)**2) / (2 * sigma_y**2)
+    a = (np.cos(theta) ** 2) / (2 * sigma_x**2) + (np.sin(theta) ** 2) / (
+        2 * sigma_y**2
+    )
     b = -(np.sin(2 * theta)) / (4 * sigma_x**2) + (np.sin(2 * theta)) / (4 * sigma_y**2)
-    c = (np.sin(theta)**2) / (2 * sigma_x**2) + (np.cos(theta)**2) / (2 * sigma_y**2)
-    return offset + amplitude * np.exp(-(a * (x - x0) ** 2 + 2 * b * (x - x0) * (y - y0) + c * (y - y0) ** 2))
+    c = (np.sin(theta) ** 2) / (2 * sigma_x**2) + (np.cos(theta) ** 2) / (
+        2 * sigma_y**2
+    )
+    return offset + amplitude * np.exp(
+        -(a * (x - x0) ** 2 + 2 * b * (x - x0) * (y - y0) + c * (y - y0) ** 2)
+    )
 
 
-def fit_2d_gaussian(flux_map:enmap.ndmap, 
-                    noise_map:enmap.ndmap, 
-                    resolution_arcmin:float,
-                    fwhm_guess_arcmin:float=2.2,
-                    thumbnail_center:tuple=(0,0),
-                    force_center:bool=False,
-                    PLOT:bool=False
-                   ):
+def fit_2d_gaussian(
+    flux_map: enmap.ndmap,
+    noise_map: enmap.ndmap,
+    resolution_arcmin: float,
+    fwhm_guess_arcmin: float = 2.2,
+    thumbnail_center: tuple = (0, 0),
+    force_center: bool = False,
+    PLOT: bool = False,
+):
     """
     Fits a 2D Gaussian to the given data array and calculates uncertainties.
 
@@ -42,574 +41,639 @@ def fit_2d_gaussian(flux_map:enmap.ndmap,
         So this isn't used right now.
 
     thumbnail_center: tuple
-        The ra,dec center of the thumbnail in decimal degrees. A reprojected map has center 0,0 so 
+        The ra,dec center of the thumbnail in decimal degrees. A reprojected map has center 0,0 so
         the fits give the ra,dec offsets. If using a simple cut (flux_map[-x:x,-y:y]) the center is
         at thumbnail_center so we will subtract that off to get the ra,dec offsets.
-    
+
     force_center: bool
         if True, center of gaussian fit is centered at the expected location and not allowed to vary.
 
     """
-    from scipy.optimize import curve_fit,OptimizeWarning
-    from pixell.utils import degree,arcmin
     import warnings
-    warnings.simplefilter("ignore",category=OptimizeWarning)
+
+    from pixell.utils import arcmin, degree
+    from scipy.optimize import OptimizeWarning, curve_fit
+
+    warnings.simplefilter("ignore", category=OptimizeWarning)
 
     ny, nx = flux_map.shape
     x = np.arange(nx)
     y = np.arange(ny)
     X, Y = np.meshgrid(x, y)
     xy = (X.ravel(), Y.ravel())
-    
+
     # Initial guess for parameters
     amplitude_guess = flux_map.max()
-    x0_guess, y0_guess = nx/2,ny/2  # Assume center of the image
-    sigma_guess = fwhm_guess_arcmin/resolution_arcmin/2.355  # Rough width estimate
+    x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
+    sigma_guess = fwhm_guess_arcmin / resolution_arcmin / 2.355  # Rough width estimate
     theta_guess = 0
     offset_guess = 0
-    initial_guess = [amplitude_guess, x0_guess, y0_guess, sigma_guess, sigma_guess, theta_guess, offset_guess]
-    
-    ## if force center, fix the x0,y0 guesses by not varying them 
+    initial_guess = [
+        amplitude_guess,
+        x0_guess,
+        y0_guess,
+        sigma_guess,
+        sigma_guess,
+        theta_guess,
+        offset_guess,
+    ]
+
+    ## if force center, fix the x0,y0 guesses by not varying them
     if force_center:
+
         def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
-            return gaussian_2d(xy, amplitude, x0_guess, y0_guess, sigma_x, sigma_y, theta, offset)
-        
-        initial_guess = [amplitude_guess, sigma_guess, sigma_guess, theta_guess, offset_guess]
+            return gaussian_2d(
+                xy, amplitude, x0_guess, y0_guess, sigma_x, sigma_y, theta, offset
+            )
+
+        initial_guess = [
+            amplitude_guess,
+            sigma_guess,
+            sigma_guess,
+            theta_guess,
+            offset_guess,
+        ]
     else:
         gaussian_2d_model = gaussian_2d
-    
+
     # Fit the data with uncertainty weighting
     try:
-        popt, pcov = curve_fit(gaussian_2d_model,
-                               xy,
-                               flux_map.ravel(),
-                               # sigma=noise_map.ravel(),
-                               p0=initial_guess,
-                               # absolute_sigma=True
-                              )
+        popt, pcov = curve_fit(
+            gaussian_2d_model,
+            xy,
+            flux_map.ravel(),
+            # sigma=noise_map.ravel(),
+            p0=initial_guess,
+            # absolute_sigma=True
+        )
     except RuntimeError:
         return {}
-    
+
     perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
-    
+
     # Extract parameters and uncertainties
     if force_center:
         amplitude, sigma_x, sigma_y, theta, offset = popt
         amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
         ra_fit, dec_fit = None, None
-        ra_offset_arcmin,dec_offset_arcmin = None,None
-        ra_err_arcmin, dec_err_arcmin = None,None
+        ra_offset_arcmin, dec_offset_arcmin = None, None
+        ra_err_arcmin, dec_err_arcmin = None, None
     else:
         amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
-        amplitude_err, x0_err, y0_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
-        dec_fit,ra_fit = flux_map.pix2sky([y0,x0])/degree
-        dec_offset_arcmin = (dec_fit - thumbnail_center[1])*degree/arcmin
-        ra_offset = (ra_fit - thumbnail_center[0])
-        if ra_offset>180.:
-            ra_offset-=360.
-        elif ra_offset<-180.:
-            ra_offset+=360.
-        ra_offset_arcmin = ra_offset*degree/arcmin
+        (
+            amplitude_err,
+            x0_err,
+            y0_err,
+            sigma_x_err,
+            sigma_y_err,
+            theta_err,
+            offset_err,
+        ) = perr
+        dec_fit, ra_fit = flux_map.pix2sky([y0, x0]) / degree
+        dec_offset_arcmin = (dec_fit - thumbnail_center[1]) * degree / arcmin
+        ra_offset = ra_fit - thumbnail_center[0]
+        if ra_offset > 180.0:
+            ra_offset -= 360.0
+        elif ra_offset < -180.0:
+            ra_offset += 360.0
+        ra_offset_arcmin = ra_offset * degree / arcmin
         ra_err_arcmin = x0_err * resolution_arcmin
         dec_err_arcmin = y0_err * resolution_arcmin
 
     fwhm_x_arcmin = 2.355 * sigma_x * resolution_arcmin
     fwhm_y_arcmin = 2.355 * sigma_y * resolution_arcmin
-    
+
     fwhm_x_err_arcmin = 2.355 * sigma_x_err * resolution_arcmin
     fwhm_y_err_arcmin = 2.355 * sigma_y_err * resolution_arcmin
-    theta_err_deg = theta_err/degree
+    theta_err_deg = theta_err / degree
 
     ## effectively set offset to zero
-    amplitude = amplitude+offset
-    amplitude_err = np.sqrt(amplitude_err**2+offset_err**2)
+    amplitude = amplitude + offset
+    amplitude_err = np.sqrt(amplitude_err**2 + offset_err**2)
 
-    gauss_fit = {"amplitude": (amplitude, amplitude_err),
-                 "ra_offset_arcmin": (ra_offset_arcmin, ra_err_arcmin),
-                 "dec_offset_arcmin": (dec_offset_arcmin, dec_err_arcmin),
-                 "fwhm_x_arcmin": (fwhm_x_arcmin, fwhm_x_err_arcmin),
-                 "fwhm_y_arcmin": (fwhm_y_arcmin, fwhm_y_err_arcmin),
-                 "theta": (np.degrees(theta), theta_err_deg),
-                 "forced": force_center,
-                }
+    gauss_fit = {
+        "amplitude": (amplitude, amplitude_err),
+        "ra_offset_arcmin": (ra_offset_arcmin, ra_err_arcmin),
+        "dec_offset_arcmin": (dec_offset_arcmin, dec_err_arcmin),
+        "fwhm_x_arcmin": (fwhm_x_arcmin, fwhm_x_err_arcmin),
+        "fwhm_y_arcmin": (fwhm_y_arcmin, fwhm_y_err_arcmin),
+        "theta": (np.degrees(theta), theta_err_deg),
+        "forced": force_center,
+    }
 
     if PLOT:
         from matplotlib import pylab as plt
 
         # Generate fitted Gaussian data
         fitted_data = gaussian_2d_model((X, Y), *popt).reshape(ny, nx)
-        
+
         # Compute contour levels using best-fit sigma_x, sigma_y, and theta
         sigma_levels = np.array([1, 2, 3])
         levels = offset + amplitude * np.exp(-0.5 * (sigma_levels**2))
-        if not np.all(np.diff(levels)>0):
-            levels=levels[::-1]
+        if not np.all(np.diff(levels) > 0):
+            levels = levels[::-1]
         # Plot the data with contours
-        plt.figure(figsize=(6,6))
-        plt.imshow(flux_map, 
-                   origin='lower', 
-                   cmap='viridis', 
-                   extent=[-nx/2 * resolution_arcmin, nx/2 * resolution_arcmin, -ny/2 * resolution_arcmin, ny/2 * resolution_arcmin])    
+        plt.figure(figsize=(6, 6))
+        plt.imshow(
+            flux_map,
+            origin="lower",
+            cmap="viridis",
+            extent=[
+                -nx / 2 * resolution_arcmin,
+                nx / 2 * resolution_arcmin,
+                -ny / 2 * resolution_arcmin,
+                ny / 2 * resolution_arcmin,
+            ],
+        )
         plt.colorbar(label="Intensity")
-        
-        if np.all(np.diff(levels)>0):
-            plt.contour((X-nx/2+0.5) * resolution_arcmin, 
-                        (Y-ny/2+0.5) * resolution_arcmin, 
-                        fitted_data, 
-                        levels=levels, 
-                        colors='white', 
-                        linewidths=1.5
-                        )
-        
+
+        if np.all(np.diff(levels) > 0):
+            plt.contour(
+                (X - nx / 2 + 0.5) * resolution_arcmin,
+                (Y - ny / 2 + 0.5) * resolution_arcmin,
+                fitted_data,
+                levels=levels,
+                colors="white",
+                linewidths=1.5,
+            )
+
         plt.xlabel(r"$\Delta$RA (arcmin)")
         plt.ylabel(r"$\Delta$Dec (arcmin)")
         plt.title("2D Gaussian Fit with Contours")
         plt.show()
         print(gauss_fit)
-    
+
     return gauss_fit
 
 
-def convert_catalog_to_source_objects(catalog_sources:dict,
-                                      freq:str='none',
-                                      arr:str='none',
-                                      ctime:Union[float,enmap.ndmap]=None,
-                                      map_id:str='',
-                                      source_type:str='',
-                                      ):
-    '''
-    take each source in the catalog and convert to a list 
+def convert_catalog_to_source_objects(
+    catalog_sources: dict,
+    freq: str = "none",
+    arr: str = "none",
+    ctime: Union[float, enmap.ndmap] = None,
+    map_id: str = "",
+    source_type: str = "",
+):
+    """
+    take each source in the catalog and convert to a list
     of Source objects.
 
-    '''
-    from pixell.utils import arcmin,degree
+    """
+    from pixell.utils import arcmin, degree
+
     from ..sources.sources import SourceCandidate
-    
-    if isinstance(catalog_sources,list):
+
+    if isinstance(catalog_sources, list):
         return catalog_sources
     if not catalog_sources:
         return []
-    
+
     known_sources = []
-    for i in range(len(catalog_sources['name'])):
-        if 'gauss_fit_flag' in catalog_sources:
-            bad_fit=catalog_sources['gauss_fit_flag'][i] 
+    for i in range(len(catalog_sources["name"])):
+        if "gauss_fit_flag" in catalog_sources:
+            bad_fit = catalog_sources["gauss_fit_flag"][i]
         else:
-            bad_fit=True
+            bad_fit = True
 
-        fit_type=None 
-        if 'forced' in catalog_sources:
-            if catalog_sources['forced'][i]:
-                fit_type='forced'
+        fit_type = None
+        if "forced" in catalog_sources:
+            if catalog_sources["forced"][i]:
+                fit_type = "forced"
             else:
-                fit_type='pointing'
+                fit_type = "pointing"
         else:
-            fit_type='none'
+            fit_type = "none"
 
-        source_ra = catalog_sources['RADeg'][i]%360 
-        source_dec = catalog_sources['decDeg'][i]
-        if isinstance(ctime,enmap.ndmap):
-            x,y=ctime.sky2pix([source_dec*degree,source_ra*degree])
-            source_ctime=ctime[int(x),int(y)]
-        elif isinstance(ctime,float):
-            source_ctime=ctime
+        source_ra = catalog_sources["RADeg"][i] % 360
+        source_dec = catalog_sources["decDeg"][i]
+        if isinstance(ctime, enmap.ndmap):
+            x, y = ctime.sky2pix([source_dec * degree, source_ra * degree])
+            source_ctime = ctime[int(x), int(y)]
+        elif isinstance(ctime, float):
+            source_ctime = ctime
         else:
-            source_ctime=np.nan
+            source_ctime = np.nan
         ra_uncert = np.nan
         if bad_fit:
-            cs = SourceCandidate(ra=source_ra,
-                                 dec=source_dec,
-                                 err_ra=np.nan,
-                                 err_dec=np.nan,
-                                 flux=catalog_sources['fluxJy'][i],
-                                 err_flux=catalog_sources['err_fluxJy'][i],
-                                 snr=np.nan,
-                                 freq=freq,
-                                 arr=arr,
-                                 ctime=source_ctime,
-                                 map_id=map_id,
-                                 sourceID=catalog_sources['name'][i],
-                                 crossmatch_names=[catalog_sources['name'][i]], 
-                                 crossmatch_probabilities=[1.0],
-                                 catalog_crossmatch=True,
-                                 fit_type=fit_type,
-                                 source_type=source_type,
-                                 )
+            cs = SourceCandidate(
+                ra=source_ra,
+                dec=source_dec,
+                err_ra=np.nan,
+                err_dec=np.nan,
+                flux=catalog_sources["fluxJy"][i],
+                err_flux=catalog_sources["err_fluxJy"][i],
+                snr=np.nan,
+                freq=freq,
+                arr=arr,
+                ctime=source_ctime,
+                map_id=map_id,
+                sourceID=catalog_sources["name"][i],
+                crossmatch_names=[catalog_sources["name"][i]],
+                crossmatch_probabilities=[1.0],
+                catalog_crossmatch=True,
+                fit_type=fit_type,
+                source_type=source_type,
+            )
         else:
-            if catalog_sources['ra_offset_arcmin'][i]:
-                source_ra+=catalog_sources['ra_offset_arcmin'][i]*arcmin/degree
-                ra_uncert = catalog_sources['err_ra_offset_arcmin'][i]*arcmin/degree
-            
+            if catalog_sources["ra_offset_arcmin"][i]:
+                source_ra += catalog_sources["ra_offset_arcmin"][i] * arcmin / degree
+                ra_uncert = catalog_sources["err_ra_offset_arcmin"][i] * arcmin / degree
+
             dec_uncert = np.nan
-            if catalog_sources['dec_offset_arcmin'][i]:
-                source_dec+=catalog_sources['dec_offset_arcmin'][i]*arcmin/degree
-                dec_uncert = catalog_sources['err_dec_offset_arcmin'][i]*arcmin/degree
-            cs = SourceCandidate(ra=source_ra,
-                                dec=source_dec,
-                                err_ra=ra_uncert,
-                                err_dec=dec_uncert,
-                                flux=catalog_sources['fluxJy'][i],
-                                err_flux=catalog_sources['err_fluxJy'][i],
-                                snr=np.nan,
-                                freq=freq,
-                                arr=arr,
-                                ctime=source_ctime,
-                                map_id=map_id,
-                                sourceID=catalog_sources['name'][i],
-                                crossmatch_names=[catalog_sources['name'][i]], 
-                                crossmatch_probabilities=[1.0],
-                                catalog_crossmatch=True,
-                                fwhm_a=catalog_sources['fwhm_x_arcmin'][i],
-                                fwhm_b=catalog_sources['fwhm_y_arcmin'][i],
-                                err_fwhm_a=catalog_sources['err_fwhm_x_arcmin'][i],
-                                err_fwhm_b=catalog_sources['err_fwhm_y_arcmin'][i],
-                                orientation=catalog_sources['theta'][i],
-                                fit_type=fit_type,
-                                source_type=source_type,
-                                )
-            
-            if cs.err_flux>0.0:
-                cs.snr = cs.flux/cs.err_flux
+            if catalog_sources["dec_offset_arcmin"][i]:
+                source_dec += catalog_sources["dec_offset_arcmin"][i] * arcmin / degree
+                dec_uncert = (
+                    catalog_sources["err_dec_offset_arcmin"][i] * arcmin / degree
+                )
+            cs = SourceCandidate(
+                ra=source_ra,
+                dec=source_dec,
+                err_ra=ra_uncert,
+                err_dec=dec_uncert,
+                flux=catalog_sources["fluxJy"][i],
+                err_flux=catalog_sources["err_fluxJy"][i],
+                snr=np.nan,
+                freq=freq,
+                arr=arr,
+                ctime=source_ctime,
+                map_id=map_id,
+                sourceID=catalog_sources["name"][i],
+                crossmatch_names=[catalog_sources["name"][i]],
+                crossmatch_probabilities=[1.0],
+                catalog_crossmatch=True,
+                fwhm_a=catalog_sources["fwhm_x_arcmin"][i],
+                fwhm_b=catalog_sources["fwhm_y_arcmin"][i],
+                err_fwhm_a=catalog_sources["err_fwhm_x_arcmin"][i],
+                err_fwhm_b=catalog_sources["err_fwhm_y_arcmin"][i],
+                orientation=catalog_sources["theta"][i],
+                fit_type=fit_type,
+                source_type=source_type,
+            )
+
+            if cs.err_flux > 0.0:
+                cs.snr = cs.flux / cs.err_flux
         known_sources.append(cs)
 
     return known_sources
 
 
-def return_initial_catalog_entry(source,
-                                 add_dict:dict={},
-                                 keyconv={},
-                                 ):
-    '''
+def return_initial_catalog_entry(
+    source,
+    add_dict: dict = {},
+    keyconv={},
+):
+    """
     source is a SourceCandidate object
-    '''
-    outdict={}
+    """
+    outdict = {}
     for item in vars(source):
         outdict[item] = getattr(source, item)
     outdict.update(add_dict)
     for key in keyconv:
         if key in outdict:
             outdict[keyconv[key]] = outdict.pop(key)
-           
+
     return outdict
 
-def photutils_2D_gauss_fit(flux_map,
-                           snr_map,
-                           source_catalog:list,
-                           rakey:str='RADeg',
-                           deckey:str='decDeg',
-                           fluxkey:str='fluxJy',
-                           dfluxkey:str='err_fluxJy',
-                           flux_lim_fit_centroid:float=0.3,
-                           size_deg=0.1,
-                           fwhm_arcmin=2.2,
-                           PLOT:bool=False,
-                           reproject_thumb:bool=False,
-                           return_thumbnails:bool=False,
-                           debug=False
-                          ):
-    '''
-    
-    
-    '''
-    from tqdm import tqdm
+
+def photutils_2D_gauss_fit(
+    flux_map,
+    snr_map,
+    source_catalog: list,
+    rakey: str = "RADeg",
+    deckey: str = "decDeg",
+    fluxkey: str = "fluxJy",
+    dfluxkey: str = "err_fluxJy",
+    flux_lim_fit_centroid: float = 0.3,
+    size_deg=0.1,
+    fwhm_arcmin=2.2,
+    PLOT: bool = False,
+    reproject_thumb: bool = False,
+    return_thumbnails: bool = False,
+    debug=False,
+):
+    """ """
     from pixell import reproject
-    from pixell.utils import degree,arcmin
+    from pixell.utils import arcmin, degree
+    from tqdm import tqdm
+
     from ..source_catalog.source_catalog import convert_gauss_fit_to_source_cat
-    
+
     fits = []
     thumbnails = []
     ## these are the keys output by the fitting function
     ## but including the failed fit flag
-    failed_fit_dict = {"ra_offset_arcmin": (None, None),
-                       "dec_offset_arcmin": (None, None),
-                       "fwhm_x_arcmin": (None, None),
-                       "fwhm_y_arcmin": (None, None),
-                       "theta": (None, None),
-                       "pix": (None,None),
-                       "forced": None,
-                       "gauss_fit_flag":1
-                      }
+    failed_fit_dict = {
+        "ra_offset_arcmin": (None, None),
+        "dec_offset_arcmin": (None, None),
+        "fwhm_x_arcmin": (None, None),
+        "fwhm_y_arcmin": (None, None),
+        "theta": (None, None),
+        "pix": (None, None),
+        "forced": None,
+        "gauss_fit_flag": 1,
+    }
 
-    for i in tqdm(range(len(source_catalog)),desc="Fitting sources w 2D Gaussian"):
+    for i in tqdm(range(len(source_catalog)), desc="Fitting sources w 2D Gaussian"):
         sc = source_catalog[i]
         source_name = sc.sourceID
-        map_res = abs(flux_map.wcs.wcs.cdelt[0]*degree)
-        pix = flux_map.sky2pix([sc.dec*degree, sc.ra*degree])
-        failed_fit_dict['pix'] = pix
-        thumbsize=size_deg*degree/map_res
-        if pix[0]+thumbsize>flux_map.shape[0] or pix[1]+thumbsize>flux_map.shape[1] or pix[0]-thumbsize<0 or pix[1]-thumbsize<0:
-            fit_dict=return_initial_catalog_entry(sc,
-                                                  add_dict=failed_fit_dict,
-                                                  keyconv={'ra':rakey,
-                                                           'dec':deckey,
-                                                           'flux':fluxkey,
-                                                           'err_flux':dfluxkey,
-                                                           'name':'SourceID'
-                                                          },
-                                                 )
+        map_res = abs(flux_map.wcs.wcs.cdelt[0] * degree)
+        pix = flux_map.sky2pix([sc.dec * degree, sc.ra * degree])
+        failed_fit_dict["pix"] = pix
+        thumbsize = size_deg * degree / map_res
+        if (
+            pix[0] + thumbsize > flux_map.shape[0]
+            or pix[1] + thumbsize > flux_map.shape[1]
+            or pix[0] - thumbsize < 0
+            or pix[1] - thumbsize < 0
+        ):
+            fit_dict = return_initial_catalog_entry(
+                sc,
+                add_dict=failed_fit_dict,
+                keyconv={
+                    "ra": rakey,
+                    "dec": deckey,
+                    "flux": fluxkey,
+                    "err_flux": dfluxkey,
+                    "name": "SourceID",
+                },
+            )
             fits.append(fit_dict)
             if return_thumbnails:
                 thumbnails.append([])
         if reproject_thumb:
-            thumbnail_center=(0,0)
+            thumbnail_center = (0, 0)
             try:
-                flux_thumb = reproject.thumbnails(flux_map,
-                                                  [sc.dec*degree, sc.ra*degree], 
-                                                  r=size_deg * degree,
-                                                  res=map_res,
-                                                 )
-                snr_thumb = reproject.thumbnails(snr_map,
-                                                 [sc.dec*degree, sc.ra*degree], 
-                                                 r=size_deg * degree,
-                                                 res=map_res,
-                                                )
-                noise_thumb = flux_thumb/snr_thumb
+                flux_thumb = reproject.thumbnails(
+                    flux_map,
+                    [sc.dec * degree, sc.ra * degree],
+                    r=size_deg * degree,
+                    res=map_res,
+                )
+                snr_thumb = reproject.thumbnails(
+                    snr_map,
+                    [sc.dec * degree, sc.ra * degree],
+                    r=size_deg * degree,
+                    res=map_res,
+                )
+                noise_thumb = flux_thumb / snr_thumb
             except Exception as e:
                 if debug:
-                    print(source_name,e)
-                fit_dict=return_initial_catalog_entry(sc,
-                                                      add_dict=failed_fit_dict,
-                                                      keyconv={'ra':rakey,
-                                                               'dec':deckey,
-                                                               'flux':fluxkey,
-                                                               'err_flux':dfluxkey,
-                                                               'name':'SourceID'
-                                                              },
-                                                     )
+                    print(source_name, e)
+                fit_dict = return_initial_catalog_entry(
+                    sc,
+                    add_dict=failed_fit_dict,
+                    keyconv={
+                        "ra": rakey,
+                        "dec": deckey,
+                        "flux": fluxkey,
+                        "err_flux": dfluxkey,
+                        "name": "SourceID",
+                    },
+                )
                 fits.append(fit_dict)
                 if return_thumbnails:
                     thumbnails.append([])
                 continue
         else:
-            thumbnail_center=(sc.ra,sc.dec)
-            ra = sc.ra * degree + map_res/2
-            dec = sc.dec * degree + map_res/2
-            radius = size_deg  * degree
-            flux_thumb = flux_map.submap([[dec - radius, ra - radius], 
-                                         [dec + radius, ra + radius]],
-                                        )
-            snr_thumb = snr_map.submap([[dec - radius, ra - radius], 
-                                       [dec + radius, ra + radius]],
-                                      )
-            noise_thumb = flux_thumb/snr_thumb
+            thumbnail_center = (sc.ra, sc.dec)
+            ra = sc.ra * degree + map_res / 2
+            dec = sc.dec * degree + map_res / 2
+            radius = size_deg * degree
+            flux_thumb = flux_map.submap(
+                [[dec - radius, ra - radius], [dec + radius, ra + radius]],
+            )
+            snr_thumb = snr_map.submap(
+                [[dec - radius, ra - radius], [dec + radius, ra + radius]],
+            )
+            noise_thumb = flux_thumb / snr_thumb
             flux_thumb = flux_thumb.upgrade(factor=2)
             noise_thumb = noise_thumb.upgrade(factor=2)
-            
+
         if np.any(np.isnan(flux_thumb)):
             if debug:
-                print(source_name,"map contains nan")
-            fit_dict=return_initial_catalog_entry(sc,
-                                                  add_dict=failed_fit_dict,
-                                                  keyconv={'ra':rakey,
-                                                           'dec':deckey,
-                                                           'flux':fluxkey,
-                                                           'err_flux':dfluxkey,
-                                                           'name':'SourceID'
-                                                          },
-                                                 )
+                print(source_name, "map contains nan")
+            fit_dict = return_initial_catalog_entry(
+                sc,
+                add_dict=failed_fit_dict,
+                keyconv={
+                    "ra": rakey,
+                    "dec": deckey,
+                    "flux": fluxkey,
+                    "err_flux": dfluxkey,
+                    "name": "SourceID",
+                },
+            )
             fits.append(fit_dict)
             if return_thumbnails:
-                thumbnails.append([flux_thumb,noise_thumb])
+                thumbnails.append([flux_thumb, noise_thumb])
             continue
-        
-        map_res = abs(flux_thumb.wcs.wcs.cdelt[0]*degree)
-        
-        gauss_fit = fit_2d_gaussian(flux_thumb,
-                                    noise_thumb,
-                                    map_res/arcmin,
-                                    fwhm_guess_arcmin=fwhm_arcmin,
-                                    thumbnail_center=thumbnail_center,
-                                    force_center=True if sc.flux<flux_lim_fit_centroid else False,
-                                    PLOT=PLOT
-                                   )
+
+        map_res = abs(flux_thumb.wcs.wcs.cdelt[0] * degree)
+
+        gauss_fit = fit_2d_gaussian(
+            flux_thumb,
+            noise_thumb,
+            map_res / arcmin,
+            fwhm_guess_arcmin=fwhm_arcmin,
+            thumbnail_center=thumbnail_center,
+            force_center=True if sc.flux < flux_lim_fit_centroid else False,
+            PLOT=PLOT,
+        )
         if gauss_fit:
             gauss_fit[rakey] = sc.ra
-            gauss_fit[deckey] = sc.dec 
+            gauss_fit[deckey] = sc.dec
             gauss_fit["pix"] = pix
-            gauss_fit[fluxkey],gauss_fit['err_%s'%fluxkey] =  gauss_fit.pop('amplitude')
+            gauss_fit[fluxkey], gauss_fit["err_%s" % fluxkey] = gauss_fit.pop(
+                "amplitude"
+            )
             for key in vars(sc):
                 if key not in gauss_fit:
                     gauss_fit[key] = getattr(sc, key)
-            gauss_fit['gauss_fit_flag']=0
+            gauss_fit["gauss_fit_flag"] = 0
             fits.append(gauss_fit)
         else:
             if debug:
-                print(source_name, 'failed to fit.')
-            fit_dict=return_initial_catalog_entry(sc,
-                                                  add_dict=failed_fit_dict,
-                                                  keyconv={'ra':rakey,
-                                                           'dec':deckey,
-                                                           'flux':fluxkey,
-                                                           'err_flux':dfluxkey,
-                                                           'name':'SourceID'
-                                                          },
-                                                 )
+                print(source_name, "failed to fit.")
+            fit_dict = return_initial_catalog_entry(
+                sc,
+                add_dict=failed_fit_dict,
+                keyconv={
+                    "ra": rakey,
+                    "dec": deckey,
+                    "flux": fluxkey,
+                    "err_flux": dfluxkey,
+                    "name": "SourceID",
+                },
+            )
             fits.append(fit_dict)
         if return_thumbnails:
-            thumbnails.append([flux_thumb,noise_thumb])
+            thumbnails.append([flux_thumb, noise_thumb])
     fits = convert_gauss_fit_to_source_cat(fits)
 
-    return fits,thumbnails
-    
+    return fits, thumbnails
 
 
-def fit_xy_slices(image:enmap.ndmap,
-                  noise:enmap.ndmap,
-                  res_arcmin:float,
-                  PLOT:bool=False
-                  ):
-    '''
+def fit_xy_slices(
+    image: enmap.ndmap, noise: enmap.ndmap, res_arcmin: float, PLOT: bool = False
+):
+    """
     Calculate source centroid (or use center if centroid wonky)
     Slice an image and noise map through centroid/center in x and y .
     Fit 1D gaussian to the slices to extract:
         x,y offset and uncertainty
         x,y fwhm and uncertainty
-        
+
     uses astropy modeling and levmarlsq fitter.
-    '''
-    import numpy as np
+    """
     import matplotlib.pyplot as plt
-    from astropy.modeling import models, fitting
+    import numpy as np
+    from astropy.modeling import fitting, models
     from photutils.centroids import centroid_2dg
+
     model_gauss = models.Gaussian1D()
     fitter_gauss = fitting.LevMarLSQFitter()
-    
+
     # Get the middle indices
     ny, nx = image.shape
-    centroid_x,centroid_y = centroid_2dg(image,error=noise)
+    centroid_x, centroid_y = centroid_2dg(image, error=noise)
     mid_y, mid_x = ny // 2, nx // 2
-    if centroid_x>nx or centroid_x<0 or centroid_y>ny or centroid_y<0:
-        print('Centroiding failed, defaulting to map center')
-        centroid_x=mid_x
-        centroid_y=mid_y
+    if centroid_x > nx or centroid_x < 0 or centroid_y > ny or centroid_y < 0:
+        print("Centroiding failed, defaulting to map center")
+        centroid_x = mid_x
+        centroid_y = mid_y
     # Define extent so center of image is (0,0)
-    extent = np.asarray([-mid_x, mid_x, -mid_y, mid_y])*res_arcmin
-    x_arcmin= np.linspace(-mid_x, mid_x, nx)*res_arcmin
-    y_arcmin = np.linspace(-mid_y, mid_y, ny)*res_arcmin
-    
-    best_fit_gaussx = fitter_gauss(model_gauss, 
-                                  x_arcmin, 
-                                  image[int(centroid_y),:], 
-                                  weights=1/noise[int(centroid_y),:]
-                                 )
-    
-    cov_diagx = np.diag(fitter_gauss.fit_info['param_cov'])
+    extent = np.asarray([-mid_x, mid_x, -mid_y, mid_y]) * res_arcmin
+    x_arcmin = np.linspace(-mid_x, mid_x, nx) * res_arcmin
+    y_arcmin = np.linspace(-mid_y, mid_y, ny) * res_arcmin
+
+    best_fit_gaussx = fitter_gauss(
+        model_gauss,
+        x_arcmin,
+        image[int(centroid_y), :],
+        weights=1 / noise[int(centroid_y), :],
+    )
+
+    cov_diagx = np.diag(fitter_gauss.fit_info["param_cov"])
 
     x_off = best_fit_gaussx.mean.value
     x_off_err = np.copy(np.sqrt(cov_diagx[1]))
-    x_fwhm = 2.355*np.copy(best_fit_gaussx.stddev.value)
-    x_fwhm_err = 2.355*np.sqrt(cov_diagx[2])
+    x_fwhm = 2.355 * np.copy(best_fit_gaussx.stddev.value)
+    x_fwhm_err = 2.355 * np.sqrt(cov_diagx[2])
 
+    best_fit_gaussy = fitter_gauss(
+        model_gauss,
+        y_arcmin,
+        image[:, int(centroid_x)],
+        weights=1 / noise[:, int(centroid_x)],
+    )
 
-    best_fit_gaussy = fitter_gauss(model_gauss, 
-                                  y_arcmin, 
-                                  image[:,int(centroid_x)], 
-                                  weights=1/noise[:,int(centroid_x)]
-                                 )
-    
-    cov_diagy = np.diag(fitter_gauss.fit_info['param_cov'])
+    cov_diagy = np.diag(fitter_gauss.fit_info["param_cov"])
 
     y_off = best_fit_gaussy.mean.value
     y_off_err = np.copy(np.sqrt(cov_diagy[1]))
-    y_fwhm = 2.355*np.copy(best_fit_gaussy.stddev.value)
-    y_fwhm_err = 2.355*np.sqrt(cov_diagy[2])
-    
+    y_fwhm = 2.355 * np.copy(best_fit_gaussy.stddev.value)
+    y_fwhm_err = 2.355 * np.sqrt(cov_diagy[2])
+
     if PLOT:
-    # Create a figure with a gridspec layout
+        # Create a figure with a gridspec layout
         fig = plt.figure(figsize=(12, 12))
-        gs = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 3], hspace=0, wspace=0)
-        
+        gs = fig.add_gridspec(
+            2, 2, width_ratios=[3, 1], height_ratios=[1, 3], hspace=0, wspace=0
+        )
+
         # Plot the image
         ax_img = fig.add_subplot(gs[1, 0])
-        im = ax_img.imshow(image, origin='lower', cmap='viridis', extent=extent)
-        ax_img.grid(color='white', ls='--', alpha=0.5)
-        ax_img.set_xlabel('X Offset (arcmin)')
-        ax_img.set_ylabel('Y Offset (arcmin)')
-        ax_img.axvline(x_off,c='w',ls='--')
-        ax_img.axhline(y_off,c='w',ls='--')
+        im = ax_img.imshow(image, origin="lower", cmap="viridis", extent=extent)
+        ax_img.grid(color="white", ls="--", alpha=0.5)
+        ax_img.set_xlabel("X Offset (arcmin)")
+        ax_img.set_ylabel("Y Offset (arcmin)")
+        ax_img.axvline(x_off, c="w", ls="--")
+        ax_img.axhline(y_off, c="w", ls="--")
         # Plot the x-cut below
         ax_xcut = fig.add_subplot(gs[0, 0], sharex=ax_img)
-    
-        ax_xcut.errorbar(x_arcmin, 
-                         image[mid_y, :], 
-                         noise[mid_y,:],
-                         marker='o',
-                         ls='',
-                         color='k',
-                         label='data'
-                        )
-    
-        ax_xcut.plot(x_arcmin,
-                     best_fit_gaussx(x_arcmin),
-                     color='cyan',
-                     ls='--',
-                     label="best-fit:\n"
-                     r"$\hat{x}$=%.2f$\pm$%.2f"
-                     "\n"
-                     r"FWHM=%.2f$\pm$%.2f"%(x_off,x_off_err,x_fwhm,x_fwhm_err)
-                    )
-        
-        
-        ax_xcut.set_ylabel('Flux')
-        ax_xcut.tick_params(axis='x', labelbottom=False)
-        ax_xcut.grid(True, linestyle='--', alpha=0.5)
-        ax_xcut.legend(loc='upper right',fontsize=10)
+
+        ax_xcut.errorbar(
+            x_arcmin,
+            image[mid_y, :],
+            noise[mid_y, :],
+            marker="o",
+            ls="",
+            color="k",
+            label="data",
+        )
+
+        ax_xcut.plot(
+            x_arcmin,
+            best_fit_gaussx(x_arcmin),
+            color="cyan",
+            ls="--",
+            label="best-fit:\n"
+            r"$\hat{x}$=%.2f$\pm$%.2f"
+            "\n"
+            r"FWHM=%.2f$\pm$%.2f" % (x_off, x_off_err, x_fwhm, x_fwhm_err),
+        )
+
+        ax_xcut.set_ylabel("Flux")
+        ax_xcut.tick_params(axis="x", labelbottom=False)
+        ax_xcut.grid(True, linestyle="--", alpha=0.5)
+        ax_xcut.legend(loc="upper right", fontsize=10)
         # Extend grid lines into the side plot
         ax_xcut_twin = ax_xcut.twiny()
         ax_xcut_twin.set_xlim(ax_img.get_xlim())
-    
+
         # Plot the y-cut to the right (flipped)
         ax_ycut = fig.add_subplot(gs[1, 1], sharey=ax_img)
-        ax_ycut.errorbar(image[:, mid_x],
-                         y_arcmin,
-                         xerr=noise[:, mid_x],
-                         marker='o',
-                         ls='',
-                         color='k',
-                         label='data'
-                        )
-        
-        ax_ycut.plot(best_fit_gaussy(y_arcmin),
-                     y_arcmin,
-                     color='cyan',
-                     label="best-fit:\n"
-                     r"$\hat{y}$=%.2f$\pm$%.2f"
-                     "\n"
-                     r"FWHM=%.2f$\pm$%.2f"%(y_off,y_off_err,y_fwhm,y_fwhm_err)
-                    )
-        
-        ax_ycut.set_xlabel('Flux')
-        ax_ycut.tick_params(axis='y', labelleft=False)
-        ax_ycut.grid(True, linestyle='--', alpha=0.5)
-        ax_ycut.legend(loc='lower right',fontsize=10)
-        
+        ax_ycut.errorbar(
+            image[:, mid_x],
+            y_arcmin,
+            xerr=noise[:, mid_x],
+            marker="o",
+            ls="",
+            color="k",
+            label="data",
+        )
+
+        ax_ycut.plot(
+            best_fit_gaussy(y_arcmin),
+            y_arcmin,
+            color="cyan",
+            label="best-fit:\n"
+            r"$\hat{y}$=%.2f$\pm$%.2f"
+            "\n"
+            r"FWHM=%.2f$\pm$%.2f" % (y_off, y_off_err, y_fwhm, y_fwhm_err),
+        )
+
+        ax_ycut.set_xlabel("Flux")
+        ax_ycut.tick_params(axis="y", labelleft=False)
+        ax_ycut.grid(True, linestyle="--", alpha=0.5)
+        ax_ycut.legend(loc="lower right", fontsize=10)
+
         # Extend grid lines into the side plot
         ax_ycut_twin = ax_ycut.twinx()
         ax_ycut_twin.set_ylim(ax_img.get_ylim())
-        
+
         # Invert the y-axis of the cut plot to match the image
         ax_ycut.invert_yaxis()
         plt.show()
 
-    return x_off,x_off_err,x_fwhm,x_fwhm_err,y_off,y_off_err,y_fwhm,y_fwhm_err
+    return x_off, x_off_err, x_fwhm, x_fwhm_err, y_off, y_off_err, y_fwhm, y_fwhm_err
 
 
-def photutils_gauss_slice_fit(flux_map,
-                             snr_map,
-                             source_catalog:dict,
-                             rakey:str='RADeg',
-                             deckey:str='decDeg',
-                             fluxkey:str='fluxJy',
-                             size_deg=0.1,
-                             PLOT=False
-                             ):
-    '''
-    
-    
-    '''
+def photutils_gauss_slice_fit(
+    flux_map,
+    snr_map,
+    source_catalog: dict,
+    rakey: str = "RADeg",
+    deckey: str = "decDeg",
+    fluxkey: str = "fluxJy",
+    size_deg=0.1,
+    PLOT=False,
+):
+    """ """
     from pixell import reproject
-    from pixell.utils import degree,arcmin
-    
+    from pixell.utils import arcmin, degree
+
     ras = source_catalog[rakey]
     decs = source_catalog[deckey]
     fluxes = source_catalog[fluxkey]
@@ -621,43 +685,47 @@ def photutils_gauss_slice_fit(flux_map,
     y_fwhms = []
     x_fwhm_uncertainties = []
     y_fwhm_uncertainties = []
-    
-    
+
     for i in range(len(ras)):
-        map_res = abs(flux_map.wcs.wcs.cdelt[0]*degree)
-        print(ras[i],decs[i],fluxes[i])
-        pix = flux_map.sky2pix([decs[i]*degree, ras[i]*degree])
-        thumbsize=size_deg*degree/map_res
-        #print(flux_map.shape,pix,thumbsize)
-        if pix[0]+thumbsize>flux_map.shape[0] or pix[1]+thumbsize>flux_map.shape[1] or pix[0]-thumbsize<0 or pix[1]-thumbsize<0:
+        map_res = abs(flux_map.wcs.wcs.cdelt[0] * degree)
+        print(ras[i], decs[i], fluxes[i])
+        pix = flux_map.sky2pix([decs[i] * degree, ras[i] * degree])
+        thumbsize = size_deg * degree / map_res
+        # print(flux_map.shape,pix,thumbsize)
+        if (
+            pix[0] + thumbsize > flux_map.shape[0]
+            or pix[1] + thumbsize > flux_map.shape[1]
+            or pix[0] - thumbsize < 0
+            or pix[1] - thumbsize < 0
+        ):
             continue
         try:
-            flux_thumb = reproject.thumbnails(flux_map,
-                                        [decs[i]*degree, ras[i]*degree], 
-                                        r=size_deg * degree,
-                                        res=0.5*map_res
-                                        )
-            snr_thumb = reproject.thumbnails(snr_map,
-                                        [decs[i]*degree, ras[i]*degree], 
-                                        r=size_deg * degree,
-                                        res=0.5*map_res
-                                        )
-            noise_thumb = flux_thumb/snr_thumb
+            flux_thumb = reproject.thumbnails(
+                flux_map,
+                [decs[i] * degree, ras[i] * degree],
+                r=size_deg * degree,
+                res=0.5 * map_res,
+            )
+            snr_thumb = reproject.thumbnails(
+                snr_map,
+                [decs[i] * degree, ras[i] * degree],
+                r=size_deg * degree,
+                res=0.5 * map_res,
+            )
+            noise_thumb = flux_thumb / snr_thumb
         except Exception as e:
             print(e)
             continue
         if np.all(np.isnan(flux_thumb)):
             print("map all nan")
             continue
-        
-        map_res = abs(flux_thumb.wcs.wcs.cdelt[0]*degree)
-        
-        x_off,x_off_err,x_fwhm,x_fwhm_err,y_off,y_off_err,y_fwhm,y_fwhm_err = fit_xy_slices(flux_thumb,
-                                                                                            noise_thumb,
-                                                                                            map_res/arcmin,
-                                                                                            PLOT=PLOT
-                                                                                            )
-        
+
+        map_res = abs(flux_thumb.wcs.wcs.cdelt[0] * degree)
+
+        x_off, x_off_err, x_fwhm, x_fwhm_err, y_off, y_off_err, y_fwhm, y_fwhm_err = (
+            fit_xy_slices(flux_thumb, noise_thumb, map_res / arcmin, PLOT=PLOT)
+        )
+
         x_offsets.append(x_off)
         y_offsets.append(y_off)
         x_uncertainties.append(x_off_err)
@@ -666,6 +734,14 @@ def photutils_gauss_slice_fit(flux_map,
         y_fwhms.append(y_fwhm)
         x_fwhm_uncertainties.append(x_fwhm_err)
         y_fwhm_uncertainties.append(y_fwhm_err)
-        
-    return np.asarray(x_offsets),np.asarray(y_offsets),np.asarray(x_uncertainties),np.asarray(y_uncertainties),np.asarray(x_fwhms),np.asarray(y_fwhms),np.asarray(x_fwhm_uncertainties),np.asarray(y_fwhm_uncertainties)
 
+    return (
+        np.asarray(x_offsets),
+        np.asarray(y_offsets),
+        np.asarray(x_uncertainties),
+        np.asarray(y_uncertainties),
+        np.asarray(x_fwhms),
+        np.asarray(y_fwhms),
+        np.asarray(x_fwhm_uncertainties),
+        np.asarray(y_fwhm_uncertainties),
+    )
