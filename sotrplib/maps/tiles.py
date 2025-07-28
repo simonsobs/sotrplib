@@ -25,7 +25,7 @@ def get_medrat(snr: enmap, tiledmap):
     from scipy.stats import norm
 
     t = tiledmap.astype(int)
-    med0 = norm.ppf(0.75) 
+    med0 = norm.ppf(0.75)
     medians = ndimage.median(snr**2, labels=t, index=np.arange(np.max(t + 1)))
     median_map = medians[t]
     # supress divide by zero warning

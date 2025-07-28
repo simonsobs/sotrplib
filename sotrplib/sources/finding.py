@@ -1,68 +1,71 @@
-import numpy as np
 from typing import Union
+
+import numpy as np
 from pixell.enmap import ndmap
 
-
-'''
+"""
 Source finding routines from spt3g_software.
 Photutils version implemented by Melanie Archipley
 
-'''
+"""
 
 
-def get_source_sky_positions(extracted_sources,
-                             skymap
-                             ):
-    '''
-    from output of extract_sources, use xpeak and ypeak to 
+def get_source_sky_positions(extracted_sources, skymap):
+    """
+    from output of extract_sources, use xpeak and ypeak to
     convert to sky coordinates.
-    '''
+    """
     from pixell.utils import degree
 
     for f in extracted_sources:
-        x,y = extracted_sources[f]['xpeak'],extracted_sources[f]['ypeak']
-        
-        dec,ra = skymap.pix2sky(np.asarray([[y],[x]]))
-        extracted_sources[f]['ra'] = ra[0]%(360*degree)
-        extracted_sources[f]['dec'] = dec[0]
-        
-        if 'err_xpeak' in extracted_sources[f] and 'err_ypeak' in extracted_sources[f]:
-            dx,dy = extracted_sources[f]['err_xpeak'],extracted_sources[f]['err_ypeak']
+        x, y = extracted_sources[f]["xpeak"], extracted_sources[f]["ypeak"]
+
+        dec, ra = skymap.pix2sky(np.asarray([[y], [x]]))
+        extracted_sources[f]["ra"] = ra[0] % (360 * degree)
+        extracted_sources[f]["dec"] = dec[0]
+
+        if "err_xpeak" in extracted_sources[f] and "err_ypeak" in extracted_sources[f]:
+            dx, dy = (
+                extracted_sources[f]["err_xpeak"],
+                extracted_sources[f]["err_ypeak"],
+            )
             ## assume flat sky
-            mapres = abs(skymap.wcs.wcs.cdelt[0])*degree
-            extracted_sources[f]['err_ra'] = dx*mapres/np.cos(dec[0])
-            extracted_sources[f]['err_dec'] = dy*mapres
-        
+            mapres = abs(skymap.wcs.wcs.cdelt[0]) * degree
+            extracted_sources[f]["err_ra"] = dx * mapres / np.cos(dec[0])
+            extracted_sources[f]["err_dec"] = dy * mapres
+
     return extracted_sources
 
 
-def get_source_observation_time(extracted_sources,
-                                timemap:np.ndarray=None
-                                ):
-    '''
-    from output of extract_sources, use xpeak and ypeak to 
+def get_source_observation_time(extracted_sources, timemap: np.ndarray = None):
+    """
+    from output of extract_sources, use xpeak and ypeak to
     get the observed time given the map `timemap`.
-    '''
-    
+    """
+
     for f in extracted_sources:
-        if not isinstance(timemap,type(None)):
-            x,y = int(extracted_sources[f]['xpeak']),int(extracted_sources[f]['ypeak'])
-            extracted_sources[f]['time'] = timemap[y,x]
+        if not isinstance(timemap, type(None)):
+            x, y = (
+                int(extracted_sources[f]["xpeak"]),
+                int(extracted_sources[f]["ypeak"]),
+            )
+            extracted_sources[f]["time"] = timemap[y, x]
         else:
-            extracted_sources[f]['time'] = np.nan
-            
+            extracted_sources[f]["time"] = np.nan
+
     return extracted_sources
 
 
-def extract_sources(inmap:ndmap,
-                    timemap:ndmap=None,
-                    maprms:Union[float,ndmap]=None,
-                    nsigma:float=5.0,
-                    minrad:list=[0.5],
-                    sigma_thresh_for_minrad:list=[0.0],
-                    res:float=None,
-                    pixel_mask:np.ndarray=None,
-                    ):
+def extract_sources(
+    inmap: ndmap,
+    timemap: ndmap = None,
+    maprms: Union[float, ndmap] = None,
+    nsigma: float = 5.0,
+    minrad: list = [0.5],
+    sigma_thresh_for_minrad: list = [0.0],
+    res: float = None,
+    pixel_mask: np.ndarray = None,
+):
     """
     Quick 'n' dirty source finding
 
@@ -87,7 +90,7 @@ def extract_sources(inmap:ndmap,
         Resolution of map, in arcmin.  Required if ``inmap`` is an array.
     pixel_mask : 2d array or enmap.ndmap
         Optional mask applied to map before source finding.
-    
+
     Returns
     -------
     output_struct: dict
@@ -97,24 +100,23 @@ def extract_sources(inmap:ndmap,
             "ellipticity", "elongation", "fwhm", semimajor_sigma, semiminor_sigma, orientation
         Also kron aperture things:
           "kron_aperture","kron_flux", "kron_fluxerr", "kron_radius"
-            
+
     Notes
     -----
     Jan 2019: DPD ported from spt_analysis/sources/find_sources_quick.pro
     Jan 2025: AF porting to sotrplib
     """
-    from pixell.utils import degree, arcmin
+    from pixell.utils import arcmin, degree
 
     if res is None:
         try:
-            res = np.abs(inmap.wcs.wcs.cdelt[0])*degree/arcmin
+            res = np.abs(inmap.wcs.wcs.cdelt[0]) * degree / arcmin
         except AttributeError:
             raise ValueError("Argument `res` required if inmap is an array")
 
     minrad = np.atleast_1d(minrad)
     sigma_thresh_for_minrad = np.atleast_1d(sigma_thresh_for_minrad)
 
-    
     if len(sigma_thresh_for_minrad) != len(minrad):
         raise ValueError(
             "If you are specifying multiple avoidance radii,"
@@ -122,24 +124,23 @@ def extract_sources(inmap:ndmap,
         )
 
     if pixel_mask is not None:
-        imap*=pixel_mask 
+        inmap *= pixel_mask
 
     # get rms in map if not supplied
-    if isinstance(maprms,type(None)):
+    if isinstance(maprms, type(None)):
         whn0 = np.where(np.abs(inmap) > 1.0e-8)
         if len(whn0[0]) == 0:
             maprms = np.nanstd(inmap)
         else:
             maprms = np.nanstd(np.asarray(inmap)[whn0])
-            
-    
-    
-    peaks = find_using_photutils(np.asarray(inmap),
-                                 maprms,
-                                 nsigma=nsigma,
-                                 minnum=2,
-                                )
-    
+
+    peaks = find_using_photutils(
+        np.asarray(inmap),
+        maprms,
+        nsigma=nsigma,
+        minnum=2,
+    )
+
     npeaks = peaks["n_detected"]
     if npeaks == 0:
         print("No sources found")
@@ -165,28 +166,29 @@ def extract_sources(inmap:ndmap,
     kron_fluxerrs = peaks["kron_fluxerr"]
     kron_radii = peaks["kron_radius"]
     peak_assoc = np.zeros(npeaks)
-    
+
     output_struct = dict()
     for i in np.arange(npeaks):
-        output_struct[i] = {"xpeak": xpeaks[0],
-                            "ypeak": ypeaks[0],
-                            "peakval": peakvals[0],
-                            "peaksig": peaksigs[0],
-                            "ellipticity": ellipticities[0],
-                            "elongation": elongations[0],
-                            "fwhm": fwhms[0].value*res,
-                            "semimajor_sigma": sigma_major[0].value*res,
-                            "semiminor_sigma": sigma_minor[0].value*res,
-                            "covar_sigx": np.sqrt(covar_sigx2[0].value)*res,
-                            "covar_sigy": np.sqrt(covar_sigy2[0].value)*res,
-                            "covar_sigxy": np.sqrt(abs(covar_sigxy[0].value))*res,
-                            "orientation": orientation[0].value*degree,
-                            "kron_aperture": kron_apertures[0],
-                            "kron_flux": kron_fluxes[0],
-                            "kron_fluxerr": kron_fluxerrs[0],
-                            "kron_radius": kron_radii[0].value*res
-                           }
-            
+        output_struct[i] = {
+            "xpeak": xpeaks[0],
+            "ypeak": ypeaks[0],
+            "peakval": peakvals[0],
+            "peaksig": peaksigs[0],
+            "ellipticity": ellipticities[0],
+            "elongation": elongations[0],
+            "fwhm": fwhms[0].value * res,
+            "semimajor_sigma": sigma_major[0].value * res,
+            "semiminor_sigma": sigma_minor[0].value * res,
+            "covar_sigx": np.sqrt(covar_sigx2[0].value) * res,
+            "covar_sigy": np.sqrt(covar_sigy2[0].value) * res,
+            "covar_sigxy": np.sqrt(abs(covar_sigxy[0].value)) * res,
+            "orientation": orientation[0].value * degree,
+            "kron_aperture": kron_apertures[0],
+            "kron_flux": kron_fluxes[0],
+            "kron_fluxerr": kron_fluxerrs[0],
+            "kron_radius": kron_radii[0].value * res,
+        }
+
     minrad_pix = minrad / res
 
     ksource = 1
@@ -213,25 +215,26 @@ def extract_sources(inmap:ndmap,
             distpix = np.sqrt((prev_x - xpeaks[j]) ** 2 + (prev_y - ypeaks[j]) ** 2)
             whclose = np.where(distpix <= minrad_pix_os[0:ksource])[0]
             if len(whclose) == 0:
-                output_struct[ksource] = {"xpeak": xpeaks[j],
-                                          "ypeak": ypeaks[j],
-                                          "peakval": peakvals[j],
-                                          "peaksig": peaksigs[j],
-                                          "ellipticity": ellipticities[j],
-                                          "elongation": elongations[j],
-                                          "fwhm": fwhms[j].value*res,
-                                          "semimajor_sigma": sigma_major[j].value*res,
-                                          "semiminor_sigma": sigma_minor[j].value*res,
-                                          "covar_sigx": np.sqrt(covar_sigx2[j].value)*res,
-                                          "covar_sigy": np.sqrt(covar_sigy2[j].value)*res,
-                                          "covar_sigxy": np.sqrt(abs(covar_sigxy[j].value))*res,
-                                          "orientation": orientation[j].value*degree,
-                                          "kron_aperture": kron_apertures[j],
-                                          "kron_flux": kron_fluxes[j],
-                                          "kron_fluxerr": kron_fluxerrs[j],
-                                          "kron_radius": kron_radii[j].value*res
-                                         }
-                    
+                output_struct[ksource] = {
+                    "xpeak": xpeaks[j],
+                    "ypeak": ypeaks[j],
+                    "peakval": peakvals[j],
+                    "peaksig": peaksigs[j],
+                    "ellipticity": ellipticities[j],
+                    "elongation": elongations[j],
+                    "fwhm": fwhms[j].value * res,
+                    "semimajor_sigma": sigma_major[j].value * res,
+                    "semiminor_sigma": sigma_minor[j].value * res,
+                    "covar_sigx": np.sqrt(covar_sigx2[j].value) * res,
+                    "covar_sigy": np.sqrt(covar_sigy2[j].value) * res,
+                    "covar_sigxy": np.sqrt(abs(covar_sigxy[j].value)) * res,
+                    "orientation": orientation[j].value * degree,
+                    "kron_aperture": kron_apertures[j],
+                    "kron_flux": kron_fluxes[j],
+                    "kron_fluxerr": kron_fluxerrs[j],
+                    "kron_radius": kron_radii[j].value * res,
+                }
+
                 peak_assoc[j] = ksource
                 minrad_pix_os[ksource] = minrad_pix_all[j]
                 ksource += 1
@@ -249,24 +252,25 @@ def extract_sources(inmap:ndmap,
             distpix = np.sqrt((prev_x - xpeaks[j]) ** 2 + (prev_y - ypeaks[j]) ** 2)
             mindist = min(distpix)
             if mindist > minrad_pix:
-                output_struct[ksource] = {"xpeak": xpeaks[j],
-                                          "ypeak": ypeaks[j],
-                                          "peakval": peakvals[j],
-                                          "peaksig": peaksigs[j],
-                                          "ellipticity": ellipticities[j],
-                                          "elongation": elongations[j],
-                                          "fwhm": fwhms[j].value*res,
-                                          "semimajor_sigma": sigma_major[j].value*res,
-                                          "semiminor_sigma": sigma_minor[j].value*res,
-                                          "covar_sigx": np.sqrt(covar_sigx2[j].value)*res,
-                                          "covar_sigy": np.sqrt(covar_sigy2[j].value)*res,
-                                          "covar_sigxy": np.sqrt(abs(covar_sigxy[j].value))*res,
-                                          "orientation": orientation[j].value*degree,
-                                          "kron_aperture": kron_apertures[j],
-                                          "kron_flux": kron_fluxes[j],
-                                          "kron_fluxerr": kron_fluxerrs[j],
-                                          "kron_radius": kron_radii[j].value*res
-                                         }
+                output_struct[ksource] = {
+                    "xpeak": xpeaks[j],
+                    "ypeak": ypeaks[j],
+                    "peakval": peakvals[j],
+                    "peaksig": peaksigs[j],
+                    "ellipticity": ellipticities[j],
+                    "elongation": elongations[j],
+                    "fwhm": fwhms[j].value * res,
+                    "semimajor_sigma": sigma_major[j].value * res,
+                    "semiminor_sigma": sigma_minor[j].value * res,
+                    "covar_sigx": np.sqrt(covar_sigx2[j].value) * res,
+                    "covar_sigy": np.sqrt(covar_sigy2[j].value) * res,
+                    "covar_sigxy": np.sqrt(abs(covar_sigxy[j].value)) * res,
+                    "orientation": orientation[j].value * degree,
+                    "kron_aperture": kron_apertures[j],
+                    "kron_flux": kron_fluxes[j],
+                    "kron_fluxerr": kron_fluxerrs[j],
+                    "kron_radius": kron_radii[j].value * res,
+                }
                 peak_assoc[j] = ksource
                 ksource += 1
             else:
@@ -275,21 +279,18 @@ def extract_sources(inmap:ndmap,
         if src >= ksource:
             del output_struct[src]
 
-    output_struct = get_source_sky_positions(output_struct,
-                                             inmap
-                                            )
-    
-    output_struct = get_source_observation_time(output_struct,
-                                                timemap
-                                                )
+    output_struct = get_source_sky_positions(output_struct, inmap)
+
+    output_struct = get_source_observation_time(output_struct, timemap)
     return output_struct
 
 
-def find_using_photutils(Tmap:ndmap, 
-                         signoise:Union[float,ndmap]=None,
-                         minnum:int=2, 
-                         nsigma:float=5.0
-                         ):
+def find_using_photutils(
+    Tmap: ndmap,
+    signoise: Union[float, ndmap] = None,
+    minnum: int = 2,
+    nsigma: float = 5.0,
+):
     """
     Written to take same inputs and return outputs in the same format as the
     function ``find_groups``.  Utilizing astropy.photutils, one can deblend
@@ -322,7 +323,7 @@ def find_using_photutils(Tmap:ndmap,
           within the source segment."
         * ycen - array of Y-location of group centers.
         * semimajor_sigma, semiminor_sigma - sigma in major and minor axes of 2D gauss fit.
-        * orientation - The angle between the x axis and the semimajor axis. 
+        * orientation - The angle between the x axis and the semimajor axis.
                         The angle increases in the counter-clockwise direction.
         * n_detected - Number of detected sources.
 
@@ -375,32 +376,27 @@ def find_using_photutils(Tmap:ndmap,
     if isinstance(signoise, ndmap):
         signoise = np.asarray(signoise)
         assert signoise.shape == Tmap.shape
-    
-    img = pseg.detect_sources(Tmap, 
-                              threshold=nsigma * signoise, 
-                              npixels=minnum
-                              )
+
+    img = pseg.detect_sources(Tmap, threshold=nsigma * signoise, npixels=minnum)
     if img is None:
         return groups
 
-    img = pseg.deblend_sources(Tmap, 
-                               img, 
-                               npixels=minnum
-                               )
+    img = pseg.deblend_sources(Tmap, img, npixels=minnum)
     if img is None:
         return groups
 
-    cat = pseg.SourceCatalog(Tmap,
-                             img,
-                             error=signoise,
-                             apermask_method="correct",
-                             kron_params=(2.5, 1.0),
-                            )
+    cat = pseg.SourceCatalog(
+        Tmap,
+        img,
+        error=signoise,
+        apermask_method="correct",
+        kron_params=(2.5, 1.0),
+    )
 
     # convert catalog to table
     columns = [v for _, v in default_keys.items() if v] + extra_keys
     tbl = cat.to_table(columns=columns)
-    
+
     # rename keys to match find_groups output
     for k, v in default_keys.items():
         if v is not None:
@@ -420,9 +416,7 @@ def find_using_photutils(Tmap:ndmap,
     return groups
 
 
-def mask_sources_outside_map(sourcecat, 
-                             maskmap:ndmap
-                            ):
+def mask_sources_outside_map(sourcecat, maskmap: ndmap):
     """
     Determines if source is inside mask or observed region
 
@@ -435,12 +429,13 @@ def mask_sources_outside_map(sourcecat,
         mask column for sources, 1 observed, 0 not observed or outside map
     """
     from pixell.enmap import sky2pix
+
     # Check if sources are in mask
-    coords_rad = np.deg2rad(np.array([sourcecat['decDeg'], sourcecat['RADeg']]))
+    coords_rad = np.deg2rad(np.array([sourcecat["decDeg"], sourcecat["RADeg"]]))
     ypix, xpix = sky2pix(maskmap.shape, maskmap.wcs, coords_rad)
     mask = np.zeros(len(ypix))
-    for i,(x,y) in enumerate(zip(xpix.astype(int),ypix.astype(int))):
-        if x<0 or y<0:
+    for i, (x, y) in enumerate(zip(xpix.astype(int), ypix.astype(int))):
+        if x < 0 or y < 0:
             m = 0
         else:
             try:
@@ -457,10 +452,7 @@ def mask_sources_outside_map(sourcecat,
     return mask
 
 
-def get_ps_inmap(imap:np.ndarray, 
-                 sourcecat, 
-                 fluxlim:bool=None
-                 ):
+def get_ps_inmap(imap: np.ndarray, sourcecat, fluxlim: bool = None):
     """
     get point sources in map
 
@@ -481,10 +473,11 @@ def get_ps_inmap(imap:np.ndarray,
         sourcecat["RADeg"] > 180, sourcecat["RADeg"] - 360, sourcecat["RADeg"]
     )
 
-    sourcecat_coords = sky2pix(imap.shape,
-                               imap.wcs,
-                               np.array([np.deg2rad(sourcecat["decDeg"]), np.deg2rad(sourcecat["RADeg"])]),
-                              )
+    sourcecat_coords = sky2pix(
+        imap.shape,
+        imap.wcs,
+        np.array([np.deg2rad(sourcecat["decDeg"]), np.deg2rad(sourcecat["RADeg"])]),
+    )
     sourcecat = sourcecat[
         (sourcecat_coords[0] > 0)
         & (sourcecat_coords[0] < imap.shape[0])

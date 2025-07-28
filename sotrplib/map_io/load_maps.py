@@ -1,7 +1,8 @@
+from os import path
 from pathlib import Path
 
 import numpy as np
-from os import path
+
 from ..maps.maps import Depth1Map
 
 
@@ -16,23 +17,29 @@ def get_depth1_mapset(map_path: Path | str) -> dict[str, Path]:
 
     directory = map_path.parent
     filename = map_path.name
-    print(directory,  filename)
+    print(directory, filename)
     if filename.endswith("map.fits"):
-        outdict ={maptype: directory / filename.replace("map.fits", f"{maptype}.fits") for maptype in ["map", "ivar", "rho", "time", "kappa"]}
+        outdict = {
+            maptype: directory / filename.replace("map.fits", f"{maptype}.fits")
+            for maptype in ["map", "ivar", "rho", "time", "kappa"]
+        }
     elif filename.endswith("rho.fits"):
-        outdict = {maptype: directory / filename.replace("rho.fits", f"{maptype}.fits") for maptype in ["map", "ivar","rho", "kappa", "time"]}
+        outdict = {
+            maptype: directory / filename.replace("rho.fits", f"{maptype}.fits")
+            for maptype in ["map", "ivar", "rho", "kappa", "time"]
+        }
 
-    
     return outdict
 
 
-def load_depth1_mapset(map_path: Path | str,
-                        ivar_path: Path | str | None = None,
-                        rho_path: Path | str | None = None,
-                        kappa_path: Path | str | None = None,
-                        time_path: Path | str | None = None,
-                        polarization_selector: int = None,
-                    ) -> Depth1Map | None:
+def load_depth1_mapset(
+    map_path: Path | str,
+    ivar_path: Path | str | None = None,
+    rho_path: Path | str | None = None,
+    kappa_path: Path | str | None = None,
+    time_path: Path | str | None = None,
+    polarization_selector: int = None,
+) -> Depth1Map | None:
     """
 
     Load a set of depth1 maps. This can be :
@@ -72,16 +79,17 @@ def load_depth1_mapset(map_path: Path | str,
 
     map_paths = get_depth1_mapset(map_path=map_path)
     if ivar_path is not None:
-         map_paths["ivar"] = ivar_path
+        map_paths["ivar"] = ivar_path
     if rho_path is not None:
-         map_paths["rho"] = rho_path
+        map_paths["rho"] = rho_path
     if kappa_path is not None:
-         map_paths["kappa"] = kappa_path
+        map_paths["kappa"] = kappa_path
     if time_path is not None:
-         map_paths["time"] = time_path
+        map_paths["time"] = time_path
 
     def _read_map(name, value, sel=None):
         from pixell.enmap import read_map
+
         if value is not None:
             map_paths[name] = Path(value)
         # pixell only supports string filenames
@@ -89,8 +97,8 @@ def load_depth1_mapset(map_path: Path | str,
 
     ## check if imap exists, otherwise read in rho, kappa
     if not map_paths["map"].exists():
-        imap=None
-        ivar=None
+        imap = None
+        ivar = None
     else:
         imap = _read_map("map", map_paths["map"], sel=polarization_selector)
         ivar = _read_map("ivar", map_paths["ivar"], sel=polarization_selector)
@@ -99,13 +107,13 @@ def load_depth1_mapset(map_path: Path | str,
             print("map is all nan or zeros, skipping")
             return None
 
-    if not path.exists(map_paths['rho']):
+    if not path.exists(map_paths["rho"]):
         rho = None
         kappa = None
     else:
         rho = _read_map("rho", map_paths["rho"], sel=polarization_selector)
         kappa = _read_map("kappa", map_paths["kappa"], sel=polarization_selector)
-    
+
     map_filename = map_paths["map"].name
     if not path.exists(map_paths["time"]):
         time = None
@@ -117,7 +125,7 @@ def load_depth1_mapset(map_path: Path | str,
     if len(map_info) < 3:
         arr = None
         freq = None
-        ctime= None
+        ctime = None
     else:
         arr = map_info[2]
         freq = map_info[3]
