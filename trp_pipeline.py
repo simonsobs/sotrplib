@@ -181,11 +181,7 @@ args = parser.parse_args()
 
 log_level = getattr(logging, args.log_level.upper())
 logging.basicConfig(level=log_level)
-structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(log_level),
-                     processors=[structlog.processors.TimeStamper(fmt="iso"),
-                                 structlog.processors.JSONRenderer()
-                                ]
-                    )
+structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(log_level))
 
 cataloged_sources_db = SourceCatalogDatabase(args.output_dir+'so_source_catalog.csv')
 cataloged_sources_db.read_database()
