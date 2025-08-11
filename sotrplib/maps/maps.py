@@ -403,7 +403,7 @@ def load_map(map_path: Optional[Path|str|list] = None,
             # Check if other required files exist
             if not exists(path + "ivar.fits") or not exists(path + "time.fits"):
                 if verbose:
-                    logger.warning(f"Missing required files: ivar.fits or time.fits for {map_path}")
+                    logger.warning(f"Missing required files: ivar.fits and time.fits for {map_path}")
                 return None
                 
             ivar = enmap.read_map(path + "ivar.fits", box=box)  # inverse variance map
@@ -567,7 +567,7 @@ def get_observation_start_time(map_path:Path
     maptype,_ = get_maptype(map_path)
     infofile  = str(map_path).split(maptype)[0]+"info.hdf"
     if not exists(infofile):
-        t0 = None
+        t0 = 0.0
     else:
         from pixell.bunch import read as bunch_read
         info = bunch_read(infofile)
