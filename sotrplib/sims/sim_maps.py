@@ -276,7 +276,7 @@ def inject_sources(imap:enmap.ndmap|Depth1Map,
         if not np.isfinite(mapval) or abs(mapval)==0:
             removed_sources['out_of_bounds'] += 1
             if debug:
-                logger.debug("Source at invalid map value", ra=ra, dec=dec)
+                logger.debug("Source at invalid map value", ra=ra, dec=dec, mapval=mapval)
             continue
         
         # Check if the source is flaring at the observation time
