@@ -44,7 +44,7 @@ P.add_argument(
     default="tmp_thumbnail.hdf5",
     help="Suffix of temporary thumbnail files (so that deletion is safer).",
 )
-## not used yet...
+## implement splitting thumbnails by source. each source has different file.
 P.add_argument(
     "--split-sources",
     action="store_true",
@@ -109,27 +109,32 @@ def load_custom_hdf5(fname):
     return thumbnails
 
 
-def collate_thumbnail_files(files, out_file, cleanup=True):
+def collate_thumbnail_files(files, out_file, split_sources=False, cleanup=True):
     from pixell import enmap
     from tqdm import tqdm
 
-    thumbnails = []
+    
     for f in tqdm(sorted(files), desc="Loading thumbnail files..."):
+        thumbnails = []
         thumbnails += load_custom_hdf5(f)
 
-    for i in tqdm(range(len(thumbnails)), desc="Writing thumbnails to file"):
-        t = thumbnails[i].pop("thumb")
-        enmap.write_hdf(
-            out_file,
-            t,
-            address=str(i).zfill(len(str(len(thumbnails)))),
-            extra=thumbnails[i],
-        )
+        for i in range(len(thumbnails)):
+            t = thumbnails[i].pop("thumb")
+            if split_sources:
+                ## source name is SO-S Jxxxxx-xxxx so , just remove the SO-S part
+                source_name = thumbnails[i].get("name", "???").split(' ')[1]
+                output_file = f"{out_file.split('.hdf5')[0]}_{source_name}.hdf5"
+            else:
+                output_file = out_file
+            enmap.write_hdf(
+                output_file,
+                t,
+                address=str(i).zfill(len(str(len(thumbnails)))),
+                extra=thumbnails[i],
+            )
 
-    if cleanup:
-        from subprocess import run as sprun
-
-        for f in tqdm(sorted(files), desc="Cleaning up thumbnails"):
+        if cleanup:
+            from subprocess import run as sprun
             sprun(["rm", f])
     return
 
@@ -150,4 +155,4 @@ if "lightcurve" in args.out_file:
 else:
     outfile = args.out_dir + args.out_file.split(".txt")[0] + ".hdf5"
 
-collate_thumbnail_files(thumb_files, outfile, cleanup=not bool(args.no_cleanup))
+collate_thumbnail_files(thumb_files, outfile, split_sources=args.split_sources, cleanup=not bool(args.no_cleanup))
