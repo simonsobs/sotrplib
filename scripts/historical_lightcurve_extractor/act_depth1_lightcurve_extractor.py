@@ -10,7 +10,6 @@ import numpy as np
 from pixell import bunch, enmap
 from pixell import utils as pixell_utils
 
-sys.path.append(os.path.abspath(os.path.join(__file__, "..", "..","..")))
 from sotrplib.maps.maps import get_thumbnail, get_time_safe
 from sotrplib.utils.utils import fit_poss, radec_to_str_name
 
