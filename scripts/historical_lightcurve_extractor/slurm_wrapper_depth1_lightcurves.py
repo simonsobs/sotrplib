@@ -32,9 +32,16 @@ P.add_argument("--ra", nargs="+", default=[], help="Source RA (deg).")
 P.add_argument("--dec", nargs="+", default=[], help="Source DEC (deg).")
 
 P.add_argument(
+    "--ps-csv",
+    action="store",
+    default=None,
+    help="Path to the point source CSV file containing columns ra,dec which are in decimal degrees.",
+)
+
+P.add_argument(
     "--data-dir",
     action="store",
-    default="/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/",
+    default="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/",
     help="Data directory, where the depth1 maps live.",
 )
 
@@ -97,7 +104,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default=0.5,
+    default=0.2,
     type=float,
     help="Thumbnail radius (half-width of square map), in deg. ",
 )
@@ -188,6 +195,14 @@ slurm_text = generate_slurm_header(
     args.script_dir if args.script_dir else os.getcwd(),
     args.slurm_out_dir,
 )
+
+if args.ps_csv is not None:
+    import pandas as pd
+
+    ps_df = pd.read_csv(args.ps_csv).rename(columns=str.lower)
+    args.ra += [str(r) for r in ps_df["ra"].values]
+    args.dec += [str(d) for d in ps_df["dec"].values]
+    print(f"Loaded {len(ps_df['ra'].values)} sources from {args.ps_csv}")
 
 for i in tqdm(range(len(datelist))):
     date = datelist[i].split("/")[-1]
