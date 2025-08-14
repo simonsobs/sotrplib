@@ -450,6 +450,7 @@ for freq_arr_idx in indexed_map_groups:
 
         logger = logger.bind(map_id=map_id, fit_cuts=default_cuts)
         logger.info("pipeline.sift")
+
         sifter = DefaultSifter(
             radius_1Jy=1.5 if args.sim else 2 * band_fwhm / arcmin,
             cuts=default_cuts,
@@ -459,6 +460,7 @@ for freq_arr_idx in indexed_map_groups:
             log=logger,
             debug=args.verbose,
         )
+
         sifter_result = sifter.sift(
             extracted_sources=extracted_sources,
             catalog_sources=known_sources,

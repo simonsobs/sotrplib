@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+import structlog
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
@@ -16,8 +17,8 @@ from sotrplib.sources.sources import SourceCandidate
 @dataclass
 class SifterResult:
     source_candidates: list[SourceCandidate]
-    transient_candidates: list  # TODO: Are TransientCandidates a thing?
-    noise_candidates: list
+    transient_candidates: list[SourceCandidate]
+    noise_candidates: list[SourceCandidate]
 
 
 class AbstractSifter(ABC):
@@ -25,7 +26,11 @@ class AbstractSifter(ABC):
     def sift(
         extracted_sources: dict,
         catalog_sources: list,
-        flux_map: ndmap | None = None,
+        flux_map: ndmap | None,
+        # Map metadata for source candidates
+        map_id: str | None = None,
+        map_freq: str | None = None,
+        arr: str | None = None,
     ) -> SifterResult:
         raise NotImplementedError
 
@@ -76,8 +81,13 @@ class DefaultSifter(AbstractSifter):
         self.crossmatch_with_gaia = crossmatch_with_gaia
         self.crossmatch_with_million_quasar = crossmatch_with_million_quasar
         self.additional_catalogs = additional_catalogs or dict()
-        self.log = log or FilteringBoundLogger()
+        self.log = log or structlog.get_logger()
         self.debug = debug
+
+        log = log.bind(**self.__dict__)
+        log.info("sifter.defaultsifter.configured")
+
+        return
 
     def sift(
         self,
