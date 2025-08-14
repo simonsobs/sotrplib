@@ -191,7 +191,6 @@ cataloged_sources_db = SourceCatalogDatabase(args.output_dir + "so_source_catalo
 cataloged_sources_db.read_database()
 transients_db = SourceCatalogDatabase(args.output_dir + "so_transient_catalog.csv")
 noise_candidates_db = SourceCatalogDatabase(args.output_dir + "so_noise_catalog.csv")
-
 injected_source_db = SourceCatalogDatabase(args.output_dir + "injected_sources.csv")
 
 
@@ -422,7 +421,7 @@ for freq_arr_idx in indexed_map_groups:
             map_noise=np.ones(len(sigma_thresh_for_minrad)),
             max_radius_arcmin=120.0,
         )
-
+        
         extracted_sources = extract_sources(
             mapdata.flux,
             timemap=mapdata.time_map,
@@ -435,8 +434,8 @@ for freq_arr_idx in indexed_map_groups:
             res=mapdata.res / arcmin,
         )
 
-        logger = logger.bind(n_sources=len(extract_sources))
-        logger = logger.info("pipeline.sources.found")
+        logger = logger.bind(n_sources=len(extracted_sources))
+        logger.info("pipeline.sources.extracted")
 
         ## need to figure out what distribution "good" sources have to set the cuts.
         default_cuts = {
@@ -448,7 +447,7 @@ for freq_arr_idx in indexed_map_groups:
             "snr": [args.snr_threshold, np.inf],
         }
 
-        logger = logger.bind(map_id=map_id)
+        logger = logger.bind(map_id=map_id,fit_cuts=default_cuts)
         logger.info("pipeline.sift")
         catalog_matches, transient_candidates, noise_candidates = sift(
             extracted_sources,
@@ -465,6 +464,7 @@ for freq_arr_idx in indexed_map_groups:
             crossmatch_with_million_quasar=not args.sim,
             additional_catalogs=additional_catalogs,
             debug=args.verbose,
+            log=logger,
         )
 
         if args.sim:
