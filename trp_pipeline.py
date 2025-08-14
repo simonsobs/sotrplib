@@ -335,6 +335,7 @@ for freq_arr_idx in indexed_map_groups:
             skip=args.sim,
             tilegrid=0.5,
             sigmaclip=5.0,
+            log=logger,
         )
 
         if not mapdata:

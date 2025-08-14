@@ -824,6 +824,7 @@ def preprocess_map(
     edge_mask_arcmin=10,
     sigmaclip=5.0,
     skip=False,
+    log=None,
 ):
     """
     Preprocess the map by cleaning, flatfielding, and masking.
@@ -848,7 +849,8 @@ def preprocess_map(
 
     from .masks import mask_dustgal, mask_edge
 
-    print("Cleaning maps...")
+    log = log.new()
+    log.info("pipeline.preprocess.start")
     if not mapdata.cleaned:
         ## ignore divide by zero warning since that will happen outside the weighted region
         with warnings.catch_warnings():
@@ -858,6 +860,7 @@ def preprocess_map(
                 mapdata.rho_map, mapdata.kappa_map, cut_on="median", fraction=0.05
             )
         mapdata.cleaned = True
+        log.info("pipeline.preprocess.cleaned")
 
     ## ignore divide by zero warning since that will happen outside the weighted region
     with warnings.catch_warnings():
@@ -866,13 +869,14 @@ def preprocess_map(
         mapdata.snr = mapdata.rho_map * mapdata.kappa_map ** (-0.5)
     mapdata.kappa_map = None
     mapdata.rho_map = None
+    log.info("pipeline.preprocess.flux_snr_calculated")
     if (
         np.all(np.isnan(mapdata.flux))
         or np.all(np.isnan(mapdata.snr))
         or np.all(mapdata.snr == 0.0)
         or np.all(mapdata.flux == 0.0)
     ):
-        print("flux or snr is all nan or zeros, skipping")
+        log.warning("pipeline.preprocess.flux_snr_all_nan_or_zero")
         mapdata = None
         return
 
@@ -880,7 +884,7 @@ def preprocess_map(
         mapdata.masked = 0
         mask = enmap.ones(mapdata.flux.shape, wcs=mapdata.flux.wcs)
 
-        print("Masking maps...")
+        log.info("pipeline.preprocess.masking", galaxy_mask=galmask_file)
         try:
             galaxy_mask = mask_dustgal(
                 mapdata.flux,
@@ -893,9 +897,9 @@ def preprocess_map(
             mapdata.snr *= galaxy_mask
             mask *= galaxy_mask
             del galaxy_mask
-
+            log.info("pipeline.preprocess.masking.galaxy")
         except Exception as e:
-            print(e, " ... skipping galaxy mask")
+            log.warning("pipeline.preprocess.masking.galaxy.failed", error=e)
             mapdata.masked += 1
 
         try:
@@ -908,7 +912,7 @@ def preprocess_map(
             del planet_mask
 
         except Exception as e:
-            print(e, " ... skipping planet mask")
+            log.warning("pipeline.preprocess.masking.planet.failed", error=e)
             mapdata.masked += 1
 
         try:
@@ -919,8 +923,11 @@ def preprocess_map(
             mapdata.snr *= edge_mask
             mask *= edge_mask
             del edge_mask
+            log.info(
+                "pipeline.preprocess.masking.edge", edge_mask_arcmin=edge_mask_arcmin
+            )
         except Exception as e:
-            print(e, " ... skipping edge mask")
+            log.warning("pipeline.preprocess.masking.edge.failed", error=e)
             mapdata.masked += 1
 
     if (
@@ -929,12 +936,16 @@ def preprocess_map(
         or np.all(mapdata.snr == 0.0)
         or np.all(mapdata.flux == 0.0)
     ):
-        print("flux or snr is all nan or zeros, skipping")
+        log.warning("pipeline.preprocess.flux_snr_all_nan_or_zero_after_masking")
         mapdata = None
         return
 
     if not mapdata.flatfielded:
-        print("Flatfielding maps...")
+        log.info(
+            "pipeline.preprocess.flatfielding",
+            method=flatfield_method,
+            tilegrid=tilegrid,
+        )
         if flatfield_method == "photutils":
             flat_field_using_photutils(
                 mapdata,
@@ -948,12 +959,17 @@ def preprocess_map(
                 tilegrid=tilegrid,
             )
         else:
+            log.error(
+                "pipeline.preprocess.flatfielding.failed", method=flatfield_method
+            )
             raise ValueError("Flatfield method %s not supported" % flatfield_method)
 
         del mask
-
+        log.info("pipeline.preprocess.flatfielding.success")
     if output_units == "Jy":
         mapdata.flux /= 1000.0
+    log.bind(map_flux_units=output_units)
+    log.info("pipeline.preprocess.complete")
     return
 
 
