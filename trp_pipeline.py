@@ -463,14 +463,14 @@ for freq_arr_idx in indexed_map_groups:
 
         sifter_result = sifter.sift(
             extracted_sources=extracted_sources,
-            catalog_sources=known_sources,
+            catalog_sources=catalog_sources,
             flux_map=mapdata.flux,
             map_id=map_id,
             map_freq=mapdata.freq,
             arr=mapdata.wafer_name,
         )
 
-        catalog_matches = sifter_result.catalog_matches
+        catalog_matches = sifter_result.source_candidates
         transient_candidates = sifter_result.transient_candidates
         noise_candidates = sifter_result.noise_candidates
 
