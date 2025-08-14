@@ -10,7 +10,7 @@ import numpy as np
 from pixell import bunch, enmap
 from pixell import utils as pixell_utils
 
-from sotrplib.maps.maps import get_submap, get_time_safe
+from sotrplib.maps.maps import get_thumbnail, get_time_safe
 from sotrplib.utils.utils import fit_poss, radec_to_str_name
 
 parser = argparse.ArgumentParser()
@@ -110,9 +110,9 @@ for fi in range(nfile):
     if args.save_thumbnails:
         for i in range(len(ra)):
             kappa_thumbs.append(
-                get_submap(kappa_map, ra[i], dec[i], args.thumbnail_radius)
+                get_thumbnail(kappa_map, ra[i], dec[i], args.thumbnail_radius)
             )
-            rho_thumbs.append(get_submap(rho_map, ra[i], dec[i], args.thumbnail_radius))
+            rho_thumbs.append(get_thumbnail(rho_map, ra[i], dec[i], args.thumbnail_radius))
 
     del kappa_map, rho_map
 
@@ -132,7 +132,7 @@ for fi in range(nfile):
         if args.save_thumbnails:
             for i in range(len(ra)):
                 coadd_thumbs.append(
-                    get_submap(coadd_flux_map, ra[i], dec[i], args.thumbnail_radius)
+                    get_thumbnail(coadd_flux_map, ra[i], dec[i], args.thumbnail_radius)
                 )
                 ## assume depth1 map noise negligible in coadd subtraction
                 rho_thumbs[i] -= coadd_thumbs[i] * kappa_thumbs[i]

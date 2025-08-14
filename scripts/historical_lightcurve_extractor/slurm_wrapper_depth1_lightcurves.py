@@ -32,9 +32,16 @@ P.add_argument("--ra", nargs="+", default=[], help="Source RA (deg).")
 P.add_argument("--dec", nargs="+", default=[], help="Source DEC (deg).")
 
 P.add_argument(
+    "--ps-csv",
+    action="store",
+    default=None,
+    help="Path to the point source CSV file containing columns ra,dec which are in decimal degrees.",
+)
+
+P.add_argument(
     "--data-dir",
     action="store",
-    default="/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/",
+    default="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/",
     help="Data directory, where the depth1 maps live.",
 )
 
@@ -46,7 +53,7 @@ P.add_argument(
 )
 
 P.add_argument(
-    "--script-dir",
+    "--run-dir",
     action="store",
     default="",
     help="Directory in which the lightcurve extractor script lives. If default, then will use os.cwd() which assumes this script lives in the same directory.",
@@ -55,7 +62,7 @@ P.add_argument(
 P.add_argument(
     "--script-name",
     action="store",
-    default="act_depth1_lightcurve_extractor.py",
+    default="scripts/historical_lightcurve_extractor/act_depth1_lightcurve_extractor.py",
     help="Filename of the lightcurve extractor script.",
 )
 
@@ -97,7 +104,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default=0.5,
+    default=0.2,
     type=float,
     help="Thumbnail radius (half-width of square map), in deg. ",
 )
@@ -117,11 +124,23 @@ P.add_argument(
     help="Number of serial sets of `ncores` scripts to run per job. ",
 )
 
+P.add_argument(
+    "--soconda-version",
+    action="store",
+    default=None,
+    help="Version of soconda to load. If None uses running version.",
+)
 
 args = P.parse_args()
 
+def get_soconda_module():
+    import subprocess
+    cmd = "module list 2>&1 | grep soconda | grep -o 'soconda[^ ]*'"
+    SOCONDA_MODULE = subprocess.check_output(cmd, shell=True, text=True).strip()
+    return SOCONDA_MODULE
 
-def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_out_dir):
+
+def generate_slurm_header(jobname, groupname, cpu_per_task, run_dir, slurm_out_dir, soconda_version):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
 #SBATCH -A {groupname}                    # group name, by default simonsobs
@@ -131,10 +150,10 @@ def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_ou
 #SBATCH --mem-per-cpu=4G         # memory per cpu-core (4G is default)
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
-module load soconda/3.10/20241017
+module load {soconda_version}
 
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
-cd {script_dir}
+cd {run_dir}
 
 """
     return slurm_header
@@ -157,6 +176,9 @@ print("There are ", len(datelist), " date directories total")
 user_scratch = args.scratch_dir
 if not os.path.exists(user_scratch):
     os.mkdir(user_scratch)
+
+if not args.soconda_version:
+    args.soconda_version = get_soconda_module() 
 
 if not args.out_dir:
     ## get random tmp dir
@@ -185,9 +207,18 @@ slurm_text = generate_slurm_header(
     str(n).zfill(4),
     args.group_name,
     str(args.ncores),
-    args.script_dir if args.script_dir else os.getcwd(),
+    args.run_dir if args.run_dir else os.getcwd(),
     args.slurm_out_dir,
+    args.soconda_version,
 )
+
+if args.ps_csv is not None:
+    import pandas as pd
+
+    ps_df = pd.read_csv(args.ps_csv).rename(columns=str.lower)
+    args.ra += [str(r) for r in ps_df["ra"].values]
+    args.dec += [str(d) for d in ps_df["dec"].values]
+    print(f"Loaded {len(ps_df['ra'].values)} sources from {args.ps_csv}")
 
 for i in tqdm(range(len(datelist))):
     date = datelist[i].split("/")[-1]
@@ -210,8 +241,9 @@ for i in tqdm(range(len(datelist))):
             str(n).zfill(4),
             args.group_name,
             str(args.ncores),
-            args.script_dir if args.script_dir else os.getcwd(),
+            args.run_dir if args.run_dir else os.getcwd(),
             args.slurm_out_dir,
+            args.soconda_version,
         )
 
 with open("%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w") as f:
