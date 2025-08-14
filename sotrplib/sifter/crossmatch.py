@@ -1,6 +1,7 @@
 import math
 import os
 import os.path as op
+
 import numpy as np
 import pandas as pd
 from astropy import units as u
@@ -166,10 +167,10 @@ def sift(
     crossmatch_with_million_quasar=True,
     additional_catalogs={},
     debug=False,
-    log=None
+    log=None,
 ):
-    from ..utils.utils import radec_to_str_name
-    from ..utils.utils import get_fwhm
+    from ..utils.utils import get_fwhm, radec_to_str_name
+
     """
      Perform crossmatching of extracted sources from `extract_sources` and the cataloged sources.
      Return lists of dictionaries containing each source which matches the catalog, may be noise, or appears to be a transient.
@@ -208,9 +209,9 @@ def sift(
             list of dictionaries with information about the detected source.
 
     """
-    
+
     fwhm_arcmin = get_fwhm(map_freq, arr=arr)
-    
+
     if isinstance(extracted_sources, type(None)):
         return [], [], []
 
@@ -277,12 +278,15 @@ def sift(
         else:
             crossmatch_name = ""
 
-        log.debug("pipeline.sift.candidate_info",
-                     source_name=source_string_name,
-                     crossmatch_name=crossmatch_name,
-                     flux=catalog_sources["fluxJy"][catalog_match[source][0][1]] if isin_cat[source] else None,
-                     forced_photometry_info=forced_photometry_info
-                     )
+        log.debug(
+            "pipeline.sift.candidate_info",
+            source_name=source_string_name,
+            crossmatch_name=crossmatch_name,
+            flux=catalog_sources["fluxJy"][catalog_match[source][0][1]]
+            if isin_cat[source]
+            else None,
+            forced_photometry_info=forced_photometry_info,
+        )
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
         if (
             "err_ra" not in forced_photometry_info
@@ -354,7 +358,7 @@ def sift(
         log = log.bind(cand=cand)
         ## do sifting operations here...
         is_cut = get_cut_decision(cand, cuts, debug=debug)
-    
+
         if isin_cat[source] and not is_cut:
             log.debug(
                 "pipeline.sift.source_crossmatch",
@@ -362,7 +366,7 @@ def sift(
                 crossmatch_name=crossmatch_name,
                 flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
             )
-            
+
             if alert_on_flare(
                 catalog_sources["fluxJy"][catalog_match[source][0][1]], cand.flux
             ):
@@ -374,12 +378,13 @@ def sift(
                         cand.flux,
                     )
                 )
-                log.info("pipeline.sift.source_crossmatch.flare_alert",
-                            source_name=source_string_name,
-                            crossmatch_name=crossmatch_name,
-                            flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
-                            cand_flux=cand.flux
-                            )
+                log.info(
+                    "pipeline.sift.source_crossmatch.flare_alert",
+                    source_name=source_string_name,
+                    crossmatch_name=crossmatch_name,
+                    flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                    cand_flux=cand.flux,
+                )
                 transient_candidates.append(cand)
             else:
                 source_candidates.append(cand)
@@ -390,12 +395,15 @@ def sift(
             or not np.isfinite(forced_photometry_info["peakval"])
         ):
             noise_candidates.append(cand)
-            log.debug("pipeline.sift.cut_candidate",
-                         source_name=source_string_name,
-                         crossmatch_name=crossmatch_name,
-                         flux=catalog_sources["fluxJy"][catalog_match[source][0][1]] if isin_cat[source] else None,
-                         forced_photometry_info=forced_photometry_info
-                         )
+            log.debug(
+                "pipeline.sift.cut_candidate",
+                source_name=source_string_name,
+                crossmatch_name=crossmatch_name,
+                flux=catalog_sources["fluxJy"][catalog_match[source][0][1]]
+                if isin_cat[source]
+                else None,
+                forced_photometry_info=forced_photometry_info,
+            )
         else:
             if crossmatch_with_gaia:
                 ## if running on compute node, can't access internet, so can't query gaia.
@@ -425,7 +433,6 @@ def sift(
             log = log.bind(transient_cand=cand)
             log.info("pipeline.sift.transient_candidate")
 
-
     if isinstance(imap, enmap.ndmap):
         transient_candidates, new_noise_candidates = recalculate_local_snr(
             transient_candidates,
@@ -439,10 +446,11 @@ def sift(
             log.info("pipeline.sift.recalc_snr")
         noise_candidates.extend(new_noise_candidates)
 
-    log = log.bind(source_candidates=len(source_candidates),
-                   transient_candidates=len(transient_candidates),
-                   noise_candidates=len(noise_candidates)
-                   )
+    log = log.bind(
+        source_candidates=len(source_candidates),
+        transient_candidates=len(transient_candidates),
+        noise_candidates=len(noise_candidates),
+    )
     log.info("pipeline.sift.final_counts")
     return source_candidates, transient_candidates, noise_candidates
 

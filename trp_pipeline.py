@@ -13,7 +13,8 @@ from pixell.utils import arcmin, degree
 
 from sotrplib.maps.coadding import coadd_map_group, load_coadd_maps
 from sotrplib.maps.maps import load_map, preprocess_map
-from sotrplib.sifter.crossmatch import crossmatch_position_and_flux, sift
+from sotrplib.sifter.core import DefaultSifter
+from sotrplib.sifter.crossmatch import crossmatch_position_and_flux
 from sotrplib.sims.sim_maps import inject_simulated_sources, make_noise_map
 from sotrplib.sims.sim_utils import get_sim_map_group, load_config_yaml
 from sotrplib.source_catalog.database import SourceCatalogDatabase
@@ -421,7 +422,7 @@ for freq_arr_idx in indexed_map_groups:
             map_noise=np.ones(len(sigma_thresh_for_minrad)),
             max_radius_arcmin=120.0,
         )
-        
+
         extracted_sources = extract_sources(
             mapdata.flux,
             timemap=mapdata.time_map,
@@ -447,25 +448,29 @@ for freq_arr_idx in indexed_map_groups:
             "snr": [args.snr_threshold, np.inf],
         }
 
-        logger = logger.bind(map_id=map_id,fit_cuts=default_cuts)
+        logger = logger.bind(map_id=map_id, fit_cuts=default_cuts)
         logger.info("pipeline.sift")
-        catalog_matches, transient_candidates, noise_candidates = sift(
-            extracted_sources,
-            catalog_sources,
-            imap=mapdata.flux,
-            map_freq=mapdata.freq,
-            arr=mapdata.wafer_name,
-            radius1Jy=1.5
-            if args.sim
-            else 2 * band_fwhm / arcmin,  ## sims don't have filtering wings
-            map_id=map_id,
+        sifter = DefaultSifter(
+            radius_1Jy=1.5 if args.sim else 2 * band_fwhm / arcmin,
             cuts=default_cuts,
             crossmatch_with_gaia=not args.sim,
             crossmatch_with_million_quasar=not args.sim,
             additional_catalogs=additional_catalogs,
-            debug=args.verbose,
             log=logger,
+            debug=args.verbose,
         )
+        sifter_result = sifter.sift(
+            extracted_sources=extracted_sources,
+            catalog_sources=known_sources,
+            flux_map=mapdata.flux,
+            map_id=map_id,
+            map_freq=mapdata.freq,
+            arr=mapdata.wafer_name,
+        )
+
+        catalog_matches = sifter_result.catalog_matches
+        transient_candidates = sifter_result.transient_candidates
+        noise_candidates = sifter_result.noise_candidates
 
         if args.sim:
             ## make sure the simulated sources are properly masked, and the injected transients are recovered
