@@ -18,7 +18,8 @@ dependencies = [
     "pydantic-settings",
     "tqdm",
     "filelock",
-    "photutils"
+    "photutils",
+    "structlog",
 ]
 
 [project.optional-dependencies]

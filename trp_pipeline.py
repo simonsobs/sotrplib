@@ -8,11 +8,13 @@ import warnings
 from glob import glob
 
 import numpy as np
+import structlog
 from pixell.utils import arcmin, degree
 
 from sotrplib.maps.coadding import coadd_map_group, load_coadd_maps
 from sotrplib.maps.maps import load_map, preprocess_map
-from sotrplib.sifter.crossmatch import crossmatch_position_and_flux, sift
+from sotrplib.sifter.core import DefaultSifter
+from sotrplib.sifter.crossmatch import crossmatch_position_and_flux
 from sotrplib.sims.sim_maps import inject_simulated_sources, make_noise_map
 from sotrplib.sims.sim_utils import get_sim_map_group, load_config_yaml
 from sotrplib.source_catalog.database import SourceCatalogDatabase
@@ -180,12 +182,16 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+logger = structlog.get_logger()
+
+logger = logger.bind(args=args)
+logger.info("pipeline.parsed")
+
 
 cataloged_sources_db = SourceCatalogDatabase(args.output_dir + "so_source_catalog.csv")
 cataloged_sources_db.read_database()
 transients_db = SourceCatalogDatabase(args.output_dir + "so_transient_catalog.csv")
 noise_candidates_db = SourceCatalogDatabase(args.output_dir + "so_noise_catalog.csv")
-
 injected_source_db = SourceCatalogDatabase(args.output_dir + "injected_sources.csv")
 
 
@@ -198,14 +204,13 @@ if args.million_quasar_catalog and not args.sim:
 
 
 sim_params = {}
+logger = logger.bind(sim=args.sim)
 if args.sim:
-    if args.verbose:
-        print("Loading sim config file: ", args.sim_config)
+    logger = logger.bind(sim_config=args.sim_config)
     sim_params = load_config_yaml(args.sim_config)
-    if args.verbose:
-        print("Sim params: ")
-        for k, v in sim_params.items():
-            print(k, v)
+    logger.debug("pipeline.sim.parsed")
+    logger = logger.bind(**sim_params)
+    logger.debug("pipeline.sim.params")
     if not args.use_map_geometry:
         freq_arr_idx, indexed_map_groups, indexed_map_group_time_ranges = (
             get_sim_map_group(sim_params)
@@ -253,31 +258,33 @@ else:
     box = None
 
 for freq_arr_idx in indexed_map_groups:
-    print(freq_arr_idx)
     if "_" in freq_arr_idx:
         ## assume it's [arr]_[freq]
         arr, freq = freq_arr_idx.split("_")
     else:
         arr = "all"
         freq = freq_arr_idx
+    logger = logger.bind(arr=arr, freq=freq)
     map_groups = indexed_map_groups[freq_arr_idx]
     map_group_time_ranges = indexed_map_group_time_ranges[freq_arr_idx]
     for map_group in map_groups:
+        logger = logger.bind(map_group=map_group)
         if len(map_group) == 0:
             continue
         if len(map_group) == 1:
-            if args.verbose:
-                print("Loading map ", map_group[0])
+            logger.debug("pipeline.map.loading")
             if not args.overwrite_db:
                 map_id = "_".join(map_group[0].split("/")[-1].split("_")[-4:-1])
                 if cataloged_sources_db.observation_exists(map_id):
-                    print(f"Map {map_id} already exists in db... skipping.")
+                    logger.info("pipeline.map.exists")
                     continue
 
             ## need a more robust way to check this...
             if "coadd" in str(map_group[0]):
+                logger.debug("pipeline.map.coadd")
                 mapdata = load_coadd_maps(mapfile=map_group[0], arr=arr, box=box)[0]
             else:
+                logger.debug("pipeline.map.other")
                 mapdata = load_map(
                     map_path=map_group[0],
                     map_sim_params=sim_params,
@@ -288,16 +295,12 @@ for freq_arr_idx in indexed_map_groups:
                 )
 
         else:
-            if args.verbose:
-                print("Coadding map group containing the following maps:")
-                for mg in map_group:
-                    print(mg)
+            logger.info("pipeline.map.coadding")
             mapdata = coadd_map_group(map_group, freq=freq, arr=arr, box=box)
 
         ## end of map loading
         if not mapdata:
-            if args.verbose:
-                print("No map data found... skipping.")
+            logger.info("pipeline.map.not_found")
             continue
 
         ## when using the real map geometry, need to load the map first
@@ -323,6 +326,7 @@ for freq_arr_idx in indexed_map_groups:
             + "_"
             + str(mapdata.freq)
         )
+        logger = logger.bind(map_id=map_id)
         band_fwhm = get_fwhm(mapdata.freq, mapdata.wafer_name) * arcmin
 
         preprocess_map(
@@ -334,10 +338,10 @@ for freq_arr_idx in indexed_map_groups:
         )
 
         if not mapdata:
-            if args.verbose:
-                print(f"Flux for {map_id} was all nan... skipping.")
+            logger.info("pipeline.preprocess.flux.skip")
             continue
 
+        logger.info("pipeline.preprocess.inject_simulated_sources")
         catalog_sources, injected_sources = inject_simulated_sources(
             mapdata,
             injected_source_db,
@@ -349,8 +353,12 @@ for freq_arr_idx in indexed_map_groups:
             simulated_transient_database=args.simulated_transient_database,
         )
 
+        logger = logger.bind(
+            source_catalog=args.source_catalog, flux_threshold=args.flux_threshold
+        )
+
         if not args.sim:
-            print("Loading Source Catalog")
+            logger.info("pipeline.sources.load_catalog")
             catalog_sources += load_catalog(
                 args.source_catalog,
                 flux_threshold=args.flux_threshold,
@@ -359,6 +367,7 @@ for freq_arr_idx in indexed_map_groups:
                 return_source_cand_list=True,
             )
 
+        logger.info("pipeline.sources.fitting")
         catalog_sources, thumbs = photutils_2D_gauss_fit(
             mapdata.flux,
             mapdata.flux / mapdata.snr
@@ -400,7 +409,7 @@ for freq_arr_idx in indexed_map_groups:
                 },
             )
 
-        print("Finding sources...")
+        logger.info("pipeline.sources.search")
         ## get mask radius for each sigma such that the mask goes to the
         ## noise floor.
         sigma_thresh_for_minrad = np.arange(100)
@@ -426,9 +435,9 @@ for freq_arr_idx in indexed_map_groups:
             res=mapdata.res / arcmin,
         )
 
-        print(len(extracted_sources.keys()), "sources found.")
+        logger = logger.bind(n_sources=len(extracted_sources))
+        logger.info("pipeline.sources.extracted")
 
-        print("Cross-matching found sources with catalog...")
         ## need to figure out what distribution "good" sources have to set the cuts.
         default_cuts = {
             "fwhm": [0.5, 2 * band_fwhm / arcmin],
@@ -439,22 +448,31 @@ for freq_arr_idx in indexed_map_groups:
             "snr": [args.snr_threshold, np.inf],
         }
 
-        catalog_matches, transient_candidates, noise_candidates = sift(
-            extracted_sources,
-            catalog_sources,
-            imap=mapdata.flux,
-            map_freq=mapdata.freq,
-            arr=mapdata.wafer_name,
-            radius1Jy=1.5
-            if args.sim
-            else 2 * band_fwhm / arcmin,  ## sims don't have filtering wings
-            map_id=map_id,
+        logger = logger.bind(map_id=map_id, fit_cuts=default_cuts)
+        logger.info("pipeline.sift")
+
+        sifter = DefaultSifter(
+            radius_1Jy=1.5 if args.sim else 2 * band_fwhm / arcmin,
             cuts=default_cuts,
             crossmatch_with_gaia=not args.sim,
             crossmatch_with_million_quasar=not args.sim,
             additional_catalogs=additional_catalogs,
+            log=logger,
             debug=args.verbose,
         )
+
+        sifter_result = sifter.sift(
+            extracted_sources=extracted_sources,
+            catalog_sources=known_sources,
+            flux_map=mapdata.flux,
+            map_id=map_id,
+            map_freq=mapdata.freq,
+            arr=mapdata.wafer_name,
+        )
+
+        catalog_matches = sifter_result.catalog_matches
+        transient_candidates = sifter_result.transient_candidates
+        noise_candidates = sifter_result.noise_candidates
 
         if args.sim:
             ## make sure the simulated sources are properly masked, and the injected transients are recovered
@@ -473,12 +491,14 @@ for freq_arr_idx in indexed_map_groups:
                 fail_unmatched=True,
             )
 
+        logger = logger.bind(n_catalog_matches=len(catalog_matches))
         if len(catalog_matches) > 0:
-            print(
-                "Source found in blind search which is associated with catalog... masking may have a problem."
-            )
             if args.plot_thumbnails:
                 for cm in catalog_matches:
+                    logger = logger.bind(
+                        match=cm, source_name="_".join(cm.sourceID.split(" "))
+                    )
+                    logger.info("pipeline.sift.blind_in_catalog")
                     plot_map_thumbnail(
                         mapdata.snr
                         if not args.sim
