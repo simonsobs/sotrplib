@@ -396,6 +396,7 @@ def inject_simulated_sources(
     inject_transients: bool = False,
     use_map_geometry: bool = False,
     simulated_transient_database: str = None,
+    log=None,
 ):
     """
     Inject sources into a map using photutils.
@@ -411,16 +412,22 @@ def inject_simulated_sources(
     - inject_transients: bool, if True, inject transients into the map.
     - use_map_geometry: bool, if True, use the map geometry for transient injection.
     - simulated_transient_database: str, path to the database for simulated transients.
+    - log: structlog bound logger object
     """
+    log = log.new()
     if not sim_params and not injected_source_db and not simulated_transient_database:
+        log.info("inject_simulated_sources.skip")
         return [], []
 
     from ..utils.utils import get_fwhm
     from .sim_sources import generate_transients
     from .sim_utils import load_transients_from_db
 
+    log = log.bind(sim_params=sim_params)
+
     if use_map_geometry:
         from ..maps.maps import edge_map
+    log = log.bind(use_map_geometry=use_map_geometry)
 
     catalog_sources = []
     if injected_source_db:
@@ -429,6 +436,9 @@ def inject_simulated_sources(
             injected_source_db,
             t0=t0,
         )
+    log = log.bind(injected_source_db=injected_source_db)
+    log = log.bind(injected_sources=catalog_sources)
+    log.info("inject_simulated_sources.injected_source_db")
 
     catalog_sources += inject_random_sources(
         mapdata,
@@ -438,10 +448,17 @@ def inject_simulated_sources(
         fwhm_arcmin=get_fwhm(mapdata.freq, arr=mapdata.wafer_name),
         add_noise=False,
     )
+    log = log.bind(injected_sources=catalog_sources)
+    log.info("inject_simulated_sources.inject_random_sources")
 
     injected_sources = []
     if inject_transients:
+        log = log.new()
+        log.info("inject_simulated_sources.inject_transients")
         transient_sources = load_transients_from_db(simulated_transient_database)
+        log = log.bind(transient_sources=transient_sources)
+        log.info("inject_simulated_sources.inject_transients.load_transients_from_db")
+
         mapdata, inj_sources = inject_sources(
             mapdata,
             transient_sources,
@@ -452,10 +469,11 @@ def inject_simulated_sources(
             debug=verbose,
         )
         injected_sources += inj_sources
+        log = log.bind(injected_sources=inj_sources)
+        log.info("inject_simulated_sources.inject_transients.inject_sources")
+
         if sim_params:
             if sim_params["injected_transients"]["n_transients"] > 0:
-                if verbose:
-                    print("Generating transients using sim config.")
                 if use_map_geometry:
                     ## use imap to generate random pixels
                     ra_lims = None
@@ -480,6 +498,7 @@ def inject_simulated_sources(
                         + sim_params["maps"]["width_dec"],
                     )
                     hits_map = None
+                log = log.bind(ra_lims=ra_lims, dec_lims=dec_lims, hits_map=hits_map)
 
                 transients_to_inject = generate_transients(
                     n=sim_params["injected_transients"]["n_transients"],
@@ -497,6 +516,9 @@ def inject_simulated_sources(
                     ),
                     uniform_on_sky=True if isinstance(hits_map, type(None)) else False,
                 )
+                log.info(
+                    "inject_simulated_sources.inject_transients.generate_transients"
+                )
                 mapdata, inj_sources = inject_sources(
                     mapdata,
                     transients_to_inject,
@@ -507,14 +529,20 @@ def inject_simulated_sources(
                     debug=verbose,
                 )
                 injected_sources += inj_sources
+                log = log.bind(injected_sources=inj_sources)
+                log.info(
+                    "inject_simulated_sources.inject_transients.generate_transients.inject_sources"
+                )
 
-    if verbose:
-        print(f"Injected {len(catalog_sources)} sources into simulated map")
-        print(f"Injected {len(injected_sources)} transients into simulated map")
-
+    log = log.new()
+    log.bind(
+        n_injected_sources=len(catalog_sources),
+        n_injected_transients=len(injected_sources),
+    )
+    log.info("inject_simulated_sources.final_counts")
     if isinstance(injected_source_db, SourceCatalogDatabase):
         ## add the catalog sources to the injected_source_db
         injected_source_db.add_sources(injected_sources)
         injected_source_db.add_sources(catalog_sources)
-
+        log.info("inject_simulated_sources.update_injected_source_db")
     return catalog_sources, injected_sources
