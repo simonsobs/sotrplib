@@ -209,13 +209,16 @@ def sift(
             list of dictionaries with information about the detected source.
 
     """
+    log = log.new()
 
     fwhm_arcmin = get_fwhm(map_freq, arr=arr)
 
     if isinstance(extracted_sources, type(None)):
+        log.warning("sift.extracted_sources.not_found")
         return [], [], []
 
     if isinstance(source_fluxes, type(None)):
+        log.warning("sift.source_fluxes.not_found")
         source_fluxes = np.asarray(
             [extracted_sources[f]["peakval"] for f in extracted_sources]
         )
@@ -226,6 +229,7 @@ def sift(
     if not catalog_sources:
         isin_cat = np.zeros(len(extracted_ra), dtype=bool)
         catalog_match = [] * len(extracted_ra)
+        log.warning("sift.catalog_sources.not_found")
     else:
         crossmatch_radius = np.minimum(
             np.maximum(source_fluxes * radius1Jy, min_match_radius), 120
@@ -242,13 +246,14 @@ def sift(
             mode="closest",
             return_matches=True,
         )
-    log.info("pipeline.sift.crossmatched_to_catalog")
+        log.info("sift.catalog_sources.crossmatched")
+
+    isin_mq_cat = np.zeros(len(extracted_ra), dtype=bool)
+    mq_catalog_match = [] * len(extracted_ra)
     if crossmatch_with_million_quasar:
+        log.info("sift.milliquas.crossmatching")
         if "million_quasar" not in additional_catalogs:
-            if debug:
-                print("No million quasar catalog provided... cant do crossmatch")
-            isin_mq_cat = np.zeros(len(extracted_ra), dtype=bool)
-            mq_catalog_match = [] * len(extracted_ra)
+            log.warning("sift.milliquas.million_quasar_cat_not_found")
         else:
             mq_catalog = additional_catalogs["million_quasar"]
             if mq_catalog is not None:
@@ -262,12 +267,13 @@ def sift(
                     ).T,
                     radius_arcmin=0.5,
                 )
-        log.info("pipeline.sift.crossmatched_to_milliquas")
+            log.info("sift.milliquas.crossmatched_to_milliquas")
 
     source_candidates = []
     transient_candidates = []
     noise_candidates = []
     for source, cand_pos in enumerate(zip(extracted_ra, extracted_dec)):
+        log = log.new()
         forced_photometry_info = extracted_sources[source]
         source_string_name = radec_to_str_name(
             cand_pos[0] / pixell_utils.degree, cand_pos[1] / pixell_utils.degree
@@ -279,7 +285,7 @@ def sift(
             crossmatch_name = ""
 
         log.debug(
-            "pipeline.sift.candidate_info",
+            "sift.candidate_info",
             source_name=source_string_name,
             crossmatch_name=crossmatch_name,
             flux=catalog_sources["fluxJy"][catalog_match[source][0][1]]
@@ -361,7 +367,7 @@ def sift(
 
         if isin_cat[source] and not is_cut:
             log.debug(
-                "pipeline.sift.source_crossmatch",
+                "sift.source_crossmatch",
                 source=source,
                 crossmatch_name=crossmatch_name,
                 flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
@@ -370,16 +376,8 @@ def sift(
             if alert_on_flare(
                 catalog_sources["fluxJy"][catalog_match[source][0][1]], cand.flux
             ):
-                print(
-                    "ALERT: %s has increased flux from %.2f to %.2f Jy"
-                    % (
-                        crossmatch_name,
-                        catalog_sources["fluxJy"][catalog_match[source][0][1]],
-                        cand.flux,
-                    )
-                )
                 log.info(
-                    "pipeline.sift.source_crossmatch.flare_alert",
+                    "sift.source_crossmatch.flare_alert",
                     source_name=source_string_name,
                     crossmatch_name=crossmatch_name,
                     flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
@@ -396,7 +394,7 @@ def sift(
         ):
             noise_candidates.append(cand)
             log.debug(
-                "pipeline.sift.cut_candidate",
+                "sift.source_cut",
                 source_name=source_string_name,
                 crossmatch_name=crossmatch_name,
                 flux=catalog_sources["fluxJy"][catalog_match[source][0][1]]
@@ -422,17 +420,24 @@ def sift(
                                 match_probabilities=[gaia_match_result["pvalue"][0]],
                             )
                     log = log.bind(gaia_match_result=gaia_match_result)
-                    log.info("pipeline.sift.gaia_match")
+                    log.info("sift.gaia_match")
                 except Exception:
-                    log.info("pipeline.sift.gaia_match.failed")
+                    log.info("sift.gaia_match.failed")
                     pass
 
             ## give the transient candidate source a name indicating that it is a transient
             cand.sourceID = "-T".join(cand.sourceID.split("-S"))
             transient_candidates.append(cand)
             log = log.bind(transient_cand=cand)
-            log.info("pipeline.sift.transient_candidate")
+            log.info("sift.transient_candidate")
 
+    log = log.new()
+    log = log.bind(
+        transient_candidates=transient_candidates,
+        noise_candidates=noise_candidates,
+        source_candidates=source_candidates,
+    )
+    log.info("sift.initial_candidates")
     if isinstance(imap, enmap.ndmap):
         transient_candidates, new_noise_candidates = recalculate_local_snr(
             transient_candidates,
@@ -442,16 +447,17 @@ def sift(
             snr_cut=cuts["snr"][0],
         )
         if new_noise_candidates:
-            log = log.bind(new_noise_candidates=new_noise_candidates)
-            log.info("pipeline.sift.recalc_snr")
+            log = log.bind(updated_noise_candidates=new_noise_candidates)
+            log.info("sift.recalc_snr")
         noise_candidates.extend(new_noise_candidates)
 
+    log = log.new()
     log = log.bind(
         source_candidates=len(source_candidates),
         transient_candidates=len(transient_candidates),
         noise_candidates=len(noise_candidates),
     )
-    log.info("pipeline.sift.final_counts")
+    log.info("sift.final_counts")
     return source_candidates, transient_candidates, noise_candidates
 
 
