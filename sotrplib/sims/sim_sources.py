@@ -114,7 +114,7 @@ def generate_transients(
         raise ValueError("Either n or positions must be provided.")
     if n is not None and positions:
         raise ValueError("Cannot provide both n and positions.")
-
+    n_positions = None
     if n is not None:
         n_positions = 0
         positions = []
@@ -140,11 +140,12 @@ def generate_transients(
 
             n_positions = len(positions)
             ntries -= 1
-            if ntries == 0:
+            if ntries == 0 and n_positions < n:
                 print(
                     f"Failed to inject {n} sources into weighted. Only injected {n_positions}"
                 )
-    n = n_positions
+    if n_positions is not None:
+        n = n_positions
     if n is not None and isinstance(peak_amplitudes, tuple):
         peak_amplitudes = generate_random_flare_amplitudes(
             n, min_amplitude=peak_amplitudes[0], max_amplitude=peak_amplitudes[1]
