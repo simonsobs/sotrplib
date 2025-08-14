@@ -593,7 +593,7 @@ def get_observation_start_time(map_path: Path):
     maptype, _ = get_maptype(map_path)
     infofile = str(map_path).split(maptype)[0] + "info.hdf"
     if not exists(infofile):
-        t0 = None
+        t0 = 0.0
     else:
         from pixell.bunch import read as bunch_read
 
