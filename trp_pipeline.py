@@ -339,10 +339,9 @@ for freq_arr_idx in indexed_map_groups:
         )
 
         if not mapdata:
-            logger.info("pipeline.preprocess.flux.skip")
+            logger.info("pipeline.preprocess.bad_map")
             continue
 
-        logger.info("pipeline.preprocess.inject_simulated_sources")
         catalog_sources, injected_sources = inject_simulated_sources(
             mapdata,
             injected_source_db,
@@ -352,6 +351,7 @@ for freq_arr_idx in indexed_map_groups:
             inject_transients=args.inject_transients,
             use_map_geometry=args.use_map_geometry,
             simulated_transient_database=args.simulated_transient_database,
+            log=logger,
         )
 
         logger = logger.bind(
