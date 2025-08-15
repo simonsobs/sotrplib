@@ -12,6 +12,7 @@ def make_enmap(
     width_dec: float = 1.0,
     resolution: float = 0.5,
     map_noise: float = None,
+    log=None,
 ):
     """ """
     from pixell.enmap import geometry, zeros
@@ -46,6 +47,7 @@ def make_noise_map(
     map_noise_Jy: float = 0.01,
     map_mean_Jy: float = 0.0,
     seed: int = None,
+    log=None,
 ):
     """
     Create a noise map with the same shape and WCS as the input map.
@@ -97,6 +99,7 @@ def photutils_sim_n_sources(
     arr: str = "sim",
     map_id: str = None,
     ctime: float | enmap.ndmap = None,
+    log=None,
 ):
     """ """
     from photutils.psf import GaussianPSF, make_psf_model_image
@@ -202,6 +205,7 @@ def inject_sources(
     arr: str = None,
     map_id: str = None,
     debug: bool = False,
+    log=None,
 ):
     """
     Inject a list of SimTransient objects into the input map.
@@ -327,6 +331,7 @@ def inject_sources_from_db(
     injected_source_db: SourceCatalogDatabase,
     t0: float = 0.0,
     verbose=False,
+    log=None,
 ):
     ## inject static sources
     if verbose:
@@ -351,6 +356,7 @@ def inject_random_sources(
     t0: float = 0.0,
     fwhm_arcmin: float = 2.2,
     add_noise: bool = False,
+    log=None,
 ):
     """
     Inject sources into a map using photutils.
