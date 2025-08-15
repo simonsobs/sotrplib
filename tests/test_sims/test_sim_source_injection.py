@@ -27,7 +27,7 @@ def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
     assert len(injected_sources) == n_sources
 
 
-def test_photutils_sim_n_sources_output_b(sim_map_params, dummy_depth1_map, log=log):
+def test_photutils_sim_n_sources_output_b(dummy_depth1_map, log=log):
     n_sources = 5
     out_map, injected_sources = sim_maps.photutils_sim_n_sources(
         dummy_depth1_map,
