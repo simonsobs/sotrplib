@@ -351,6 +351,7 @@ def photutils_2D_gauss_fit(
     reproject_thumb: bool = False,
     return_thumbnails: bool = False,
     debug=False,
+    log=None,
 ):
     """ """
     from pixell import reproject
@@ -359,6 +360,8 @@ def photutils_2D_gauss_fit(
 
     from ..source_catalog.source_catalog import convert_gauss_fit_to_source_cat
 
+    log = log.new()
+    preamble = "sources.fitting.photutils2DGauss."
     fits = []
     thumbnails = []
     ## these are the keys output by the fitting function
@@ -418,8 +421,7 @@ def photutils_2D_gauss_fit(
                 )
                 noise_thumb = flux_thumb / snr_thumb
             except Exception as e:
-                if debug:
-                    print(source_name, e)
+                log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
                 fit_dict = return_initial_catalog_entry(
                     sc,
                     add_dict=failed_fit_dict,
@@ -451,8 +453,7 @@ def photutils_2D_gauss_fit(
             noise_thumb = noise_thumb.upgrade(factor=2)
 
         if np.any(np.isnan(flux_thumb)):
-            if debug:
-                print(source_name, "map contains nan")
+            log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
             fit_dict = return_initial_catalog_entry(
                 sc,
                 add_dict=failed_fit_dict,
@@ -470,7 +471,6 @@ def photutils_2D_gauss_fit(
             continue
 
         map_res = abs(flux_thumb.wcs.wcs.cdelt[0] * degree)
-
         gauss_fit = fit_2d_gaussian(
             flux_thumb,
             noise_thumb,
@@ -480,6 +480,7 @@ def photutils_2D_gauss_fit(
             force_center=True if sc.flux < flux_lim_fit_centroid else False,
             PLOT=PLOT,
         )
+        log.debug(f"{preamble}gauss_fit", source=source_name, fit=gauss_fit)
         if gauss_fit:
             gauss_fit[rakey] = sc.ra
             gauss_fit[deckey] = sc.dec
@@ -493,8 +494,7 @@ def photutils_2D_gauss_fit(
             gauss_fit["gauss_fit_flag"] = 0
             fits.append(gauss_fit)
         else:
-            if debug:
-                print(source_name, "failed to fit.")
+            log.warning(f"{preamble}gauss_fit_failed", source=source_name)
             fit_dict = return_initial_catalog_entry(
                 sc,
                 add_dict=failed_fit_dict,
@@ -510,7 +510,7 @@ def photutils_2D_gauss_fit(
         if return_thumbnails:
             thumbnails.append([flux_thumb, noise_thumb])
     fits = convert_gauss_fit_to_source_cat(fits)
-
+    log.info(f"{preamble}fit_complete", source=source_name)
     return fits, thumbnails
 
 

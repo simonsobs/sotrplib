@@ -383,6 +383,7 @@ for freq_arr_idx in indexed_map_groups:
         )
 
         ## Do something with the thumbnails?
+        logger.warning("Not doing anything with the thumbnails")
         del thumbs
 
         known_sources = []
