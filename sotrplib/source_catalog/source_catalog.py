@@ -10,6 +10,7 @@ class SourceCatalog:
 def load_act_catalog(
     source_cat_file: str = "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
     flux_threshold: float = 0,
+    log=None,
 ):
     """
     source_cat_file is path to source catalog
@@ -21,15 +22,16 @@ def load_act_catalog(
     from astropy.table import Table
 
     sourcecat = None
-    print("Extracting known sources from ACT catalog")
     sourcecat = Table.read(source_cat_file)
     sources = sourcecat[sourcecat["fluxJy"] >= (flux_threshold)]
     sources["RADeg"][sources["RADeg"] < 0] += 360.0
-    print(
-        len(sources["decDeg"]),
-        "sources above flux threshold %.1f mJy" % (flux_threshold * 1000),
+    log.info(
+        "load_catalog.act_catalog.loaded",
+        total_sources=len(sources["decDeg"]),
+        flux_thresh_mJy=flux_threshold * 1000,
     )
     out_dict = {key: sources[key] for key in sources.colnames}
+
     return out_dict
 
 
@@ -105,7 +107,7 @@ def convert_json_to_act_format(json_list):
     return sources
 
 
-def load_json_test_catalog(source_cat_file: str, flux_threshold: float = 0):
+def load_json_test_catalog(source_cat_file: str, flux_threshold: float = 0, log=None):
     """
     Load the output file with SourceCandidate dictionaries
     which is stored as a json file.
@@ -130,7 +132,7 @@ def load_json_test_catalog(source_cat_file: str, flux_threshold: float = 0):
     return sources
 
 
-def load_websky_csv_catalog(source_cat_file: str, flux_threshold: float = 0):
+def load_websky_csv_catalog(source_cat_file: str, flux_threshold: float = 0, log=None):
     """
     load the websky catalog from a csv containing the columns
     flux(Jy), ra(deg), dec(deg)
@@ -160,7 +162,11 @@ def load_websky_csv_catalog(source_cat_file: str, flux_threshold: float = 0):
     return sources
 
 
-def load_pandas_catalog(source_cat_file: str, flux_threshold: float = 0):
+def load_pandas_catalog(
+    source_cat_file: str,
+    flux_threshold: float = 0,
+    log=None,
+):
     """
     load the source catalog from a pandas dataframe stored in a pickle file.
     """
@@ -177,6 +183,7 @@ def load_pandas_catalog(source_cat_file: str, flux_threshold: float = 0):
 
 def load_million_quasar_catalog(
     source_cat_file: str = "/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/milliquas.fits",
+    log=None,
 ):
     from astropy.table import Table
 
@@ -193,6 +200,7 @@ def load_catalog(
     mask_outside_map: bool = False,
     mask_map: enmap = None,
     return_source_cand_list: bool = False,
+    log=None,
 ):
     """
     flux_threshold is a threshold, in Jy, below which we ignore the sources.
@@ -212,27 +220,34 @@ def load_catalog(
     ##
     ##need a way to load frequency, array, ctime information.
     ##
-
+    log = log.new()
     if ".pkl" in source_cat_file:
         sources = load_pandas_catalog(
-            source_cat_file=source_cat_file, flux_threshold=flux_threshold
+            source_cat_file=source_cat_file,
+            flux_threshold=flux_threshold,
+            log=log,
         )
-
     if (
         "PS_S19_f090_2pass_optimalCatalog.fits" in source_cat_file
         or "catmaker" in source_cat_file
     ):
         sources = load_act_catalog(
-            source_cat_file=source_cat_file, flux_threshold=flux_threshold
+            source_cat_file=source_cat_file, flux_threshold=flux_threshold, log=log
         )
     if "websky_cat_100_1mJy.csv" in source_cat_file:
         sources = load_websky_csv_catalog(
-            source_cat_file=source_cat_file, flux_threshold=flux_threshold
+            source_cat_file=source_cat_file, flux_threshold=flux_threshold, log=log
         )
     if ".json" in source_cat_file:
         sources = load_json_test_catalog(
-            source_cat_file=source_cat_file, flux_threshold=flux_threshold
+            source_cat_file=source_cat_file, flux_threshold=flux_threshold, log=log
         )
+    log.info(
+        "load_catalog.loaded",
+        source_cat_file=source_cat_file,
+        total_sources=len(sources),
+    )
+
     if mask_outside_map and not isinstance(mask_map, type(None)):
         from ..sources.finding import mask_sources_outside_map
 
@@ -242,12 +257,13 @@ def load_catalog(
                 sources[key] = sources[key][source_mask]
         else:
             sources = sources[source_mask]
-        print(sum(source_mask), " sources actually within map")
+        log.info("load_catalog.load_in_map", total_in_map_sources=sum(source_mask))
     if return_source_cand_list:
         from ..sources.forced_photometry import convert_catalog_to_source_objects
 
         sources = convert_catalog_to_source_objects(sources)
 
+    log.info("load_catalog.complete")
     return sources
 
 

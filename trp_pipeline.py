@@ -257,7 +257,10 @@ if args.box:
 else:
     box = None
 
+logger.info("pipeline.initialized")
+
 for freq_arr_idx in indexed_map_groups:
+    logger = logger.new()
     if "_" in freq_arr_idx:
         ## assume it's [arr]_[freq]
         arr, freq = freq_arr_idx.split("_")
@@ -270,6 +273,7 @@ for freq_arr_idx in indexed_map_groups:
     for map_group in map_groups:
         logger = logger.bind(map_group=map_group)
         if len(map_group) == 0:
+            logger.warning("pipeline.map.empty_group")
             continue
         if len(map_group) == 1:
             logger.debug("pipeline.map.loading")
@@ -281,10 +285,10 @@ for freq_arr_idx in indexed_map_groups:
 
             ## need a more robust way to check this...
             if "coadd" in str(map_group[0]):
-                logger.debug("pipeline.map.coadd")
+                logger.debug("pipeline.map.load_coadd")
                 mapdata = load_coadd_maps(mapfile=map_group[0], arr=arr, box=box)[0]
             else:
-                logger.debug("pipeline.map.other")
+                logger.debug("pipeline.map.load_map")
                 mapdata = load_map(
                     map_path=map_group[0],
                     map_sim_params=sim_params,
@@ -366,6 +370,7 @@ for freq_arr_idx in indexed_map_groups:
                 mask_outside_map=True,
                 mask_map=mapdata.flux,
                 return_source_cand_list=True,
+                log=logger,
             )
 
         logger.info("pipeline.sources.fitting")
@@ -380,6 +385,7 @@ for freq_arr_idx in indexed_map_groups:
             reproject_thumb=not args.sim,
             flux_lim_fit_centroid=args.bright_flux_threshold,
             return_thumbnails=args.save_source_thumbnails,
+            log=logger,
         )
 
         ## Do something with the thumbnails?
