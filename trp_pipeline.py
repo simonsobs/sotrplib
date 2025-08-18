@@ -494,6 +494,10 @@ for freq_arr_idx in indexed_map_groups:
             ## make sure the simulated sources are properly masked, and the injected transients are recovered
             ## including with the correct fluxes.
             if len(catalog_matches) > 0:
+                logger.error(
+                    "pipeline.sources.catalog_matches_found",
+                    catalog_matches=catalog_matches,
+                )
                 raise ValueError(
                     "Catalog matches found in simulated map... something is wrong."
                 )
@@ -505,16 +509,18 @@ for freq_arr_idx in indexed_map_groups:
                 flux_threshold=5 * sim_params["maps"]["map_noise"],
                 fail_flux_mismatch=True,
                 fail_unmatched=True,
+                log=logger,
             )
 
         logger = logger.bind(n_catalog_matches=len(catalog_matches))
         if len(catalog_matches) > 0:
+            logger.warning("pipeline.sift.blind_search_found_catalog_sources")
+
             if args.plot_thumbnails:
                 for cm in catalog_matches:
                     logger = logger.bind(
                         match=cm, source_name="_".join(cm.sourceID.split(" "))
                     )
-                    logger.info("pipeline.sift.blind_in_catalog")
                     plot_map_thumbnail(
                         mapdata.snr
                         if not args.sim
@@ -570,13 +576,14 @@ for freq_arr_idx in indexed_map_groups:
                     )
                     print(" ".join(executable))
         else:
-            print(
-                "Too many transient candidates (%i)... something fishy"
-                % len(transient_candidates)
+            logger.warning(
+                "pipeline.sift.too_many_transient_candidates",
+                count=len(transient_candidates),
+                cand_limit=args.candidate_limit,
             )
-            print("Writing to noise candidates database.")
+            logger.warning("pipeline.update_noise_db.dumping_transients")
             noise_candidates_db.add_sources(transient_candidates)
-
+        logger.info("pipeline.update_noise_db.dumping_noise_candidates")
         noise_candidates_db.add_sources(noise_candidates)
 
         del (
@@ -589,7 +596,7 @@ for freq_arr_idx in indexed_map_groups:
             known_sources,
             injected_sources,
         )
-
+        logger.info("pipeline.write_to_db.updating_catalogs")
         ## update databases and clear
         cataloged_sources_db.write_database()
         cataloged_sources_db.read_database()

@@ -574,6 +574,7 @@ def crossmatch_position_and_flux(
     spatial_threshold: float = 0.05,
     fail_unmatched: bool = False,
     fail_flux_mismatch: bool = False,
+    log=None,
 ):
     """
     Crossmatch the injected sources and transients with the recovered ones.
@@ -591,10 +592,16 @@ def crossmatch_position_and_flux(
     """
     from pixell.utils import arcmin, degree
 
+    log.bind(func_name="crossmatch_position_and_flux")
+
     # Convert injected and recovered sources to numpy arrays of positions
     injected_positions = np.array([[src.dec, src.ra] for src in injected_sources])
     recovered_positions = np.array([[src.dec, src.ra] for src in recovered_sources])
-
+    log.info(
+        "crossmatch_position_and_flux.positions",
+        injected_positions=injected_positions,
+        recovered_positions=recovered_positions,
+    )
     # Perform crossmatch to find matches
     matched_mask, matches = crossmatch_mask(
         injected_positions,
@@ -605,6 +612,10 @@ def crossmatch_position_and_flux(
     )
 
     if np.sum(np.logical_not(matched_mask)) > 0 and fail_unmatched:
+        log.error(
+            "crossmatch_position_and_flux.unmatched_sources",
+            unmatched_count=np.sum(np.logical_not(matched_mask)),
+        )
         print(ValueError("Some injected sources were not recovered."))
 
     # Check flux similarity for matched sources
@@ -634,14 +645,27 @@ def crossmatch_position_and_flux(
             else:
                 similar_fluxes.append(False)
         else:
-            print("no match to source", i)
             ij = injected_sources[i]
-            print(
-                "%.3f,%3f, flux=%.2f, fwhm a,b=(%.2f,%.2f)"
-                % (ij.ra, ij.dec, ij.flux, ij.fwhm_a, ij.fwhm_b)
+            log.debug(
+                "crossmatch_position_and_flux.no_match",
+                source_index=i,
+                ra=ij.ra,
+                dec=ij.dec,
+                flux=ij.flux,
+                fwhm_a=ij.fwhm_a,
+                fwhm_b=ij.fwhm_b,
             )
             similar_fluxes.append(False)
+    log.info(
+        "crossmatch_position_and_flux.similar_fluxes", similar_fluxes=similar_fluxes
+    )
+    if np.sum(np.logical_not(similar_fluxes)) > 0:
+        log.warning(
+            "crossmatch_position_and_flux.failed_matches",
+            failed_count=np.sum(np.logical_not(similar_fluxes)),
+        )
 
+    log.warning("crossmatch_position_and_flux.ascii_plot_because_I_was_bored")
     from ..utils.plot import ascii_scatter, ascii_vertical_histogram
 
     meandec = np.mean(in_dec)
