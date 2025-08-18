@@ -3,9 +3,12 @@ Core map objects.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import astropy.units as u
+import numpy as np
 import structlog
 from astropy.units import Quantity, Unit
 from numpy.typing import ArrayLike
@@ -13,7 +16,7 @@ from pixell import enmap
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.maps import widefield_geometry
+from sotrplib.sims import sim_maps
 
 
 class ProcessableMap(ABC):
@@ -47,14 +50,26 @@ class ProcessableMap(ABC):
         return
 
 
+@dataclass
+class SimulationParameters:
+    center_ra: u.Quantity = u.Quantity(0.0, "deg")
+    center_dec: u.Quantity = u.Quantity(0.0, "deg")
+    width_ra: u.Quantity = u.Quantity(1.0, "deg")
+    width_dec: u.Quantity = u.Quantity(1.0, "deg")
+    resolution: u.Quantity = u.Quantity(0.5, "arcmin")
+    map_noise: u.Quantity = u.Quantity(0.0, "Jy")
+
+
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
         resolution: Quantity,
         start_time: datetime,
         end_time: datetime,
+        simulation_parameters: SimulationParameters | None = None,
         box: ArrayLike | None = None,
         include_half_pixel_offset: bool = False,
+        log: FilteringBoundLogger | None = None,
     ):
         """
         Parameters
@@ -65,10 +80,14 @@ class SimulatedMap(ProcessableMap):
             Start time of the simulated observing session.
         end_time: datetime
             End time of the simulated observing session.
+        simulation_parameters: SimulationParameters, optional
+            Parameters for the simulation. If None, defaults will be used.
         box: np.ndarray, optional
             Optional sky box to simulate in. Otherwise covers the whole sky.
         include_half_pixel_offset: bool, False
             Include the half-pixel offset in pixell constructors.
+        log: FilteringBoundLogger, optional
+            Logger to use. If None, a new one will be created.
         """
         self.resolution = resolution
         self.start_time = start_time
@@ -77,32 +96,32 @@ class SimulatedMap(ProcessableMap):
         self.include_half_pixel_offset = include_half_pixel_offset
 
         self.observation_length = end_time - start_time
+        self.simulation_parameters = simulation_parameters or SimulationParameters()
         self.time = None
+        self.log = log or structlog.get_logger()
 
     def build(self):
-        # This is all wrong. See the map sims section in load_map where the
-        # real map simulation actually ocurrs...
-        if self.box is None:
-            empty_map = enmap.zeros(
-                *widefield_geometry(
-                    res=self.resolution.to_value("arcmin"),
-                    include_half_pixel_offset=self.include_half_pixel_offset,
-                )
-            )
-        else:
-            shape, wcs = enmap.geometry(self.box, res=self.res)
-            empty_map = enmap.zeros(shape, wcs=wcs)
+        log = self.log.bind(parameters=self.simulation_parameters)
+        self.flux = sim_maps.make_enmap(
+            center_ra=self.simulation_parameters.center_ra.to_value("deg"),
+            center_dec=self.simulation_parameters.center_dec.to_value("deg"),
+            width_ra=self.simulation_parameters.width_ra.to_value("deg"),
+            width_dec=self.simulation_parameters.width_dec.to_value("deg"),
+            resolution=self.resolution.to_value("arcmin"),
+            map_noise=self.simulation_parameters.map_noise.to_value("Jy"),
+        )
 
-        self.intensity = empty_map.copy()
-        self.inverse_variance = empty_map.copy()
-        self.time = None
+        self.flux_units = u.Jy
 
-        # TODO: Add hook for simulating sources?
+        self.snr = self.flux.copy()
+        self.snr.fill(1.0)  # Set SNR to 1 (i.e. all noise).
+
+        log.debug("simulated_map.build.complete")
 
         return
 
     def finalize(self):
-        # TODO: conversion from intensity and ivar to flux and snr.
+        # Nothing to do here.
         return
 
 
@@ -213,6 +232,18 @@ class RhoAndKappaMap(ProcessableMap):
 
         return
 
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.rho / np.sqrt(self.kappa)
+
+        return snr
+
+    def get_flux(self):
+        with np.errstate(divide="ignore"):
+            flux = self.rho / self.kappa
+
+        return flux
+
     def finalize(self):
-        # Do matched filtering to get snr and flux maps.
-        return
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
