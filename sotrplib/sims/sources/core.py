@@ -104,8 +104,12 @@ class DatabaseSourceSimulation(SourceSimulation):
             debug=True,
         )
 
+        log = self.log.bind(n_sources=len(injected_sources))
+
         with np.errstate(divide="ignore"):
             snr = new_flux_map / noise_map
+
+        log.info("source_injection.database.complete")
 
         return ProcessableMapWithSimualtedSources(
             flux=new_flux_map,
