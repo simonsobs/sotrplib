@@ -162,3 +162,57 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def finalize(self):
         # Do matched filtering to get snr and flux maps.
         return
+
+
+class RhoAndKappaMap(ProcessableMap):
+    """
+    A set of FITS maps read from disk. Could be Depth 1, could
+    be monthly or weekly co-adds. Or something else!
+    """
+
+    def __init__(
+        self,
+        rho_filename: Path,
+        kappa_filename: Path,
+        start_time: datetime,
+        end_time: datetime,
+        box: ArrayLike | None,
+        time_filename: Path | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.rho_filename = rho_filename
+        self.inverse_variance_filename = kappa_filename
+        self.time_filename = time_filename
+        self.start_time = start_time
+        self.end_time = end_time
+        self.box = box
+        self.log = log or structlog.get_logger()
+
+    def build(self):
+        log = self.log.bind(intensity_filename=self.intensity_filename)
+        try:
+            self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=self.box)
+            log.debug("rho_kappa.rho.read.sel")
+        except IndexError:
+            # Rho map does not have Q, U
+            self.rho = enmap.read_map(str(self.rho_filename), box=self.box)
+            log.debug("rho_kappa.rho.read.nosel")
+
+        log = log.new(kappa_filename=self.kappa_filename)
+        self.kappa = enmap.read_map(self.kappa_filename, box=self.box)
+        log.debug("rho_kappa.kappa.read")
+
+        log = log.new(time_filename=self.time_filename)
+        if self.time_filename is not None:
+            # TODO: Handle nuance that the start time is not included.
+            self.time = enmap.read_map(self.time_filename, box=self.box)
+            log.debug("rho_kappa.time.read")
+        else:
+            self.time = None
+            log.debug("rho_kappa.time.none")
+
+        return
+
+    def finalize(self):
+        # Do matched filtering to get snr and flux maps.
+        return
