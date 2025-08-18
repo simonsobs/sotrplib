@@ -212,11 +212,18 @@ if args.sim:
     logger = logger.bind(**sim_params)
     logger.debug("pipeline.sim.params")
     if not args.use_map_geometry:
+        # Completely fake simulation? Generate 'fake' data? Are they saved to disk?
         freq_arr_idx, indexed_map_groups, indexed_map_group_time_ranges = (
             get_sim_map_group(sim_params)
         )
 
+# freq_arr_idx = ? I guess this is f090_i1 or something?
+# indexed_map_groups = freq_arr_idx: [[i?]]
+# indexed_map_group_time_ranges = freq_arr_idx: (t_min, t_max, i?)
+
 if not args.sim or args.use_map_geometry:
+    # Glob handling -- should be done in the config file when
+    # that is ready.
     if len(args.maps) == 1:
         if "*" in args.maps[0]:
             all_maps = glob(args.maps[0])
@@ -225,11 +232,22 @@ if not args.sim or args.use_map_geometry:
             args.maps = all_maps
 
     if not args.is_coadd:
+        # Handling the regular case I guess?
+        # Relies a lot on specific formatting of filenames...
+        # so you get the array from the filename and the frequency from the filename.
+        # indexed_map_groups: {"f090_pa5": list[Depth1Map], "f090": list[Depth1Map] - coadded between arrays}
         indexed_map_groups, indexed_map_group_time_ranges, time_bins = get_map_groups(
             args.maps,
             coadd_days=args.coadd_n_days,
             restrict_to_night=args.nighttime_only,
         )
+        # Can co-add different arrays at same frequency BUT at the same time: f090 for all arrays
+        # OR
+        # Can co-add different arrays at same frequency at different times: f090_pa5 for 1 week
+        # OR
+        # Can co-add everything: f090 for 1 week
+        # Currently everything is here to create a list of Depth1Map objects for the pipeline
+        # to consume. Let's change that to SourceExtractionMap?
 
     else:
         ## only works for a single input map
@@ -238,6 +256,8 @@ if not args.sim or args.use_map_geometry:
         indexed_map_groups = {freq_arr_idx: [args.maps]}
         indexed_map_group_time_ranges = {freq_arr_idx: [[0, 1]]}
         time_bins = {freq_arr_idx: [[0]]}
+
+# -- At this point I've just parsed filenames.
 
 ## set up the map geometry for loading box region if given.
 if args.box:
@@ -280,11 +300,18 @@ for freq_arr_idx in indexed_map_groups:
                     continue
 
             ## need a more robust way to check this...
+            # This is the actual I/O of the bytes from disk
             if "coadd" in str(map_group[0]):
                 logger.debug("pipeline.map.coadd")
+                # ... Allen pre-made coadds for this piece of code? Probably unused???
                 mapdata = load_coadd_maps(mapfile=map_group[0], arr=arr, box=box)[0]
             else:
                 logger.debug("pipeline.map.other")
+                # Load a single Depth1 map (i.e. one index in the map group)
+                # and it is a Depth1Map object.
+                # use_map_geometry is for simulations in case you want to injet
+                # sources into real observed map regions. So just load the geometry
+                # but not any of the underlying data. But only sometimes though.
                 mapdata = load_map(
                     map_path=map_group[0],
                     map_sim_params=sim_params,
@@ -296,6 +323,9 @@ for freq_arr_idx in indexed_map_groups:
 
         else:
             logger.info("pipeline.map.coadding")
+            # Takes a whole map group which is e.g. one frequency coadded across multiple
+            # arrays, or multiple days worth of data, and produces one mapdata object
+            # which is in itself a Depth1Map.
             mapdata = coadd_map_group(map_group, freq=freq, arr=arr, box=box)
 
         ## end of map loading
@@ -306,6 +336,9 @@ for freq_arr_idx in indexed_map_groups:
         ## when using the real map geometry, need to load the map first
         ## so here set the simulated map flux and snr
         if args.sim and args.use_map_geometry:
+            # These are entirely simulated maps? I.e. they don't load any data
+            # from disk except the geometry which it gets from the time map
+            # which _is_ from a real file.
             mapdata.flux = make_noise_map(
                 mapdata.time_map,
                 map_noise_Jy=sim_params["maps"]["map_noise"],
@@ -315,6 +348,11 @@ for freq_arr_idx in indexed_map_groups:
                 if sim_params["maps"]["map_noise"] > 0
                 else np.ones(mapdata.flux.shape)
             )
+            # Why? We don't use them. The whole pipeline in terms of the source
+            # extraction runs direclty on flux and snr maps, _but_ rho and kappa
+            # maps are still used in coaddition. See preprocess_map. These rho and
+            # kappa would be inconsistent with the previously generated flux and snr
+            # so we've gotta get rid of them.
             del mapdata.rho_map, mapdata.kappa_map
 
         catalog_sources = []
@@ -328,11 +366,23 @@ for freq_arr_idx in indexed_map_groups:
         )
         logger = logger.bind(map_id=map_id)
         band_fwhm = get_fwhm(mapdata.freq, mapdata.wafer_name) * arcmin
-
+        # Skipped for simulation. For real maps, it does some cuts on rho and
+        # kappa if they exist, and then deletes them after making the flux and
+        # snr map. They then are ready (with flux and snr) to go through the
+        # rest of the pipeline
         preprocess_map(
             mapdata,
             galmask_file=args.galaxy_mask,
             skip=args.sim,
+            # These are for the flat-fielding. Essentially are used for
+            # the cuts on the map before conversion to SNR and flux?
+            # 1. Calcualte snr map
+            # 2. If the snr is gaussian the rms should be 1
+            # 3. Cuts into chunks of size tilegrid x tilegrid (arcmin?)
+            # 4. Calculates RMS of noise in that chunk
+            # 5. Does the flat-fielding that sets the RMS noise to zero
+            # So this is sky-position dependent noise correction.
+            # These should probably be values read from a parameter file.
             tilegrid=0.5,
             sigmaclip=5.0,
         )
@@ -342,6 +392,11 @@ for freq_arr_idx in indexed_map_groups:
             continue
 
         logger.info("pipeline.preprocess.inject_simulated_sources")
+        # Still part of creating the map setup...
+        # If it's a simulation, we inject sources using this function.
+        # catalog sources are simulated 'known' sources
+        # injected_sources are ones that we don't know about
+        # these parameters are teh same for all maps
         catalog_sources, injected_sources = inject_simulated_sources(
             mapdata,
             injected_source_db,
@@ -353,6 +408,7 @@ for freq_arr_idx in indexed_map_groups:
             simulated_transient_database=args.simulated_transient_database,
         )
 
+        ### --- Start processing the maps ---
         logger = logger.bind(
             source_catalog=args.source_catalog, flux_threshold=args.flux_threshold
         )
