@@ -849,7 +849,7 @@ def preprocess_map(
 
     from .masks import mask_dustgal, mask_edge
 
-    log = log.new()
+    log = log.bind(func_name="preprocess_map")
     log.info("preprocess.start")
     if not mapdata.cleaned:
         ## ignore divide by zero warning since that will happen outside the weighted region

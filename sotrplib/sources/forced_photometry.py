@@ -360,7 +360,7 @@ def photutils_2D_gauss_fit(
 
     from ..source_catalog.source_catalog import convert_gauss_fit_to_source_cat
 
-    log = log.new()
+    log = log.bind(func_name="photutils_2D_gauss_fit")
     preamble = "sources.fitting.photutils2DGauss."
     fits = []
     thumbnails = []

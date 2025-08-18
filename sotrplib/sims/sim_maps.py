@@ -420,7 +420,7 @@ def inject_simulated_sources(
     - simulated_transient_database: str, path to the database for simulated transients.
     - log: structlog bound logger object
     """
-    log = log.new()
+    log = log.bind(func_name="inject_simulated_sources")
     if not sim_params and not injected_source_db and not simulated_transient_database:
         log.info("inject_simulated_sources.skip")
         return [], []
@@ -459,7 +459,6 @@ def inject_simulated_sources(
 
     injected_sources = []
     if inject_transients:
-        log = log.new()
         log.info("inject_simulated_sources.inject_transients")
         transient_sources = load_transients_from_db(simulated_transient_database)
         log = log.bind(transient_sources=transient_sources)
@@ -540,12 +539,11 @@ def inject_simulated_sources(
                     "inject_simulated_sources.inject_transients.generate_transients.inject_sources"
                 )
 
-    log = log.new()
-    log.bind(
+    log.info(
+        "inject_simulated_sources.final_counts",
         n_injected_sources=len(catalog_sources),
         n_injected_transients=len(injected_sources),
     )
-    log.info("inject_simulated_sources.final_counts")
     if isinstance(injected_source_db, SourceCatalogDatabase):
         ## add the catalog sources to the injected_source_db
         injected_source_db.add_sources(injected_sources)

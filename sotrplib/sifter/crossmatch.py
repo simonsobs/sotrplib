@@ -209,7 +209,8 @@ def sift(
             list of dictionaries with information about the detected source.
 
     """
-    log = log.new()
+    log = log.bind(func_name="sift")
+    log.info("sift.start")
 
     fwhm_arcmin = get_fwhm(map_freq, arr=arr)
 
@@ -273,7 +274,6 @@ def sift(
     transient_candidates = []
     noise_candidates = []
     for source, cand_pos in enumerate(zip(extracted_ra, extracted_dec)):
-        log = log.new()
         forced_photometry_info = extracted_sources[source]
         source_string_name = radec_to_str_name(
             cand_pos[0] / pixell_utils.degree, cand_pos[1] / pixell_utils.degree
@@ -431,13 +431,12 @@ def sift(
             log = log.bind(transient_cand=cand)
             log.info("sift.transient_candidate")
 
-    log = log.new()
-    log = log.bind(
+    log.info(
+        "sift.initial_candidates",
         transient_candidates=transient_candidates,
         noise_candidates=noise_candidates,
         source_candidates=source_candidates,
     )
-    log.info("sift.initial_candidates")
     if isinstance(imap, enmap.ndmap):
         transient_candidates, new_noise_candidates = recalculate_local_snr(
             transient_candidates,
@@ -451,13 +450,12 @@ def sift(
             log.info("sift.recalc_snr")
         noise_candidates.extend(new_noise_candidates)
 
-    log = log.new()
-    log = log.bind(
+    log.info(
+        "sift.final_counts",
         source_candidates=len(source_candidates),
         transient_candidates=len(transient_candidates),
         noise_candidates=len(noise_candidates),
     )
-    log.info("sift.final_counts")
     return source_candidates, transient_candidates, noise_candidates
 
 
