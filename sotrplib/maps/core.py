@@ -52,9 +52,14 @@ class ProcessableMap(ABC):
 
 @dataclass
 class SimulationParameters:
-    center_ra: u.Quantity = u.Quantity(0.0, "deg")
-    center_dec: u.Quantity = u.Quantity(0.0, "deg")
-    width_ra: u.Quantity = u.Quantity(1.0, "deg")
+    """
+    Sky simulation parameters (geometry and noise level).
+    Defaults are given to be the center of the Deep56 ACT field.
+    """
+
+    center_ra: u.Quantity = u.Quantity(16.3, "deg")
+    center_dec: u.Quantity = u.Quantity(-1.8, "deg")
+    width_ra: u.Quantity = u.Quantity(2.0, "deg")
     width_dec: u.Quantity = u.Quantity(1.0, "deg")
     resolution: u.Quantity = u.Quantity(0.5, "arcmin")
     map_noise: u.Quantity = u.Quantity(0.0, "Jy")
