@@ -10,7 +10,7 @@ log = get_logger()
 
 
 def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"])
+    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     n_sources = 5
     out_map, injected_sources = sim_maps.photutils_sim_n_sources(
         test_map,
@@ -45,7 +45,7 @@ def test_photutils_sim_n_sources_output_b(dummy_depth1_map, log=log):
 
 
 def test_photutils_sim_n_sources_flux_range(sim_map_params, log=log):
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"])
+    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     n_sources = 3
     min_flux = 1.0
     max_flux = 1.01
@@ -63,7 +63,7 @@ def test_photutils_sim_n_sources_flux_range(sim_map_params, log=log):
 
 
 def test_photutils_sim_n_sources_invalid_flux(sim_map_params, log=log):
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"])
+    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     with pytest.raises(ValueError):
         sim_maps.photutils_sim_n_sources(
             test_map, n_sources=2, min_flux_Jy=1.0, max_flux_Jy=0.5, log=log
@@ -71,7 +71,7 @@ def test_photutils_sim_n_sources_invalid_flux(sim_map_params, log=log):
 
 
 def test_inject_sources_empty(sim_map_params, log=log):
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"])
+    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     out_map, injected = sim_maps.inject_sources(test_map, [], 0.0, log=log)
     assert isinstance(out_map, enmap.ndmap)
     assert injected == []
@@ -87,7 +87,7 @@ def test_inject_sources_bad_maptype(log=log):
 def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
     from pixell.utils import degree
 
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"])
+    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     oob_source = dummy_source
     center_ra, center_dec = (
         sim_map_params["maps"]["center_ra"],
@@ -102,7 +102,7 @@ def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
 
 
 def test_inject_sources_not_flaring(sim_map_params, dummy_source, log=log):
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"])
+    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # observation_time far from peak_time
     quiescent_source = dummy_source
     quiescent_source.ra = sim_map_params["maps"]["center_ra"]
@@ -196,7 +196,7 @@ def test_generate_transients_imap(sim_map_params, log=log):
     from sotrplib.sims import sim_sources
 
     # Should return an empty list if no transients are specified
-    m = sim_maps.make_enmap(**sim_map_params["maps"])
+    m = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     transients = sim_sources.generate_transients(
         n=1,
         imap=m,

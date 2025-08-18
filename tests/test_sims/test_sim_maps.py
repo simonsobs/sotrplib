@@ -5,7 +5,7 @@ from structlog import get_logger
 
 from sotrplib.sims import sim_maps
 
-log = get_logger()
+log = get_logger("test_sim_maps")
 
 
 def test_make_enmap_defaults(log=log):

@@ -416,6 +416,7 @@ for freq_arr_idx in indexed_map_groups:
                     "fwhm_a": [0.25, 6.0],
                     "fwhm_b": [0.25, 6.0],
                 },
+                log=logger,
             )
 
         logger.info("pipeline.sources.search")

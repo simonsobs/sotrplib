@@ -60,7 +60,7 @@ def test_random_positions_with_map(sim_map_params, log=log):
     from sotrplib.sims import sim_maps
     from sotrplib.sims.sim_utils import generate_random_positions
 
-    m = sim_maps.make_enmap(**sim_map_params["maps"])
+    m = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     positions = generate_random_positions(10, imap=m, log=log)
     assert len(positions) == 10
     ra_lims = (
