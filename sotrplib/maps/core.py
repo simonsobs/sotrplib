@@ -102,6 +102,7 @@ class SimulatedMap(ProcessableMap):
 
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
+
         self.flux = sim_maps.make_enmap(
             center_ra=self.simulation_parameters.center_ra.to_value("deg"),
             center_dec=self.simulation_parameters.center_dec.to_value("deg"),
@@ -113,8 +114,89 @@ class SimulatedMap(ProcessableMap):
 
         self.flux_units = u.Jy
 
-        self.snr = self.flux.copy()
-        self.snr.fill(1.0)  # Set SNR to 1 (i.e. all noise).
+        if self.simulation_parameters.map_noise:
+            log.debug(
+                "simulated_map.build.noise",
+                map_noise=self.simulation_parameters.map_noise.to_value("Jy"),
+            )
+            self.snr = self.flux / self.simulation_parameters.map_noise.to_value("Jy")
+        else:
+            log.debug("simulated_map.build.noise.none")
+            self.snr = self.flux.copy()
+            self.snr.fill(1.0)  # Set SNR to 1 (i.e. all noise).
+
+        log.debug("simulated_map.build.complete")
+
+        return
+
+    def finalize(self):
+        # Nothing to do here.
+        return
+
+
+class SimulatedMapFromGeometry(ProcessableMap):
+    def __init__(
+        self,
+        resolution: Quantity,
+        start_time: datetime,
+        end_time: datetime,
+        geometry_source_map: Path,
+        map_noise: Quantity = u.Quantity(0.0, "Jy"),
+        log: FilteringBoundLogger | None = None,
+    ):
+        """
+        Parameters
+        ----------
+        resolution: Quantity
+            The angular resolution of the map.
+        start_time: datetime
+            Start time of the simulated observing session.
+        end_time: datetime
+            End time of the simulated observing session.
+        geometry_source_map: Path
+            Path to the source map that defines the geometry of the simulation.
+        map_noise: Quantity, optional
+            The noise level of the simulated map. Defaults to 0 Jy.
+        log: FilteringBoundLogger, optional
+            Logger to use. If None, a new one will be created.
+        """
+        self.resolution = resolution
+        self.start_time = start_time
+        self.end_time = end_time
+
+        self.map_noise = map_noise
+        self.geometry_source_map = geometry_source_map
+
+        self.observation_length = end_time - start_time
+        self.time = None
+        self.log = log or structlog.get_logger()
+
+    def build(self):
+        log = self.log.bind(geometry_source_map=self.geometry_source_map)
+
+        # Read the geometry source map to get the center and width.
+        # TODO: Potentially optimize by actually just reading the header.
+        geom_map = enmap.read_map(str(self.geometry_source_map))
+
+        log.debug("simulated_map.build.geometry.read")
+
+        self.flux = sim_maps.make_noise_map(
+            imap=geom_map,
+            map_noise_jy=self.map_noise.to_value("Jy"),
+        )
+
+        self.flux_units = u.Jy
+
+        if self.map_noise:
+            log.debug(
+                "simulated_map.build.noise",
+                map_noise=self.map_noise.to_value("Jy"),
+            )
+            self.snr = self.flux / self.map_noise.to_value("Jy")
+        else:
+            log.debug("simulated_map.build.noise.none")
+            self.snr = self.flux.copy()
+            self.snr.fill(1.0)
 
         log.debug("simulated_map.build.complete")
 
