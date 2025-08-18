@@ -65,6 +65,7 @@ def extract_sources(
     sigma_thresh_for_minrad: list = [0.0],
     res: float = None,
     pixel_mask: np.ndarray = None,
+    log=None,
 ):
     """
     Quick 'n' dirty source finding
@@ -108,16 +109,24 @@ def extract_sources(
     """
     from pixell.utils import arcmin, degree
 
+    log.bind(func_name="extract_sources")
+
     if res is None:
         try:
             res = np.abs(inmap.wcs.wcs.cdelt[0]) * degree / arcmin
         except AttributeError:
+            log.error("extract_sources.invalid_res", res=res)
             raise ValueError("Argument `res` required if inmap is an array")
 
     minrad = np.atleast_1d(minrad)
     sigma_thresh_for_minrad = np.atleast_1d(sigma_thresh_for_minrad)
 
     if len(sigma_thresh_for_minrad) != len(minrad):
+        log.error(
+            "extract_sources.invalid_minrad",
+            minrad=minrad,
+            sigma_thresh_for_minrad=sigma_thresh_for_minrad,
+        )
         raise ValueError(
             "If you are specifying multiple avoidance radii,"
             + "please supply a threshold level for each one."
@@ -133,17 +142,18 @@ def extract_sources(
             maprms = np.nanstd(inmap)
         else:
             maprms = np.nanstd(np.asarray(inmap)[whn0])
-
+    log.bind(map_rms=maprms)
     peaks = find_using_photutils(
         np.asarray(inmap),
         maprms,
         nsigma=nsigma,
         minnum=2,
+        log=log,
     )
 
     npeaks = peaks["n_detected"]
+    log.info("extract_sources.n_detected", npeaks=npeaks)
     if npeaks == 0:
-        print("No sources found")
         return {}
 
     # gather detected peaks into output structure, ignoring repeat
@@ -189,10 +199,10 @@ def extract_sources(
             "kron_radius": kron_radii[0].value * res,
         }
 
+    log.info("extract_sources.output_dict_initialized")
+
     minrad_pix = minrad / res
-
     ksource = 1
-
     # different accounting if exclusion radius is specified as a function
     # of significance
     if len(minrad) > 1:
@@ -278,10 +288,13 @@ def extract_sources(
     for src in list(output_struct.keys()):
         if src >= ksource:
             del output_struct[src]
-
+    log.info(
+        "extract_sources.output_dict_prepared",
+        n_sources=len(list(output_struct.keys())),
+    )
     output_struct = get_source_sky_positions(output_struct, inmap)
-
     output_struct = get_source_observation_time(output_struct, timemap)
+    log.info("extract_sources.output_dict_finalized")
     return output_struct
 
 
@@ -290,6 +303,7 @@ def find_using_photutils(
     signoise: Union[float, ndmap] = None,
     minnum: int = 2,
     nsigma: float = 5.0,
+    log=None,
 ):
     """
     Written to take same inputs and return outputs in the same format as the
@@ -344,6 +358,7 @@ def find_using_photutils(
     # dependencies that I (Melanie) do not want to cause problems for other people
     from photutils import segmentation as pseg
 
+    log.bind(func_name="find_using_photutils")
     default_keys = {
         "maxvals": "max_value",
         "xcen": "xcentroid",
@@ -369,7 +384,7 @@ def find_using_photutils(
     ]
 
     groups = {k: 0 for k in list(default_keys) + extra_keys}
-
+    log.info("find_using_photutils.start")
     ## convert ndmap to 2D numpy array for photutils
     Tmap = np.asarray(Tmap)
     assert len(Tmap.shape) == 2
@@ -412,7 +427,7 @@ def find_using_photutils(
     for k in groups:
         if k in tbl.columns:
             groups[k] = tbl[k]
-
+    log.info("find_using_photutils.end")
     return groups
 
 

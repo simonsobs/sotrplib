@@ -432,6 +432,11 @@ for freq_arr_idx in indexed_map_groups:
             map_noise=np.ones(len(sigma_thresh_for_minrad)),
             max_radius_arcmin=120.0,
         )
+        logger.info(
+            "pipeline.sources.cut_radii_set",
+            sigma_thresh_for_minrad=sigma_thresh_for_minrad,
+            pix_rad=pix_rad,
+        )
 
         extracted_sources = extract_sources(
             mapdata.flux,
@@ -443,6 +448,7 @@ for freq_arr_idx in indexed_map_groups:
             minrad=pix_rad / (mapdata.res / arcmin),
             sigma_thresh_for_minrad=sigma_thresh_for_minrad,
             res=mapdata.res / arcmin,
+            log=logger,
         )
 
         logger = logger.bind(n_sources=len(extracted_sources))
