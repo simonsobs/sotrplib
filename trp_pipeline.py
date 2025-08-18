@@ -312,6 +312,7 @@ for freq_arr_idx in indexed_map_groups:
                 # use_map_geometry is for simulations in case you want to injet
                 # sources into real observed map regions. So just load the geometry
                 # but not any of the underlying data. But only sometimes though.
+                # SIMULATION: DONE, "real maps": NOT DONE
                 mapdata = load_map(
                     map_path=map_group[0],
                     map_sim_params=sim_params,
@@ -339,6 +340,7 @@ for freq_arr_idx in indexed_map_groups:
             # These are entirely simulated maps? I.e. they don't load any data
             # from disk except the geometry which it gets from the time map
             # which _is_ from a real file.
+            # DONE!
             mapdata.flux = make_noise_map(
                 mapdata.time_map,
                 map_noise_Jy=sim_params["maps"]["map_noise"],

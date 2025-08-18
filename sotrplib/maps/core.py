@@ -27,6 +27,11 @@ class ProcessableMap(ABC):
     time: ndmap | None
     "The time map. If None, usually when the map is a coadd, see the time range"
 
+    frequency: str
+    "The frequency band of the map, e.g. f090"
+    array: str
+    "The array/wafer that was used"
+
     observation_length: timedelta
     start_time: datetime
     end_time: datetime
@@ -40,6 +45,14 @@ class ProcessableMap(ABC):
         or reading them from disk.
         """
         return
+
+    @property
+    def noise(self):
+        """
+        Get the 'noise map' (flux / SNR)
+        """
+        with np.errstate(divide="ignore"):
+            return self.flux / self.snr
 
     @abstractmethod
     def finalize(self):
@@ -71,6 +84,8 @@ class SimulatedMap(ProcessableMap):
         resolution: Quantity,
         start_time: datetime,
         end_time: datetime,
+        frequency: str | None = None,
+        array: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
         box: ArrayLike | None = None,
         include_half_pixel_offset: bool = False,
@@ -85,6 +100,10 @@ class SimulatedMap(ProcessableMap):
             Start time of the simulated observing session.
         end_time: datetime
             End time of the simulated observing session.
+        frequency: str | None, optional
+            The frequency band of the simulation, e.g. f090. Defaults to f090.
+        array: str | None, optional
+            The array that this map represents.
         simulation_parameters: SimulationParameters, optional
             Parameters for the simulation. If None, defaults will be used.
         box: np.ndarray, optional
@@ -99,6 +118,8 @@ class SimulatedMap(ProcessableMap):
         self.end_time = end_time
         self.box = box
         self.include_half_pixel_offset = include_half_pixel_offset
+        self.frequency = frequency or "f090"
+        self.array = array or "pa5"
 
         self.observation_length = end_time - start_time
         self.simulation_parameters = simulation_parameters or SimulationParameters()
@@ -146,7 +167,9 @@ class SimulatedMapFromGeometry(ProcessableMap):
         start_time: datetime,
         end_time: datetime,
         geometry_source_map: Path,
-        map_noise: Quantity = u.Quantity(0.0, "Jy"),
+        frequency: str | None = None,
+        array: str | None = None,
+        map_noise: Quantity = u.Quantity(0.01, "Jy"),
         log: FilteringBoundLogger | None = None,
     ):
         """
@@ -160,6 +183,10 @@ class SimulatedMapFromGeometry(ProcessableMap):
             End time of the simulated observing session.
         geometry_source_map: Path
             Path to the source map that defines the geometry of the simulation.
+        frequency: str | None, optional
+            The frequency band of the simulation, e.g. f090. Defaults to f090.
+        array: str | None, optional
+            The array that this represents, defaults to pa5
         map_noise: Quantity, optional
             The noise level of the simulated map. Defaults to 0 Jy.
         log: FilteringBoundLogger, optional
@@ -171,6 +198,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         self.map_noise = map_noise
         self.geometry_source_map = geometry_source_map
+        self.frequency = frequency or "f090"
+        self.array = array or "pa5"
 
         self.observation_length = end_time - start_time
         self.time = None
@@ -248,6 +277,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             self.intensity = enmap.read_map(str(self.intensity_filename), box=self.box)
             log.debug("intensity_ivar.intensity.read.nosel")
 
+        # TODO: Set metadata from header e.g. frequency band.
+
         log = log.new(inverse_variance_filename=self.inverse_variance_filename)
         self.inverse_variance = enmap.read_map(
             self.inverse_variance_filename, box=self.box
@@ -307,6 +338,8 @@ class RhoAndKappaMap(ProcessableMap):
         log = log.new(kappa_filename=self.kappa_filename)
         self.kappa = enmap.read_map(self.kappa_filename, box=self.box)
         log.debug("rho_kappa.kappa.read")
+
+        # TODO: Set metadata from header e.g. frequency band.
 
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
