@@ -62,7 +62,7 @@ class SimulationParameters:
     width_ra: u.Quantity = u.Quantity(2.0, "deg")
     width_dec: u.Quantity = u.Quantity(1.0, "deg")
     resolution: u.Quantity = u.Quantity(0.5, "arcmin")
-    map_noise: u.Quantity = u.Quantity(0.0, "Jy")
+    map_noise: u.Quantity = u.Quantity(0.01, "Jy")
 
 
 class SimulatedMap(ProcessableMap):
