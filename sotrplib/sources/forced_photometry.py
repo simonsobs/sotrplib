@@ -213,6 +213,7 @@ def convert_catalog_to_source_objects(
     ctime: Union[float, enmap.ndmap] = None,
     map_id: str = "",
     source_type: str = "",
+    log=None,
 ):
     """
     take each source in the catalog and convert to a list
@@ -223,9 +224,16 @@ def convert_catalog_to_source_objects(
 
     from ..sources.sources import SourceCandidate
 
+    log = log.bind(func_name="convert_catalog_to_source_objects")
+
     if isinstance(catalog_sources, list):
+        log.info(
+            "convert_catalog_to_source_objects.catalog_is_list",
+            num_sources=len(catalog_sources),
+        )
         return catalog_sources
     if not catalog_sources:
+        log.warning("convert_catalog_to_source_objects.catalog_is_empty", num_sources=0)
         return []
 
     known_sources = []
@@ -313,7 +321,10 @@ def convert_catalog_to_source_objects(
             if cs.err_flux > 0.0:
                 cs.snr = cs.flux / cs.err_flux
         known_sources.append(cs)
-
+    log.info(
+        "convert_catalog_to_source_objects.catalog_converted",
+        num_sources=len(known_sources),
+    )
     return known_sources
 
 

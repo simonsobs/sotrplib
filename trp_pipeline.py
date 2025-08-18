@@ -400,6 +400,7 @@ for freq_arr_idx in indexed_map_groups:
                 mapdata.wafer_name,
                 map_id=map_id,
                 ctime=mapdata.time_map,
+                log=logger,
             )
 
             ## update the source catalog

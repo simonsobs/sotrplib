@@ -302,15 +302,19 @@ class Depth1Map:
         src_model: enmap.ndmap = None,
         verbose=False,
         cuts={},
+        log=None,
     ):
         """
         src_model is a simulated (model) map of the sources in the list.
         sources are fit using photutils, and are SourceCandidate objects
         with fwhm_a, fwhm_b, ra, dec, flux, and orientation
         """
+        log.bind(func_name="subtract_sources")
         if len(sources) == 0:
+            log.warning("subtract_sources.no_sources", num_sources=0)
             return
         if not isinstance(self.flux, enmap.ndmap):
+            log.error("subtract_sources.flux_is_none", map=self)
             raise ValueError("self.flux is None, cannot subtract sources.")
         if not isinstance(src_model, enmap.ndmap):
             from ..utils.utils import get_fwhm
@@ -321,11 +325,14 @@ class Depth1Map:
                 nominal_fwhm_arcmin=get_fwhm(self.freq),
                 verbose=verbose,
                 cuts=cuts,
+                log=log,
             )
 
         self.flux -= src_model
+        log.info("subtract_sources.source_flux_subtracted")
         ## mask the snr map as well since we've subtracted the sources we want to ignore them.
         self.snr[abs(src_model) > 1e-8] = 0.0
+        log.info("subtract_sources.source_snr_masked")
         return src_model
 
 
@@ -976,6 +983,7 @@ def make_model_source_map(
     matched_filtered=False,
     verbose=False,
     cuts={},
+    log=None,
 ):
     """
     Use source list containing fwhm_a, fwhm_b, ra, dec, flux, and orientation
@@ -992,7 +1000,9 @@ def make_model_source_map(
     Returns:
         - model_map: enmap object of the model map
     """
+    log = log.bind(func_name="make_model_source_map")
     if len(sources) == 0:
+        log.warning("make_model_source_map.no_sources", num_sources=0)
         return imap
     from photutils.datasets import make_model_image
     from photutils.psf import GaussianPSF
@@ -1004,24 +1014,27 @@ def make_model_source_map(
         nominal_fwhm_arcmin *= np.sqrt(2)
 
     res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
-
+    log.bind(nominal_fwhm_arcmin=nominal_fwhm_arcmin, res_arcmin=res_arcmin)
     model_params = make_2d_gaussian_model_param_table(
         imap,
         sources,
         nominal_fwhm_arcmin=nominal_fwhm_arcmin,
         cuts=cuts,
         verbose=verbose,
+        log=log,
     )
 
     shape = (
         int(5 * nominal_fwhm_arcmin / res_arcmin),
         int(5 * nominal_fwhm_arcmin / res_arcmin),
     )
+    log.info("make_model_source_map.make_model_image.start")
     model_map = make_model_image(
         imap.shape,
         GaussianPSF(),
         model_params,
         model_shape=shape,
+        log=log,
     )
-
+    log.info("make_model_source_map.make_model_image.success")
     return model_map

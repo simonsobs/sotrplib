@@ -421,6 +421,7 @@ def make_2d_gaussian_model_param_table(
     from astropy.table import QTable
     from pixell.utils import arcmin, degree
 
+    log = log.bind(func_name="make_2d_gaussian_model_param_table")
     model_params = {
         "x_0": [],
         "y_0": [],
@@ -432,7 +433,10 @@ def make_2d_gaussian_model_param_table(
     }
     id_num = 0
     res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
-
+    log.info(
+        "make_2d_gaussian_model_param_table.initialize_params",
+        model_params=model_params,
+    )
     for i in range(len(sources)):
         s = sources[i]
         pix = imap.sky2pix(np.array([s.dec, s.ra]) * degree)
@@ -442,6 +446,9 @@ def make_2d_gaussian_model_param_table(
         cut = False
         for cutkey in cuts.keys():
             if cutkey not in s.__dict__.keys():
+                log.error(
+                    "make_2d_gaussian_model_param_table.cutkey_not_found", cutkey=cutkey
+                )
                 raise ValueError(f"Cut {cutkey} not found in source attributes.")
             if s.__dict__[cutkey] is None:
                 cut = True
@@ -452,8 +459,11 @@ def make_2d_gaussian_model_param_table(
                 or (s.__dict__[cutkey] > cuts[cutkey][1])
             ):
                 if verbose:
-                    print(
-                        f"Source {i} failed cut {cutkey} with value {s.__dict__[cutkey]}"
+                    log.debug(
+                        "make_2d_gaussian_model_param_table.cut_failed",
+                        source_id=i,
+                        cutkey=cutkey,
+                        value=s.__dict__[cutkey],
                     )
                 cut = True
                 break
@@ -478,5 +488,7 @@ def make_2d_gaussian_model_param_table(
             model_params["id"].append(id_num)
             id_num += 1
     if verbose:
-        print(model_params)
+        log.debug(
+            "make_2d_gaussian_model_param_table.complete", model_params=model_params
+        )
     return QTable(model_params)
