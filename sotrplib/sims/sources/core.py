@@ -128,7 +128,7 @@ class DatabaseSourceSimulation(SourceSimulation):
 
         log.info("source_injection.database.complete")
 
-        return ProcessableMapWithSimualtedSources(
+        return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
             time=input_map.time,
@@ -195,7 +195,7 @@ class RandomSourceSimulation(SourceSimulation):
 
         log.info("source_injection.random.complete")
 
-        return ProcessableMapWithSimualtedSources(
+        return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
             time=input_map.time,
@@ -249,7 +249,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
 
         log.info("source_injection.transient_database.complete")
 
-        return ProcessableMapWithSimualtedSources(
+        return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
             time=input_map.time,
@@ -331,7 +331,7 @@ class TransientSourceSimulation(SourceSimulation):
 
         log.info("source_injection.transient_simulation.complete")
 
-        return ProcessableMapWithSimualtedSources(
+        return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
             time=input_map.time,
