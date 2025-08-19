@@ -87,7 +87,7 @@ class SourceSimulationPassthrough(SourceSimulation):
     def simulate(
         self, input_map: ProcessableMap
     ) -> tuple[ProcessableMap, list[SourceCandidate]]:
-        return input_map
+        return input_map, []
 
 
 class DatabaseSourceSimulation(SourceSimulation):
