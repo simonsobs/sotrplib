@@ -132,6 +132,7 @@ class SimulatedMap(ProcessableMap):
             width_dec=self.simulation_parameters.width_dec.to_value("deg"),
             resolution=self.simulation_parameters.resolution.to_value("arcmin"),
             map_noise=self.simulation_parameters.map_noise.to_value("Jy"),
+            log=log,
         )
 
         self.flux_units = u.Jy

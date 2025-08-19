@@ -118,6 +118,7 @@ class DatabaseSourceSimulation(SourceSimulation):
             # TODO: Handle map IDs and debug (pass down logger)
             map_id=None,
             debug=True,
+            log=self.log,
         )
 
         log = self.log.bind(n_sources=len(injected_sources))
@@ -184,6 +185,7 @@ class RandomSourceSimulation(SourceSimulation):
             # TODO: Map IDs
             map_id=None,
             ctime=input_map.start_time.timestamp(),
+            log=log,
         )
 
         log = log.bind(n_sources=len(injected_sources))
@@ -237,6 +239,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
             # TODO: map IDs
             map_id=None,
             debug=True,
+            log=log,
         )
 
         log = log.bind(n_sources=len(injected_sources))
@@ -319,6 +322,7 @@ class TransientSourceSimulation(SourceSimulation):
             # TODO: map_id
             map_id=None,
             debug=True,
+            log=log,
         )
         log = log.bind(n_injected=len(injected_sources))
 
