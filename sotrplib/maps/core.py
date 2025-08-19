@@ -54,6 +54,26 @@ class ProcessableMap(ABC):
         with np.errstate(divide="ignore"):
             return self.flux / self.snr
 
+    @property
+    def rho(self):
+        """
+        Calculate the rho map from snr and flux.
+        """
+        with np.errstate(divide="ignore"):
+            rho = (self.snr * self.snr) / (self.flux)
+
+        return rho
+
+    @property
+    def kappa(self):
+        """
+        Calculate the kappa map from snr and flux.
+        """
+        with np.errstate(divide="ignore"):
+            kappa = (self.snr * self.snr) / (self.flux * self.flux)
+
+        return kappa
+
     @abstractmethod
     def finalize(self):
         """
