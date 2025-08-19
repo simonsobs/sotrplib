@@ -52,6 +52,10 @@ class SourceCatalogDatabase:
             ]
         )
 
+    @property
+    def source_list(self):
+        return self.df.iterrows()
+
     def read_database(self):
         with self.file_lock:
             # Check if the lock is stale before acquiring it
