@@ -112,7 +112,7 @@ P.add_argument(
 P.add_argument(
     "--ncores",
     action="store",
-    default=66,
+    default=24,
     type=int,
     help="Number of cores to request for each slurm job. ",
 )
@@ -133,14 +133,18 @@ P.add_argument(
 
 args = P.parse_args()
 
+
 def get_soconda_module():
     import subprocess
+
     cmd = "module list 2>&1 | grep soconda | grep -o 'soconda[^ ]*'"
     SOCONDA_MODULE = subprocess.check_output(cmd, shell=True, text=True).strip()
     return SOCONDA_MODULE
 
 
-def generate_slurm_header(jobname, groupname, cpu_per_task, run_dir, slurm_out_dir, soconda_version):
+def generate_slurm_header(
+    jobname, groupname, cpu_per_task, run_dir, slurm_out_dir, soconda_version
+):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
 #SBATCH -A {groupname}                    # group name, by default simonsobs
@@ -178,7 +182,7 @@ if not os.path.exists(user_scratch):
     os.mkdir(user_scratch)
 
 if not args.soconda_version:
-    args.soconda_version = get_soconda_module() 
+    args.soconda_version = get_soconda_module()
 
 if not args.out_dir:
     ## get random tmp dir

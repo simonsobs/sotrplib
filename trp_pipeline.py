@@ -277,7 +277,10 @@ if args.box:
 else:
     box = None
 
+logger.info("pipeline.initialized")
+
 for freq_arr_idx in indexed_map_groups:
+    logger = logger.new()
     if "_" in freq_arr_idx:
         ## assume it's [arr]_[freq]
         arr, freq = freq_arr_idx.split("_")
@@ -290,6 +293,7 @@ for freq_arr_idx in indexed_map_groups:
     for map_group in map_groups:
         logger = logger.bind(map_group=map_group)
         if len(map_group) == 0:
+            logger.warning("pipeline.map.empty_group")
             continue
         if len(map_group) == 1:
             logger.debug("pipeline.map.loading")
@@ -302,11 +306,11 @@ for freq_arr_idx in indexed_map_groups:
             ## need a more robust way to check this...
             # This is the actual I/O of the bytes from disk
             if "coadd" in str(map_group[0]):
-                logger.debug("pipeline.map.coadd")
+                logger.debug("pipeline.map.load_coadd")
                 # ... Allen pre-made coadds for this piece of code? Probably unused???
                 mapdata = load_coadd_maps(mapfile=map_group[0], arr=arr, box=box)[0]
             else:
-                logger.debug("pipeline.map.other")
+                logger.debug("pipeline.map.load_map")
                 # Load a single Depth1 map (i.e. one index in the map group)
                 # and it is a Depth1Map object.
                 # use_map_geometry is for simulations in case you want to injet
@@ -387,13 +391,13 @@ for freq_arr_idx in indexed_map_groups:
             # These should probably be values read from a parameter file.
             tilegrid=0.5,
             sigmaclip=5.0,
+            log=logger,
         )
 
         if not mapdata:
-            logger.info("pipeline.preprocess.flux.skip")
+            logger.info("pipeline.preprocess.bad_map")
             continue
 
-        logger.info("pipeline.preprocess.inject_simulated_sources")
         # Still part of creating the map setup...
         # If it's a simulation, we inject sources using this function.
         # catalog sources are simulated 'known' sources
@@ -408,6 +412,7 @@ for freq_arr_idx in indexed_map_groups:
             inject_transients=args.inject_transients,
             use_map_geometry=args.use_map_geometry,
             simulated_transient_database=args.simulated_transient_database,
+            log=logger,
         )
 
         ### --- Start processing the maps ---
@@ -423,6 +428,7 @@ for freq_arr_idx in indexed_map_groups:
                 mask_outside_map=True,
                 mask_map=mapdata.flux,
                 return_source_cand_list=True,
+                log=logger,
             )
 
         logger.info("pipeline.sources.fitting")
@@ -437,9 +443,11 @@ for freq_arr_idx in indexed_map_groups:
             reproject_thumb=not args.sim,
             flux_lim_fit_centroid=args.bright_flux_threshold,
             return_thumbnails=args.save_source_thumbnails,
+            log=logger,
         )
 
         ## Do something with the thumbnails?
+        logger.warning("Not doing anything with the thumbnails")
         del thumbs
 
         known_sources = []
@@ -450,6 +458,7 @@ for freq_arr_idx in indexed_map_groups:
                 mapdata.wafer_name,
                 map_id=map_id,
                 ctime=mapdata.time_map,
+                log=logger,
             )
 
             ## update the source catalog
@@ -465,6 +474,7 @@ for freq_arr_idx in indexed_map_groups:
                     "fwhm_a": [0.25, 6.0],
                     "fwhm_b": [0.25, 6.0],
                 },
+                log=logger,
             )
 
         logger.info("pipeline.sources.search")
@@ -480,6 +490,11 @@ for freq_arr_idx in indexed_map_groups:
             map_noise=np.ones(len(sigma_thresh_for_minrad)),
             max_radius_arcmin=120.0,
         )
+        logger.info(
+            "pipeline.sources.cut_radii_set",
+            sigma_thresh_for_minrad=sigma_thresh_for_minrad,
+            pix_rad=pix_rad,
+        )
 
         extracted_sources = extract_sources(
             mapdata.flux,
@@ -491,6 +506,7 @@ for freq_arr_idx in indexed_map_groups:
             minrad=pix_rad / (mapdata.res / arcmin),
             sigma_thresh_for_minrad=sigma_thresh_for_minrad,
             res=mapdata.res / arcmin,
+            log=logger,
         )
 
         logger = logger.bind(n_sources=len(extracted_sources))
@@ -521,14 +537,14 @@ for freq_arr_idx in indexed_map_groups:
 
         sifter_result = sifter.sift(
             extracted_sources=extracted_sources,
-            catalog_sources=known_sources,
+            catalog_sources=catalog_sources,
             flux_map=mapdata.flux,
             map_id=map_id,
             map_freq=mapdata.freq,
             arr=mapdata.wafer_name,
         )
 
-        catalog_matches = sifter_result.catalog_matches
+        catalog_matches = sifter_result.source_candidates
         transient_candidates = sifter_result.transient_candidates
         noise_candidates = sifter_result.noise_candidates
 
@@ -536,6 +552,10 @@ for freq_arr_idx in indexed_map_groups:
             ## make sure the simulated sources are properly masked, and the injected transients are recovered
             ## including with the correct fluxes.
             if len(catalog_matches) > 0:
+                logger.error(
+                    "pipeline.sources.catalog_matches_found",
+                    catalog_matches=catalog_matches,
+                )
                 raise ValueError(
                     "Catalog matches found in simulated map... something is wrong."
                 )
@@ -547,16 +567,18 @@ for freq_arr_idx in indexed_map_groups:
                 flux_threshold=5 * sim_params["maps"]["map_noise"],
                 fail_flux_mismatch=True,
                 fail_unmatched=True,
+                log=logger,
             )
 
         logger = logger.bind(n_catalog_matches=len(catalog_matches))
         if len(catalog_matches) > 0:
+            logger.warning("pipeline.sift.blind_search_found_catalog_sources")
+
             if args.plot_thumbnails:
                 for cm in catalog_matches:
                     logger = logger.bind(
                         match=cm, source_name="_".join(cm.sourceID.split(" "))
                     )
-                    logger.info("pipeline.sift.blind_in_catalog")
                     plot_map_thumbnail(
                         mapdata.snr
                         if not args.sim
@@ -612,13 +634,14 @@ for freq_arr_idx in indexed_map_groups:
                     )
                     print(" ".join(executable))
         else:
-            print(
-                "Too many transient candidates (%i)... something fishy"
-                % len(transient_candidates)
+            logger.warning(
+                "pipeline.sift.too_many_transient_candidates",
+                count=len(transient_candidates),
+                cand_limit=args.candidate_limit,
             )
-            print("Writing to noise candidates database.")
+            logger.warning("pipeline.update_noise_db.dumping_transients")
             noise_candidates_db.add_sources(transient_candidates)
-
+        logger.info("pipeline.update_noise_db.dumping_noise_candidates")
         noise_candidates_db.add_sources(noise_candidates)
 
         del (
@@ -631,7 +654,7 @@ for freq_arr_idx in indexed_map_groups:
             known_sources,
             injected_sources,
         )
-
+        logger.info("pipeline.write_to_db.updating_catalogs")
         ## update databases and clear
         cataloged_sources_db.write_database()
         cataloged_sources_db.read_database()
