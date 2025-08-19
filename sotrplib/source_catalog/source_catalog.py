@@ -290,7 +290,7 @@ def load_catalog(
     if return_source_cand_list:
         from ..sources.forced_photometry import convert_catalog_to_source_objects
 
-        sources = convert_catalog_to_source_objects(sources)
+        sources = convert_catalog_to_source_objects(sources, log=log)
 
     log.info("load_catalog.complete")
     return sources
