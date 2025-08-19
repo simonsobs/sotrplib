@@ -38,6 +38,9 @@ class ProcessableMap(ABC):
 
     flux_units: Unit
 
+    __rho: enmap.ndmap | None = None
+    __kappa: enmap.ndmap | None = None
+
     @abstractmethod
     def build(self):
         """
@@ -59,7 +62,7 @@ class ProcessableMap(ABC):
         """
         Calculate the rho map from snr and flux.
         """
-        if getattr(self, "__rho", None) is not None:
+        if self.__rho is not None:
             return self.__rho
 
         with np.errstate(divide="ignore"):
@@ -81,7 +84,7 @@ class ProcessableMap(ABC):
         """
         Calculate the kappa map from snr and flux.
         """
-        if getattr(self, "__kappa", None) is not None:
+        if self.__kappa is not None:
             return self.__kappa
 
         with np.errstate(divide="ignore"):
