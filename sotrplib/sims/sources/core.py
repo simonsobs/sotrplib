@@ -287,7 +287,7 @@ class TransientSourceSimulation(SourceSimulation):
     ) -> tuple[ProcessableMap, list[SourceCandidate]]:
         noise_map = input_map.noise
 
-        log = self.bind(parameters=self.parameters)
+        log = self.log.bind(parameters=self.parameters)
 
         hits_map = edge_map(np.nan_to_num(input_map.flux))
 
