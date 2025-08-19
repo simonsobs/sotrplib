@@ -59,20 +59,42 @@ class ProcessableMap(ABC):
         """
         Calculate the rho map from snr and flux.
         """
+        if getattr(self, "__rho", None) is not None:
+            return self.__rho
+
         with np.errstate(divide="ignore"):
             rho = (self.snr * self.snr) / (self.flux)
 
         return rho
+
+    @rho.setter
+    def set_rho(self, x):
+        self.__rho = x
+
+    @rho.deleter
+    def delete_rho(self, x):
+        del self.__rho
 
     @property
     def kappa(self):
         """
         Calculate the kappa map from snr and flux.
         """
+        if getattr(self, "__kappa", None) is not None:
+            return self.__kappa
+
         with np.errstate(divide="ignore"):
             kappa = (self.snr * self.snr) / (self.flux * self.flux)
 
         return kappa
+
+    @kappa.setter
+    def set_kappa(self, x):
+        self.__kappa = x
+
+    @kappa.deleter
+    def delete_kappa(self, x):
+        del self.__kappa
 
     @abstractmethod
     def finalize(self):
