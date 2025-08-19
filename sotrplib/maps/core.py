@@ -68,11 +68,12 @@ class ProcessableMap(ABC):
         return rho
 
     @rho.setter
-    def set_rho(self, x):
+    def rho(self, x):
+        # TODO: Set the snr, flux when this is updated?
         self.__rho = x
 
     @rho.deleter
-    def delete_rho(self, x):
+    def rho(self, x):
         del self.__rho
 
     @property
@@ -89,11 +90,12 @@ class ProcessableMap(ABC):
         return kappa
 
     @kappa.setter
-    def set_kappa(self, x):
+    def kappa(self, x):
+        # TODO: Set the snr, flux when this is updated?
         self.__kappa = x
 
     @kappa.deleter
-    def delete_kappa(self, x):
+    def kappa(self, x):
         del self.__kappa
 
     @abstractmethod
@@ -355,7 +357,7 @@ class RhoAndKappaMap(ProcessableMap):
         kappa_filename: Path,
         start_time: datetime,
         end_time: datetime,
-        box: ArrayLike | None,
+        box: ArrayLike | None = None,
         time_filename: Path | None = None,
         log: FilteringBoundLogger | None = None,
     ):
