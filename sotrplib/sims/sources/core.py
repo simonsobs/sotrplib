@@ -4,6 +4,7 @@ Source simulations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import structlog
@@ -12,7 +13,7 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sims import sim_maps
+from sotrplib.sims import sim_maps, sim_utils
 from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sources.sources import SourceCandidate
 
@@ -50,7 +51,9 @@ class SourceSimulation(ABC):
     """
 
     @abstractmethod
-    def simulate(self, input_map: ProcessableMap) -> ProcessableMap:
+    def simulate(
+        self, input_map: ProcessableMap
+    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
         """
         Simulate sources on the input map.
 
@@ -63,6 +66,8 @@ class SourceSimulation(ABC):
         -------
         ProcessableMap
             The map with simulated sources.
+        simulated_sources
+            The sources that were added.
         """
         return
 
@@ -92,7 +97,9 @@ class DatabaseSourceSimulation(SourceSimulation):
         self.source_database = source_database
         self.log = log or structlog.get_logger()
 
-    def simulate(self, input_map: ProcessableMap) -> ProcessableMap:
+    def simulate(
+        self, input_map: ProcessableMap
+    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
         noise_map = input_map.noise
 
         new_flux_map, injected_sources = sim_maps.inject_sources(
@@ -149,7 +156,9 @@ class RandomSourceSimulation(SourceSimulation):
         self.parameters = parameters
         self.log = log or structlog.get_logger()
 
-    def simulate(self, input_map: ProcessableMap) -> ProcessableMap:
+    def simulate(
+        self, input_map: ProcessableMap
+    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
         noise_map = input_map.noise
 
         log = self.log.bind(parameters=self.parameters)
@@ -174,6 +183,59 @@ class RandomSourceSimulation(SourceSimulation):
             snr = new_flux_map / noise_map
 
         log.info("source_injection.random.complete")
+
+        return ProcessableMapWithSimualtedSources(
+            flux=new_flux_map,
+            snr=snr,
+            time=input_map.time,
+            original_map=input_map,
+        ), injected_sources
+
+
+class TransientDatabaseSourceSimulation(SourceSimulation):
+    """
+    Inject transient sources from a transient database.
+    """
+
+    log: FilteringBoundLogger
+    transient_database_path: Path
+
+    def __init__(
+        self, transient_database_path: Path, log: FilteringBoundLogger | None = None
+    ):
+        self.transient_database_path = transient_database_path
+        self.log = log or structlog.get_logger()
+
+    def simulate(
+        self, input_map: ProcessableMap
+    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+        noise_map = input_map.noise
+
+        log = self.log.bind(transient_database_path=self.transient_database_path)
+
+        transient_sources = sim_utils.load_transients_from_db(
+            self.transient_database_path
+        )
+
+        log.bind(n_loaded=len(transient_sources))
+
+        new_flux_map, injected_sources = sim_maps.inject_sources(
+            imap=input_map.flux.copy(),
+            sources=transient_sources,
+            observation_time=input_map.start_time.timestamp(),
+            freq=input_map.frequency,
+            arr=input_map.array,
+            # TODO: map IDs
+            map_id=None,
+            debug=True,
+        )
+
+        log = log.bind(n_sources=len(injected_sources))
+
+        with np.errstate(divide="ignore"):
+            snr = new_flux_map / noise_map
+
+        log.info("source_injection.transient_database.complete")
 
         return ProcessableMapWithSimualtedSources(
             flux=new_flux_map,
