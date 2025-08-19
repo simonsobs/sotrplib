@@ -57,14 +57,17 @@ def dummy_source():
 
 @pytest.fixture
 def dummy_depth1_map(sim_map_params):
+    from structlog import get_logger
+
     from sotrplib.sims import sim_maps
 
+    log = get_logger("dummy_depth1_map")
     DummyMap = sim_maps.Depth1Map()
-    DummyMap.flux = sim_maps.make_enmap(**sim_map_params["maps"])
+    DummyMap.flux = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     DummyMap.snr = 10 + abs(
-        sim_maps.make_enmap(**sim_map_params["maps"])
+        sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     )  ## just keep above 0
-    DummyMap.time_map = 0 * sim_maps.make_enmap(**sim_map_params["maps"])
+    DummyMap.time_map = 0 * sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     DummyMap.freq = "f090"
     DummyMap.wafer_name = "sim"
     DummyMap.map_id = "test"

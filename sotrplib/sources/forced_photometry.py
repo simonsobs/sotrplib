@@ -213,6 +213,7 @@ def convert_catalog_to_source_objects(
     ctime: Union[float, enmap.ndmap] = None,
     map_id: str = "",
     source_type: str = "",
+    log=None,
 ):
     """
     take each source in the catalog and convert to a list
@@ -223,9 +224,16 @@ def convert_catalog_to_source_objects(
 
     from ..sources.sources import SourceCandidate
 
+    log = log.bind(func_name="convert_catalog_to_source_objects")
+
     if isinstance(catalog_sources, list):
+        log.info(
+            "convert_catalog_to_source_objects.catalog_is_list",
+            num_sources=len(catalog_sources),
+        )
         return catalog_sources
     if not catalog_sources:
+        log.warning("convert_catalog_to_source_objects.catalog_is_empty", num_sources=0)
         return []
 
     known_sources = []
@@ -313,7 +321,10 @@ def convert_catalog_to_source_objects(
             if cs.err_flux > 0.0:
                 cs.snr = cs.flux / cs.err_flux
         known_sources.append(cs)
-
+    log.info(
+        "convert_catalog_to_source_objects.catalog_converted",
+        num_sources=len(known_sources),
+    )
     return known_sources
 
 
@@ -351,6 +362,7 @@ def photutils_2D_gauss_fit(
     reproject_thumb: bool = False,
     return_thumbnails: bool = False,
     debug=False,
+    log=None,
 ):
     """ """
     from pixell import reproject
@@ -359,6 +371,8 @@ def photutils_2D_gauss_fit(
 
     from ..source_catalog.source_catalog import convert_gauss_fit_to_source_cat
 
+    log = log.bind(func_name="photutils_2D_gauss_fit")
+    preamble = "sources.fitting.photutils2DGauss."
     fits = []
     thumbnails = []
     ## these are the keys output by the fitting function
@@ -381,24 +395,26 @@ def photutils_2D_gauss_fit(
         pix = flux_map.sky2pix([sc.dec * degree, sc.ra * degree])
         failed_fit_dict["pix"] = pix
         thumbsize = size_deg * degree / map_res
+        ## set default to failed dictionary
+        fit_dict = return_initial_catalog_entry(
+            sc,
+            add_dict=failed_fit_dict,
+            keyconv={
+                "ra": rakey,
+                "dec": deckey,
+                "flux": fluxkey,
+                "err_flux": dfluxkey,
+                "name": "SourceID",
+            },
+        )
         if (
             pix[0] + thumbsize > flux_map.shape[0]
             or pix[1] + thumbsize > flux_map.shape[1]
             or pix[0] - thumbsize < 0
             or pix[1] - thumbsize < 0
         ):
-            fit_dict = return_initial_catalog_entry(
-                sc,
-                add_dict=failed_fit_dict,
-                keyconv={
-                    "ra": rakey,
-                    "dec": deckey,
-                    "flux": fluxkey,
-                    "err_flux": dfluxkey,
-                    "name": "SourceID",
-                },
-            )
             fits.append(fit_dict)
+            log.warning(f"{preamble}source_near_map_edge", source=source_name)
             if return_thumbnails:
                 thumbnails.append([])
         if reproject_thumb:
@@ -418,19 +434,7 @@ def photutils_2D_gauss_fit(
                 )
                 noise_thumb = flux_thumb / snr_thumb
             except Exception as e:
-                if debug:
-                    print(source_name, e)
-                fit_dict = return_initial_catalog_entry(
-                    sc,
-                    add_dict=failed_fit_dict,
-                    keyconv={
-                        "ra": rakey,
-                        "dec": deckey,
-                        "flux": fluxkey,
-                        "err_flux": dfluxkey,
-                        "name": "SourceID",
-                    },
-                )
+                log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
                 fits.append(fit_dict)
                 if return_thumbnails:
                     thumbnails.append([])
@@ -451,26 +455,13 @@ def photutils_2D_gauss_fit(
             noise_thumb = noise_thumb.upgrade(factor=2)
 
         if np.any(np.isnan(flux_thumb)):
-            if debug:
-                print(source_name, "map contains nan")
-            fit_dict = return_initial_catalog_entry(
-                sc,
-                add_dict=failed_fit_dict,
-                keyconv={
-                    "ra": rakey,
-                    "dec": deckey,
-                    "flux": fluxkey,
-                    "err_flux": dfluxkey,
-                    "name": "SourceID",
-                },
-            )
+            log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
             fits.append(fit_dict)
             if return_thumbnails:
                 thumbnails.append([flux_thumb, noise_thumb])
             continue
 
         map_res = abs(flux_thumb.wcs.wcs.cdelt[0] * degree)
-
         gauss_fit = fit_2d_gaussian(
             flux_thumb,
             noise_thumb,
@@ -480,6 +471,8 @@ def photutils_2D_gauss_fit(
             force_center=True if sc.flux < flux_lim_fit_centroid else False,
             PLOT=PLOT,
         )
+        if debug:
+            log.debug(f"{preamble}gauss_fit", source=source_name, fit=gauss_fit)
         if gauss_fit:
             gauss_fit[rakey] = sc.ra
             gauss_fit[deckey] = sc.dec
@@ -493,24 +486,12 @@ def photutils_2D_gauss_fit(
             gauss_fit["gauss_fit_flag"] = 0
             fits.append(gauss_fit)
         else:
-            if debug:
-                print(source_name, "failed to fit.")
-            fit_dict = return_initial_catalog_entry(
-                sc,
-                add_dict=failed_fit_dict,
-                keyconv={
-                    "ra": rakey,
-                    "dec": deckey,
-                    "flux": fluxkey,
-                    "err_flux": dfluxkey,
-                    "name": "SourceID",
-                },
-            )
+            log.warning(f"{preamble}gauss_fit_failed", source=source_name)
             fits.append(fit_dict)
         if return_thumbnails:
             thumbnails.append([flux_thumb, noise_thumb])
     fits = convert_gauss_fit_to_source_cat(fits)
-
+    log.info(f"{preamble}fit_complete", source=source_name)
     return fits, thumbnails
 
 

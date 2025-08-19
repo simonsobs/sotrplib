@@ -3,7 +3,11 @@ from pixell import enmap
 from pixell.utils import degree
 
 
-def generate_random_positions_in_map(n: int, imap: enmap.ndmap):
+def generate_random_positions_in_map(
+    n: int,
+    imap: enmap.ndmap,
+    log=None,
+):
     """
     Generate n random positions uniformly distributed in the map.
     Uses the mapshape, to get random pixels, then calculates ra,dec
@@ -30,6 +34,7 @@ def generate_random_positions(
     imap: enmap.ndmap = None,
     ra_lims: tuple = None,
     dec_lims: tuple = None,
+    log=None,
 ):
     """
     Generate n random positions in RA and Dec uniformly distributed on the sphere
@@ -83,6 +88,7 @@ def generate_random_flare_times(
     n: int,
     start_time: float | str = 1.4e9,
     end_time: float | str = 1.7e9,
+    log=None,
 ):
     """
     Generate n random flare times uniformly distributed between start_time and end_time.
@@ -108,6 +114,7 @@ def generate_random_flare_widths(
     n: int,
     min_width: float = 0.1,
     max_width: float = 10.0,
+    log=None,
 ):
     """
     Generate n random flare widths uniformly distributed between min_width and max_width.
@@ -127,6 +134,7 @@ def generate_random_flare_amplitudes(
     n: int,
     min_amplitude: float = 0.1,
     max_amplitude: float = 10.0,
+    log=None,
 ):
     """
     Generate n random flare amplitudes uniformly distributed between min_amplitude and max_amplitude.
@@ -147,6 +155,7 @@ def make_gaussian_flare(
     flare_peak_time: float = 0.0,
     flare_fwhm_s: float = 1.0,
     flare_peak_Jy: float = 0.1,
+    log=None,
 ):
     """
     Generate a Gaussian flare sampled at the given unix_times.
@@ -172,6 +181,7 @@ def make_gaussian_flare(
 def convert_photutils_qtable_to_json(
     params,
     imap: enmap.ndmap = None,
+    log=None,
 ):
     """
     photutils params is an Astropy QTable with:
@@ -210,7 +220,10 @@ def convert_photutils_qtable_to_json(
     return json_cat_out
 
 
-def ra_lims_valid(ra_lims: tuple = None):
+def ra_lims_valid(
+    ra_lims: tuple = None,
+    log=None,
+):
     """
     Check if the RA limits are valid.
 
@@ -230,7 +243,10 @@ def ra_lims_valid(ra_lims: tuple = None):
     return True
 
 
-def dec_lims_valid(dec_lims: tuple = None):
+def dec_lims_valid(
+    dec_lims: tuple = None,
+    log=None,
+):
     """
     Check if the Dec limits are valid.
 
@@ -250,7 +266,11 @@ def dec_lims_valid(dec_lims: tuple = None):
     return True
 
 
-def save_transients_to_db(transients, db_path):
+def save_transients_to_db(
+    transients,
+    db_path,
+    log=None,
+):
     """
     Save a list of SimTransient objects to a SQLite database.
 
@@ -293,7 +313,10 @@ def save_transients_to_db(transients, db_path):
     conn.close()
 
 
-def load_transients_from_db(db_path):
+def load_transients_from_db(
+    db_path,
+    log=None,
+):
     """
     Load a list of SimTransient objects from a SQLite database.
 
@@ -334,7 +357,10 @@ def load_transients_from_db(db_path):
     return transients
 
 
-def load_config_yaml(config_path: str):
+def load_config_yaml(
+    config_path: str,
+    log=None,
+):
     """
     Load a configuration file in YAML format.
 
@@ -355,7 +381,10 @@ def load_config_yaml(config_path: str):
     return config
 
 
-def get_sim_map_group(sim_params):
+def get_sim_map_group(
+    sim_params,
+    log=None,
+):
     freq_arr_idx = (
         sim_params["array_info"]["arr"] + "_" + sim_params["array_info"]["freq"]
     )
@@ -381,6 +410,7 @@ def make_2d_gaussian_model_param_table(
     nominal_fwhm_arcmin: float = 2.2,
     verbose: bool = False,
     cuts={},
+    log=None,
 ):
     """
     Create a 2D Gaussian model parameter table from the sources detected in the image.
@@ -391,6 +421,7 @@ def make_2d_gaussian_model_param_table(
     from astropy.table import QTable
     from pixell.utils import arcmin, degree
 
+    log = log.bind(func_name="make_2d_gaussian_model_param_table")
     model_params = {
         "x_0": [],
         "y_0": [],
@@ -402,7 +433,10 @@ def make_2d_gaussian_model_param_table(
     }
     id_num = 0
     res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
-
+    log.info(
+        "make_2d_gaussian_model_param_table.initialize_params",
+        model_params=model_params,
+    )
     for i in range(len(sources)):
         s = sources[i]
         pix = imap.sky2pix(np.array([s.dec, s.ra]) * degree)
@@ -412,6 +446,9 @@ def make_2d_gaussian_model_param_table(
         cut = False
         for cutkey in cuts.keys():
             if cutkey not in s.__dict__.keys():
+                log.error(
+                    "make_2d_gaussian_model_param_table.cutkey_not_found", cutkey=cutkey
+                )
                 raise ValueError(f"Cut {cutkey} not found in source attributes.")
             if s.__dict__[cutkey] is None:
                 cut = True
@@ -422,8 +459,11 @@ def make_2d_gaussian_model_param_table(
                 or (s.__dict__[cutkey] > cuts[cutkey][1])
             ):
                 if verbose:
-                    print(
-                        f"Source {i} failed cut {cutkey} with value {s.__dict__[cutkey]}"
+                    log.debug(
+                        "make_2d_gaussian_model_param_table.cut_failed",
+                        source_id=i,
+                        cutkey=cutkey,
+                        value=s.__dict__[cutkey],
                     )
                 cut = True
                 break
@@ -448,5 +488,7 @@ def make_2d_gaussian_model_param_table(
             model_params["id"].append(id_num)
             id_num += 1
     if verbose:
-        print(model_params)
+        log.debug(
+            "make_2d_gaussian_model_param_table.complete", model_params=model_params
+        )
     return QTable(model_params)

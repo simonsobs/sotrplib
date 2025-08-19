@@ -77,6 +77,7 @@ def generate_transients(
     flare_morphs: list = None,
     beam_params: list = None,
     uniform_on_sky=False,
+    log=None,
 ):
     """
     Generate a list of simulated transient sources.

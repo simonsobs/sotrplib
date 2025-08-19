@@ -302,15 +302,19 @@ class Depth1Map:
         src_model: enmap.ndmap = None,
         verbose=False,
         cuts={},
+        log=None,
     ):
         """
         src_model is a simulated (model) map of the sources in the list.
         sources are fit using photutils, and are SourceCandidate objects
         with fwhm_a, fwhm_b, ra, dec, flux, and orientation
         """
+        log.bind(func_name="subtract_sources")
         if len(sources) == 0:
+            log.warning("subtract_sources.no_sources", num_sources=0)
             return
         if not isinstance(self.flux, enmap.ndmap):
+            log.error("subtract_sources.flux_is_none", map=self)
             raise ValueError("self.flux is None, cannot subtract sources.")
         if not isinstance(src_model, enmap.ndmap):
             from ..utils.utils import get_fwhm
@@ -321,11 +325,14 @@ class Depth1Map:
                 nominal_fwhm_arcmin=get_fwhm(self.freq),
                 verbose=verbose,
                 cuts=cuts,
+                log=log,
             )
 
         self.flux -= src_model
+        log.info("subtract_sources.source_flux_subtracted")
         ## mask the snr map as well since we've subtracted the sources we want to ignore them.
         self.snr[abs(src_model) > 1e-8] = 0.0
+        log.info("subtract_sources.source_snr_masked")
         return src_model
 
 
@@ -824,6 +831,7 @@ def preprocess_map(
     edge_mask_arcmin=10,
     sigmaclip=5.0,
     skip=False,
+    log=None,
 ):
     """
     Preprocess the map by cleaning, flatfielding, and masking.
@@ -841,14 +849,16 @@ def preprocess_map(
 
 
     """
+    log = log.bind(func_name="preprocess_map")
     if skip:
+        log.info("preprocess.skip")
         return
     ## tilegrid in deg, used for setting median ratio flatfielding grid size
     from pixell.enmap import read_map
 
     from .masks import mask_dustgal, mask_edge
 
-    print("Cleaning maps...")
+    log.info("preprocess.start")
     if not mapdata.cleaned:
         ## ignore divide by zero warning since that will happen outside the weighted region
         with warnings.catch_warnings():
@@ -858,6 +868,7 @@ def preprocess_map(
                 mapdata.rho_map, mapdata.kappa_map, cut_on="median", fraction=0.05
             )
         mapdata.cleaned = True
+        log.info("preprocess.cleaned")
 
     ## ignore divide by zero warning since that will happen outside the weighted region
     with warnings.catch_warnings():
@@ -866,13 +877,14 @@ def preprocess_map(
         mapdata.snr = mapdata.rho_map * mapdata.kappa_map ** (-0.5)
     mapdata.kappa_map = None
     mapdata.rho_map = None
+    log.info("preprocess.flux_snr_calculated")
     if (
         np.all(np.isnan(mapdata.flux))
         or np.all(np.isnan(mapdata.snr))
         or np.all(mapdata.snr == 0.0)
         or np.all(mapdata.flux == 0.0)
     ):
-        print("flux or snr is all nan or zeros, skipping")
+        log.warning("preprocess.flux_snr_all_nan_or_zero")
         mapdata = None
         return
 
@@ -880,7 +892,7 @@ def preprocess_map(
         mapdata.masked = 0
         mask = enmap.ones(mapdata.flux.shape, wcs=mapdata.flux.wcs)
 
-        print("Masking maps...")
+        log.info("preprocess.masking", galaxy_mask=galmask_file)
         try:
             galaxy_mask = mask_dustgal(
                 mapdata.flux,
@@ -893,9 +905,9 @@ def preprocess_map(
             mapdata.snr *= galaxy_mask
             mask *= galaxy_mask
             del galaxy_mask
-
+            log.info("preprocess.masking.galaxy")
         except Exception as e:
-            print(e, " ... skipping galaxy mask")
+            log.warning("preprocess.masking.galaxy.failed", error=e)
             mapdata.masked += 1
 
         try:
@@ -908,7 +920,7 @@ def preprocess_map(
             del planet_mask
 
         except Exception as e:
-            print(e, " ... skipping planet mask")
+            log.warning("preprocess.masking.planet.failed", error=e)
             mapdata.masked += 1
 
         try:
@@ -919,8 +931,9 @@ def preprocess_map(
             mapdata.snr *= edge_mask
             mask *= edge_mask
             del edge_mask
+            log.info("preprocess.masking.edge", edge_mask_arcmin=edge_mask_arcmin)
         except Exception as e:
-            print(e, " ... skipping edge mask")
+            log.warning("preprocess.masking.edge.failed", error=e)
             mapdata.masked += 1
 
     if (
@@ -929,12 +942,16 @@ def preprocess_map(
         or np.all(mapdata.snr == 0.0)
         or np.all(mapdata.flux == 0.0)
     ):
-        print("flux or snr is all nan or zeros, skipping")
+        log.warning("preprocess.flux_snr_all_nan_or_zero_after_masking")
         mapdata = None
         return
 
     if not mapdata.flatfielded:
-        print("Flatfielding maps...")
+        log.info(
+            "preprocess.flatfielding",
+            method=flatfield_method,
+            tilegrid=tilegrid,
+        )
         if flatfield_method == "photutils":
             flat_field_using_photutils(
                 mapdata,
@@ -948,12 +965,15 @@ def preprocess_map(
                 tilegrid=tilegrid,
             )
         else:
+            log.error("preprocess.flatfielding.failed", method=flatfield_method)
             raise ValueError("Flatfield method %s not supported" % flatfield_method)
 
         del mask
-
+        log.info("preprocess.flatfielding.success")
     if output_units == "Jy":
         mapdata.flux /= 1000.0
+    log.bind(map_flux_units=output_units)
+    log.info("preprocess.complete")
     return
 
 
@@ -964,6 +984,7 @@ def make_model_source_map(
     matched_filtered=False,
     verbose=False,
     cuts={},
+    log=None,
 ):
     """
     Use source list containing fwhm_a, fwhm_b, ra, dec, flux, and orientation
@@ -980,7 +1001,9 @@ def make_model_source_map(
     Returns:
         - model_map: enmap object of the model map
     """
+    log = log.bind(func_name="make_model_source_map")
     if len(sources) == 0:
+        log.warning("make_model_source_map.no_sources", num_sources=0)
         return imap
     from photutils.datasets import make_model_image
     from photutils.psf import GaussianPSF
@@ -992,24 +1015,27 @@ def make_model_source_map(
         nominal_fwhm_arcmin *= np.sqrt(2)
 
     res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
-
+    log.bind(nominal_fwhm_arcmin=nominal_fwhm_arcmin, res_arcmin=res_arcmin)
     model_params = make_2d_gaussian_model_param_table(
         imap,
         sources,
         nominal_fwhm_arcmin=nominal_fwhm_arcmin,
         cuts=cuts,
         verbose=verbose,
+        log=log,
     )
 
     shape = (
         int(5 * nominal_fwhm_arcmin / res_arcmin),
         int(5 * nominal_fwhm_arcmin / res_arcmin),
     )
+    log.info("make_model_source_map.make_model_image.start")
     model_map = make_model_image(
         imap.shape,
         GaussianPSF(),
         model_params,
         model_shape=shape,
+        log=log,
     )
-
+    log.info("make_model_source_map.make_model_image.success")
     return model_map
