@@ -81,7 +81,6 @@ class SimulationParameters:
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
-        resolution: Quantity,
         start_time: datetime,
         end_time: datetime,
         frequency: str | None = None,
@@ -94,8 +93,6 @@ class SimulatedMap(ProcessableMap):
         """
         Parameters
         ----------
-        resolution: Quantity
-            The angular resolution of the map.
         start_time: datetime
             Start time of the simulated observing session.
         end_time: datetime
@@ -113,7 +110,6 @@ class SimulatedMap(ProcessableMap):
         log: FilteringBoundLogger, optional
             Logger to use. If None, a new one will be created.
         """
-        self.resolution = resolution
         self.start_time = start_time
         self.end_time = end_time
         self.box = box
@@ -134,13 +130,16 @@ class SimulatedMap(ProcessableMap):
             center_dec=self.simulation_parameters.center_dec.to_value("deg"),
             width_ra=self.simulation_parameters.width_ra.to_value("deg"),
             width_dec=self.simulation_parameters.width_dec.to_value("deg"),
-            resolution=self.resolution.to_value("arcmin"),
+            resolution=self.simulation_parameters.resolution.to_value("arcmin"),
             map_noise=self.simulation_parameters.map_noise.to_value("Jy"),
         )
 
         self.flux_units = u.Jy
 
-        if self.simulation_parameters.map_noise:
+        if (
+            self.simulation_parameters.map_noise is not None
+            and self.simulation_parameters.map_noise > 0.0
+        ):
             log.debug(
                 "simulated_map.build.noise",
                 map_noise=self.simulation_parameters.map_noise.to_value("Jy"),

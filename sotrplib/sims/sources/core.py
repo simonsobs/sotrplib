@@ -45,6 +45,12 @@ class ProcessableMapWithSimualtedSources(ProcessableMap):
 
         return
 
+    def build(self):
+        return
+
+    def finalize(self):
+        return
+
 
 class SourceSimulation(ABC):
     """
