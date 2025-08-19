@@ -3,9 +3,11 @@ Source simulations
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import numpy as np
 import structlog
+from astropy import units as u
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
@@ -110,6 +112,68 @@ class DatabaseSourceSimulation(SourceSimulation):
             snr = new_flux_map / noise_map
 
         log.info("source_injection.database.complete")
+
+        return ProcessableMapWithSimualtedSources(
+            flux=new_flux_map,
+            snr=snr,
+            time=input_map.time,
+            original_map=input_map,
+        ), injected_sources
+
+
+@dataclass
+class RandomSourceSimulationParameters:
+    n_sources: int
+    "The number of sources to inject"
+    min_flux: u.Quantity
+    "Minimum flux for the sources"
+    max_flux: u.Quantity
+    "Maximum flux for the sources"
+    fwhm_uncertainty_frac: float
+    "Uncertainty in the FWHM"
+
+
+class RandomSourceSimulation(SourceSimulation):
+    """
+    Inject a number of random sources.
+    """
+
+    log: FilteringBoundLogger
+    parameters: RandomSourceSimulationParameters
+
+    def __init__(
+        self,
+        parameters: RandomSourceSimulationParameters,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.parameters = parameters
+        self.log = log or structlog.get_logger()
+
+    def simulate(self, input_map: ProcessableMap) -> ProcessableMap:
+        noise_map = input_map.noise
+
+        log = self.log.bind(parameters=self.parameters)
+
+        new_flux_map, injected_sources = sim_maps.photutils_sim_n_sources(
+            sim_map=input_map.flux.copy(),
+            n_sources=self.parameters.n_sources,
+            min_flux_Jy=self.parameters.min_flux.to_value("Jy"),
+            max_flux_Jy=self.parameters.max_flux.to_value("Jy"),
+            map_noise_Jy=0.0,  # Disabled now
+            fwhm_uncert_frac=self.parameters.fwhm_uncertainty_frac,
+            freq=input_map.frequency,
+            arr=input_map.array,
+            # TODO: Map IDs
+            map_id=None,
+            ctime=input_map.start_time.timestamp(),
+        )
+
+        log = log.bind(n_sources=len(injected_sources))
+
+        with np.errstate(divide="ignore"):
+            snr = new_flux_map / noise_map
+
+        log.info("source_injection.random.complete")
 
         return ProcessableMapWithSimualtedSources(
             flux=new_flux_map,
