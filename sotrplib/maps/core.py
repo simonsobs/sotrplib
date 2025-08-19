@@ -433,6 +433,9 @@ class CoaddedMap(ProcessableMap):
 
         self.rho = None
         self.kappa = None
+        self.time = None
+        self.map_depth = None
+        self.n_maps = 0
         self.initialized = False
         self.input_map_times = []
         self.start_time = None
@@ -447,9 +450,10 @@ class CoaddedMap(ProcessableMap):
             if not self.initialized:
                 self.rho = sourcemap.rho.copy()
                 self.kappa = sourcemap.kappa.copy()
-                self.time = sourcemap.time.copy() + sourcemap.start_time.timestamp()
-                self.map_depth = sourcemap.time.copy()
-                self.map_depth[self.map_depth > 0] = 1.0
+                if isinstance(sourcemap.time, enmap.ndmap):
+                    self.time = sourcemap.time.copy() + sourcemap.start_time.timestamp()
+                    self.map_depth = sourcemap.time.copy()
+                    self.map_depth[self.map_depth > 0] = 1.0
                 self.res = np.abs(sourcemap.rho.wcs.wcs.cdelt[0]) * utils.degree
                 self.start_time = sourcemap.start_time.timestamp()
                 self.end_time = sourcemap.end_time.timestamp()
@@ -470,10 +474,17 @@ class CoaddedMap(ProcessableMap):
                     self.kappa,
                     sourcemap.kappa,
                 )
-                self.time = enmap.map_union(
-                    self.time,
-                    sourcemap.time + sourcemap.start_time.timestamp(),
-                )
+                if isinstance(self.time, enmap.ndmap):
+                    self.time = enmap.map_union(
+                        self.time,
+                        sourcemap.time + sourcemap.start_time.timestamp(),
+                    )
+                    sourcemap_depth = sourcemap.time.copy()
+                    sourcemap_depth[sourcemap_depth > 0] = 1.0
+                    self.map_depth = enmap.map_union(
+                        self.map_depth,
+                        sourcemap_depth,
+                    )
                 self.start_time = min(self.start_time, sourcemap.start_time.timestamp())
                 self.end_time = max(self.end_time, sourcemap.end_time.timestamp())
                 self.input_map_times.append(
@@ -483,14 +494,9 @@ class CoaddedMap(ProcessableMap):
                         + sourcemap.end_time.timestamp()
                     )
                 )
-                sourcemap_depth = sourcemap.time.copy()
-                sourcemap_depth[sourcemap_depth > 0] = 1.0
-                self.map_depth = enmap.map_union(
-                    self.map_depth,
-                    sourcemap_depth,
-                )
 
-        self.time /= self.map_depth
+        if not isinstance(self.time, type(None)):
+            self.time /= self.map_depth
         self.n_maps = len(self.input_map_times)
 
     def get_snr(self):
