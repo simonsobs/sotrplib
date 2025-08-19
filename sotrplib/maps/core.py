@@ -318,7 +318,7 @@ class RhoAndKappaMap(ProcessableMap):
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
-        self.inverse_variance_filename = kappa_filename
+        self.kappa_filename = kappa_filename
         self.time_filename = time_filename
         self.start_time = start_time
         self.end_time = end_time
