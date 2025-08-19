@@ -12,7 +12,7 @@ import numpy as np
 import structlog
 from astropy.units import Quantity, Unit
 from numpy.typing import ArrayLike
-from pixell import enmap
+from pixell import enmap, utils
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
