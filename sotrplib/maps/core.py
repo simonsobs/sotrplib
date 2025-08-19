@@ -430,6 +430,7 @@ class CoaddedMap(ProcessableMap):
 
         self.rho = None
         self.kappa = None
+        self.initialized = False
         self.input_map_times = []
         self.start_time = None
         self.end_time = None
@@ -437,7 +438,10 @@ class CoaddedMap(ProcessableMap):
     def build(self):
         for sourcemap in self.source_maps:
             sourcemap.build()
-            if isinstance(self.rho, type(None)):
+            sourcemap.finalize()
+            self.log.info("source_map.built", sourcemap=sourcemap)
+
+            if not self.initialized:
                 self.rho = sourcemap.rho.copy()
                 self.kappa = sourcemap.kappa.copy()
                 self.time = sourcemap.time.copy() + sourcemap.start_time.timestamp()
@@ -453,6 +457,7 @@ class CoaddedMap(ProcessableMap):
                         + sourcemap.end_time.timestamp()
                     )
                 )
+                self.initialized = True
             else:
                 self.rho = enmap.map_union(
                     self.rho,
