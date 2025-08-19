@@ -432,7 +432,8 @@ def photutils_2D_gauss_fit(
                     r=size_deg * degree,
                     res=map_res,
                 )
-                noise_thumb = flux_thumb / snr_thumb
+                with np.errstate(divide="ignore"):
+                    noise_thumb = flux_thumb / snr_thumb
             except Exception as e:
                 log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
                 fits.append(fit_dict)
