@@ -326,7 +326,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     def build(self):
-        log = self.log.bind(intensity_filename=self.intensity_filename)
+        log = self.log.bind(rho_filename=self.rho_filename)
         try:
             self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=self.box)
             log.debug("rho_kappa.rho.read.sel")
