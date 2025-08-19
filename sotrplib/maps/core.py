@@ -396,28 +396,49 @@ class CoaddedMap(ProcessableMap):
             if isinstance(self.rho, type(None)):
                 self.rho = sourcemap.rho.copy()
                 self.kappa = sourcemap.kappa.copy()
-                self.time = sourcemap.time.copy() + sourcemap.start_time
-                self.res = np.abs(sourcemap.rho.wcs.cdelt[0]) * utils.degree
-                self.start_time = sourcemap.start_time
-                self.end_time = sourcemap.end_time
+                self.time = sourcemap.time.copy() + sourcemap.start_time.timestamp()
+                self.map_depth = sourcemap.time.copy()
+                self.map_depth[self.map_depth > 0] = 1.0
+                self.res = np.abs(sourcemap.rho.wcs.wcs.cdelt[0]) * utils.degree
+                self.start_time = sourcemap.start_time.timestamp()
+                self.end_time = sourcemap.end_time.timestamp()
                 self.input_map_times.append(
-                    0.5 * (sourcemap.start_time + sourcemap.end_time)
+                    0.5
+                    * (
+                        sourcemap.start_time.timestamp()
+                        + sourcemap.end_time.timestamp()
+                    )
                 )
             else:
-                enmap.map_union(self.rho, sourcemap.rho, op=lambda a, b: a + b)
-                enmap.map_union(self.kappa, sourcemap.kappa, op=lambda a, b: a + b)
-                enmap.map_union(
-                    self.time,
-                    sourcemap.time + sourcemap.start_time,
-                    op=lambda a, b: a + b,
+                self.rho = enmap.map_union(
+                    self.rho,
+                    sourcemap.rho,
                 )
-                self.start_time = min(self.start_time, sourcemap.start_time)
-                self.end_time = max(self.end_time, sourcemap.end_time)
+                self.kappa = enmap.map_union(
+                    self.kappa,
+                    sourcemap.kappa,
+                )
+                self.time = enmap.map_union(
+                    self.time,
+                    sourcemap.time + sourcemap.start_time.timestamp(),
+                )
+                self.start_time = min(self.start_time, sourcemap.start_time.timestamp())
+                self.end_time = max(self.end_time, sourcemap.end_time.timestamp())
                 self.input_map_times.append(
-                    0.5 * (sourcemap.start_time + sourcemap.end_time)
+                    0.5
+                    * (
+                        sourcemap.start_time.timestamp()
+                        + sourcemap.end_time.timestamp()
+                    )
+                )
+                sourcemap_depth = sourcemap.time.copy()
+                sourcemap_depth[sourcemap_depth > 0] = 1.0
+                self.map_depth = enmap.map_union(
+                    self.map_depth,
+                    sourcemap_depth,
                 )
 
-        self.time /= len(self.input_map_times)
+        self.time /= self.map_depth
         self.n_maps = len(self.input_map_times)
 
     def get_snr(self):
