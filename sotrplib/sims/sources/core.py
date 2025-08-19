@@ -13,7 +13,8 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sims import sim_maps, sim_utils
+from sotrplib.maps.maps import edge_map
+from sotrplib.sims import sim_maps, sim_sources, sim_utils
 from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sources.sources import SourceCandidate
 
@@ -163,6 +164,8 @@ class RandomSourceSimulation(SourceSimulation):
 
         log = self.log.bind(parameters=self.parameters)
 
+        # TODO: Store the source information as we should be injecting the
+        # same sources in all maps in the run.
         new_flux_map, injected_sources = sim_maps.photutils_sim_n_sources(
             sim_map=input_map.flux.copy(),
             n_sources=self.parameters.n_sources,
@@ -236,6 +239,87 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
             snr = new_flux_map / noise_map
 
         log.info("source_injection.transient_database.complete")
+
+        return ProcessableMapWithSimualtedSources(
+            flux=new_flux_map,
+            snr=snr,
+            time=input_map.time,
+            original_map=input_map,
+        ), injected_sources
+
+
+@dataclass
+class TransientSourceSimulationParameters:
+    n_transients: int
+    min_flux: u.Quantity
+    max_flux: u.Quantity
+    min_width: u.Quantity = u.Quantity(0.1, "d")
+    max_width: u.Quantity = u.Quantity(10.0, "d")
+
+
+class TransientSourceSimulation(SourceSimulation):
+    """
+    Inject transient sources that are synthetically generated.
+    """
+
+    log: FilteringBoundLogger
+    parameters: TransientSourceSimulationParameters
+
+    def __init__(
+        self,
+        parameters: TransientSourceSimulationParameters,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.parameters = parameters
+        self.log = log or structlog.get_logger()
+
+    def simulate(
+        self, input_map: ProcessableMap
+    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+        noise_map = input_map.noise
+
+        log = self.bind(parameters=self.parameters)
+
+        hits_map = edge_map(np.nan_to_num(input_map.flux))
+
+        transients_for_injection = sim_sources.generate_transients(
+            n=self.parameters.n_transients,
+            imap=hits_map,
+            ra_lims=None,
+            dec_lims=None,
+            peak_amplitudes=(
+                self.parameters.min_flux.to_value("Jy"),
+                self.parameters.max_flux.to_value("Jy"),
+            ),
+            peak_times=(
+                input_map.start_time.timestamp(),
+                input_map.end_time.timestamp(),
+            ),
+            flare_widths=(
+                self.parameters.min_width.to_value("d"),
+                self.parameters.max_width.to_value("d"),
+            ),
+            uniform_on_sky=False,
+        )
+
+        log = log.bind(n_generated=len(transients_for_injection))
+
+        new_flux_map, injected_sources = sim_maps.inject_sources(
+            imap=input_map.flux.copy(),
+            sources=transients_for_injection,
+            observation_time=input_map.start_time.timestamp(),
+            freq=input_map.frequency,
+            arr=input_map.array,
+            # TODO: map_id
+            map_id=None,
+            debug=True,
+        )
+        log = log.bind(n_injected=len(injected_sources))
+
+        with np.errstate(divide="ignore"):
+            snr = new_flux_map / noise_map
+
+        log.info("source_injection.transient_simulation.complete")
 
         return ProcessableMapWithSimualtedSources(
             flux=new_flux_map,
