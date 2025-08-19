@@ -12,19 +12,26 @@ def make_enmap(
     width_dec: float = 1.0,
     resolution: float = 0.5,
     map_noise: float = None,
+    log=None,
 ):
     """ """
     from pixell.enmap import geometry, zeros
     from pixell.utils import arcmin, degree
 
+    log = log.bind(func_name="make_enmap")
     if (width_ra <= 0) or (width_dec <= 0):
+        log.error(
+            "make_enmap.invalid_map_dimensions", width_ra=width_ra, width_dec=width_dec
+        )
         raise ValueError("Map width must be positive")
 
     min_dec = center_dec - width_dec
     max_dec = center_dec + width_dec
     if min_dec < -90:
+        log.error("make_enmap.invalid_min_dec", min_dec=min_dec)
         raise ValueError("Minimum declination, %.1f, is below -90" % min_dec)
     if max_dec > 90:
+        log.error("make_enmap.invalid_max_dec", max_dec=max_dec)
         raise ValueError("Maximum declination, %.1f, is above 90" % max_dec)
 
     min_ra = center_ra - width_ra
@@ -33,11 +40,17 @@ def make_enmap(
 
     box = np.array([[min_dec, min_ra], [max_dec, max_ra]])
     shape, wcs = geometry(box * degree, res=resolution * arcmin)
+    log.bind(box=box, shape=shape, wcs=wcs)
     if map_noise:
         return make_noise_map(
-            zeros(shape, wcs=wcs), map_noise_Jy=map_noise, map_mean_Jy=0.0, seed=None
+            zeros(shape, wcs=wcs),
+            map_noise_Jy=map_noise,
+            map_mean_Jy=0.0,
+            seed=None,
+            log=log,
         )
     else:
+        log.info("make_enmap.empty_map_created")
         return zeros(shape, wcs=wcs)
 
 
@@ -46,6 +59,7 @@ def make_noise_map(
     map_noise_Jy: float = 0.01,
     map_mean_Jy: float = 0.0,
     seed: int = None,
+    log=None,
 ):
     """
     Create a noise map with the same shape and WCS as the input map.
@@ -66,10 +80,19 @@ def make_noise_map(
     shape = imap.shape
     wcs = imap.wcs
     noise_map = enmap.zeros(shape, wcs=wcs)
+    log = log.bind(
+        func_name="make_noise_map",
+        shape=shape,
+        map_noise_Jy=map_noise_Jy,
+        map_mean_Jy=map_mean_Jy,
+        seed=seed,
+    )
     if not seed:
-        # print('No seed provided, setting seed with current ctime')
         seed = np.random.seed()
-    mask = edge_map(imap)
+        log.warning("make_noise_map.randomizing_seed", seed=seed)
+    mask = edge_map(
+        imap,
+    )
     if np.all(mask == 0):
         mask = np.ones(
             shape
@@ -78,6 +101,7 @@ def make_noise_map(
         shape, distribution="gaussian", mean=map_mean_Jy, stddev=map_noise_Jy, seed=seed
     )
     noise_map *= mask
+    log.info("make_noise_map.noise_map_created", shape=shape)
     return noise_map
 
 
@@ -97,6 +121,7 @@ def photutils_sim_n_sources(
     arr: str = "sim",
     map_id: str = None,
     ctime: float | enmap.ndmap = None,
+    log=None,
 ):
     """ """
     from photutils.psf import GaussianPSF, make_psf_model_image
@@ -104,6 +129,16 @@ def photutils_sim_n_sources(
 
     from ..sources.forced_photometry import convert_catalog_to_source_objects
     from .sim_utils import convert_photutils_qtable_to_json
+
+    log = log.bind(func_name="photutils_sim_n_sources")
+
+    if min_flux_Jy >= max_flux_Jy:
+        log.error(
+            "photutils_sim_n_sources.invalid_flux_range",
+            min_flux_Jy=min_flux_Jy,
+            max_flux_Jy=max_flux_Jy,
+        )
+        raise ValueError("Min injected flux is less than or equal to max injected flux")
 
     model = GaussianPSF()
     if isinstance(sim_map, Depth1Map):
@@ -113,6 +148,7 @@ def photutils_sim_n_sources(
         shape = sim_map.shape
         wcs = sim_map.wcs
     else:
+        log.error("photutils_sim_n_sources.invalid_map_type", sim_map=sim_map)
         raise ValueError("Input map must be a Depth1Map or enmap.ndmap object")
 
     mapres = abs(wcs.wcs.cdelt[0]) * degree
@@ -124,15 +160,11 @@ def photutils_sim_n_sources(
     gaussfwhm /= mapres
     minfwhm = gaussfwhm - (fwhm_uncert_frac * gaussfwhm)
     maxfwhm = gaussfwhm + (fwhm_uncert_frac * gaussfwhm)
-
     minsep = min_sep_arcmin * arcmin / mapres
-
+    log.bind(minfwhm=minfwhm, maxfwhm=maxfwhm, minsep=minsep, omega_b=omega_b)
     if not seed:
-        # print('No seed provided, setting seed with current ctime')
         seed = np.random.seed()
-
-    if min_flux_Jy >= max_flux_Jy:
-        raise ValueError("Min injected flux is less than or equal to max injected flux")
+        log.debug("photutils_sim_n_sources.seed_randomized", seed=seed)
 
     ## set the window for each source to be 5x fwhm
     model_window = (int(5 * gaussfwhm), int(5 * gaussfwhm))
@@ -151,6 +183,9 @@ def photutils_sim_n_sources(
         seed=seed,
         normalize=False,
     )
+    log.info(
+        "photutils_sim_n_sources.model_image_created", shape=shape, n_sources=n_sources
+    )
     ## photutils distributes the flux over the solid angle
     ## so this map should be the intensity map in Jy/sr
     ## multiply by beam area in sq pixels
@@ -162,16 +197,23 @@ def photutils_sim_n_sources(
     elif isinstance(sim_map, enmap.ndmap):
         sim_map += simflux
 
+    log.info("photutils_sim_n_sources.beam_convolved")
+
     ## add noise to the map
     if map_noise_Jy > 0:
         if isinstance(sim_map, Depth1Map):
             sim_map.flux += make_noise_map(
-                sim_map.flux, map_noise_Jy=map_noise_Jy, map_mean_Jy=0.0, seed=seed
+                sim_map.flux,
+                map_noise_Jy=map_noise_Jy,
+                map_mean_Jy=0.0,
+                seed=seed,
+                log=log,
             )
         elif isinstance(sim_map, enmap.ndmap):
             sim_map += make_noise_map(
-                sim_map, map_noise_Jy=map_noise_Jy, map_mean_Jy=0.0, seed=seed
+                sim_map, map_noise_Jy=map_noise_Jy, map_mean_Jy=0.0, seed=seed, log=log
             )
+        log.info("photutils_sim_n_sources.noise_added", map_noise_Jy=map_noise_Jy)
 
     params["x_fwhm"] = params["x_fwhm"] * mapres / arcmin
     params["y_fwhm"] = params["y_fwhm"] * mapres / arcmin
@@ -189,8 +231,11 @@ def photutils_sim_n_sources(
         ctime=ctime,
         map_id=map_id if map_id else "",
         source_type="simulated",
+        log=log,
     )
-
+    log.info(
+        "photutils_sim_n_sources.sources_injected", n_sources=len(injected_sources)
+    )
     return sim_map, injected_sources
 
 
@@ -202,6 +247,7 @@ def inject_sources(
     arr: str = None,
     map_id: str = None,
     debug: bool = False,
+    log=None,
 ):
     """
     Inject a list of SimTransient objects into the input map.
@@ -229,7 +275,9 @@ def inject_sources(
     from ..utils.utils import get_fwhm
     from .sim_utils import make_2d_gaussian_model_param_table
 
+    log = log.bind(func_name="inject_sources")
     if not sources:
+        log.warning("inject_sources.no_sources", n_sources=0)
         return imap, []
 
     if isinstance(imap, Depth1Map):
@@ -239,12 +287,14 @@ def inject_sources(
         shape = imap.shape
         wcs = imap.wcs
     else:
+        log.error("inject_sources.invalid_map_type", map_type=type(imap))
         raise ValueError("Input map must be a Depth1Map or enmap.ndmap object")
 
     mapres = abs(wcs.wcs.cdelt[0]) * degree
     fwhm = get_fwhm(freq, arr=arr) * arcmin
     fwhm_pixels = fwhm / mapres
 
+    log.info("inject_sources.injecting_sources", n_sources=len(sources))
     injected_sources = []
     removed_sources = {"not_flaring": 0, "out_of_bounds": 0}
     for source in tqdm(sources, desc="Injecting sources", disable=not debug):
@@ -293,6 +343,7 @@ def inject_sources(
             map_id=map_id if map_id else "",
         )
         injected_sources.append(inj_source)
+    log.info("inject_sources.sources_to_inject", injected_sources=injected_sources)
 
     model_params = make_2d_gaussian_model_param_table(
         imap if isinstance(imap, enmap.ndmap) else imap.flux,
@@ -300,8 +351,9 @@ def inject_sources(
         nominal_fwhm_arcmin=fwhm / arcmin,
         cuts={},
         verbose=debug,
+        log=log,
     )
-
+    log.info("inject_sources.making_psf_image", model_params=model_params)
     psf_image = make_model_image(
         shape,
         GaussianPSF(),
@@ -314,10 +366,13 @@ def inject_sources(
         imap.flux += psf_image
     elif isinstance(imap, enmap.ndmap):
         imap += psf_image
-
+    log.info("inject_sources.sources_injected", n_sources=len(injected_sources))
     if debug:
-        print(f"Removed sources: {removed_sources}")
-        print(f"Injected sources: {len(injected_sources)}")
+        log.debug(
+            "inject_sources.source_injection_summary",
+            removed_sources=removed_sources,
+            injected_sources=injected_sources,
+        )
 
     return imap, injected_sources
 
@@ -327,10 +382,12 @@ def inject_sources_from_db(
     injected_source_db: SourceCatalogDatabase,
     t0: float = 0.0,
     verbose=False,
+    log=None,
 ):
+    log.bind(func_name="inject_sources_from_db")
     ## inject static sources
     if verbose:
-        print("Injecting static sources into simulated map using sim param config.")
+        log.info("inject_sources_from_db.start")
     catalog_sources = injected_source_db.read_database()
     mapdata, injected_sources = inject_sources(
         mapdata,
@@ -340,7 +397,9 @@ def inject_sources_from_db(
         arr=mapdata.wafer_name,
         map_id=mapdata.map_id,
         debug=verbose,
+        log=log,
     )
+    log.info("inject_sources_from_db.end", injected_sources=injected_sources)
     return injected_sources
 
 
@@ -351,6 +410,7 @@ def inject_random_sources(
     t0: float = 0.0,
     fwhm_arcmin: float = 2.2,
     add_noise: bool = False,
+    log=None,
 ):
     """
     Inject sources into a map using photutils.
@@ -367,8 +427,11 @@ def inject_random_sources(
     - add_noise: bool, if True, add sim_params['maps']['map_noise'] to the map.
         Assumes this is already injected since sim maps load this by default.
     """
+    log = log.bind(func_name="inject_random_sources")
     if not sim_params:
+        log.info("inject_random_sources.no_sim_params", sim_params=sim_params)
         return []
+
     mapdata, injected_sources = photutils_sim_n_sources(
         mapdata,
         sim_params["injected_sources"]["n_sources"],
@@ -381,8 +444,11 @@ def inject_random_sources(
         arr=mapdata.wafer_name,
         map_id=map_id if map_id else "",
         ctime=mapdata.time_map + t0,
+        log=log,
     )
-
+    log.info(
+        "inject_random_sources.injected_sources", injected_sources=injected_sources
+    )
     return injected_sources
 
 
@@ -396,6 +462,7 @@ def inject_simulated_sources(
     inject_transients: bool = False,
     use_map_geometry: bool = False,
     simulated_transient_database: str = None,
+    log=None,
 ):
     """
     Inject sources into a map using photutils.
@@ -411,16 +478,22 @@ def inject_simulated_sources(
     - inject_transients: bool, if True, inject transients into the map.
     - use_map_geometry: bool, if True, use the map geometry for transient injection.
     - simulated_transient_database: str, path to the database for simulated transients.
+    - log: structlog bound logger object
     """
+    log = log.bind(func_name="inject_simulated_sources")
     if not sim_params and not injected_source_db and not simulated_transient_database:
+        log.info("inject_simulated_sources.skip")
         return [], []
 
     from ..utils.utils import get_fwhm
     from .sim_sources import generate_transients
     from .sim_utils import load_transients_from_db
 
+    log = log.bind(sim_params=sim_params)
+
     if use_map_geometry:
         from ..maps.maps import edge_map
+    log = log.bind(use_map_geometry=use_map_geometry)
 
     catalog_sources = []
     if injected_source_db:
@@ -428,7 +501,11 @@ def inject_simulated_sources(
             mapdata,
             injected_source_db,
             t0=t0,
+            log=log,
         )
+    log = log.bind(injected_source_db=injected_source_db)
+    log = log.bind(injected_sources=catalog_sources)
+    log.info("inject_simulated_sources.injected_source_db")
 
     catalog_sources += inject_random_sources(
         mapdata,
@@ -437,11 +514,20 @@ def inject_simulated_sources(
         t0=t0,
         fwhm_arcmin=get_fwhm(mapdata.freq, arr=mapdata.wafer_name),
         add_noise=False,
+        log=log,
     )
+    log = log.bind(injected_sources=catalog_sources)
+    log.info("inject_simulated_sources.inject_random_sources")
 
     injected_sources = []
     if inject_transients:
-        transient_sources = load_transients_from_db(simulated_transient_database)
+        log.info("inject_simulated_sources.inject_transients")
+        transient_sources = load_transients_from_db(
+            simulated_transient_database, log=log
+        )
+        log = log.bind(transient_sources=transient_sources)
+        log.info("inject_simulated_sources.inject_transients.load_transients_from_db")
+
         mapdata, inj_sources = inject_sources(
             mapdata,
             transient_sources,
@@ -450,12 +536,14 @@ def inject_simulated_sources(
             arr=mapdata.wafer_name,
             map_id=map_id if map_id else "",
             debug=verbose,
+            log=log,
         )
         injected_sources += inj_sources
+        log = log.bind(injected_sources=inj_sources)
+        log.info("inject_simulated_sources.inject_transients.inject_sources")
+
         if sim_params:
             if sim_params["injected_transients"]["n_transients"] > 0:
-                if verbose:
-                    print("Generating transients using sim config.")
                 if use_map_geometry:
                     ## use imap to generate random pixels
                     ra_lims = None
@@ -480,6 +568,7 @@ def inject_simulated_sources(
                         + sim_params["maps"]["width_dec"],
                     )
                     hits_map = None
+                log = log.bind(ra_lims=ra_lims, dec_lims=dec_lims, hits_map=hits_map)
 
                 transients_to_inject = generate_transients(
                     n=sim_params["injected_transients"]["n_transients"],
@@ -496,6 +585,10 @@ def inject_simulated_sources(
                         sim_params["injected_transients"]["max_width"],
                     ),
                     uniform_on_sky=True if isinstance(hits_map, type(None)) else False,
+                    log=log,
+                )
+                log.info(
+                    "inject_simulated_sources.inject_transients.generate_transients"
                 )
                 mapdata, inj_sources = inject_sources(
                     mapdata,
@@ -505,16 +598,22 @@ def inject_simulated_sources(
                     arr=mapdata.wafer_name,
                     map_id=map_id if map_id else "",
                     debug=verbose,
+                    log=log,
                 )
                 injected_sources += inj_sources
+                log = log.bind(injected_sources=inj_sources)
+                log.info(
+                    "inject_simulated_sources.inject_transients.generate_transients.inject_sources"
+                )
 
-    if verbose:
-        print(f"Injected {len(catalog_sources)} sources into simulated map")
-        print(f"Injected {len(injected_sources)} transients into simulated map")
-
+    log.info(
+        "inject_simulated_sources.final_counts",
+        n_injected_sources=len(catalog_sources),
+        n_injected_transients=len(injected_sources),
+    )
     if isinstance(injected_source_db, SourceCatalogDatabase):
         ## add the catalog sources to the injected_source_db
         injected_source_db.add_sources(injected_sources)
         injected_source_db.add_sources(catalog_sources)
-
+        log.info("inject_simulated_sources.update_injected_source_db")
     return catalog_sources, injected_sources

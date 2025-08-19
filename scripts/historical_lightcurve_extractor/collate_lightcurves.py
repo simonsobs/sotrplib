@@ -113,28 +113,30 @@ def collate_thumbnail_files(files, out_file, split_sources=False, cleanup=True):
     from pixell import enmap
     from tqdm import tqdm
 
-    
+    old_i = 0
     for f in tqdm(sorted(files), desc="Loading thumbnail files..."):
         thumbnails = []
         thumbnails += load_custom_hdf5(f)
-
+        len_objs = len(thumbnails) + old_i
         for i in range(len(thumbnails)):
             t = thumbnails[i].pop("thumb")
             if split_sources:
                 ## source name is SO-S Jxxxxx-xxxx so , just remove the SO-S part
-                source_name = thumbnails[i].get("name", "???").split(' ')[1]
+                source_name = thumbnails[i].get("name", "???").split(" ")[1]
                 output_file = f"{out_file.split('.hdf5')[0]}_{source_name}.hdf5"
             else:
                 output_file = out_file
             enmap.write_hdf(
                 output_file,
                 t,
-                address=str(i).zfill(len(str(len(thumbnails)))),
+                address=str(old_i + i).zfill(len(str(len_objs))),
                 extra=thumbnails[i],
             )
+        old_i = len_objs + 1
 
         if cleanup:
             from subprocess import run as sprun
+
             sprun(["rm", f])
     return
 
@@ -155,4 +157,9 @@ if "lightcurve" in args.out_file:
 else:
     outfile = args.out_dir + args.out_file.split(".txt")[0] + ".hdf5"
 
-collate_thumbnail_files(thumb_files, outfile, split_sources=args.split_sources, cleanup=not bool(args.no_cleanup))
+collate_thumbnail_files(
+    thumb_files,
+    outfile,
+    split_sources=args.split_sources,
+    cleanup=not bool(args.no_cleanup),
+)
