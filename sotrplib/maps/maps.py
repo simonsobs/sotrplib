@@ -1035,7 +1035,6 @@ def make_model_source_map(
         GaussianPSF(),
         model_params,
         model_shape=shape,
-        log=log,
     )
     log.info("make_model_source_map.make_model_image.success")
     return model_map
