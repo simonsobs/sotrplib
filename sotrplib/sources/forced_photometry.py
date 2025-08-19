@@ -417,6 +417,7 @@ def photutils_2D_gauss_fit(
             log.warning(f"{preamble}source_near_map_edge", source=source_name)
             if return_thumbnails:
                 thumbnails.append([])
+                continue
         if reproject_thumb:
             thumbnail_center = (0, 0)
             try:
