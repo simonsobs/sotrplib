@@ -490,7 +490,7 @@ def photutils_2D_gauss_fit(
             fits.append(fit_dict)
         if return_thumbnails:
             thumbnails.append([flux_thumb, noise_thumb])
-    fits = convert_gauss_fit_to_source_cat(fits)
+    fits = convert_gauss_fit_to_source_cat(fits, log=log)
     log.info(f"{preamble}fit_complete", source=source_name)
     return fits, thumbnails
 
