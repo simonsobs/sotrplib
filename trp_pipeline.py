@@ -199,7 +199,9 @@ additional_catalogs = {}
 if args.million_quasar_catalog and not args.sim:
     from sotrplib.source_catalog.source_catalog import load_million_quasar_catalog
 
-    million_quasar_catalog = load_million_quasar_catalog(args.million_quasar_catalog)
+    million_quasar_catalog = load_million_quasar_catalog(
+        args.million_quasar_catalog, log=logger
+    )
     additional_catalogs["million_quasar"] = million_quasar_catalog
 
 
