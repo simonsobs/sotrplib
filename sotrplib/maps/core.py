@@ -12,7 +12,7 @@ import numpy as np
 import structlog
 from astropy.units import Quantity, Unit
 from numpy.typing import ArrayLike
-from pixell import enmap
+from pixell import enmap, utils
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
@@ -362,6 +362,73 @@ class RhoAndKappaMap(ProcessableMap):
         with np.errstate(divide="ignore"):
             flux = self.rho / self.kappa
 
+        return flux
+
+    def finalize(self):
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
+
+
+class CoaddedMap(ProcessableMap):
+    """
+    A set of FITS maps read from disk suitable for coadding.
+
+    res in radian
+    """
+
+    def __init__(
+        self,
+        source_maps: list[ProcessableMap],
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.source_maps = source_maps
+        self.log = log or structlog.get_logger()
+
+        self.rho = None
+        self.kappa = None
+        self.input_map_times = []
+        self.start_time = None
+        self.end_time = None
+
+    def build(self):
+        for sourcemap in self.source_maps:
+            sourcemap.build()
+            if isinstance(self.rho, type(None)):
+                self.rho = sourcemap.rho.copy()
+                self.kappa = sourcemap.kappa.copy()
+                self.time = sourcemap.time.copy() + sourcemap.start_time
+                self.res = np.abs(sourcemap.rho.wcs.cdelt[0]) * utils.degree
+                self.start_time = sourcemap.start_time
+                self.end_time = sourcemap.end_time
+                self.input_map_times.append(
+                    0.5 * (sourcemap.start_time + sourcemap.end_time)
+                )
+            else:
+                enmap.map_union(self.rho, sourcemap.rho, op=lambda a, b: a + b)
+                enmap.map_union(self.kappa, sourcemap.kappa, op=lambda a, b: a + b)
+                enmap.map_union(
+                    self.time,
+                    sourcemap.time + sourcemap.start_time,
+                    op=lambda a, b: a + b,
+                )
+                self.start_time = min(self.start_time, sourcemap.start_time)
+                self.end_time = max(self.end_time, sourcemap.end_time)
+                self.input_map_times.append(
+                    0.5 * (sourcemap.start_time + sourcemap.end_time)
+                )
+
+        self.time /= len(self.input_map_times)
+        self.n_maps = len(self.input_map_times)
+
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.rho / np.sqrt(self.kappa)
+
+        return snr
+
+    def get_flux(self):
+        with np.errstate(divide="ignore"):
+            flux = self.rho / self.kappa
         return flux
 
     def finalize(self):
