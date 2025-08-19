@@ -19,7 +19,7 @@ from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sources.sources import SourceCandidate
 
 
-class ProcessableMapWithSimualtedSources(ProcessableMap):
+class ProcessableMapWithSimulatedSources(ProcessableMap):
     """
     A ProcessableMap that has its sources simulated.
     """
