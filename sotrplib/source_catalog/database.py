@@ -2,9 +2,26 @@ import os
 import threading
 
 import pandas as pd
+from astropy.io import fits
 from filelock import FileLock  # Import FileLock and Timeout for file-based locking
+from socat.client import mock
 
 from sotrplib.sources.sources import SourceCandidate
+
+
+class SocatMockDatabase:
+    def __init__(self, db_path):
+        hdu = fits.open(db_path)
+        mock_cat = hdu[1]
+        so_cat = mock.Client()
+        for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
+            ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
+            ra -= 180  # Convention difference
+            name = mock_cat.data["name"][i]
+            so_cat.create(ra=ra, dec=dec, name=name)
+
+    def get_source(self, name):
+        pass  # Implement as needed
 
 
 class SourceCatalogDatabase:
