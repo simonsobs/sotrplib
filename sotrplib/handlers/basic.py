@@ -11,7 +11,7 @@ from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sources.core import (
     BlindSearchProvider,
     EmptyBlindSearch,
-    EmtpyForcedPhotometry,
+    EmptyForcedPhotometry,
     ForcedPhotometryProvider,
 )
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
@@ -32,7 +32,7 @@ class PipelineRunner:
         self.maps = maps
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
-        self.forced_photometry = forced_photometry or EmtpyForcedPhotometry()
+        self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()
         self.sifter = sifter or EmptySifter()

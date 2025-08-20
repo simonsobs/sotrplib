@@ -54,7 +54,7 @@ def test_injected_sources(empty_map: SimulatedMap):
 
 def test_basic_pipeline(tmp_path, empty_map: SimulatedMap):
     """
-    Tests a complete setuep of the basic pipeline run.
+    Tests a complete setup of the basic pipeline run.
     """
 
     parameters = RandomSourceSimulationParameters(

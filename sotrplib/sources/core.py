@@ -26,7 +26,7 @@ class ForcedPhotometryProvider(ABC):
         return
 
 
-class EmtpyForcedPhotometry(ForcedPhotometryProvider):
+class EmptyForcedPhotometry(ForcedPhotometryProvider):
     def force(self, input_map):
         return [], []
 

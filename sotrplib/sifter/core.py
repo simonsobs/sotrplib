@@ -115,7 +115,7 @@ class DefaultSifter(SiftingProvider):
 
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
-            catalog_sources=self.cataloc_sources,
+            catalog_sources=self.catalog_sources,
             imap=flux_map,
             radius1Jy=self.radius_1Jy,
             min_match_radius=self.min_match_radius,

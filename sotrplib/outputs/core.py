@@ -28,7 +28,7 @@ class SourceOutput(ABC):
         return
 
 
-class JSONSerializer(ABC):
+class JSONSerializer(SourceOutput):
     """
     Serialize a source candidate list to a JSON file.
     """
@@ -52,7 +52,7 @@ class JSONSerializer(ABC):
             json.dump(
                 obj={
                     "forced_photometry": forced_photometry_candidates,
-                    "sifted_blind_serach": sifter_result,
+                    "sifted_blind_search": sifter_result,
                 },
                 fp=handle,
             )
@@ -60,7 +60,7 @@ class JSONSerializer(ABC):
         return
 
 
-class PickleSerializer(ABC):
+class PickleSerializer(SourceOutput):
     """
     Serialize a source candidate list to a Pickle file.
     """
@@ -84,7 +84,7 @@ class PickleSerializer(ABC):
             pickle.dump(
                 obj={
                     "forced_photometry": forced_photometry_candidates,
-                    "sifted_blind_serach": sifter_result,
+                    "sifted_blind_search": sifter_result,
                 },
                 file=handle,
             )
