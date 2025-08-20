@@ -9,19 +9,39 @@ from socat.client import mock
 from sotrplib.sources.sources import SourceCandidate
 
 
-class SocatMockDatabase:
+class SOCatMockDatabase:
     def __init__(self, db_path):
         hdu = fits.open(db_path)
         mock_cat = hdu[1]
-        so_cat = mock.Client()
+        cat = mock.Client()
         for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
             ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
             ra -= 180  # Convention difference
             name = mock_cat.data["name"][i]
-            so_cat.create(ra=ra, dec=dec, name=name)
+            cat.create(ra=ra, dec=dec, name=name)
+        self.cat = cat
 
-    def get_source(self, name):
-        pass  # Implement as needed
+    def get_nearby_source(self, ra, dec, radius=0.1):
+        ## ra,dec,radius in same units. default is decimal degrees
+        return self.cat.get_box(
+            ra_min=ra - radius,
+            ra_max=ra + radius,
+            dec_min=dec - radius,
+            dec_max=dec + radius,
+        )
+
+    def update_catalog(self, new_sources: list, match_radius=0.1):
+        """Update the catalog with new sources."""
+        for source in new_sources:
+            matches = self.cat.get_nearby_source(
+                source.ra, source.dec, radius=match_radius
+            )
+            if not matches:
+                self.cat.create(ra=source.ra, dec=source.dec, name=source.name)
+            else:
+                ## update source flux?
+                ## what to do if more than one match? restrict radius?
+                pass
 
 
 class SourceCatalogDatabase:
