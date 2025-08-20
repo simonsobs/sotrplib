@@ -1,5 +1,6 @@
 """
-Core searches for known sources in a map (forced photometry)
+Core searches for known sources in a map (forced photometry) and
+unknown sources in a map (blind search)
 """
 
 from abc import ABC, abstractmethod
@@ -76,3 +77,25 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
         )
 
         return sources, thumbnails
+
+
+class BlindSearchProvider(ABC):
+    @abstractmethod
+    def search(
+        self, input_map: ProcessableMap
+    ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
+        return
+
+
+class EmptyBlindSearch(BlindSearchProvider):
+    def search(
+        self, input_map: ProcessableMap
+    ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
+        return [], []
+
+
+class SigmaClipBlindSearch(BlindSearchProvider):
+    def search(
+        self, input_map: ProcessableMap
+    ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
+        raise NotImplementedError
