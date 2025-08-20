@@ -414,9 +414,13 @@ def photutils_2D_gauss_fit(
             or pix[1] - thumbsize < 0
         ):
             fits.append(fit_dict)
+
             log.warning(f"{preamble}source_near_map_edge", source=source_name)
+
             if return_thumbnails:
                 thumbnails.append([])
+
+            continue
         if reproject_thumb:
             thumbnail_center = (0, 0)
             try:
@@ -432,7 +436,8 @@ def photutils_2D_gauss_fit(
                     r=size_deg * degree,
                     res=map_res,
                 )
-                noise_thumb = flux_thumb / snr_thumb
+                with np.errstate(divide="ignore"):
+                    noise_thumb = flux_thumb / snr_thumb
             except Exception as e:
                 log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
                 fits.append(fit_dict)
