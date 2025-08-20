@@ -362,6 +362,8 @@ class RhoAndKappaMap(ProcessableMap):
         end_time: datetime,
         box: ArrayLike | None = None,
         time_filename: Path | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -370,6 +372,8 @@ class RhoAndKappaMap(ProcessableMap):
         self.start_time = start_time
         self.end_time = end_time
         self.box = box
+        self.frequency = frequency
+        self.array = array
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -432,6 +436,8 @@ class CoaddedMap(ProcessableMap):
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         input_map_times: list[float] | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
     ):
         self.source_maps = source_maps
         self.log = log or structlog.get_logger()
@@ -441,6 +447,8 @@ class CoaddedMap(ProcessableMap):
         self.start_time = start_time
         self.end_time = end_time
         self.input_map_times = input_map_times or []
+        self.frequency = frequency
+        self.array = array
 
     def build(self):
         base_map = self.source_maps[0]
