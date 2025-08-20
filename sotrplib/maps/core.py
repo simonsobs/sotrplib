@@ -12,7 +12,7 @@ import numpy as np
 import structlog
 from astropy.units import Quantity, Unit
 from numpy.typing import ArrayLike
-from pixell import enmap
+from pixell import enmap, utils
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
@@ -38,6 +38,9 @@ class ProcessableMap(ABC):
 
     flux_units: Unit
 
+    __rho: enmap.ndmap | None = None
+    __kappa: enmap.ndmap | None = None
+
     @abstractmethod
     def build(self):
         """
@@ -53,6 +56,50 @@ class ProcessableMap(ABC):
         """
         with np.errstate(divide="ignore"):
             return self.flux / self.snr
+
+    @property
+    def rho(self):
+        """
+        Calculate the rho map from snr and flux.
+        """
+        if self.__rho is not None:
+            return self.__rho
+
+        with np.errstate(divide="ignore"):
+            rho = (self.snr * self.snr) / (self.flux)
+
+        return rho
+
+    @rho.setter
+    def rho(self, x):
+        # TODO: Set the snr, flux when this is updated?
+        self.__rho = x
+
+    @rho.deleter
+    def rho(self, x):
+        del self.__rho
+
+    @property
+    def kappa(self):
+        """
+        Calculate the kappa map from snr and flux.
+        """
+        if self.__kappa is not None:
+            return self.__kappa
+
+        with np.errstate(divide="ignore"):
+            kappa = (self.snr * self.snr) / (self.flux * self.flux)
+
+        return kappa
+
+    @kappa.setter
+    def kappa(self, x):
+        # TODO: Set the snr, flux when this is updated?
+        self.__kappa = x
+
+    @kappa.deleter
+    def kappa(self, x):
+        del self.__kappa
 
     @abstractmethod
     def finalize(self):
@@ -313,8 +360,10 @@ class RhoAndKappaMap(ProcessableMap):
         kappa_filename: Path,
         start_time: datetime,
         end_time: datetime,
-        box: ArrayLike | None,
+        box: ArrayLike | None = None,
         time_filename: Path | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -323,6 +372,8 @@ class RhoAndKappaMap(ProcessableMap):
         self.start_time = start_time
         self.end_time = end_time
         self.box = box
+        self.frequency = frequency
+        self.array = array
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -362,6 +413,140 @@ class RhoAndKappaMap(ProcessableMap):
         with np.errstate(divide="ignore"):
             flux = self.rho / self.kappa
 
+        return flux
+
+    def finalize(self):
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
+
+
+class CoaddedMap(ProcessableMap):
+    """
+    A set of FITS maps read from disk suitable for coadding.
+
+    res in radian
+    """
+
+    def __init__(
+        self,
+        source_maps: list[ProcessableMap],
+        log: FilteringBoundLogger | None = None,
+        time: enmap.ndmap | None = None,
+        map_depth: enmap.ndmap | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        input_map_times: list[float] | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
+    ):
+        self.source_maps = source_maps
+        self.log = log or structlog.get_logger()
+        self.initialized = False
+        self.time = time
+        self.map_depth = map_depth
+        self.start_time = start_time
+        self.end_time = end_time
+        self.input_map_times = input_map_times or []
+        self.frequency = frequency
+        self.array = array
+
+    def build(self):
+        base_map = self.source_maps[0]
+        base_map.build()
+        base_map.finalize()
+        self.log.info(
+            "coaddedmap.base_map.built",
+            map_start_time=base_map.start_time,
+            map_end_time=base_map.end_time,
+            map_frequency=base_map.frequency,
+        )
+
+        self.rho = base_map.rho.copy()
+        self.kappa = base_map.kappa.copy()
+        self.res = np.abs(base_map.rho.wcs.wcs.cdelt[0]) * utils.degree
+
+        self.get_time_and_mapdepth(base_map)
+        self.update_map_times(base_map)
+        self.initialized = True
+        self.log.info("coaddedmap.coadd.initialized")
+
+        if len(self.source_maps) == 1:
+            self.log.warning("coaddedmap.coadd.single_map_warning", n_maps_coadded=1)
+            self.n_maps = 1
+            return
+
+        for sourcemap in self.source_maps[1:]:
+            sourcemap.build()
+            sourcemap.finalize()
+            self.log.info(
+                "coaddedmap.source_map.built",
+                map_start_time=sourcemap.start_time,
+                map_end_time=sourcemap.end_time,
+                map_frequency=sourcemap.frequency,
+            )
+            self.rho = enmap.map_union(
+                self.rho,
+                sourcemap.rho,
+            )
+            self.kappa = enmap.map_union(
+                self.kappa,
+                sourcemap.kappa,
+            )
+            self.get_time_and_mapdepth(sourcemap)
+            self.update_map_times(sourcemap)
+
+        if not isinstance(self.time, type(None)):
+            with np.errstate(divide="ignore"):
+                self.time /= self.map_depth
+        self.n_maps = len(self.input_map_times)
+        self.log.info(
+            "coaddedmap.coadd.finalized",
+            n_maps_coadded=self.n_maps,
+            coadd_start_time=self.start_time,
+            coadd_end_time=self.end_time,
+        )
+        return
+
+    def get_time_and_mapdepth(self, new_map):
+        if isinstance(new_map.time, enmap.ndmap):
+            if isinstance(self.time, type(None)):
+                self.time = new_map.time.copy() + new_map.start_time.timestamp()
+                self.map_depth = new_map.time.copy()
+                self.map_depth[self.map_depth > 0] = 1.0
+            else:
+                self.time = enmap.map_union(
+                    self.time,
+                    new_map.time + new_map.start_time.timestamp(),
+                )
+                new_map_depth = new_map.time.copy()
+                new_map_depth[new_map_depth > 0] = 1.0
+                self.map_depth = enmap.map_union(
+                    self.map_depth,
+                    new_map_depth,
+                )
+
+    def update_map_times(self, new_map):
+        if self.start_time is None:
+            self.start_time = new_map.start_time.timestamp()
+        else:
+            self.start_time = min(self.start_time, new_map.start_time.timestamp())
+        if self.end_time is None:
+            self.end_time = new_map.end_time.timestamp()
+        else:
+            self.end_time = max(self.end_time, new_map.end_time.timestamp())
+        self.input_map_times += [
+            0.5 * (new_map.start_time.timestamp() + new_map.end_time.timestamp())
+        ]
+
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.rho / np.sqrt(self.kappa)
+
+        return snr
+
+    def get_flux(self):
+        with np.errstate(divide="ignore"):
+            flux = self.rho / self.kappa
         return flux
 
     def finalize(self):
