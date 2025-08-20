@@ -52,10 +52,12 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
-            force_sources, _ = self.forced_photometry.force(input_map=input_map)
+            forced_photometry_candidates, _ = self.forced_photometry.force(
+                input_map=input_map
+            )
 
             source_subtracted_map = self.source_subtractor.subtract(
-                sources=force_sources, input_map=input_map
+                sources=forced_photometry_candidates, input_map=input_map
             )
 
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
@@ -65,7 +67,7 @@ class PipelineRunner:
 
             for output in self.outputs:
                 output.output(
-                    forced_photometry_candidates=force_sources,
+                    forced_photometry_candidates=forced_photometry_candidates,
                     sifter_result=sifter_result,
                     input_map=input_map,
                 )
