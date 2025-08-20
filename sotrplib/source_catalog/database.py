@@ -2,45 +2,70 @@ import os
 import threading
 
 import pandas as pd
+import structlog
 from astropy.io import fits
 from filelock import FileLock  # Import FileLock and Timeout for file-based locking
 from socat.client import mock
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.sources import SourceCandidate
 
 
 class SOCatMockDatabase:
-    def __init__(self, db_path):
+    def __init__(
+        self,
+        db_path: str,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or structlog.get_logger()
         hdu = fits.open(db_path)
         mock_cat = hdu[1]
         cat = mock.Client()
+        self.log.info("SOCatMockDatabase.loading_act_catalog")
         for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
             ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
             ra -= 180  # Convention difference
             name = mock_cat.data["name"][i]
             cat.create(ra=ra, dec=dec, name=name)
         self.cat = cat
+        self.log.info(
+            "SOCatMockDatabase.loaded_act_catalog",
+            n_sources=len(mock_cat.data["raDeg"]),
+        )
 
     def get_nearby_source(self, ra, dec, radius=0.1):
         ## ra,dec,radius in same units. default is decimal degrees
-        return self.cat.get_box(
+        nearby = self.cat.get_box(
             ra_min=ra - radius,
             ra_max=ra + radius,
             dec_min=dec - radius,
             dec_max=dec + radius,
         )
+        self.log.info(
+            "SOCatMockDatabase.get_nearby_source",
+            ra=ra,
+            dec=dec,
+            radius=radius,
+            nearby=nearby,
+        )
+
+        return nearby
 
     def update_catalog(self, new_sources: list, match_radius=0.1):
         """Update the catalog with new sources."""
         for source in new_sources:
-            matches = self.cat.get_nearby_source(
-                source.ra, source.dec, radius=match_radius
-            )
+            matches = self.get_nearby_source(source.ra, source.dec, radius=match_radius)
             if not matches:
-                self.cat.create(ra=source.ra, dec=source.dec, name=source.name)
+                s = self.cat.create(ra=source.ra, dec=source.dec, name=source.sourceID)
+                self.log.info(
+                    "SOCatMockDatabase.update_catalog.new_source_added", source=s
+                )
             else:
-                ## update source flux?
-                ## what to do if more than one match? restrict radius?
+                self.log.info(
+                    "SOCatMockDatabase.update_catalog.existing_source_found",
+                    source=source,
+                    matching_sources=matches,
+                )
                 pass
 
 
