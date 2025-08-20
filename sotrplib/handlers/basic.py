@@ -14,6 +14,7 @@ from sotrplib.sources.core import (
     EmtpyForcedPhotometry,
     ForcedPhotometryProvider,
 )
+from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 
 class PipelineRunner:
@@ -23,6 +24,7 @@ class PipelineRunner:
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
         forced_photometry: ForcedPhotometryProvider | None,
+        source_subtractor: SourceSubtractor | None,
         blind_search: BlindSearchProvider | None,
         sifter: SiftingProvider | None,
         outputs: list[SourceOutput] | None,
@@ -31,6 +33,7 @@ class PipelineRunner:
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
         self.forced_photometry = forced_photometry or EmtpyForcedPhotometry()
+        self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()
         self.sifter = sifter or EmptySifter()
         self.outputs = outputs or []
@@ -49,16 +52,15 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
-            force_sources, force_cutouts = self.forced_photometry.force(
-                input_map=input_map
+            force_sources, _ = self.forced_photometry.force(input_map=input_map)
+
+            source_subtracted_map = self.source_subtractor.subtract(
+                sources=force_sources, input_map=input_map
             )
 
-            # TODO: Map subtraction of force photometry discovered sources.
+            blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
-            blind_sources, blind_cutouts = self.blind_search.search(input_map=input_map)
-
-            # TODO: re-write sifter interface to work with new dependencies - this currently
-            # does not work.
+            # Should we be passing the source subtracted map or the original to the sifter..?
             sifter_result = self.sifter.sift(blind_sources, input_map)
 
             for output in self.outputs:

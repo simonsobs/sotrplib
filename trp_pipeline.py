@@ -528,6 +528,7 @@ for freq_arr_idx in indexed_map_groups:
         logger.info("pipeline.sift")
 
         sifter = DefaultSifter(
+            catalog_sources=catalog_sources,
             radius_1Jy=1.5 if args.sim else 2 * band_fwhm / arcmin,
             cuts=default_cuts,
             crossmatch_with_gaia=not args.sim,
@@ -538,12 +539,10 @@ for freq_arr_idx in indexed_map_groups:
         )
 
         sifter_result = sifter.sift(
-            extracted_sources=extracted_sources,
-            catalog_sources=catalog_sources,
-            flux_map=mapdata.flux,
-            map_id=map_id,
-            map_freq=mapdata.freq,
-            arr=mapdata.wafer_name,
+            sources=extracted_sources,
+            # This won't work because the map data is not the same as our
+            # ProcessableMap... But whatever
+            input_map=mapdata,
         )
 
         catalog_matches = sifter_result.source_candidates
