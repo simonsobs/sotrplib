@@ -446,7 +446,12 @@ class CoaddedMap(ProcessableMap):
         base_map = self.source_maps[0]
         base_map.build()
         base_map.finalize()
-        self.log.info("base_map.built")
+        self.log.info(
+            "coaddedmap.base_map.built",
+            map_start_time=base_map.start_time,
+            map_end_time=base_map.end_time,
+            map_frequency=base_map.frequency,
+        )
 
         self.rho = base_map.rho.copy()
         self.kappa = base_map.kappa.copy()
@@ -455,13 +460,22 @@ class CoaddedMap(ProcessableMap):
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
         self.initialized = True
-        self.log.info("coadd.initialized")
+        self.log.info("coaddedmap.coadd.initialized")
 
-        ## should check for length of source maps.. do we want to error the coadder or just return the single map?
+        if len(self.source_maps) == 1:
+            self.log.warning("coaddedmap.coadd.single_map_warning", n_maps_coadded=1)
+            self.n_maps = 1
+            return
+
         for sourcemap in self.source_maps[1:]:
             sourcemap.build()
             sourcemap.finalize()
-            self.log.info("source_map.built", sourcemap=sourcemap)
+            self.log.info(
+                "coaddedmap.source_map.built",
+                map_start_time=sourcemap.start_time,
+                map_end_time=sourcemap.end_time,
+                map_frequency=sourcemap.frequency,
+            )
             self.rho = enmap.map_union(
                 self.rho,
                 sourcemap.rho,
@@ -477,6 +491,13 @@ class CoaddedMap(ProcessableMap):
             with np.errstate(divide="ignore"):
                 self.time /= self.map_depth
         self.n_maps = len(self.input_map_times)
+        self.log.info(
+            "coaddedmap.coadd.finalized",
+            n_maps_coadded=self.n_maps,
+            coadd_start_time=self.start_time,
+            coadd_end_time=self.end_time,
+        )
+        return
 
     def get_time_and_mapdepth(self, new_map):
         if isinstance(new_map.time, enmap.ndmap):
