@@ -26,6 +26,11 @@ class ForcedPhotometryProvider(ABC):
         return
 
 
+class EmtpyForcedPhotometry(ForcedPhotometryProvider):
+    def force(self, input_map):
+        return [], []
+
+
 class PhotutilsGaussianFitter(ForcedPhotometryProvider):
     # TODO: Figure out what type sources are
     sources: list

@@ -21,7 +21,7 @@ class SifterResult:
     noise_candidates: list[SourceCandidate]
 
 
-class AbstractSifter(ABC):
+class SiftingProvider(ABC):
     @abstractmethod
     def sift(
         extracted_sources: dict,
@@ -35,7 +35,22 @@ class AbstractSifter(ABC):
         raise NotImplementedError
 
 
-class DefaultSifter(AbstractSifter):
+class EmptySifter(SiftingProvider):
+    def sift(
+        extracted_sources: dict,
+        catalog_sources: list,
+        flux_map: ndmap | None,
+        # Map metadata for source candidates
+        map_id: str | None = None,
+        map_freq: str | None = None,
+        arr: str | None = None,
+    ) -> SifterResult:
+        return SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        )
+
+
+class DefaultSifter(SiftingProvider):
     radius_1Jy: float
     "matching radius for a 1Jy source, arcmin"
     min_match_radius: float
