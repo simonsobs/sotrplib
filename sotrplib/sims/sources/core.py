@@ -42,6 +42,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.end_time = original_map.end_time
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
+        self.array = original_map.array
 
         return
 

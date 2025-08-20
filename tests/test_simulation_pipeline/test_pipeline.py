@@ -5,11 +5,14 @@ Tests for the fully simulated pipeline setup.
 import structlog
 from astropy import units as u
 
+from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.maps.core import SimulatedMap
+from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sims.sources.core import (
     RandomSourceSimulation,
     RandomSourceSimulationParameters,
 )
+from sotrplib.sources.core import PhotutilsGaussianFitter
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
 
 
@@ -47,3 +50,34 @@ def test_injected_sources(empty_map: SimulatedMap):
     # Can't look at length of fits because the fits
     # are skipped for items near the edge.
     assert len(thumbnails) == len(sources)
+
+
+def test_basic_pipeline(tmp_path, empty_map: SimulatedMap):
+    """
+    Tests a complete setuep of the basic pipeline run.
+    """
+
+    parameters = RandomSourceSimulationParameters(
+        n_sources=64,
+        # Use bright sources so we can guarantee recovery
+        min_flux=u.Quantity(1.0, "Jy"),
+        max_flux=u.Quantity(10.0, "Jy"),
+        fwhm_uncertainty_frac=0.5,
+    )
+
+    simulator = RandomSourceSimulation(parameters=parameters)
+
+    new_map, sources = simulator.simulate(input_map=empty_map)
+
+    runner = PipelineRunner(
+        maps=[new_map, new_map],
+        preprocessors=None,
+        postprocessors=None,
+        forced_photometry=PhotutilsGaussianFitter(sources=sources),
+        source_subtractor=None,
+        blind_search=None,
+        sifter=None,
+        outputs=[PickleSerializer(directory=tmp_path)],
+    )
+
+    runner.run()
