@@ -427,77 +427,87 @@ class CoaddedMap(ProcessableMap):
         self,
         source_maps: list[ProcessableMap],
         log: FilteringBoundLogger | None = None,
+        time: enmap.ndmap | None = None,
+        map_depth: enmap.ndmap | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        input_map_times: list[float] | None = None,
     ):
         self.source_maps = source_maps
         self.log = log or structlog.get_logger()
-
-        self.rho = None
-        self.kappa = None
-        self.time = None
-        self.map_depth = None
-        self.n_maps = 0
         self.initialized = False
-        self.input_map_times = []
-        self.start_time = None
-        self.end_time = None
+        self.time = time
+        self.map_depth = map_depth
+        self.start_time = start_time
+        self.end_time = end_time
+        self.input_map_times = input_map_times or []
 
     def build(self):
-        for sourcemap in self.source_maps:
+        base_map = self.source_maps[0]
+        base_map.build()
+        base_map.finalize()
+        self.log.info("base_map.built")
+
+        self.rho = base_map.rho.copy()
+        self.kappa = base_map.kappa.copy()
+        self.res = np.abs(base_map.rho.wcs.wcs.cdelt[0]) * utils.degree
+
+        self.get_time_and_mapdepth(base_map)
+        self.update_map_times(base_map)
+        self.initialized = True
+        self.log.info("coadd.initialized")
+
+        ## should check for length of source maps.. do we want to error the coadder or just return the single map?
+        for sourcemap in self.source_maps[1:]:
             sourcemap.build()
             sourcemap.finalize()
             self.log.info("source_map.built", sourcemap=sourcemap)
-
-            if not self.initialized:
-                self.rho = sourcemap.rho.copy()
-                self.kappa = sourcemap.kappa.copy()
-                if isinstance(sourcemap.time, enmap.ndmap):
-                    self.time = sourcemap.time.copy() + sourcemap.start_time.timestamp()
-                    self.map_depth = sourcemap.time.copy()
-                    self.map_depth[self.map_depth > 0] = 1.0
-                self.res = np.abs(sourcemap.rho.wcs.wcs.cdelt[0]) * utils.degree
-                self.start_time = sourcemap.start_time.timestamp()
-                self.end_time = sourcemap.end_time.timestamp()
-                self.input_map_times.append(
-                    0.5
-                    * (
-                        sourcemap.start_time.timestamp()
-                        + sourcemap.end_time.timestamp()
-                    )
-                )
-                self.initialized = True
-            else:
-                self.rho = enmap.map_union(
-                    self.rho,
-                    sourcemap.rho,
-                )
-                self.kappa = enmap.map_union(
-                    self.kappa,
-                    sourcemap.kappa,
-                )
-                if isinstance(self.time, enmap.ndmap):
-                    self.time = enmap.map_union(
-                        self.time,
-                        sourcemap.time + sourcemap.start_time.timestamp(),
-                    )
-                    sourcemap_depth = sourcemap.time.copy()
-                    sourcemap_depth[sourcemap_depth > 0] = 1.0
-                    self.map_depth = enmap.map_union(
-                        self.map_depth,
-                        sourcemap_depth,
-                    )
-                self.start_time = min(self.start_time, sourcemap.start_time.timestamp())
-                self.end_time = max(self.end_time, sourcemap.end_time.timestamp())
-                self.input_map_times.append(
-                    0.5
-                    * (
-                        sourcemap.start_time.timestamp()
-                        + sourcemap.end_time.timestamp()
-                    )
-                )
+            self.rho = enmap.map_union(
+                self.rho,
+                sourcemap.rho,
+            )
+            self.kappa = enmap.map_union(
+                self.kappa,
+                sourcemap.kappa,
+            )
+            self.get_time_and_mapdepth(sourcemap)
+            self.update_map_times(sourcemap)
 
         if not isinstance(self.time, type(None)):
-            self.time /= self.map_depth
+            with np.errstate(divide="ignore"):
+                self.time /= self.map_depth
         self.n_maps = len(self.input_map_times)
+
+    def get_time_and_mapdepth(self, new_map):
+        if isinstance(new_map.time, enmap.ndmap):
+            if isinstance(self.time, type(None)):
+                self.time = new_map.time.copy() + new_map.start_time.timestamp()
+                self.map_depth = new_map.time.copy()
+                self.map_depth[self.map_depth > 0] = 1.0
+            else:
+                self.time = enmap.map_union(
+                    self.time,
+                    new_map.time + new_map.start_time.timestamp(),
+                )
+                new_map_depth = new_map.time.copy()
+                new_map_depth[new_map_depth > 0] = 1.0
+                self.map_depth = enmap.map_union(
+                    self.map_depth,
+                    new_map_depth,
+                )
+
+    def update_map_times(self, new_map):
+        if self.start_time is None:
+            self.start_time = new_map.start_time.timestamp()
+        else:
+            self.start_time = min(self.start_time, new_map.start_time.timestamp())
+        if self.end_time is None:
+            self.end_time = new_map.end_time.timestamp()
+        else:
+            self.end_time = max(self.end_time, new_map.end_time.timestamp())
+        self.input_map_times += [
+            0.5 * (new_map.start_time.timestamp() + new_map.end_time.timestamp())
+        ]
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
