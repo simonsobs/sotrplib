@@ -112,7 +112,9 @@ for fi in range(nfile):
             kappa_thumbs.append(
                 get_thumbnail(kappa_map, ra[i], dec[i], args.thumbnail_radius)
             )
-            rho_thumbs.append(get_thumbnail(rho_map, ra[i], dec[i], args.thumbnail_radius))
+            rho_thumbs.append(
+                get_thumbnail(rho_map, ra[i], dec[i], args.thumbnail_radius)
+            )
 
     del kappa_map, rho_map
 

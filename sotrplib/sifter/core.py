@@ -8,9 +8,9 @@ from typing import Any
 
 import numpy as np
 import structlog
-from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import SourceCandidate
 
 
@@ -21,21 +21,30 @@ class SifterResult:
     noise_candidates: list[SourceCandidate]
 
 
-class AbstractSifter(ABC):
+class SiftingProvider(ABC):
     @abstractmethod
     def sift(
-        extracted_sources: dict,
-        catalog_sources: list,
-        flux_map: ndmap | None,
-        # Map metadata for source candidates
-        map_id: str | None = None,
-        map_freq: str | None = None,
-        arr: str | None = None,
+        self,
+        sources: list[SourceCandidate],
+        input_map: ProcessableMap,
     ) -> SifterResult:
         raise NotImplementedError
 
 
-class DefaultSifter(AbstractSifter):
+class EmptySifter(SiftingProvider):
+    def sift(
+        self,
+        sources: list[SourceCandidate],
+        input_map: ProcessableMap,
+    ) -> SifterResult:
+        return SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        )
+
+
+class DefaultSifter(SiftingProvider):
+    catalog_sources: list
+    "the list of sources to match against with this sifter"
     radius_1Jy: float
     "matching radius for a 1Jy source, arcmin"
     min_match_radius: float
@@ -59,6 +68,7 @@ class DefaultSifter(AbstractSifter):
 
     def __init__(
         self,
+        catalog_sources: list,
         radius_1Jy: float = 30.0,
         min_match_radius: float = 1.5,
         ra_jitter: float = 0.0,
@@ -70,6 +80,7 @@ class DefaultSifter(AbstractSifter):
         log: FilteringBoundLogger | None = None,
         debug: bool = False,
     ):
+        self.catalog_sources = catalog_sources
         self.radius_1Jy = radius_1Jy
         self.min_match_radius = min_match_radius
         self.ra_jitter = ra_jitter
@@ -91,20 +102,20 @@ class DefaultSifter(AbstractSifter):
 
     def sift(
         self,
-        extracted_sources: dict,
-        catalog_sources: list,
-        flux_map: ndmap | None,
-        map_id: str | None = None,
-        map_freq: str | None = None,
-        arr: str | None = None,
+        sources: list[SourceCandidate],
+        input_map: ProcessableMap,
     ) -> SifterResult:
         from .crossmatch import sift
 
-        map_id = map_id or ""
+        map_freq = input_map.frequency
+        arr = input_map.array
+        flux_map = input_map.flux
+        # TODO: Map IDs
+        map_id = ""
 
         source_candidates, transient_candidates, noise_candidates = sift(
-            extracted_sources=extracted_sources,
-            catalog_sources=catalog_sources,
+            extracted_sources=sources,
+            catalog_sources=self.catalog_sources,
             imap=flux_map,
             radius1Jy=self.radius_1Jy,
             min_match_radius=self.min_match_radius,
