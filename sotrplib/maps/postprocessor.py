@@ -69,4 +69,20 @@ class PixellFlatfield(MapPostprocessor):
         self.tile_grid = tile_grid
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        # TODO Implement pixell flat-fielding
+        raise NotImplementedError
+        return
+
+
+class PhotutilsFlatField(MapPostprocessor):
+    tile_grid: float
+    sigma_clip: float
+
+    def __init__(self, tile_grid: float = 1.0, sigma_clip: float = 5.0):
+        self.tile_grid = tile_grid
+        self.sigma_clip = sigma_clip
+
+    def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        # TODO Implement photutils flat-fielding
+        raise NotImplementedError
         return
