@@ -47,7 +47,8 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.frequency = original_map.frequency
         self.array = original_map.array
         self.finalized = original_map.finalized
-
+        self.map_resolution = original_map.map_resolution
+        self.map_resolution_units = original_map.map_resolution_units
         return
 
     def build(self):
