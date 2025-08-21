@@ -17,5 +17,8 @@ def empty_map():
     )
 
     map.build()
+    map.finalize()
+
+    assert map.finalized
 
     yield map
