@@ -436,10 +436,10 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            self.time = enmap.read_map(self.time_filename, box=self.box)
+            self.time_map = enmap.read_map(self.time_filename, box=self.box)
             log.debug("intensity_ivar.time.read")
         else:
-            self.time = None
+            self.time_map = None
             log.debug("intensity_ivar.time.none")
 
         return
@@ -495,10 +495,10 @@ class RhoAndKappaMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            self.time = enmap.read_map(self.time_filename, box=self.box)
+            self.time_map = enmap.read_map(self.time_filename, box=self.box)
             log.debug("rho_kappa.time.read")
         else:
-            self.time = None
+            self.time_map = None
             log.debug("rho_kappa.time.none")
 
         return
@@ -521,6 +521,11 @@ class RhoAndKappaMap(ProcessableMap):
         super().finalize()
 
 
+"""
+Need to update this to use individual time maps and calcaulte the time_start, time_mean and time_end maps.
+"""
+
+
 class CoaddedMap(ProcessableMap):
     """
     A set of FITS maps read from disk suitable for coadding.
@@ -532,7 +537,7 @@ class CoaddedMap(ProcessableMap):
         self,
         source_maps: list[ProcessableMap],
         log: FilteringBoundLogger | None = None,
-        time: enmap.ndmap | None = None,
+        time_map: enmap.ndmap | None = None,
         map_depth: enmap.ndmap | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
@@ -543,7 +548,7 @@ class CoaddedMap(ProcessableMap):
         self.source_maps = source_maps
         self.log = log or structlog.get_logger()
         self.initialized = False
-        self.time = time
+        self.time_map = time_map
         self.map_depth = map_depth
         self.observation_start = start_time
         self.observation_end = end_time
@@ -596,7 +601,7 @@ class CoaddedMap(ProcessableMap):
             self.get_time_and_mapdepth(sourcemap)
             self.update_map_times(sourcemap)
 
-        if not isinstance(self.time, type(None)):
+        if not isinstance(self.time_mean, type(None)):
             with np.errstate(divide="ignore"):
                 self.time /= self.map_depth
         self.n_maps = len(self.input_map_times)
