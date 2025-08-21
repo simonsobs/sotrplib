@@ -64,13 +64,17 @@ def make_time_map(
     """
     A simple time map simulation where each pixel is observed at a unique time.
     """
+    shape = imap.shape
     start_timestamp = start_time.timestamp()
     end_timestamp = end_time.timestamp()
-    time_offset_y = (end_timestamp - start_timestamp) / len(imap)
+
+    time_offset_y = (end_timestamp - start_timestamp) / shape[1]
+
     times, sub_times = np.meshgrid(
-        np.linspace(start_timestamp, end_timestamp, len(imap)),
-        np.linspace(0.0, time_offset_y, len(imap[0])),
+        np.linspace(start_timestamp, end_timestamp, shape[1]),
+        np.linspace(0.0, time_offset_y, shape[0]),
     )
+
     time_map = enmap.enmap(times + sub_times, imap.wcs, dtype=np.float64)
 
     return time_map
