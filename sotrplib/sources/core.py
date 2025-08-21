@@ -109,7 +109,9 @@ class BlindSearchParameters:
     """
 
     sigma_threshold: float = 5.0
-    minimum_separation: list[float] = field(default_factory=lambda: [0.5])
+    minimum_separation: list[u.Quantity] = field(
+        default_factory=lambda: [u.Quantity(0.5, "arcmin")]
+    )
     sigma_threshold_for_minimum_separation: list[float] = field(
         default_factory=lambda: [3.0]
     )
@@ -129,26 +131,32 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             raise ValueError(
                 "Input map must be finalized before searching for sources."
             )
-        if self.input_map.flux.res is None:
+        if self.input_map.res is None:
             raise ValueError("Flux map must have a resolution.")
         self.parameters = parameters or BlindSearchParameters()
         self.pixel_mask = pixel_mask
-        self.log.info("SigmaClipBlindSearch.initialized")
+        self.log.info("SigmaClipBlindSearch.initialized", parameters=self.parameters)
 
     def search(
         self,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
-        self.log.info("SigmaClipBlindSearch.searching")
-        res_arcmin = self.input_map.res / u.arcmin
+        res_arcmin = self.input_map.res * self.input_map.map_resolution_units
+        res_arcmin = res_arcmin.to(u.arcmin)
+        self.log.info(
+            "SigmaClipBlindSearch.searching",
+            res_arcmin=res_arcmin,
+            nsigma=self.parameters.sigma_threshold,
+            minrad=[ms.to(u.arcmin).value for ms in self.parameters.minimum_separation],
+            sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
+        )
         extracted_sources = extract_sources(
             self.input_map.flux,
-            timemap=self.input_map.time_map,
+            timemap=self.input_map.time_mean,
             maprms=abs(self.input_map.flux / self.input_map.snr),
             nsigma=self.parameters.sigma_threshold,
-            minrad=self.parameters.minimum_separation / res_arcmin,
-            sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation
-            / res_arcmin,
-            res=res_arcmin,
+            minrad=[ms.to(u.arcmin).value for ms in self.parameters.minimum_separation],
+            sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
+            res=res_arcmin.value,
             log=self.log,
         )
         return extracted_sources, []
