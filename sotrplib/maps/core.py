@@ -270,7 +270,7 @@ class SimulatedMap(ProcessableMap):
         log.debug("simulated_map.build.time")
 
         # Hits
-        self.hits = (self.flux > 0.0).astype(int)
+        self.hits = (np.abs(self.flux) > 0.0).astype(int)
         log.debug("simulated_map.build.hits")
 
         log.debug("simulated_map.build.complete")
