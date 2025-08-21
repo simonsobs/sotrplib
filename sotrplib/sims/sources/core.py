@@ -28,18 +28,21 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self,
         flux: enmap.ndmap,
         snr: enmap.ndmap,
-        time: enmap.ndmap | None,
+        time: enmap.ndmap,
         original_map: ProcessableMap,
     ):
         self.flux = flux
         self.snr = snr
-        self.time = time
+
+        self.time_first = np.minimum(time, original_map.time_first)
+        self.time_mean = time
+        self.time_last = np.maximum(time, original_map.time_first)
 
         self.original_map = original_map
 
         self.observation_length = original_map.observation_length
-        self.start_time = original_map.start_time
-        self.end_time = original_map.end_time
+        self.observation_start = original_map.observation_start
+        self.observation_end = original_map.observation_end
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
         self.array = original_map.array
@@ -113,7 +116,7 @@ class DatabaseSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
             sources=self.source_database.source_list,
-            observation_time=input_map.start_time.timestamp(),
+            observation_time=input_map.time_mean,
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: Handle map IDs and debug (pass down logger)
@@ -132,7 +135,7 @@ class DatabaseSourceSimulation(SourceSimulation):
         return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
-            time=input_map.time,
+            time=input_map.time_mean,
             original_map=input_map,
         ), injected_sources
 
@@ -185,7 +188,7 @@ class RandomSourceSimulation(SourceSimulation):
             arr=input_map.array,
             # TODO: Map IDs
             map_id=None,
-            ctime=input_map.start_time.timestamp(),
+            ctime=input_map.time_mean,
             log=log,
         )
 
@@ -199,7 +202,7 @@ class RandomSourceSimulation(SourceSimulation):
         return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
-            time=input_map.time,
+            time=input_map.time_mean,
             original_map=input_map,
         ), injected_sources
 
@@ -234,7 +237,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
             sources=transient_sources,
-            observation_time=input_map.start_time.timestamp(),
+            observation_time=input_map.time_mean,
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: map IDs
@@ -253,7 +256,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
         return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
-            time=input_map.time,
+            time=input_map.time_mean,
             original_map=input_map,
         ), injected_sources
 
@@ -302,8 +305,8 @@ class TransientSourceSimulation(SourceSimulation):
                 self.parameters.max_flux.to_value("Jy"),
             ),
             peak_times=(
-                input_map.start_time.timestamp(),
-                input_map.end_time.timestamp(),
+                input_map.observation_start.timestamp(),
+                input_map.observation_end.timestamp(),
             ),
             flare_widths=(
                 self.parameters.min_width.to_value("d"),
@@ -317,7 +320,7 @@ class TransientSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
             sources=transients_for_injection,
-            observation_time=input_map.start_time.timestamp(),
+            observation_time=input_map.time_mean,
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: map_id
@@ -335,6 +338,6 @@ class TransientSourceSimulation(SourceSimulation):
         return ProcessableMapWithSimulatedSources(
             flux=new_flux_map,
             snr=snr,
-            time=input_map.time,
+            time=input_map.time_mean,
             original_map=input_map,
         ), injected_sources
