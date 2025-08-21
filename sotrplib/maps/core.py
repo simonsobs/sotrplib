@@ -122,8 +122,11 @@ class ProcessableMap(ABC):
         self.__rho = x
 
     @rho.deleter
-    def rho(self, x):
-        del self.__rho
+    def rho(self):
+        try:
+            del self.__rho
+        except AttributeError:
+            pass
 
     @property
     def kappa(self):
@@ -149,8 +152,11 @@ class ProcessableMap(ABC):
         self.__kappa = x
 
     @kappa.deleter
-    def kappa(self, x):
-        del self.__kappa
+    def kappa(self):
+        try:
+            del self.__kappa
+        except AttributeError:
+            pass
 
     @abstractmethod
     def finalize(self):
