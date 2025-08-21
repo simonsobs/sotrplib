@@ -285,9 +285,10 @@ class SimulatedMapFromGeometry(ProcessableMap):
     def __init__(
         self,
         resolution: Quantity,
-        start_time: datetime,
-        end_time: datetime,
         geometry_source_map: Path,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        time_map_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
         map_noise: Quantity = u.Quantity(0.01, "Jy"),
@@ -298,12 +299,14 @@ class SimulatedMapFromGeometry(ProcessableMap):
         ----------
         resolution: Quantity
             The angular resolution of the map.
-        start_time: datetime
-            Start time of the simulated observing session.
-        end_time: datetime
-            End time of the simulated observing session.
         geometry_source_map: Path
             Path to the source map that defines the geometry of the simulation.
+        time_map_filename: Path | None, optional
+            A time map to use, if not present simulated from start time and end time.
+        start_time: datetime | None, optional
+            Start time of the simulated observing session.
+        end_time: datetime | None, optional
+            End time of the simulated observing session.
         frequency: str | None, optional
             The frequency band of the simulation, e.g. f090. Defaults to f090.
         array: str | None, optional
@@ -319,8 +322,14 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         self.map_noise = map_noise
         self.geometry_source_map = geometry_source_map
+        self.time_map_filename = time_map_filename
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
+
+        if time_map_filename is None and start_time is None and end_time is None:
+            raise RuntimeError(
+                "One of time_map_filename or start_time and end_time must be provided"
+            )
 
         self.observation_length = end_time - start_time
         self.time = None
@@ -353,13 +362,15 @@ class SimulatedMapFromGeometry(ProcessableMap):
             self.snr = self.flux.copy()
             self.snr.fill(1.0)
 
-        # Time simulation is simple: a unique timestamp for each
-        # pixel with time increasing mainly across RA.
-        time_map = sim_maps.make_time_map(
-            imap=self.flux,
-            start_time=self.observation_start,
-            end_time=self.observation_end,
-        )
+        if self.time_map_filename is not None:
+            time_map = enmap.read_map(str(self.time_map_filename))
+        else:
+            time_map = sim_maps.make_time_map(
+                imap=self.flux,
+                start_time=self.observation_start,
+                end_time=self.observation_end,
+            )
+
         self.time_first = time_map
         self.time_end = time_map
         self.time_mean = time_map
