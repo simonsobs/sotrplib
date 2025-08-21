@@ -38,8 +38,8 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.original_map = original_map
 
         self.observation_length = original_map.observation_length
-        self.start_time = original_map.start_time
-        self.end_time = original_map.end_time
+        self.observation_start = original_map.observation_start
+        self.observation_end = original_map.observation_end
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
         self.array = original_map.array
@@ -113,7 +113,7 @@ class DatabaseSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
             sources=self.source_database.source_list,
-            observation_time=input_map.start_time.timestamp(),
+            observation_time=input_map.observation_start.timestamp(),
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: Handle map IDs and debug (pass down logger)
@@ -185,7 +185,7 @@ class RandomSourceSimulation(SourceSimulation):
             arr=input_map.array,
             # TODO: Map IDs
             map_id=None,
-            ctime=input_map.start_time.timestamp(),
+            ctime=input_map.observation_start.timestamp(),
             log=log,
         )
 
@@ -234,7 +234,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
             sources=transient_sources,
-            observation_time=input_map.start_time.timestamp(),
+            observation_time=input_map.observation_start.timestamp(),
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: map IDs
@@ -302,8 +302,8 @@ class TransientSourceSimulation(SourceSimulation):
                 self.parameters.max_flux.to_value("Jy"),
             ),
             peak_times=(
-                input_map.start_time.timestamp(),
-                input_map.end_time.timestamp(),
+                input_map.observation_start.timestamp(),
+                input_map.observation_end.timestamp(),
             ),
             flare_widths=(
                 self.parameters.min_width.to_value("d"),
@@ -317,7 +317,7 @@ class TransientSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
             sources=transients_for_injection,
-            observation_time=input_map.start_time.timestamp(),
+            observation_time=input_map.observation_start.timestamp(),
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: map_id

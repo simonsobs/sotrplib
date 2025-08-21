@@ -12,8 +12,8 @@ from sotrplib.maps.core import SimulatedMap
 @pytest.fixture
 def empty_map():
     map = SimulatedMap(
-        start_time=datetime.datetime.now() - datetime.timedelta(days=1),
-        end_time=datetime.datetime.now(),
+        observation_start=datetime.datetime.now() - datetime.timedelta(days=1),
+        observation_end=datetime.datetime.now(),
     )
 
     map.build()
