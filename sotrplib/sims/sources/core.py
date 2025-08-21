@@ -46,6 +46,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
         self.array = original_map.array
+        self.finalized = original_map.finalized
 
         return
 
@@ -53,6 +54,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         return
 
     def finalize(self):
+        super().finalize()
         return
 
 
