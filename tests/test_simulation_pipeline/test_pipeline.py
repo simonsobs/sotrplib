@@ -33,6 +33,7 @@ def test_injected_sources(empty_map: SimulatedMap):
 
     new_map, sources = simulator.simulate(input_map=empty_map)
 
+    assert new_map.finalized
     assert len(sources) > 0
 
     assert (new_map.flux != empty_map.flux).any()
