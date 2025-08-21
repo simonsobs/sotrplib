@@ -20,12 +20,36 @@ from sotrplib.sims import sim_maps
 
 
 class ProcessableMap(ABC):
+    """
+    Maps that are processable by the pipeline. They have two key properties:
+
+    a) snr - The signal-to-noise map
+    b) flux - The flux map
+
+    Maps are created in two steps. First, 'build' reads the map, and then
+    'finalize' converts its internals to signal-to-noise ratios and flux maps.
+
+    We do this because you may want to read in maps of many different kinds,
+    e.g. intensity and inverse variance, or rho and kappa maps, before converting
+    them to the type that the pipeline needs.
+
+    The values `rho`:`kappa` are settable. Keep in mind though,
+    once you've called finalize, these maps will be deleted from memory and are
+    no longer _settable_. You cannot update these maps because they would be
+    inconsistent with the flux map that was generated.
+
+    Note that `intensity`:`ivar` maps are not yet supported.
+    """
+
     snr: ndmap
     "The signal-to-noise ratio map"
     flux: ndmap
     "The flux map"
     time: ndmap | None
     "The time map. If None, usually when the map is a coadd, see the time range"
+
+    finalized: bool = False
+    "Whether finalize has been called and ancillary maps can no longer be updated"
 
     frequency: str
     "The frequency band of the map, e.g. f090"
@@ -62,6 +86,12 @@ class ProcessableMap(ABC):
         """
         Calculate the rho map from snr and flux.
         """
+        if self.finalized:
+            raise AttributeError(
+                "Secondary attributes are no longer accessible once you've finalized the map",
+                name="rho",
+            )
+
         if self.__rho is not None:
             return self.__rho
 
@@ -72,7 +102,12 @@ class ProcessableMap(ABC):
 
     @rho.setter
     def rho(self, x):
-        # TODO: Set the snr, flux when this is updated?
+        if self.finalized:
+            raise AttributeError(
+                "Secondary attributes are no longer accessible once you've finalized the map",
+                name="kappa",
+            )
+
         self.__rho = x
 
     @rho.deleter
@@ -84,6 +119,12 @@ class ProcessableMap(ABC):
         """
         Calculate the kappa map from snr and flux.
         """
+        if self.finalized:
+            raise AttributeError(
+                "Secondary attributes are no longer accessible once you've finalized the map",
+                name="kappa",
+            )
+
         if self.__kappa is not None:
             return self.__kappa
 
@@ -94,7 +135,6 @@ class ProcessableMap(ABC):
 
     @kappa.setter
     def kappa(self, x):
-        # TODO: Set the snr, flux when this is updated?
         self.__kappa = x
 
     @kappa.deleter
@@ -107,6 +147,11 @@ class ProcessableMap(ABC):
         Called after source injection to ensure that the snr, flux, and time maps
         are available.
         """
+        del self.rho
+        del self.kappa
+
+        self.finalized = True
+
         return
 
 
@@ -203,8 +248,7 @@ class SimulatedMap(ProcessableMap):
         return
 
     def finalize(self):
-        # Nothing to do here.
-        return
+        super().finalize()
 
 
 class SimulatedMapFromGeometry(ProcessableMap):
@@ -284,8 +328,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
         return
 
     def finalize(self):
-        # Nothing to do here.
-        return
+        super().finalize()
 
 
 class IntensityAndInverseVarianceMap(ProcessableMap):
@@ -344,8 +387,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         return
 
     def finalize(self):
-        # Do matched filtering to get snr and flux maps.
-        return
+        super().finalize()
 
 
 class RhoAndKappaMap(ProcessableMap):
@@ -418,6 +460,7 @@ class RhoAndKappaMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        super().finalize()
 
 
 class CoaddedMap(ProcessableMap):
@@ -552,3 +595,4 @@ class CoaddedMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        super().finalize()
