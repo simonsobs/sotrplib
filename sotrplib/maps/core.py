@@ -12,7 +12,7 @@ import numpy as np
 import structlog
 from astropy.units import Quantity, Unit
 from numpy.typing import ArrayLike
-from pixell import enmap, utils
+from pixell import enmap
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
@@ -72,6 +72,9 @@ class ProcessableMap(ABC):
     "Rough 'middle' time of the observation"
 
     flux_units: Unit
+
+    map_resolution: float | None
+    map_resolution_units: Unit | None
 
     __rho: enmap.ndmap | None = None
     __kappa: enmap.ndmap | None = None
@@ -157,6 +160,20 @@ class ProcessableMap(ABC):
             del self.__kappa
         except AttributeError:
             pass
+
+    @property
+    def res(self):
+        if self.map_resolution is not None:
+            return self.map_resolution
+        else:
+            if self.rho is not None:
+                res = abs(self.rho.wcs.wcs.cdelt[0])
+            elif self.inverse_variance is not None:
+                res = abs(self.inverse_variance.wcs.wcs.cdelt[0])
+        res_units = u.degree
+        self.map_resolution = res
+        self.map_resolution_units = res_units
+        return self.map_resolution
 
     @abstractmethod
     def finalize(self):
@@ -246,6 +263,9 @@ class SimulatedMap(ProcessableMap):
         )
 
         self.flux_units = u.Jy
+
+        self.map_resolution = self.simulation_parameters.resolution.to_value("deg")
+        self.map_resolution_units = u.deg
 
         # SNR
         if (
@@ -357,6 +377,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         self.flux_units = u.Jy
 
+        self.map_resolution = self.resolution.to_value("deg")
+        self.map_resolution_units = u.deg
         if self.map_noise:
             log.debug(
                 "simulated_map.build.noise",
@@ -437,8 +459,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.inverse_variance = enmap.read_map(
             self.inverse_variance_filename, box=self.box
         )
-        log.debug("intensity_viar.ivar.read")
-
+        log.debug("intensity_ivar.ivar.read")
+        self.map_resolution = self.res()
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
@@ -497,6 +519,7 @@ class RhoAndKappaMap(ProcessableMap):
         log.debug("rho_kappa.kappa.read")
 
         # TODO: Set metadata from header e.g. frequency band.
+        self.map_resolution = self.res()
 
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
@@ -575,7 +598,8 @@ class CoaddedMap(ProcessableMap):
 
         self.rho = base_map.rho.copy()
         self.kappa = base_map.kappa.copy()
-        self.res = np.abs(base_map.rho.wcs.wcs.cdelt[0]) * utils.degree
+        self.map_resolution = np.abs(base_map.rho.wcs.wcs.cdelt[0])
+        self.map_resolution_units = u.degrees
 
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
