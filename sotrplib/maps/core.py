@@ -20,12 +20,42 @@ from sotrplib.sims import sim_maps
 
 
 class ProcessableMap(ABC):
+    """
+    Maps that are processable by the pipeline. They have two key properties:
+
+    a) snr - The signal-to-noise map
+    b) flux - The flux map
+
+    Maps are created in two steps. First, 'build' reads the map, and then
+    'finalize' converts its internals to signal-to-noise ratios and flux maps.
+
+    We do this because you may want to read in maps of many different kinds,
+    e.g. intensity and inverse variance, or rho and kappa maps, before converting
+    them to the type that the pipeline needs.
+
+    The values `rho`:`kappa` are settable. Keep in mind though,
+    once you've called finalize, these maps will be deleted from memory and are
+    no longer _settable_. You cannot update these maps because they would be
+    inconsistent with the flux map that was generated.
+
+    Note that `intensity`:`ivar` maps are not yet supported.
+    """
+
     snr: ndmap
     "The signal-to-noise ratio map"
     flux: ndmap
     "The flux map"
-    time: ndmap | None
-    "The time map. If None, usually when the map is a coadd, see the time range"
+    time_first: ndmap
+    "The time at which each pixel was first observed"
+    time_end: ndmap
+    "The time at which each pixel was last observed"
+    time_mean: ndmap
+    "The mean time at which each pixel was observed"
+    hits: ndmap
+    "A hits map stating the number of times each pixel was observed"
+
+    finalized: bool = False
+    "Whether finalize has been called and ancillary maps can no longer be updated"
 
     frequency: str
     "The frequency band of the map, e.g. f090"
@@ -33,8 +63,13 @@ class ProcessableMap(ABC):
     "The array/wafer that was used"
 
     observation_length: timedelta
-    start_time: datetime
-    end_time: datetime
+    "Total length of the observation"
+    observation_start: datetime
+    "Start time of the observation"
+    observation_end: datetime
+    "End time of the observation"
+    observation_time: datetime
+    "Rough 'middle' time of the observation"
 
     flux_units: Unit
 
@@ -62,6 +97,12 @@ class ProcessableMap(ABC):
         """
         Calculate the rho map from snr and flux.
         """
+        if self.finalized:
+            raise AttributeError(
+                "Secondary attributes are no longer accessible once you've finalized the map",
+                name="rho",
+            )
+
         if self.__rho is not None:
             return self.__rho
 
@@ -72,7 +113,12 @@ class ProcessableMap(ABC):
 
     @rho.setter
     def rho(self, x):
-        # TODO: Set the snr, flux when this is updated?
+        if self.finalized:
+            raise AttributeError(
+                "Secondary attributes are no longer accessible once you've finalized the map",
+                name="kappa",
+            )
+
         self.__rho = x
 
     @rho.deleter
@@ -84,6 +130,12 @@ class ProcessableMap(ABC):
         """
         Calculate the kappa map from snr and flux.
         """
+        if self.finalized:
+            raise AttributeError(
+                "Secondary attributes are no longer accessible once you've finalized the map",
+                name="kappa",
+            )
+
         if self.__kappa is not None:
             return self.__kappa
 
@@ -94,7 +146,6 @@ class ProcessableMap(ABC):
 
     @kappa.setter
     def kappa(self, x):
-        # TODO: Set the snr, flux when this is updated?
         self.__kappa = x
 
     @kappa.deleter
@@ -107,6 +158,11 @@ class ProcessableMap(ABC):
         Called after source injection to ensure that the snr, flux, and time maps
         are available.
         """
+        del self.rho
+        del self.kappa
+
+        self.finalized = True
+
         return
 
 
@@ -128,8 +184,8 @@ class SimulationParameters:
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
-        start_time: datetime,
-        end_time: datetime,
+        observation_start: datetime,
+        observation_end: datetime,
         frequency: str | None = None,
         array: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
@@ -140,9 +196,9 @@ class SimulatedMap(ProcessableMap):
         """
         Parameters
         ----------
-        start_time: datetime
+        observation_start: datetime
             Start time of the simulated observing session.
-        end_time: datetime
+        observation_end: datetime
             End time of the simulated observing session.
         frequency: str | None, optional
             The frequency band of the simulation, e.g. f090. Defaults to f090.
@@ -157,21 +213,22 @@ class SimulatedMap(ProcessableMap):
         log: FilteringBoundLogger, optional
             Logger to use. If None, a new one will be created.
         """
-        self.start_time = start_time
-        self.end_time = end_time
+        self.observation_start = observation_start
+        self.observation_end = observation_end
         self.box = box
         self.include_half_pixel_offset = include_half_pixel_offset
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
 
-        self.observation_length = end_time - start_time
+        self.observation_length = observation_end - observation_start
+        self.observation_time = observation_start + 0.5 * self.observation_length
         self.simulation_parameters = simulation_parameters or SimulationParameters()
-        self.time = None
         self.log = log or structlog.get_logger()
 
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
 
+        # Flux
         self.flux = sim_maps.make_enmap(
             center_ra=self.simulation_parameters.center_ra.to_value("deg"),
             center_dec=self.simulation_parameters.center_dec.to_value("deg"),
@@ -184,6 +241,7 @@ class SimulatedMap(ProcessableMap):
 
         self.flux_units = u.Jy
 
+        # SNR
         if (
             self.simulation_parameters.map_noise is not None
             and self.simulation_parameters.map_noise > 0.0
@@ -198,22 +256,39 @@ class SimulatedMap(ProcessableMap):
             self.snr = self.flux.copy()
             self.snr.fill(1.0)  # Set SNR to 1 (i.e. all noise).
 
+        # Time simulation is simple: a unique timestamp for each
+        # pixel with time increasing mainly across RA.
+        time_map = sim_maps.make_time_map(
+            imap=self.flux,
+            start_time=self.observation_start,
+            end_time=self.observation_end,
+        )
+        self.time_first = time_map
+        self.time_end = time_map
+        self.time_mean = time_map
+
+        log.debug("simulated_map.build.time")
+
+        # Hits
+        self.hits = (np.abs(self.flux) > 0.0).astype(int)
+        log.debug("simulated_map.build.hits")
+
         log.debug("simulated_map.build.complete")
 
         return
 
     def finalize(self):
-        # Nothing to do here.
-        return
+        super().finalize()
 
 
 class SimulatedMapFromGeometry(ProcessableMap):
     def __init__(
         self,
         resolution: Quantity,
-        start_time: datetime,
-        end_time: datetime,
         geometry_source_map: Path,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        time_map_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
         map_noise: Quantity = u.Quantity(0.01, "Jy"),
@@ -224,12 +299,14 @@ class SimulatedMapFromGeometry(ProcessableMap):
         ----------
         resolution: Quantity
             The angular resolution of the map.
-        start_time: datetime
-            Start time of the simulated observing session.
-        end_time: datetime
-            End time of the simulated observing session.
         geometry_source_map: Path
             Path to the source map that defines the geometry of the simulation.
+        time_map_filename: Path | None, optional
+            A time map to use, if not present simulated from start time and end time.
+        start_time: datetime | None, optional
+            Start time of the simulated observing session.
+        end_time: datetime | None, optional
+            End time of the simulated observing session.
         frequency: str | None, optional
             The frequency band of the simulation, e.g. f090. Defaults to f090.
         array: str | None, optional
@@ -240,13 +317,19 @@ class SimulatedMapFromGeometry(ProcessableMap):
             Logger to use. If None, a new one will be created.
         """
         self.resolution = resolution
-        self.start_time = start_time
-        self.end_time = end_time
+        self.observation_start = start_time
+        self.observation_end = end_time
 
         self.map_noise = map_noise
         self.geometry_source_map = geometry_source_map
+        self.time_map_filename = time_map_filename
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
+
+        if time_map_filename is None and start_time is None and end_time is None:
+            raise RuntimeError(
+                "One of time_map_filename or start_time and end_time must be provided"
+            )
 
         self.observation_length = end_time - start_time
         self.time = None
@@ -279,13 +362,31 @@ class SimulatedMapFromGeometry(ProcessableMap):
             self.snr = self.flux.copy()
             self.snr.fill(1.0)
 
+        if self.time_map_filename is not None:
+            time_map = enmap.read_map(str(self.time_map_filename))
+        else:
+            time_map = sim_maps.make_time_map(
+                imap=self.flux,
+                start_time=self.observation_start,
+                end_time=self.observation_end,
+            )
+
+        self.time_first = time_map
+        self.time_end = time_map
+        self.time_mean = time_map
+
+        log.debug("simulated_map.build.time")
+
+        # Hits
+        self.hits = (self.flux > 0.0).astype(int)
+        log.debug("simulated_map.build.hits")
+
         log.debug("simulated_map.build.complete")
 
         return
 
     def finalize(self):
-        # Nothing to do here.
-        return
+        super().finalize()
 
 
 class IntensityAndInverseVarianceMap(ProcessableMap):
@@ -307,8 +408,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.intensity_filename = intensity_filename
         self.inverse_variance_filename = inverse_variance_filename
         self.time_filename = time_filename
-        self.start_time = start_time
-        self.end_time = end_time
+        self.observation_start = start_time
+        self.observation_end = end_time
         self.box = box
         self.log = log or structlog.get_logger()
 
@@ -344,8 +445,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         return
 
     def finalize(self):
-        # Do matched filtering to get snr and flux maps.
-        return
+        super().finalize()
 
 
 class RhoAndKappaMap(ProcessableMap):
@@ -369,8 +469,8 @@ class RhoAndKappaMap(ProcessableMap):
         self.rho_filename = rho_filename
         self.kappa_filename = kappa_filename
         self.time_filename = time_filename
-        self.start_time = start_time
-        self.end_time = end_time
+        self.observation_start = start_time
+        self.observation_end = end_time
         self.box = box
         self.frequency = frequency
         self.array = array
@@ -418,6 +518,7 @@ class RhoAndKappaMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        super().finalize()
 
 
 class CoaddedMap(ProcessableMap):
@@ -444,8 +545,8 @@ class CoaddedMap(ProcessableMap):
         self.initialized = False
         self.time = time
         self.map_depth = map_depth
-        self.start_time = start_time
-        self.end_time = end_time
+        self.observation_start = start_time
+        self.observation_end = end_time
         self.input_map_times = input_map_times or []
         self.frequency = frequency
         self.array = array
@@ -456,8 +557,8 @@ class CoaddedMap(ProcessableMap):
         base_map.finalize()
         self.log.info(
             "coaddedmap.base_map.built",
-            map_start_time=base_map.start_time,
-            map_end_time=base_map.end_time,
+            map_start_time=base_map.observation_start,
+            map_end_time=base_map.observation_end,
             map_frequency=base_map.frequency,
         )
 
@@ -480,8 +581,8 @@ class CoaddedMap(ProcessableMap):
             sourcemap.finalize()
             self.log.info(
                 "coaddedmap.source_map.built",
-                map_start_time=sourcemap.start_time,
-                map_end_time=sourcemap.end_time,
+                map_start_time=sourcemap.observation_start,
+                map_end_time=sourcemap.observation_end,
                 map_frequency=sourcemap.frequency,
             )
             self.rho = enmap.map_union(
@@ -502,8 +603,8 @@ class CoaddedMap(ProcessableMap):
         self.log.info(
             "coaddedmap.coadd.finalized",
             n_maps_coadded=self.n_maps,
-            coadd_start_time=self.start_time,
-            coadd_end_time=self.end_time,
+            coadd_start_time=self.observation_start,
+            coadd_end_time=self.observation_end,
         )
         return
 
@@ -526,14 +627,18 @@ class CoaddedMap(ProcessableMap):
                 )
 
     def update_map_times(self, new_map):
-        if self.start_time is None:
-            self.start_time = new_map.start_time.timestamp()
+        if self.observation_start is None:
+            self.observation_start = new_map.start_time.timestamp()
         else:
-            self.start_time = min(self.start_time, new_map.start_time.timestamp())
-        if self.end_time is None:
-            self.end_time = new_map.end_time.timestamp()
+            self.observation_start = min(
+                self.observation_start, new_map.start_time.timestamp()
+            )
+        if self.observation_end is None:
+            self.observation_end = new_map.end_time.timestamp()
         else:
-            self.end_time = max(self.end_time, new_map.end_time.timestamp())
+            self.observation_end = max(
+                self.observation_end, new_map.end_time.timestamp()
+            )
         self.input_map_times += [
             0.5 * (new_map.start_time.timestamp() + new_map.end_time.timestamp())
         ]
@@ -552,3 +657,4 @@ class CoaddedMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        super().finalize()

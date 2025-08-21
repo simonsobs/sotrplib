@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 from pixell import enmap
 
@@ -52,6 +54,30 @@ def make_enmap(
     else:
         log.info("make_enmap.empty_map_created")
         return zeros(shape, wcs=wcs)
+
+
+def make_time_map(
+    imap: enmap.ndmap,
+    start_time: datetime,
+    end_time: datetime,
+) -> enmap.ndmap:
+    """
+    A simple time map simulation where each pixel is observed at a unique time.
+    """
+    shape = imap.shape
+    start_timestamp = start_time.timestamp()
+    end_timestamp = end_time.timestamp()
+
+    time_offset_y = (end_timestamp - start_timestamp) / shape[1]
+
+    times, sub_times = np.meshgrid(
+        np.linspace(start_timestamp, end_timestamp, shape[1]),
+        np.linspace(0.0, time_offset_y, shape[0]),
+    )
+
+    time_map = enmap.enmap(times + sub_times, imap.wcs, dtype=np.float64)
+
+    return time_map
 
 
 def make_noise_map(
