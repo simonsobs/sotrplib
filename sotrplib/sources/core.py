@@ -4,6 +4,7 @@ unknown sources in a map (blind search)
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
 import structlog
 from astropy import units as u
@@ -11,6 +12,7 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
 from sotrplib.sources.sources import SourceCandidate
 from sotrplib.utils.utils import get_fwhm
@@ -87,7 +89,8 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
 class BlindSearchProvider(ABC):
     @abstractmethod
     def search(
-        self, input_map: ProcessableMap
+        self,
+        input_map: ProcessableMap,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
         return
 
@@ -99,8 +102,53 @@ class EmptyBlindSearch(BlindSearchProvider):
         return [], []
 
 
+@dataclass
+class BlindSearchParameters:
+    """
+    Parameters for blind source searching using photutils.
+    """
+
+    sigma_threshold: float = 5.0
+    minimum_separation: list[float] = field(default_factory=lambda: [0.5])
+    sigma_threshold_for_minimum_separation: list[float] = field(
+        default_factory=lambda: [3.0]
+    )
+
+
 class SigmaClipBlindSearch(BlindSearchProvider):
+    def __init__(
+        self,
+        input_map: ProcessableMap,
+        log: FilteringBoundLogger | None = None,
+        parameters: BlindSearchParameters | None = None,
+        pixel_mask: enmap.ndmap | None = None,
+    ):
+        self.log = log or structlog.get_logger()
+        self.input_map = input_map
+        if not self.input_map.finalized:
+            raise ValueError(
+                "Input map must be finalized before searching for sources."
+            )
+        if self.input_map.flux.res is None:
+            raise ValueError("Flux map must have a resolution.")
+        self.parameters = parameters or BlindSearchParameters()
+        self.pixel_mask = pixel_mask
+        self.log.info("SigmaClipBlindSearch.initialized")
+
     def search(
-        self, input_map: ProcessableMap
+        self,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
-        raise NotImplementedError
+        self.log.info("SigmaClipBlindSearch.searching")
+        res_arcmin = self.input_map.res / u.arcmin
+        extracted_sources = extract_sources(
+            self.input_map.flux,
+            timemap=self.input_map.time_map,
+            maprms=abs(self.input_map.flux / self.input_map.snr),
+            nsigma=self.parameters.sigma_threshold,
+            minrad=self.parameters.minimum_separation / res_arcmin,
+            sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation
+            / res_arcmin,
+            res=res_arcmin,
+            log=self.log,
+        )
+        return extracted_sources, []
