@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -6,21 +7,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # Telescope choice
-    observatory: str = "SO"
-    instrument: str = "LAT"
+    observatory: Literal["SO", "ACT", "SPT"] = "SO"
+    instrument: Literal["LAT", "ACTPol", "SPT3G", "SAT1", "SAT2", "SAT3"] = "LAT"
 
     # File locations
-    maps: str = ""  # input maps... the map.fits ones.
-    map_dir: str = ""  # Location of the depth-1 maps
-    solar_system: str = ""  # path asteroid ephem directories
-    output_dir: str = ""  # path to output databases and / or plots
-    source_cat: str = ""  # path to source catalog
+    maps: list[Path] = []
+    "input maps... the map.fits ones."
+    solar_system: Path | None = None
+    "path asteroid ephem directories"
+    output_dir: Path | None = None
+    "path to output databases and / or plots"
+    source_cat: Path | None = None
+    "path to source catalog"
 
     # Map settings
     grid_size: float = Field(
         default=1.0, validation_alias=AliasChoices("g", "grid-size", "gridsize")
-    )  # Flatfield tile gridsize (deg)
-    edge_cut: int = 20  # Npixels to cut from map edges
+    )
+    "Flatfield tile gridsize (deg)"
+    edge_cut: int = 20
+    "Npixels to cut from map edges"
 
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(
