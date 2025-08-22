@@ -640,9 +640,9 @@ class CoaddedMap(ProcessableMap):
             self.get_time_and_mapdepth(sourcemap)
             self.update_map_times(sourcemap)
 
-        if not isinstance(self.time_mean, type(None)):
+        if self.time_mean is not None:
             with np.errstate(divide="ignore"):
-                self.time /= self.map_depth
+                self.time_mean /= self.map_depth
         self.n_maps = len(self.input_map_times)
         self.log.info(
             "coaddedmap.coadd.finalized",
