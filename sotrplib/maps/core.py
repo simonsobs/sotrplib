@@ -165,10 +165,11 @@ class ProcessableMap(ABC):
         if self.map_resolution is not None:
             return self.map_resolution
         else:
-            if self.rho is not None:
-                res = abs(self.rho.wcs.wcs.cdelt[0])
-            elif self.inverse_variance is not None:
-                res = abs(self.inverse_variance.wcs.wcs.cdelt[0])
+            for attribute in ["flux", "snr", "rho", "kappa"]:
+                if x := getattr(self, attribute, None):
+                    res = abs(x.wcs.wcs.cdelt[0])
+                    break
+
         self.map_resolution = res * u.degree
 
         return self.map_resolution
