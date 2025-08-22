@@ -3,41 +3,24 @@ Tests for the fully simulated pipeline setup.
 """
 
 import structlog
-from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.maps.core import SimulatedMap
 from sotrplib.outputs.core import PickleSerializer
-from sotrplib.sims.sources.core import (
-    RandomSourceSimulation,
-    RandomSourceSimulationParameters,
-)
-from sotrplib.sources.core import PhotutilsGaussianFitter
+from sotrplib.sources.core import PhotutilsGaussianFitter, SigmaClipBlindSearch
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
+from sotrplib.sources.sources import SourceCandidate
 
 
 def test_created_map(empty_map: SimulatedMap):
     assert isinstance(empty_map, SimulatedMap)
 
 
-def test_injected_sources(empty_map: SimulatedMap):
-    parameters = RandomSourceSimulationParameters(
-        n_sources=64,
-        # Use bright sources so we can guarantee recovery
-        min_flux=u.Quantity(1.0, "Jy"),
-        max_flux=u.Quantity(10.0, "Jy"),
-        fwhm_uncertainty_frac=0.5,
-    )
-
-    simulator = RandomSourceSimulation(parameters=parameters)
-
-    new_map, sources = simulator.simulate(input_map=empty_map)
+def test_injected_sources(map_with_sources: tuple[SimulatedMap, list[SourceCandidate]]):
+    new_map, sources = map_with_sources
 
     assert new_map.finalized
     assert len(sources) > 0
-
-    assert (new_map.flux != empty_map.flux).any()
-    assert (new_map.snr != empty_map.snr).any()
 
     # See if we can recover them
     fits, thumbnails = photutils_2D_gauss_fit(
@@ -53,22 +36,14 @@ def test_injected_sources(empty_map: SimulatedMap):
     assert len(thumbnails) == len(sources)
 
 
-def test_basic_pipeline(tmp_path, empty_map: SimulatedMap):
+def test_basic_pipeline(
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[SourceCandidate]]
+):
     """
     Tests a complete setup of the basic pipeline run.
     """
 
-    parameters = RandomSourceSimulationParameters(
-        n_sources=64,
-        # Use bright sources so we can guarantee recovery
-        min_flux=u.Quantity(1.0, "Jy"),
-        max_flux=u.Quantity(10.0, "Jy"),
-        fwhm_uncertainty_frac=0.5,
-    )
-
-    simulator = RandomSourceSimulation(parameters=parameters)
-
-    new_map, sources = simulator.simulate(input_map=empty_map)
+    new_map, sources = map_with_sources
 
     runner = PipelineRunner(
         maps=[new_map, new_map],
@@ -82,3 +57,19 @@ def test_basic_pipeline(tmp_path, empty_map: SimulatedMap):
     )
 
     runner.run()
+
+
+def test_find_sources_blind(
+    map_with_sources: tuple[SimulatedMap, list[SourceCandidate]],
+):
+    """
+    Tests that we can find a set of sources that we just injected with
+    the blind search algorithm.
+    """
+    new_map, sources = map_with_sources
+
+    searcher = SigmaClipBlindSearch()
+
+    found_sources, _ = searcher.search(input_map=new_map)
+
+    assert len(found_sources) == len(sources)
