@@ -3,10 +3,13 @@ Tests for the fully simulated pipeline setup.
 """
 
 import structlog
+from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.maps.core import SimulatedMap
 from sotrplib.outputs.core import PickleSerializer
+from sotrplib.sifter.core import SimpleCatalogSifter
+from sotrplib.source_catalog.core import SourceCandidateCatalog
 from sotrplib.sources.core import PhotutilsGaussianFitter, SigmaClipBlindSearch
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
 from sotrplib.sources.sources import SourceCandidate
@@ -59,6 +62,33 @@ def test_basic_pipeline(
     runner.run()
 
 
+def test_find_single_source_blind(
+    map_with_single_source: tuple[SimulatedMap, list[SourceCandidate]],
+):
+    """
+    Tests that we can find a set of sources that we just injected with
+    the blind search algorithm.
+    """
+    new_map, sources = map_with_single_source
+
+    searcher = SigmaClipBlindSearch()
+
+    found_sources, _ = searcher.search(input_map=new_map)
+
+    assert len(found_sources) == len(sources)
+
+    # Check we can sift them out!
+    sifter = SimpleCatalogSifter(
+        catalog=SourceCandidateCatalog(sources=sources),
+        radius=u.Quantity(30.0, "arcsec"),
+    )
+
+    res = sifter.sift(sources=found_sources, input_map=new_map)
+
+    assert len(res.source_candidates) == 1
+    assert len(res.transient_candidates) == 0
+
+
 def test_find_sources_blind(
     map_with_sources: tuple[SimulatedMap, list[SourceCandidate]],
 ):
@@ -73,3 +103,21 @@ def test_find_sources_blind(
     found_sources, _ = searcher.search(input_map=new_map)
 
     assert len(found_sources) == len(sources)
+
+    # Check we can sift them out!
+    sifter = SimpleCatalogSifter(
+        catalog=SourceCandidateCatalog(sources=sources[:32]),
+        radius=u.Quantity(0.5, "arcsec"),
+        method="closest",
+    )
+
+    res = sifter.sift(sources=found_sources, input_map=new_map)
+
+    # Crossmatches should, well, match
+    source_ids = sorted([x.sourceID for x in sources[:32]])
+    match_ids = sorted([x.crossmatch_names[0] for x in res.source_candidates])
+
+    assert source_ids == match_ids
+
+    assert len(res.source_candidates) == 32
+    assert len(res.transient_candidates) == 32

@@ -1,7 +1,11 @@
+from dataclasses import dataclass, field
 from typing import Union
 
 import numpy as np
+from astropy import units as u
+from photutils.aperture.ellipse import EllipticalAperture
 from pixell.enmap import ndmap
+from pyparsing import Any
 
 """
 Source finding routines from spt3g_software.
@@ -294,8 +298,75 @@ def extract_sources(
     )
     output_struct = get_source_sky_positions(output_struct, inmap)
     output_struct = get_source_observation_time(output_struct, timemap)
+
+    output_data = convert_blind_source_dictionary_to_models(output_struct)
     log.info("extract_sources.output_dict_finalized")
-    return output_struct
+    return output_data
+
+
+@dataclass
+class BlindSourceCandidate:
+    xpeak: float
+    ypeak: float
+    peakval: float
+    peaksig: float
+    ellipticity: u.Quantity
+    elongation: u.Quantity
+    fwhm: u.Quantity
+    semimajor_sigma: float
+    semiminor_sigma: float
+    covar_sigx: float
+    covar_sigy: float
+    covar_sigxy: float
+    orientation: float
+    kron_aperture: EllipticalAperture
+    kron_flux: float
+    kron_fluxerr: float
+    kron_radius: float
+    ra: u.Quantity
+    dec: u.Quantity
+    time: float
+    crossmatch_names: list = field(default_factory=list)
+    crossmatch_probabilities: list = field(default_factory=list)
+    fit_type: str = field(default="blind")
+
+    def update_crossmatches(
+        self,
+        match_names: list,
+        match_probabilities: list = None,
+    ):
+        """
+        Update the crossmatch names and probabilities with new matches.
+        """
+        self.crossmatch_names.extend(match_names)
+        if match_probabilities is not None:
+            self.crossmatch_probabilities.extend(match_probabilities)
+        else:
+            self.crossmatch_probabilities.extend([None] * len(match_names))
+
+        return
+
+
+def convert_blind_source_dictionary_to_models(
+    output_struct: dict[int : dict[str, Any]],
+):
+    models = []
+
+    for struct in output_struct.values():
+        fwhm = struct.pop("fwhm")
+        ra = struct.pop("ra")
+        dec = struct.pop("dec")
+
+        if not isinstance(ra, u.Quantity):
+            ra *= u.rad
+        if not isinstance(dec, u.Quantity):
+            dec *= u.rad
+        if not isinstance(fwhm, u.Quantity):
+            fwhm *= u.arcmin
+
+        models.append(BlindSourceCandidate(**struct, ra=ra, dec=dec, fwhm=fwhm))
+
+    return models
 
 
 def find_using_photutils(
