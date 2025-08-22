@@ -140,7 +140,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
     def search(
         self,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
-        res_arcmin = self.input_map.res * self.input_map.map_resolution_units
+        res_arcmin = self.input_map.res
         res_arcmin = res_arcmin.to(u.arcmin)
         self.log.info(
             "SigmaClipBlindSearch.searching",

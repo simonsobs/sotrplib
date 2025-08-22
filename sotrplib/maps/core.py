@@ -73,8 +73,7 @@ class ProcessableMap(ABC):
 
     flux_units: Unit
 
-    map_resolution: float | None
-    map_resolution_units: Unit | None
+    map_resolution: u.Quantity | None
 
     __rho: enmap.ndmap | None = None
     __kappa: enmap.ndmap | None = None
@@ -170,9 +169,8 @@ class ProcessableMap(ABC):
                 res = abs(self.rho.wcs.wcs.cdelt[0])
             elif self.inverse_variance is not None:
                 res = abs(self.inverse_variance.wcs.wcs.cdelt[0])
-        res_units = u.degree
-        self.map_resolution = res
-        self.map_resolution_units = res_units
+        self.map_resolution = res * u.degree
+
         return self.map_resolution
 
     @abstractmethod
@@ -264,8 +262,7 @@ class SimulatedMap(ProcessableMap):
 
         self.flux_units = u.Jy
 
-        self.map_resolution = self.simulation_parameters.resolution.to_value("deg")
-        self.map_resolution_units = u.deg
+        self.map_resolution = self.simulation_parameters.resolution
 
         # SNR
         if (
@@ -377,8 +374,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         self.flux_units = u.Jy
 
-        self.map_resolution = self.resolution.to_value("deg")
-        self.map_resolution_units = u.deg
+        self.map_resolution = self.resolution
+
         if self.map_noise:
             log.debug(
                 "simulated_map.build.noise",
@@ -598,8 +595,7 @@ class CoaddedMap(ProcessableMap):
 
         self.rho = base_map.rho.copy()
         self.kappa = base_map.kappa.copy()
-        self.map_resolution = np.abs(base_map.rho.wcs.wcs.cdelt[0])
-        self.map_resolution_units = u.degrees
+        self.map_resolution = np.abs(base_map.rho.wcs.wcs.cdelt[0]) * u.degrees
 
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
