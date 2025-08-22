@@ -199,9 +199,9 @@ def extract_sources(
             "kron_radius": kron_radii[0].value * res,
         }
 
-    log.info("extract_sources.output_dict_initialized")
-
     minrad_pix = minrad / res
+    log.info("extract_sources.output_dict_initialized", minrad_pix=minrad_pix)
+
     ksource = 1
     # different accounting if exclusion radius is specified as a function
     # of significance
@@ -261,7 +261,7 @@ def extract_sources(
             )
             distpix = np.sqrt((prev_x - xpeaks[j]) ** 2 + (prev_y - ypeaks[j]) ** 2)
             mindist = min(distpix)
-            if mindist > minrad_pix:
+            if mindist > minrad_pix[0]:
                 output_struct[ksource] = {
                     "xpeak": xpeaks[j],
                     "ypeak": ypeaks[j],

@@ -43,10 +43,13 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.observation_length = original_map.observation_length
         self.observation_start = original_map.observation_start
         self.observation_end = original_map.observation_end
+
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
         self.array = original_map.array
         self.finalized = original_map.finalized
+        self.map_resolution = original_map.map_resolution
+
 
         return
 
