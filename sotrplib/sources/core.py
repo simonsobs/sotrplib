@@ -4,6 +4,7 @@ unknown sources in a map (blind search)
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
 import structlog
 from astropy import units as u
@@ -11,6 +12,7 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
 from sotrplib.sources.sources import SourceCandidate
 from sotrplib.utils.utils import get_fwhm
@@ -87,7 +89,8 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
 class BlindSearchProvider(ABC):
     @abstractmethod
     def search(
-        self, input_map: ProcessableMap
+        self,
+        input_map: ProcessableMap,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
         return
 
@@ -99,8 +102,61 @@ class EmptyBlindSearch(BlindSearchProvider):
         return [], []
 
 
+@dataclass
+class BlindSearchParameters:
+    """
+    Parameters for blind source searching using photutils.
+    """
+
+    sigma_threshold: float = 5.0
+    minimum_separation: list[u.Quantity] = field(
+        default_factory=lambda: [u.Quantity(0.5, "arcmin")]
+    )
+    sigma_threshold_for_minimum_separation: list[float] = field(
+        default_factory=lambda: [3.0]
+    )
+
+
 class SigmaClipBlindSearch(BlindSearchProvider):
+    def __init__(
+        self,
+        log: FilteringBoundLogger | None = None,
+        parameters: BlindSearchParameters | None = None,
+        pixel_mask: enmap.ndmap | None = None,
+    ):
+        self.log = log or structlog.get_logger()
+        self.parameters = parameters or BlindSearchParameters()
+        self.pixel_mask = pixel_mask
+        self.log.info("sigma_clip_blind_search.initialized", parameters=self.parameters)
+
     def search(
-        self, input_map: ProcessableMap
+        self,
+        input_map: ProcessableMap,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
-        raise NotImplementedError
+        if not input_map.finalized:
+            raise ValueError(
+                "Input map must be finalized before searching for sources."
+            )
+        if input_map.res is None:
+            raise ValueError("Flux map must have a resolution.")
+
+        res_arcmin = input_map.res
+        res_arcmin = res_arcmin.to(u.arcmin)
+        self.log.info(
+            "sigma_clip_blind_search.searching",
+            res_arcmin=res_arcmin,
+            nsigma=self.parameters.sigma_threshold,
+            minrad=[ms.to(u.arcmin).value for ms in self.parameters.minimum_separation],
+            sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
+        )
+        extracted_sources = extract_sources(
+            input_map.flux,
+            timemap=input_map.time_mean,
+            maprms=abs(input_map.flux / input_map.snr),
+            nsigma=self.parameters.sigma_threshold,
+            minrad=[ms.to(u.arcmin).value for ms in self.parameters.minimum_separation],
+            sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
+            res=res_arcmin.value,
+            log=self.log,
+        )
+        return extracted_sources, []
