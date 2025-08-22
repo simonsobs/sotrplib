@@ -120,27 +120,27 @@ class BlindSearchParameters:
 class SigmaClipBlindSearch(BlindSearchProvider):
     def __init__(
         self,
-        input_map: ProcessableMap,
         log: FilteringBoundLogger | None = None,
         parameters: BlindSearchParameters | None = None,
         pixel_mask: enmap.ndmap | None = None,
     ):
         self.log = log or structlog.get_logger()
-        self.input_map = input_map
-        if not self.input_map.finalized:
-            raise ValueError(
-                "Input map must be finalized before searching for sources."
-            )
-        if self.input_map.res is None:
-            raise ValueError("Flux map must have a resolution.")
         self.parameters = parameters or BlindSearchParameters()
         self.pixel_mask = pixel_mask
         self.log.info("SigmaClipBlindSearch.initialized", parameters=self.parameters)
 
     def search(
         self,
+        input_map: ProcessableMap,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
-        res_arcmin = self.input_map.res
+        if not input_map.finalized:
+            raise ValueError(
+                "Input map must be finalized before searching for sources."
+            )
+        if input_map.res is None:
+            raise ValueError("Flux map must have a resolution.")
+
+        res_arcmin = input_map.res
         res_arcmin = res_arcmin.to(u.arcmin)
         self.log.info(
             "SigmaClipBlindSearch.searching",
@@ -150,9 +150,9 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
         )
         extracted_sources = extract_sources(
-            self.input_map.flux,
-            timemap=self.input_map.time_mean,
-            maprms=abs(self.input_map.flux / self.input_map.snr),
+            input_map.flux,
+            timemap=input_map.time_mean,
+            maprms=abs(input_map.flux / input_map.snr),
             nsigma=self.parameters.sigma_threshold,
             minrad=[ms.to(u.arcmin).value for ms in self.parameters.minimum_separation],
             sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
