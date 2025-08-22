@@ -356,7 +356,6 @@ class SimulatedMapFromGeometry(ProcessableMap):
             )
 
         self.observation_length = end_time - start_time
-        self.time = None
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -462,11 +461,15 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            self.time_map = enmap.read_map(self.time_filename, box=self.box)
+            time_map = enmap.read_map(self.time_filename, box=self.box)
             log.debug("intensity_ivar.time.read")
         else:
-            self.time_map = None
+            time_map = None
             log.debug("intensity_ivar.time.none")
+
+        self.time_first = time_map
+        self.time_end = time_map
+        self.time_mean = time_map
 
         return
 
@@ -522,11 +525,15 @@ class RhoAndKappaMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            self.time_map = enmap.read_map(self.time_filename, box=self.box)
+            time_map = enmap.read_map(self.time_filename, box=self.box)
             log.debug("rho_kappa.time.read")
         else:
-            self.time_map = None
+            time_map = None
             log.debug("rho_kappa.time.none")
+
+        self.time_first = time_map
+        self.time_end = time_map
+        self.time_mean = time_map
 
         return
 
@@ -564,7 +571,9 @@ class CoaddedMap(ProcessableMap):
         self,
         source_maps: list[ProcessableMap],
         log: FilteringBoundLogger | None = None,
-        time_map: enmap.ndmap | None = None,
+        time_start: enmap.ndmap | None = None,
+        time_mean: enmap.ndmap | None = None,
+        time_end: enmap.ndmap | None = None,
         map_depth: enmap.ndmap | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
@@ -575,7 +584,10 @@ class CoaddedMap(ProcessableMap):
         self.source_maps = source_maps
         self.log = log or structlog.get_logger()
         self.initialized = False
-        self.time_map = time_map
+
+        self.time_start = time_start
+        self.time_mean = time_mean
+        self.time_end = time_end
         self.map_depth = map_depth
         self.observation_start = start_time
         self.observation_end = end_time
@@ -641,22 +653,27 @@ class CoaddedMap(ProcessableMap):
         return
 
     def get_time_and_mapdepth(self, new_map):
-        if isinstance(new_map.time, enmap.ndmap):
-            if isinstance(self.time, type(None)):
-                self.time = new_map.time.copy() + new_map.start_time.timestamp()
-                self.map_depth = new_map.time.copy()
+        if isinstance(new_map.time_mean, enmap.ndmap):
+            if isinstance(self.time_mean, type(None)):
+                self.time_mean = (
+                    new_map.time_mean.copy() + new_map.start_time.timestamp()
+                )
+                self.map_depth = new_map.time_mean.copy()
                 self.map_depth[self.map_depth > 0] = 1.0
             else:
-                self.time = enmap.map_union(
-                    self.time,
-                    new_map.time + new_map.start_time.timestamp(),
+                self.time_mean = enmap.map_union(
+                    self.time_mean,
+                    new_map.time_mean + new_map.start_time.timestamp(),
                 )
-                new_map_depth = new_map.time.copy()
+                new_map_depth = new_map.time_mean.copy()
                 new_map_depth[new_map_depth > 0] = 1.0
                 self.map_depth = enmap.map_union(
                     self.map_depth,
                     new_map_depth,
                 )
+        ## get earliest start time per pixel ... can I use map_union with a<b or b<a or something?
+
+        ## get latest end time per pixel ... can I use map_union with a>b or b>a or something?
 
     def update_map_times(self, new_map):
         if self.observation_start is None:
