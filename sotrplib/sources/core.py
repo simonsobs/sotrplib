@@ -127,7 +127,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         self.log = log or structlog.get_logger()
         self.parameters = parameters or BlindSearchParameters()
         self.pixel_mask = pixel_mask
-        self.log.info("SigmaClipBlindSearch.initialized", parameters=self.parameters)
+        self.log.info("sigma_clip_blind_search.initialized", parameters=self.parameters)
 
     def search(
         self,
@@ -143,7 +143,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         res_arcmin = input_map.res
         res_arcmin = res_arcmin.to(u.arcmin)
         self.log.info(
-            "SigmaClipBlindSearch.searching",
+            "sigma_clip_blind_search.searching",
             res_arcmin=res_arcmin,
             nsigma=self.parameters.sigma_threshold,
             minrad=[ms.to(u.arcmin).value for ms in self.parameters.minimum_separation],
