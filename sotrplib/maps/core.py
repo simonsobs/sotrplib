@@ -174,6 +174,7 @@ class ProcessableMap(ABC):
 
         return self.map_resolution
 
+
     @abstractmethod
     def finalize(self):
         """
