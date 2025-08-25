@@ -1,11 +1,10 @@
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 from astropy import units as u
 from photutils.aperture.ellipse import EllipticalAperture
 from pixell.enmap import ndmap
-from pyparsing import Any
 
 """
 Source finding routines from spt3g_software.
@@ -348,7 +347,7 @@ class BlindSourceCandidate:
 
 
 def convert_blind_source_dictionary_to_models(
-    output_struct: dict[int : dict[str, Any]],
+    output_struct: dict[int, dict[str, Any]],
 ):
     models = []
 
