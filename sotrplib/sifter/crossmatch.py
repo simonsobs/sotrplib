@@ -11,6 +11,8 @@ from pixell import enmap
 from pixell import utils as pixell_utils
 from scipy import spatial
 
+from sotrplib.source_catalog.core import SourceCatalog
+
 from ..sources.sources import SourceCandidate
 
 
@@ -231,6 +233,14 @@ def sift(
         isin_cat = np.zeros(len(extracted_ra), dtype=bool)
         catalog_match = [] * len(extracted_ra)
         log.warning("sift.catalog_sources.not_found")
+    elif isinstance(catalog_sources, SourceCatalog):
+        catalog_matches = catalog_sources.crossmatch(
+            ra=extracted_ra * u.deg,
+            dec=extracted_dec * u.deg,
+            radius=fwhm_arcmin * u.arcmin,
+        )
+        # Grab the closest
+        catalog_match = catalog_matches[0]
     else:
         crossmatch_radius = np.minimum(
             np.maximum(source_fluxes * radius1Jy, min_match_radius), 120

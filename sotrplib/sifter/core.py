@@ -4,13 +4,16 @@ The core dependency for the sifter
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
+import astropy.units as u
 import numpy as np
 import structlog
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.source_catalog.core import SourceCatalog
+from sotrplib.sources.finding import BlindSourceCandidate
 from sotrplib.sources.sources import SourceCandidate
 
 
@@ -40,6 +43,63 @@ class EmptySifter(SiftingProvider):
         return SifterResult(
             source_candidates=[], transient_candidates=[], noise_candidates=[]
         )
+
+
+class SimpleCatalogSifter(SiftingProvider):
+    catalog: SourceCatalog
+    "The source catalog to sift against"
+    radius: u.Quantity
+    "Radius to search within"
+    log: FilteringBoundLogger
+    "Structlog logger"
+    method: Literal["closest", "all"]
+    "Return just the closest match or all of them"
+
+    def __init__(
+        self,
+        catalog: SourceCatalog,
+        radius: u.Quantity = u.Quantity(2.0, "arcmin"),
+        method: Literal["closest", "all"] = "all",
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.catalog = catalog
+        self.radius = radius
+        self.method = method
+        self.log = log or structlog.get_logger()
+
+    def sift(
+        self,
+        sources: list[BlindSourceCandidate],
+        input_map: ProcessableMap,
+    ) -> SifterResult:
+        source_candidates = []
+        transient_candidates = []
+
+        for i, source in enumerate(sources):
+            log = self.log.bind(source=i, ra=source.ra, dec=source.dec)
+            matches = self.catalog.crossmatch(
+                ra=source.ra, dec=source.dec, radius=self.radius, method=self.method
+            )
+
+            if matches:
+                source.update_crossmatches(
+                    match_names=[m.sourceID for m in matches],
+                    match_probabilities=[1.0 / len(matches)] * len(matches),
+                )
+                log = log.bind(number_of_matches=len(matches))
+                log = log.info("sifter.simple.matched")
+                source_candidates.append(source)
+            else:
+                log = log.info("sifter.simple.no_match")
+                transient_candidates.append(source)
+
+        result = SifterResult(
+            source_candidates=source_candidates,
+            transient_candidates=transient_candidates,
+            noise_candidates=[],
+        )
+
+        return result
 
 
 class DefaultSifter(SiftingProvider):
@@ -95,7 +155,7 @@ class DefaultSifter(SiftingProvider):
         self.log = log or structlog.get_logger()
         self.debug = debug
 
-        log = log.bind(**self.__dict__)
+        log = self.log.bind(**self.__dict__)
         log.info("sifter.defaultsifter.configured")
 
         return
