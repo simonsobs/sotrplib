@@ -1,12 +1,13 @@
 from typing import Any, Literal
 
+from astropy import units as u
 from pydantic import BaseModel
 
 
 class BaseSource(BaseModel):
-    ra: float
-    dec: float
-    flux: float | None
+    ra: u.Quantity
+    dec: u.Quantity
+    flux: u.Quantity | None
 
     def __init__(self, ra, dec, flux=None):
         self.ra = ra
@@ -33,9 +34,9 @@ class RegisteredSource(BaseSource):
 
     def __init__(
         self,
-        ra: float,
-        dec: float,
-        flux: float | None = None,
+        ra: u.Quantity,
+        dec: u.Quantity,
+        flux: u.Quantity | None = None,
         sourceID: str | None = None,
         source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown"]
         | None = None,
@@ -44,8 +45,8 @@ class RegisteredSource(BaseSource):
         crossmatch_fluxes: list | None = None,
         crossmatch_frequencies: list | None = None,
         extended: bool | None = None,
-        err_ra: float | None = None,
-        err_dec: float | None = None,
+        err_ra: u.Quantity | None = None,
+        err_dec: u.Quantity | None = None,
     ):
         super().__init__(ra, dec, flux)
         self.sourceID = sourceID
@@ -146,21 +147,30 @@ class RegisteredSource(BaseSource):
 class ForcedPhotometrySource(RegisteredSource):
     """
     A source object specifically for forced photometry measurements.
+
+    Since it's forced photometry, it is assumed to be a RegisteredSource which
+    undergoes a particular forced photometry flux measurement.
+
     """
 
     def __init__(
         self,
-        ra: float,
-        dec: float,
-        flux: float | None = None,
+        ra: u.Quantity,
+        dec: u.Quantity,
+        flux: u.Quantity | None = None,
+        err_flux: u.Quantity | None = None,
         sourceID: str | None = None,
         source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown", "Galaxy"]
         | None = None,
         crossmatch_names: list | None = None,
         crossmatch_probabilities: list | None = None,
         extended: bool | None = None,
-        err_ra: float | None = None,
-        err_dec: float | None = None,
+        err_ra: u.Quantity | None = None,
+        err_dec: u.Quantity | None = None,
+        fwhm_ra: u.Quantity | None = None,
+        fwhm_dec: u.Quantity | None = None,
+        fit_method: Literal["2D_Gaussian", "pixell.at", "other"] = "2D_Gaussian",
+        fit_params: dict | None = None,
     ):
         super().__init__(
             ra,
@@ -174,20 +184,49 @@ class ForcedPhotometrySource(RegisteredSource):
             err_ra,
             err_dec,
         )
+        self.fwhm_ra = fwhm_ra
+        self.fwhm_dec = fwhm_dec
+        self.err_flux = err_flux
+        self.fit_method = fit_method
+        self.fit_params = fit_params
 
-    def to_dict(self):
-        base_dict = super().to_dict()
-        base_dict["fit_type"] = "forced"
-        return base_dict
+
+class BlindSearchSource(BaseSource):
+    """
+    A class for sources detected in the blind search.
+
+    These don't a priori have a catalog counterpart.
+    """
+
+    def __init__(
+        self,
+        ra: u.Quantity,
+        dec: u.Quantity,
+        flux: u.Quantity | None = None,
+        err_flux: u.Quantity | None = None,
+        err_ra: u.Quantity | None = None,
+        err_dec: u.Quantity | None = None,
+        extract_algorithm: Literal["photutils_segmentation"]
+        | None = "photutils_segmentation",
+        extract_params: dict | None = None,
+        fit_params: dict | None = None,
+    ):
+        super().__init__(ra, dec, flux)
+        self.err_flux = err_flux
+        self.err_ra = err_ra
+        self.err_dec = err_dec
+        self.extract_algorithm = extract_algorithm
+        self.extract_params = extract_params
+        self.fit_params = fit_params
 
 
 class SourceCandidate(BaseModel):
-    ra: float
-    dec: float
-    err_ra: float
-    err_dec: float
-    flux: float
-    err_flux: float
+    ra: u.Quantity
+    dec: u.Quantity
+    err_ra: u.Quantity
+    err_dec: u.Quantity
+    flux: u.Quantity
+    err_flux: u.Quantity
     snr: float
     freq: str
     ctime: float
