@@ -21,7 +21,7 @@ dependencies = [
     "photutils",
     "structlog",
     "scikit-image",
-    "socat",
+    "socat @ git+https://github.com/simonsobs/socat",
 ]
 
 [project.optional-dependencies]
