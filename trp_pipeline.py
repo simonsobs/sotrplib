@@ -17,7 +17,7 @@ from sotrplib.sifter.core import DefaultSifter
 from sotrplib.sifter.crossmatch import crossmatch_position_and_flux
 from sotrplib.sims.sim_maps import inject_simulated_sources, make_noise_map
 from sotrplib.sims.sim_utils import get_sim_map_group, load_config_yaml
-from sotrplib.source_catalog.database import SOCatMockDatabase, SourceCatalogDatabase
+from sotrplib.source_catalog.database import MockACTDatabase, SourceCatalogDatabase
 from sotrplib.source_catalog.source_catalog import load_catalog
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import (
@@ -188,7 +188,11 @@ logger = logger.bind(args=args)
 logger.info("pipeline.parsed")
 
 ## load act source catalog into socat
-socat_db = SOCatMockDatabase(args.source_catalog)
+socat_db = MockACTDatabase(
+    args.source_catalog,
+    return_catalog=True,
+    log=logger,
+)
 
 cataloged_sources_db = SourceCatalogDatabase(args.output_dir + "so_source_catalog.csv")
 cataloged_sources_db.read_database()

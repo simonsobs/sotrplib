@@ -3,37 +3,34 @@ import threading
 
 import pandas as pd
 import structlog
+from astropy import units as u
 from astropy.io import fits
 from filelock import FileLock  # Import FileLock and Timeout for file-based locking
 from socat.client import mock
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import RegisteredSource, SourceCandidate
 
 
-class SOCatMockDatabase:
+class MockDatabase:
     def __init__(
-        self,
-        db_path: str,
-        log: FilteringBoundLogger | None = None,
+        self, return_catalog: bool = False, log: FilteringBoundLogger | None = None
     ):
+        self.cat = mock.Client()
         self.log = log or structlog.get_logger()
-        hdu = fits.open(db_path)
-        mock_cat = hdu[1]
-        cat = mock.Client()
-        self.log.info("SOCatMockDatabase.loading_act_catalog")
-        for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
-            ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
-            ra -= 180  # Convention difference
-            name = mock_cat.data["name"][i]
-            cat.create(ra=ra, dec=dec, name=name)
-        self.cat = cat
-        self.log.info(
-            "SOCatMockDatabase.loaded_act_catalog",
-            n_sources=len(mock_cat.data["raDeg"]),
-        )
+        self.log.info("EmptyMockDatabase.initialized")
+        if return_catalog:
+            return self, []
 
-    def get_nearby_source(self, ra, dec, radius=0.1):
+    def add_source(self, ra: u.Quantity, dec: u.Quantity, name: str):
+        self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
+
+    def get_nearby_source(
+        self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
+    ):
+        ra = ra.to(u.deg).value
+        dec = dec.to(u.deg).value
+        radius = radius.to(u.deg).value
         ## ra,dec,radius in same units. default is decimal degrees
         nearby = self.cat.get_box(
             ra_min=ra - radius,
@@ -42,27 +39,80 @@ class SOCatMockDatabase:
             dec_max=dec + radius,
         )
         self.log.info(
-            "SOCatMockDatabase.get_nearby_source",
+            "MockDatabase.get_nearby_source",
             ra=ra,
             dec=dec,
             radius=radius,
             nearby=nearby,
         )
+        sources = []
+        if nearby:
+            sources = [
+                RegisteredSource(
+                    ra=s.ra * u.deg,
+                    dec=s.dec * u.deg,
+                    sourceID=s.id,
+                    crossmatch_names=[s.name],
+                )
+                for s in nearby
+            ]
+        self.log.info(
+            "MockDatabase.get_nearby_source.nearby_sources",
+            sources=sources,
+        )
+        return sources
 
-        return nearby
+
+class MockACTDatabase:
+    def __init__(
+        self,
+        db_path: str,
+        return_catalog: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or structlog.get_logger()
+        hdu = fits.open(db_path)
+        mock_cat = hdu[1]
+        cat = MockDatabase()
+        self.log.info("MockACTDatabase.loading_act_catalog")
+        catalog_list = []
+        for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
+            ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
+            ra -= 180  # Convention difference
+            name = mock_cat.data["name"][i]
+            catalog_list.append(
+                RegisteredSource(
+                    ra=ra * u.deg,
+                    dec=dec * u.deg,
+                    sourceID="%s" % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
+                    crossmatch_names=[name],
+                )
+            )
+            cat.add_source(ra=ra * u.deg, dec=dec * u.deg, name=name)
+        self.cat = cat
+        self.log.info(
+            "MockACTDatabase.loaded_act_catalog",
+            n_sources=len(mock_cat.data["raDeg"]),
+        )
+        if return_catalog:
+            self.catalog_list = catalog_list
 
     def update_catalog(self, new_sources: list, match_radius=0.1):
         """Update the catalog with new sources."""
         for source in new_sources:
-            matches = self.get_nearby_source(source.ra, source.dec, radius=match_radius)
+            matches = self.cat.get_nearby_source(
+                source.ra, source.dec, radius=match_radius
+            )
             if not matches:
-                s = self.cat.create(ra=source.ra, dec=source.dec, name=source.sourceID)
+                s = self.cat.add_source(
+                    ra=source.ra, dec=source.dec, name=source.sourceID
+                )
                 self.log.info(
-                    "SOCatMockDatabase.update_catalog.new_source_added", source=s
+                    "MockACTDatabase.update_catalog.new_source_added", source=s
                 )
             else:
                 self.log.info(
-                    "SOCatMockDatabase.update_catalog.existing_source_found",
+                    "MockACTDatabase.update_catalog.existing_source_found",
                     source=source,
                     matching_sources=matches,
                 )

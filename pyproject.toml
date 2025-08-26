@@ -21,6 +21,7 @@ dependencies = [
     "photutils",
     "structlog",
     "scikit-image",
+    "socat",
 ]
 
 [project.optional-dependencies]
