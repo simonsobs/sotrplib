@@ -1,8 +1,10 @@
 from typing import Any, Literal, Optional
 
+import structlog
 from astropy import units as u
 from pydantic import BaseModel
 from pydantic.dataclasses import dataclass
+from structlog.types import FilteringBoundLogger
 
 
 @dataclass
@@ -37,6 +39,7 @@ class RegisteredSource(BaseSource):
         extended: bool | None = None,
         err_ra: u.Quantity | None = None,
         err_dec: u.Quantity | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
         super().__init__(ra, dec, flux)
         self.sourceID = sourceID
@@ -48,6 +51,7 @@ class RegisteredSource(BaseSource):
         self.extended = extended
         self.err_ra = err_ra
         self.err_dec = err_dec
+        self.log = log or structlog.get_logger()
 
     def add_crossmatches(
         self,
@@ -75,12 +79,19 @@ class RegisteredSource(BaseSource):
         new_probabilities = equilibrate_list(new_probabilities, None)
         new_fluxes = equilibrate_list(new_fluxes, None)
         new_frequencies = equilibrate_list(new_frequencies, None)
-
         new_names = [name for name in new_names if name not in self.crossmatch_names]
+        self.log.info(
+            "registeredsource.add_crossmatches",
+            new_names=new_names,
+            new_probabilities=new_probabilities,
+            new_fluxes=new_fluxes,
+            new_frequencies=new_frequencies,
+        )
         self.crossmatch_names.extend(new_names)
         self.crossmatch_probabilities.extend(new_probabilities)
         self.crossmatch_fluxes.extend(new_fluxes)
         self.crossmatch_frequencies.extend(new_frequencies)
+        self.log.info("registeredsource.crossmatches_added", RegisteredSource=self)
 
         return
 
@@ -107,7 +118,17 @@ class RegisteredSource(BaseSource):
         if crossmatch_frequencies is None:
             crossmatch_frequencies = [None] * len(crossmatch_names)
         assert len(crossmatch_frequencies) == len(crossmatch_names)
-
+        self.log.info(
+            "registeredsource.update_crossmatches",
+            prev_crossmatch_names=self.crossmatch_names,
+            prev_crossmatch_probabilities=self.crossmatch_probabilities,
+            prev_crossmatch_fluxes=self.crossmatch_fluxes,
+            prev_crossmatch_frequencies=self.crossmatch_frequencies,
+            new_crossmatch_names=crossmatch_names,
+            new_crossmatch_probabilities=crossmatch_probabilities,
+            new_crossmatch_fluxes=crossmatch_fluxes,
+            new_crossmatch_frequencies=crossmatch_frequencies,
+        )
         if replace:
             self.crossmatch_names = crossmatch_names
             self.crossmatch_probabilities = crossmatch_probabilities
@@ -130,7 +151,7 @@ class RegisteredSource(BaseSource):
                     self.crossmatch_frequencies[self.crossmatch_names.index(name)] = (
                         crossmatch_frequencies[i]
                     )
-
+        self.log.info("registeredsource.crossmatch_updated", RegisteredSource=self)
         return
 
 
@@ -161,6 +182,7 @@ class ForcedPhotometrySource(RegisteredSource):
         fwhm_dec: u.Quantity | None = None,
         fit_method: Literal["2D_Gaussian", "pixell.at", "other"] = "2D_Gaussian",
         fit_params: dict | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
         super().__init__(
             ra,
@@ -173,12 +195,15 @@ class ForcedPhotometrySource(RegisteredSource):
             extended,
             err_ra,
             err_dec,
+            log=log,
         )
         self.fwhm_ra = fwhm_ra
         self.fwhm_dec = fwhm_dec
         self.err_flux = err_flux
         self.fit_method = fit_method
         self.fit_params = fit_params
+        self.log = log
+        self.log.info("forcedphotometrysource.created", ForcedPhotometrySource=self)
 
 
 class BlindSearchSource(BaseSource):
@@ -200,6 +225,7 @@ class BlindSearchSource(BaseSource):
         | None = "photutils_segmentation",
         extract_params: dict | None = None,
         fit_params: dict | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
         super().__init__(ra, dec, flux)
         self.err_flux = err_flux
@@ -208,6 +234,8 @@ class BlindSearchSource(BaseSource):
         self.extract_algorithm = extract_algorithm
         self.extract_params = extract_params
         self.fit_params = fit_params
+        self.log = log
+        self.log.info("blindsearchsource.created", BlindSearchSource=self)
 
 
 class SourceCandidate(BaseModel):
