@@ -182,7 +182,7 @@ class ForcedPhotometrySource(RegisteredSource):
         flux: AstroPydanticQuantity[u.mJy] | None = None,
         err_flux: AstroPydanticQuantity[u.mJy] | None = None,
         source_id: str | None = None,
-        source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown", "Galaxy"]
+        source_type: Literal["extragalactic", "star", "asteroid", "unknown", "galaxy"]
         | None = None,
         crossmatch_names: list | None = None,
         crossmatch_probabilities: list | None = None,
@@ -191,7 +191,7 @@ class ForcedPhotometrySource(RegisteredSource):
         err_dec: AstroPydanticQuantity[u.deg] | None = None,
         fwhm_ra: AstroPydanticQuantity[u.deg] | None = None,
         fwhm_dec: AstroPydanticQuantity[u.deg] | None = None,
-        fit_method: Literal["2D_Gaussian", "pixell.at", "other"] = "2D_Gaussian",
+        fit_method: Literal["2d_gaussian", "pixell.at", "other"] = "2d_gaussian",
         fit_params: dict | None = None,
         log: FilteringBoundLogger | None = None,
     ):
