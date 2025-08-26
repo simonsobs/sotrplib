@@ -7,6 +7,7 @@ import pytest
 
 from sotrplib.sources.sources import (
     BaseSource,
+    CrossMatch,
     RegisteredSource,
 )
 
@@ -51,28 +52,30 @@ def test_update_crossmatch(dummy_source):
     assert source.dec == dummy_source.dec
     assert source.flux == dummy_source.flux
 
-    source.add_crossmatches(
-        new_names=["crossmatch_name_1", "crossmatch_name_2"],
-        new_probabilities=None,
-        new_fluxes=[1.0 * u.Jy, 2.0 * u.Jy],
-        new_frequencies=["93.1GHz", "103.5GHz"],
+    crossmatch_1 = CrossMatch(
+        ra=dummy_source.ra,
+        dec=dummy_source.dec,
+        name="crossmatch_name_1",
+        probability=None,
+        distance=0.0 * u.arcsec,
+        flux=1.0 * u.Jy,
+        frequency=93.1 * u.GHz,
     )
-
-    assert source.crossmatch_fluxes == [1.0 * u.Jy, 2.0 * u.Jy]
-    assert source.crossmatch_frequencies == ["93.1GHz", "103.5GHz"]
-    assert source.crossmatch_names == ["crossmatch_name_1", "crossmatch_name_2"]
-
-    source.update_crossmatches(
-        ["crossmatch_name_3"],
-        new_probabilities=None,
-        new_fluxes=[3.0 * u.Jy],
-        new_frequencies=["113.5GHz"],
+    crossmatch_2 = CrossMatch(
+        ra=dummy_source.ra + 1.0 * u.arcsec,
+        dec=dummy_source.dec + 1.0 * u.arcsec,
+        name="crossmatch_name_2",
+        probability=None,
+        distance=(2**-0.5) * u.arcsec,
+        flux=2.0 * u.Jy,
+        frequency=103.5 * u.GHz,
     )
-
-    assert source.crossmatch_fluxes == [1.0 * u.Jy, 2.0 * u.Jy, 3.0 * u.Jy]
-    assert source.crossmatch_frequencies == ["93.1GHz", "103.5GHz", "113.5GHz"]
-    assert source.crossmatch_names == [
-        "crossmatch_name_1",
-        "crossmatch_name_2",
-        "crossmatch_name_3",
-    ]
+    source.add_crossmatch(crossmatch_1)
+    source.add_crossmatch(crossmatch_2)
+    assert len(source.crossmatches) == 2
+    assert source.crossmatches[0].flux == 1.0 * u.Jy
+    assert source.crossmatches[1].flux == 2.0 * u.Jy
+    assert source.crossmatches[0].frequency == 93.1 * u.GHz
+    assert source.crossmatches[1].frequency == 103.5 * u.GHz
+    assert source.crossmatches[0].name == "crossmatch_name_1"
+    assert source.crossmatches[1].name == "crossmatch_name_2"

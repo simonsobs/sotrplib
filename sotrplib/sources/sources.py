@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 import structlog
 from astropy import units as u
@@ -11,6 +11,16 @@ class BaseSource(BaseModel):
     ra: AstroPydanticQuantity[u.deg]
     dec: AstroPydanticQuantity[u.deg]
     flux: Optional[AstroPydanticQuantity[u.mJy]] = None
+
+
+class CrossMatch(BaseModel):
+    name: str
+    probability: float | None = None
+    distance: AstroPydanticQuantity[u.deg] | None = None
+    flux: AstroPydanticQuantity[u.mJy] | None = None
+    frequency: AstroPydanticQuantity[u.GHz] | None = None
+    catalog_name: str | None = None
+    catalog_idx: int | None = None
 
 
 class RegisteredSource(BaseSource):
@@ -26,10 +36,7 @@ class RegisteredSource(BaseSource):
     source_id: str | None = None
     source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown"] | None = None
 
-    crossmatch_names: list | None = None
-    crossmatch_probabilities: list | None = None
-    crossmatch_fluxes: list | None = None
-    crossmatch_frequencies: list | None = None
+    crossmatches: list[CrossMatch] | None = None
 
     extended: bool | None = None
     err_ra: AstroPydanticQuantity[u.deg] | None = None
@@ -38,132 +45,28 @@ class RegisteredSource(BaseSource):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def add_crossmatches(
-        self,
-        new_names: list,
-        new_probabilities: list = None,
-        new_fluxes: list = None,
-        new_frequencies: list = None,
-    ):
+    def add_crossmatch(self, crossmatch: CrossMatch):
         """
-        Add the crossmatch names and probabilities, fluxes, frequencies.
+        Add a crossmatch object.
+        Simple wrapper to append the crossmatch to list of crossmatches.
         """
-
-        def equilibrate_list(values: list | None, default: Any = None):
-            """Ensure list is initialized and filtered by crossmatch names."""
-            if not values:
-                values = [default] * len(new_names)
-            assert len(values) == len(new_names)
-            return [
-                v
-                for i, v in enumerate(values)
-                if new_names[i] not in self.crossmatch_names
-            ]
-
-        ## Add the names first, ignore duplicates
-        if not self.crossmatch_names:
-            self.crossmatch_names = []
-
-        new_names = [name for name in new_names if name not in self.crossmatch_names]
-
-        # Use the helper for each list
-        new_probabilities = equilibrate_list(new_probabilities, None)
-        new_fluxes = equilibrate_list(new_fluxes, None)
-        new_frequencies = equilibrate_list(new_frequencies, None)
-
-        self.log.info(
-            "registeredsource.add_crossmatches",
-            new_names=new_names,
-            new_probabilities=new_probabilities,
-            new_fluxes=new_fluxes,
-            new_frequencies=new_frequencies,
-            RegisteredSource=self,
-        )
-
-        self.crossmatch_names.extend(new_names)
-        if not self.crossmatch_probabilities:
-            self.crossmatch_probabilities = new_probabilities
-        else:
-            self.crossmatch_probabilities.extend(new_probabilities)
-        if not self.crossmatch_fluxes:
-            self.crossmatch_fluxes = new_fluxes
-        else:
-            self.crossmatch_fluxes.extend(new_fluxes)
-        if not self.crossmatch_frequencies:
-            self.crossmatch_frequencies = new_frequencies
-        else:
-            self.crossmatch_frequencies.extend(new_frequencies)
-        self.log.info("registeredsource.crossmatches_added", RegisteredSource=self)
-
-        return
+        if self.crossmatches is None:
+            self.crossmatches = []
+        self.crossmatches.append(crossmatch)
+        self.log.info("registeredsource.added_crossmatch", crossmatch=crossmatch)
 
     def update_crossmatches(
         self,
-        new_names: list,
-        new_probabilities: list | None = None,
-        new_fluxes: list | None = None,
-        new_frequencies: list | None = None,
+        crossmatches: list[CrossMatch],
         replace: bool = False,
     ):
         """
         Update the crossmatch info.
 
-        if probabilities, fluxes or frequencies is not None,
-        must be same length as crossmatch_names
+        Need to figure out what we want to do here...
+
         """
-
-        if not self.crossmatch_names:
-            self.add_crossmatches(
-                new_names, new_probabilities, new_fluxes, new_frequencies
-            )
-            return
-
-        if new_probabilities is None:
-            new_probabilities = [None] * len(new_names)
-        assert len(new_probabilities) == len(new_names)
-        if new_fluxes is None:
-            new_fluxes = [None] * len(new_names)
-        assert len(new_fluxes) == len(new_names)
-        if new_frequencies is None:
-            new_frequencies = [None] * len(new_names)
-        assert len(new_frequencies) == len(new_names)
-
-        self.log.info(
-            "registeredsource.update_crossmatches",
-            prev_crossmatch_names=self.crossmatch_names,
-            prev_crossmatch_probabilities=self.crossmatch_probabilities,
-            prev_crossmatch_fluxes=self.crossmatch_fluxes,
-            prev_crossmatch_frequencies=self.crossmatch_frequencies,
-            new_crossmatch_names=new_names,
-            new_crossmatch_probabilities=new_probabilities,
-            new_crossmatch_fluxes=new_fluxes,
-            new_crossmatch_frequencies=new_frequencies,
-        )
-
-        if replace:
-            self.crossmatch_names = new_names
-            self.crossmatch_probabilities = new_probabilities
-            self.crossmatch_fluxes = new_fluxes
-            self.crossmatch_frequencies = new_frequencies
-        else:
-            for i, name in enumerate(new_names):
-                if name not in self.crossmatch_names:
-                    self.crossmatch_names.append(name)
-                    self.crossmatch_probabilities.append(new_probabilities[i])
-                    self.crossmatch_fluxes.append(new_fluxes[i])
-                    self.crossmatch_frequencies.append(new_frequencies[i])
-                else:
-                    self.crossmatch_probabilities[self.crossmatch_names.index(name)] = (
-                        new_probabilities[i]
-                    )
-                    self.crossmatch_fluxes[self.crossmatch_names.index(name)] = (
-                        new_fluxes[i]
-                    )
-                    self.crossmatch_frequencies[self.crossmatch_names.index(name)] = (
-                        new_frequencies[i]
-                    )
-        self.log.info("registeredsource.crossmatch_updated", RegisteredSource=self)
-        return
+        raise NotImplementedError("Haven't figured out what updating means")
 
 
 class ForcedPhotometrySource(RegisteredSource):
@@ -175,46 +78,12 @@ class ForcedPhotometrySource(RegisteredSource):
 
     """
 
-    def __init__(
-        self,
-        ra: AstroPydanticQuantity[u.deg],
-        dec: AstroPydanticQuantity[u.deg],
-        flux: AstroPydanticQuantity[u.mJy] | None = None,
-        err_flux: AstroPydanticQuantity[u.mJy] | None = None,
-        source_id: str | None = None,
-        source_type: Literal["extragalactic", "star", "asteroid", "unknown", "galaxy"]
-        | None = None,
-        crossmatch_names: list | None = None,
-        crossmatch_probabilities: list | None = None,
-        extended: bool | None = None,
-        err_ra: AstroPydanticQuantity[u.deg] | None = None,
-        err_dec: AstroPydanticQuantity[u.deg] | None = None,
-        fwhm_ra: AstroPydanticQuantity[u.deg] | None = None,
-        fwhm_dec: AstroPydanticQuantity[u.deg] | None = None,
-        fit_method: Literal["2d_gaussian", "pixell.at", "other"] = "2d_gaussian",
-        fit_params: dict | None = None,
-        log: FilteringBoundLogger | None = None,
-    ):
-        super().__init__(
-            ra,
-            dec,
-            flux,
-            source_id,
-            source_type,
-            crossmatch_names,
-            crossmatch_probabilities,
-            extended,
-            err_ra,
-            err_dec,
-            log=log,
-        )
-        self.fwhm_ra = fwhm_ra
-        self.fwhm_dec = fwhm_dec
-        self.err_flux = err_flux
-        self.fit_method = fit_method
-        self.fit_params = fit_params
-        self.log = log
-        self.log.info("forcedphotometrysource.created", ForcedPhotometrySource=self)
+    err_flux: AstroPydanticQuantity[u.mJy] | None = None
+
+    fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
+    fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
+    fit_method: Literal["2d_gaussian", "pixell.at", "other"] = "2d_gaussian"
+    fit_params: dict | None = None
 
 
 class BlindSearchSource(BaseSource):

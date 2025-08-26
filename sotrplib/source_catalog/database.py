@@ -9,7 +9,8 @@ from filelock import FileLock  # Import FileLock and Timeout for file-based lock
 from socat.client import mock
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import RegisteredSource, SourceCandidate
+from sotrplib.sources.sources import CrossMatch, RegisteredSource, SourceCandidate
+from sotrplib.utils.utils import angular_separation
 
 
 class MockDatabase:
@@ -52,7 +53,16 @@ class MockDatabase:
                     ra=s.ra * u.deg,
                     dec=s.dec * u.deg,
                     source_id=str(s.id),
-                    crossmatch_names=[str(s.name)],
+                    crossmatches=[
+                        CrossMatch(
+                            name=str(s.name),
+                            probability=1.0,
+                            distance=angular_separation(ra, dec, s.ra, s.dec),
+                            frequency=90 * u.GHz,
+                            catalog_name="mock",
+                            catalog_idx=None,
+                        )
+                    ],
                 )
                 for s in nearby
             ]
@@ -86,7 +96,16 @@ class MockACTDatabase:
                     dec=dec * u.deg,
                     source_id="%s"
                     % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
-                    crossmatch_names=[name],
+                    crossmatches=[
+                        CrossMatch(
+                            name=name,
+                            probability=1.0,
+                            distance=0.0 * u.deg,
+                            frequency=90 * u.GHz,
+                            catalog_name="ACT",
+                            catalog_idx=i,
+                        )
+                    ],
                 )
             )
             cat.add_source(ra=ra * u.deg, dec=dec * u.deg, name=name)
