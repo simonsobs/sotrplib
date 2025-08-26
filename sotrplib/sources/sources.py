@@ -1,9 +1,9 @@
+from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
 import structlog
 from astropy import units as u
 from pydantic import BaseModel
-from pydantic.dataclasses import dataclass
 from structlog.types import FilteringBoundLogger
 
 
@@ -52,6 +52,7 @@ class RegisteredSource(BaseSource):
         self.err_ra = err_ra
         self.err_dec = err_dec
         self.log = log or structlog.get_logger()
+        return
 
     def add_crossmatches(
         self,
@@ -66,7 +67,7 @@ class RegisteredSource(BaseSource):
 
         def equilibrate_list(values: list | None, default: Any = None):
             """Ensure list is initialized and filtered by crossmatch names."""
-            if values is None:
+            if not values:
                 values = [default] * len(new_names)
             assert len(values) == len(new_names)
             return [
@@ -75,32 +76,49 @@ class RegisteredSource(BaseSource):
                 if new_names[i] not in self.crossmatch_names
             ]
 
+        ## Add the names first, ignore duplicates
+        if not self.crossmatch_names:
+            self.crossmatch_names = []
+
+        new_names = [name for name in new_names if name not in self.crossmatch_names]
+
         # Use the helper for each list
         new_probabilities = equilibrate_list(new_probabilities, None)
         new_fluxes = equilibrate_list(new_fluxes, None)
         new_frequencies = equilibrate_list(new_frequencies, None)
-        new_names = [name for name in new_names if name not in self.crossmatch_names]
+
         self.log.info(
             "registeredsource.add_crossmatches",
             new_names=new_names,
             new_probabilities=new_probabilities,
             new_fluxes=new_fluxes,
             new_frequencies=new_frequencies,
+            RegisteredSource=self,
         )
+
         self.crossmatch_names.extend(new_names)
-        self.crossmatch_probabilities.extend(new_probabilities)
-        self.crossmatch_fluxes.extend(new_fluxes)
-        self.crossmatch_frequencies.extend(new_frequencies)
+        if not self.crossmatch_probabilities:
+            self.crossmatch_probabilities = new_probabilities
+        else:
+            self.crossmatch_probabilities.extend(new_probabilities)
+        if not self.crossmatch_fluxes:
+            self.crossmatch_fluxes = new_fluxes
+        else:
+            self.crossmatch_fluxes.extend(new_fluxes)
+        if not self.crossmatch_frequencies:
+            self.crossmatch_frequencies = new_frequencies
+        else:
+            self.crossmatch_frequencies.extend(new_frequencies)
         self.log.info("registeredsource.crossmatches_added", RegisteredSource=self)
 
         return
 
     def update_crossmatches(
         self,
-        crossmatch_names: list,
-        crossmatch_probabilities: list | None = None,
-        crossmatch_fluxes: list | None = None,
-        crossmatch_frequencies: list | None = None,
+        new_names: list,
+        new_probabilities: list | None = None,
+        new_fluxes: list | None = None,
+        new_frequencies: list | None = None,
         replace: bool = False,
     ):
         """
@@ -109,47 +127,56 @@ class RegisteredSource(BaseSource):
         if probabilities, fluxes or frequencies is not None,
         must be same length as crossmatch_names
         """
-        if crossmatch_probabilities is None:
-            crossmatch_probabilities = [None] * len(crossmatch_names)
-        assert len(crossmatch_probabilities) == len(crossmatch_names)
-        if crossmatch_fluxes is None:
-            crossmatch_fluxes = [None] * len(crossmatch_names)
-        assert len(crossmatch_fluxes) == len(crossmatch_names)
-        if crossmatch_frequencies is None:
-            crossmatch_frequencies = [None] * len(crossmatch_names)
-        assert len(crossmatch_frequencies) == len(crossmatch_names)
+
+        if not self.crossmatch_names:
+            self.add_crossmatches(
+                new_names, new_probabilities, new_fluxes, new_frequencies
+            )
+            return
+
+        if new_probabilities is None:
+            new_probabilities = [None] * len(new_names)
+        assert len(new_probabilities) == len(new_names)
+        if new_fluxes is None:
+            new_fluxes = [None] * len(new_names)
+        assert len(new_fluxes) == len(new_names)
+        if new_frequencies is None:
+            new_frequencies = [None] * len(new_names)
+        assert len(new_frequencies) == len(new_names)
+
         self.log.info(
             "registeredsource.update_crossmatches",
             prev_crossmatch_names=self.crossmatch_names,
             prev_crossmatch_probabilities=self.crossmatch_probabilities,
             prev_crossmatch_fluxes=self.crossmatch_fluxes,
             prev_crossmatch_frequencies=self.crossmatch_frequencies,
-            new_crossmatch_names=crossmatch_names,
-            new_crossmatch_probabilities=crossmatch_probabilities,
-            new_crossmatch_fluxes=crossmatch_fluxes,
-            new_crossmatch_frequencies=crossmatch_frequencies,
+            new_crossmatch_names=new_names,
+            new_crossmatch_probabilities=new_probabilities,
+            new_crossmatch_fluxes=new_fluxes,
+            new_crossmatch_frequencies=new_frequencies,
         )
+
         if replace:
-            self.crossmatch_names = crossmatch_names
-            self.crossmatch_probabilities = crossmatch_probabilities
-            self.crossmatch_fluxes = crossmatch_fluxes
-            self.crossmatch_frequencies = crossmatch_frequencies
+            self.crossmatch_names = new_names
+            self.crossmatch_probabilities = new_probabilities
+            self.crossmatch_fluxes = new_fluxes
+            self.crossmatch_frequencies = new_frequencies
         else:
-            for i, name in enumerate(crossmatch_names):
+            for i, name in enumerate(new_names):
                 if name not in self.crossmatch_names:
                     self.crossmatch_names.append(name)
-                    self.crossmatch_probabilities.append(crossmatch_probabilities[i])
-                    self.crossmatch_fluxes.append(crossmatch_fluxes[i])
-                    self.crossmatch_frequencies.append(crossmatch_frequencies[i])
+                    self.crossmatch_probabilities.append(new_probabilities[i])
+                    self.crossmatch_fluxes.append(new_fluxes[i])
+                    self.crossmatch_frequencies.append(new_frequencies[i])
                 else:
                     self.crossmatch_probabilities[self.crossmatch_names.index(name)] = (
-                        crossmatch_probabilities[i]
+                        new_probabilities[i]
                     )
                     self.crossmatch_fluxes[self.crossmatch_names.index(name)] = (
-                        crossmatch_fluxes[i]
+                        new_fluxes[i]
                     )
                     self.crossmatch_frequencies[self.crossmatch_names.index(name)] = (
-                        crossmatch_frequencies[i]
+                        new_frequencies[i]
                     )
         self.log.info("registeredsource.crossmatch_updated", RegisteredSource=self)
         return
@@ -239,12 +266,12 @@ class BlindSearchSource(BaseSource):
 
 
 class SourceCandidate(BaseModel):
-    ra: u.Quantity
-    dec: u.Quantity
-    err_ra: u.Quantity
-    err_dec: u.Quantity
-    flux: u.Quantity
-    err_flux: u.Quantity
+    ra: float
+    dec: float
+    err_ra: float
+    err_dec: float
+    flux: float
+    err_flux: float
     snr: float
     freq: str
     ctime: float
