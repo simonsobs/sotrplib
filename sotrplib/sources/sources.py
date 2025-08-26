@@ -1,25 +1,15 @@
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from astropy import units as u
 from pydantic import BaseModel
+from pydantic.dataclasses import dataclass
 
 
-class BaseSource(BaseModel):
+@dataclass
+class BaseSource:
     ra: u.Quantity
     dec: u.Quantity
-    flux: u.Quantity | None
-
-    def __init__(self, ra, dec, flux=None):
-        self.ra = ra
-        self.dec = dec
-        self.flux = flux
-
-    def to_dict(self):
-        return {
-            "ra": self.ra,
-            "dec": self.dec,
-            "flux": self.flux,
-        }
+    flux: Optional[u.Quantity] = None
 
 
 class RegisteredSource(BaseSource):
