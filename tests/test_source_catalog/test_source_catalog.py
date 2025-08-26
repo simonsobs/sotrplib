@@ -8,7 +8,6 @@ import pytest
 from sotrplib.source_catalog.core import SourceCandidateCatalog
 from sotrplib.source_catalog.database import MockDatabase
 from sotrplib.sources.sources import (
-    RegisteredSource,
     SourceCandidate,
 )
 
@@ -29,9 +28,13 @@ def test_socat_mock_db(dummy_socat_db):
     )
 
     db.add_source(ra=10.0 * u.deg, dec=10.0 * u.deg, name="test_source_1")
-    assert db.get_nearby_source(
-        ra=10.0 * u.deg, dec=10.0 * u.deg, radius=0.1 * u.deg
-    ) == [RegisteredSource(ra=10.0 * u.deg, dec=10.0 * u.deg, sourceID="test_source_1")]
+    nearby = db.get_nearby_source(ra=10.0 * u.deg, dec=10.0 * u.deg)
+    assert len(nearby) == 1
+    near_source = nearby[0]
+    assert near_source.crossmatch_names[0] == "test_source_1"
+    assert near_source.ra == 10.0 * u.deg
+    assert near_source.dec == 10.0 * u.deg
+    assert near_source.source_id == "0"
 
 
 def test_simple_source_catalog():

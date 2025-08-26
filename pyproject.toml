@@ -22,6 +22,7 @@ dependencies = [
     "structlog",
     "scikit-image",
     "socat @ git+https://github.com/simonsobs/socat",
+    "astropydantic"
 ]
 
 [project.optional-dependencies]

@@ -51,8 +51,8 @@ class MockDatabase:
                 RegisteredSource(
                     ra=s.ra * u.deg,
                     dec=s.dec * u.deg,
-                    sourceID=s.id,
-                    crossmatch_names=[s.name],
+                    source_id=str(s.id),
+                    crossmatch_names=[str(s.name)],
                 )
                 for s in nearby
             ]
@@ -84,7 +84,8 @@ class MockACTDatabase:
                 RegisteredSource(
                     ra=ra * u.deg,
                     dec=dec * u.deg,
-                    sourceID="%s" % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
+                    source_id="%s"
+                    % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
                     crossmatch_names=[name],
                 )
             )
@@ -105,7 +106,7 @@ class MockACTDatabase:
             )
             if not matches:
                 s = self.cat.add_source(
-                    ra=source.ra, dec=source.dec, name=source.sourceID
+                    ra=source.ra, dec=source.dec, name=source.source_id
                 )
                 self.log.info(
                     "MockACTDatabase.update_catalog.new_source_added", source=s

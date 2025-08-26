@@ -1,58 +1,42 @@
-from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
 import structlog
 from astropy import units as u
-from pydantic import BaseModel
+from astropydantic import AstroPydanticQuantity
+from pydantic import BaseModel, Field
 from structlog.types import FilteringBoundLogger
 
 
-@dataclass
-class BaseSource:
-    ra: u.Quantity
-    dec: u.Quantity
-    flux: Optional[u.Quantity] = None
+class BaseSource(BaseModel):
+    ra: AstroPydanticQuantity[u.deg]
+    dec: AstroPydanticQuantity[u.deg]
+    flux: Optional[AstroPydanticQuantity[u.mJy]] = None
 
 
 class RegisteredSource(BaseSource):
     """
     A registered source object which may have catalog crossmatches.
-    This object has a sourceID which may belong to the catalog and a source type.
+    This object has a source_id which may belong to the catalog and a source type.
 
     This object need not have a flux.
 
     Extendedness and positional uncertainty is stored if available.
     """
 
-    def __init__(
-        self,
-        ra: u.Quantity,
-        dec: u.Quantity,
-        flux: u.Quantity | None = None,
-        sourceID: str | None = None,
-        source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown"]
-        | None = None,
-        crossmatch_names: list | None = None,
-        crossmatch_probabilities: list | None = None,
-        crossmatch_fluxes: list | None = None,
-        crossmatch_frequencies: list | None = None,
-        extended: bool | None = None,
-        err_ra: u.Quantity | None = None,
-        err_dec: u.Quantity | None = None,
-        log: FilteringBoundLogger | None = None,
-    ):
-        super().__init__(ra, dec, flux)
-        self.sourceID = sourceID
-        self.source_type = source_type
-        self.crossmatch_names = crossmatch_names
-        self.crossmatch_probabilities = crossmatch_probabilities
-        self.crossmatch_fluxes = crossmatch_fluxes
-        self.crossmatch_frequencies = crossmatch_frequencies
-        self.extended = extended
-        self.err_ra = err_ra
-        self.err_dec = err_dec
-        self.log = log or structlog.get_logger()
-        return
+    source_id: str | None = None
+    source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown"] | None = None
+
+    crossmatch_names: list | None = None
+    crossmatch_probabilities: list | None = None
+    crossmatch_fluxes: list | None = None
+    crossmatch_frequencies: list | None = None
+
+    extended: bool | None = None
+    err_ra: AstroPydanticQuantity[u.deg] | None = None
+    err_dec: AstroPydanticQuantity[u.deg] | None = None
+    log: FilteringBoundLogger | None = Field(default_factory=structlog.get_logger)
+
+    model_config = {"arbitrary_types_allowed": True}
 
     def add_crossmatches(
         self,
@@ -193,20 +177,20 @@ class ForcedPhotometrySource(RegisteredSource):
 
     def __init__(
         self,
-        ra: u.Quantity,
-        dec: u.Quantity,
-        flux: u.Quantity | None = None,
-        err_flux: u.Quantity | None = None,
-        sourceID: str | None = None,
+        ra: AstroPydanticQuantity[u.deg],
+        dec: AstroPydanticQuantity[u.deg],
+        flux: AstroPydanticQuantity[u.mJy] | None = None,
+        err_flux: AstroPydanticQuantity[u.mJy] | None = None,
+        source_id: str | None = None,
         source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown", "Galaxy"]
         | None = None,
         crossmatch_names: list | None = None,
         crossmatch_probabilities: list | None = None,
         extended: bool | None = None,
-        err_ra: u.Quantity | None = None,
-        err_dec: u.Quantity | None = None,
-        fwhm_ra: u.Quantity | None = None,
-        fwhm_dec: u.Quantity | None = None,
+        err_ra: AstroPydanticQuantity[u.deg] | None = None,
+        err_dec: AstroPydanticQuantity[u.deg] | None = None,
+        fwhm_ra: AstroPydanticQuantity[u.deg] | None = None,
+        fwhm_dec: AstroPydanticQuantity[u.deg] | None = None,
         fit_method: Literal["2D_Gaussian", "pixell.at", "other"] = "2D_Gaussian",
         fit_params: dict | None = None,
         log: FilteringBoundLogger | None = None,
@@ -215,7 +199,7 @@ class ForcedPhotometrySource(RegisteredSource):
             ra,
             dec,
             flux,
-            sourceID,
+            source_id,
             source_type,
             crossmatch_names,
             crossmatch_probabilities,
