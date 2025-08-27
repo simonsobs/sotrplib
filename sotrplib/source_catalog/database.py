@@ -1,6 +1,7 @@
 import os
 import threading
 
+import numpy as np
 import pandas as pd
 import structlog
 from astropy import units as u
@@ -9,22 +10,20 @@ from filelock import FileLock  # Import FileLock and Timeout for file-based lock
 from socat.client import mock
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource, SourceCandidate
 from sotrplib.utils.utils import angular_separation
 
 
 class MockDatabase:
-    def __init__(
-        self, return_catalog: bool = False, log: FilteringBoundLogger | None = None
-    ):
+    def __init__(self, log: FilteringBoundLogger | None = None):
         self.cat = mock.Client()
         self.log = log or structlog.get_logger()
         self.log.info("EmptyMockDatabase.initialized")
-        if return_catalog:
-            return self, []
 
     def add_source(self, ra: u.Quantity, dec: u.Quantity, name: str):
-        self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
+        s = self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
+        self.catalog_list.append(s)
 
     def get_nearby_source(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
@@ -72,13 +71,55 @@ class MockDatabase:
         )
         return sources
 
+    def get_sources_in_box(self, box: list[list[float]]) -> list[RegisteredSource]:
+        """
+        box is [[dec_min, ra_min], [dec_max, ra_max]] in radians
+        """
+        box = np.degrees(box)
+        sources_in_map = self.cat.get_box(
+            ra_min=box[0][1],
+            ra_max=box[1][1],
+            dec_min=box[0][0],
+            dec_max=box[1][0],
+        )
+        sources = []
+        for s in sources_in_map:
+            sources.append(
+                RegisteredSource(
+                    ra=s.ra * u.deg,
+                    dec=s.dec * u.deg,
+                    source_id=str(s.id),
+                    crossmatches=[
+                        CrossMatch(
+                            name=str(s.name),
+                            probability=1.0,
+                            distance=0.0 * u.deg,
+                            frequency=90 * u.GHz,
+                            catalog_name="mock",
+                            catalog_idx=s.id,
+                        )
+                    ],
+                )
+            )
+        return sources
+
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        if not ProcessableMap.finalized:
+            self.log.warning("MockDatabase.get_sources_in_map.map_not_finalized")
+        map_bounds = input_map.flux.box()
+        return self.get_sources_in_box(box=map_bounds)
+
+    def get_all_sources(self) -> list[RegisteredSource]:
+        sources = self.get_sources_in_box(box=[[-90, -180], [90, 180]])
+        return sources
+
 
 class MockACTDatabase:
     def __init__(
         self,
         db_path: str,
-        return_catalog: bool = False,
         log: FilteringBoundLogger | None = None,
+        catalog_list: list = [],
     ):
         self.log = log or structlog.get_logger()
         hdu = fits.open(db_path)
@@ -114,8 +155,7 @@ class MockACTDatabase:
             "MockACTDatabase.loaded_act_catalog",
             n_sources=len(mock_cat.data["raDeg"]),
         )
-        if return_catalog:
-            self.catalog_list = catalog_list
+        self.catalog_list = catalog_list
 
     def update_catalog(self, new_sources: list, match_radius=0.1):
         """Update the catalog with new sources."""
@@ -127,6 +167,7 @@ class MockACTDatabase:
                 s = self.cat.add_source(
                     ra=source.ra, dec=source.dec, name=source.source_id
                 )
+                self.catalog_list.append(s)
                 self.log.info(
                     "MockACTDatabase.update_catalog.new_source_added", source=s
                 )
