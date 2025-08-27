@@ -1,16 +1,15 @@
 import os
 import threading
 
-import numpy as np
 import pandas as pd
 import structlog
 from astropy import units as u
 from astropy.io import fits
 from filelock import FileLock  # Import FileLock and Timeout for file-based locking
+from pixell.enmap import ndmap
 from socat.client import mock
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource, SourceCandidate
 from sotrplib.utils.utils import angular_separation
 
@@ -22,8 +21,7 @@ class MockDatabase:
         self.log.info("EmptyMockDatabase.initialized")
 
     def add_source(self, ra: u.Quantity, dec: u.Quantity, name: str):
-        s = self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
-        self.catalog_list.append(s)
+        self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
 
     def get_nearby_source(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
@@ -71,16 +69,15 @@ class MockDatabase:
         )
         return sources
 
-    def get_sources_in_box(self, box: list[list[float]]) -> list[RegisteredSource]:
+    def get_sources_in_box(self, box: list[list[u.Quantity]]) -> list[RegisteredSource]:
         """
         box is [[dec_min, ra_min], [dec_max, ra_max]] in radians
         """
-        box = np.degrees(box)
         sources_in_map = self.cat.get_box(
-            ra_min=box[0][1],
-            ra_max=box[1][1],
-            dec_min=box[0][0],
-            dec_max=box[1][0],
+            ra_min=box[0][1].to(u.deg).value,
+            ra_max=box[1][1].to(u.deg).value,
+            dec_min=box[0][0].to(u.deg).value,
+            dec_max=box[1][0].to(u.deg).value,
         )
         sources = []
         for s in sources_in_map:
@@ -103,14 +100,14 @@ class MockDatabase:
             )
         return sources
 
-    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        if not ProcessableMap.finalized:
-            self.log.warning("MockDatabase.get_sources_in_map.map_not_finalized")
-        map_bounds = input_map.flux.box()
+    def get_sources_in_map(self, input_map: ndmap) -> list[RegisteredSource]:
+        map_bounds = input_map.box() * u.radian
         return self.get_sources_in_box(box=map_bounds)
 
     def get_all_sources(self) -> list[RegisteredSource]:
-        sources = self.get_sources_in_box(box=[[-90, -180], [90, 180]])
+        sources = self.get_sources_in_box(
+            box=[[-90 * u.deg, -180 * u.deg], [90 * u.deg, 180 * u.deg]]
+        )
         return sources
 
 
