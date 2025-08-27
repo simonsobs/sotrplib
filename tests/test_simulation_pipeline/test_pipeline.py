@@ -52,6 +52,7 @@ def test_basic_pipeline(
         maps=[new_map, new_map],
         preprocessors=None,
         postprocessors=None,
+        source_simulators=None,
         forced_photometry=PhotutilsGaussianFitter(sources=sources),
         source_subtractor=None,
         blind_search=None,
