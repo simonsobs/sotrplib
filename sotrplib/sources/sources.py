@@ -34,7 +34,7 @@ class RegisteredSource(BaseSource):
     """
 
     source_id: str | None = None
-    source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown"] | None = None
+    source_type: Literal["extragalactic", "star", "asteroid", "unknown"] | None = None
 
     crossmatches: list[CrossMatch] | None = None
 
