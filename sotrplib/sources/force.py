@@ -1,8 +1,8 @@
 from typing import List, Literal
 
+import numpy as np
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
-from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -22,34 +22,41 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
         self,
         input_map: ProcessableMap,
         sources: List[RegisteredSource],
-    ) -> tuple[list[ForcedPhotometrySource], list[enmap.ndmap]]:
-        return [], []
+    ) -> list[ForcedPhotometrySource]:
+        return []
 
 
 class SimpleForcedPhotometry(ForcedPhotometryProvider):
+    mode: Literal["spline", "nn"]
+
+    def __init__(
+        self,
+        mode: Literal["spline", "nn"],
+    ):
+        self.mode = mode
+
     def force(
         self,
         input_map: ProcessableMap,
         sources: List[RegisteredSource],
-        at_mode: Literal["spline", "nn"] = "nn",
     ):
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
 
         for source in sources:
             flux = input_map.flux.at(
-                [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=at_mode
+                [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
             )
             snr = input_map.snr.at(
-                [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=at_mode
+                [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
             )
             source.flux = AstroPydanticQuantity(u.Quantity(flux, input_map.flux_units))
             source.err_flux = AstroPydanticQuantity(
                 u.Quantity(flux / snr, input_map.flux_units)
             )
-            source.fit_method = "pixell.at"
+            source.fit_method = "nearest_neighbor" if self.mode == "nn" else "spline"
 
-        return sources, []
+        return sources
 
 
 class PhotutilsGaussianFitter(ForcedPhotometryProvider):
@@ -80,7 +87,7 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
     def force(
         self,
         input_map: ProcessableMap,
-    ) -> tuple[list[ForcedPhotometrySource], list[enmap.ndmap]]:
+    ) -> list[ForcedPhotometrySource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = u.Quantity(
             get_fwhm(freq=input_map.frequency, arr=input_map.array), "arcmin"
@@ -102,5 +109,19 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
             debug=True,
             log=self.log,
         )
+        ## workaround until photutils_2D_gauss_fit reutrns forcedphotometry sources.
+        ## convert the sourcecatalog to list of forcedphotometry sources
+        rs: list[ForcedPhotometrySource] = []
+        for i in range(len(sources["fluxJy"])):
+            rsi = ForcedPhotometrySource(
+                ra=sources["RADeg"][i] * u.deg,
+                dec=sources["decDeg"][i] * u.deg,
+                flux=sources["fluxJy"][i] * u.Jy,
+            )
+            if thumbnails:
+                rsi.thumbnail = np.asarray(thumbnails[i])
+                rsi.thumbnail_res = input_map.map_resolution
+                rsi.thumbnail_unit = input_map.flux_units
 
-        return sources, thumbnails
+            rs.append(rsi)
+        return rs

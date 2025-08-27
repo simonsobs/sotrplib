@@ -7,7 +7,7 @@ import datetime
 import pytest
 from astropy import units as u
 
-from sotrplib.maps.core import SimulatedMap
+from sotrplib.sims.maps import SimulatedMap
 from sotrplib.sims.sources.core import (
     RandomSourceSimulation,
     RandomSourceSimulationParameters,

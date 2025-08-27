@@ -1,10 +1,15 @@
 from typing import Literal, Optional
 
+import numpy as np
 import structlog
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
+from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
+from numpydantic import NDArray
+from pixell import reproject
 from pydantic import BaseModel, PrivateAttr
 from structlog.types import FilteringBoundLogger
+
+from sotrplib.maps.core import ProcessableMap
 
 
 class BaseSource(BaseModel):
@@ -77,11 +82,47 @@ class ForcedPhotometrySource(RegisteredSource):
     """
 
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
-
     fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
     fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
-    fit_method: Literal["2d_gaussian", "pixell.at", "other"] = "2d_gaussian"
+    fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
     fit_params: dict | None = None
+    thumbnail: NDArray | None = None
+    thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
+    thumbnail_unit: AstroPydanticUnit | None = None
+    _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
+
+    def extract_thumbnail(
+        self,
+        input_map: ProcessableMap,
+        thumb_width: AstroPydanticQuantity[u.deg] = 0.25 * u.deg,
+        reproject_thumb=False,
+    ):
+        """
+        Extract a thumbnail from the source's map.
+        """
+        if reproject_thumb:
+            thumb = reproject.thumbnails(
+                input_map.flux,
+                [self.dec.to(u.rad).value, self.ra.to(u.rad).value],
+                r=thumb_width.to(u.rad).value,
+                res=input_map.map_resolution.to(u.rad).value,
+            )
+        else:
+            thumb = input_map.flux.submap(
+                [
+                    [
+                        self.dec.to(u.rad).value - thumb_width.to(u.rad).value,
+                        self.ra.to(u.rad).value - thumb_width.to(u.rad).value,
+                    ],
+                    [
+                        self.dec.to(u.rad).value + thumb_width.to(u.rad).value,
+                        self.ra.to(u.rad).value + thumb_width.to(u.rad).value,
+                    ],
+                ],
+            )
+        self.thumbnail_res = input_map.map_resolution
+        self.thumbnail_unit = input_map.flux_units
+        self.thumbnail = np.asarray(thumb)
 
 
 class BlindSearchSource(BaseSource):

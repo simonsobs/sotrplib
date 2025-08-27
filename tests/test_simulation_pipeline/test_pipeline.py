@@ -6,9 +6,9 @@ import structlog
 from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
-from sotrplib.maps.core import SimulatedMap
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import SimpleCatalogSifter
+from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import SourceCandidateCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import PhotutilsGaussianFitter

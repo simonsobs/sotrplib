@@ -6,12 +6,12 @@ from sotrplib.sources.force import EmptyForcedPhotometry, SimpleForcedPhotometry
 def test_simple_forced_photometry(map_with_single_source):
     input_map, sources = map_with_single_source
 
-    forced_photometry = SimpleForcedPhotometry()
+    forced_photometry = SimpleForcedPhotometry(mode="nn")
 
-    results, _ = forced_photometry.force(input_map=input_map, sources=[])
+    results = forced_photometry.force(input_map=input_map, sources=[])
     assert results == []
 
-    results, _ = forced_photometry.force(
+    results = forced_photometry.force(
         input_map=input_map, sources=[s.to_forced_photometry_source() for s in sources]
     )
 
@@ -19,13 +19,13 @@ def test_simple_forced_photometry(map_with_single_source):
     assert results[0].flux.value == pytest.approx(
         sources[0].flux, rel=2e-1 * sources[0].flux
     )
-    assert results[0].fit_method == "pixell.at"
+    assert results[0].fit_method == "nearest_neighbor"
 
 
 def test_empty_forced_photometry(map_with_single_source):
     input_map, sources = map_with_single_source
 
     forced_photometry = EmptyForcedPhotometry()
-    results, _ = forced_photometry.force(input_map=input_map, sources=sources)
+    results = forced_photometry.force(input_map=input_map, sources=sources)
 
     assert results == []

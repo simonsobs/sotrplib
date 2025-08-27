@@ -17,13 +17,12 @@ from sotrplib.sources.sources import (
 
 
 class ForcedPhotometryProvider(ABC):
-    # TODO: consdier just putting the thumbnail in the SourceCandidate if we think it is actually useful
-    # and we will likely want to send that up to the lightcurve server anyway.
+    # thumbnail now attribute of ForcedPhotometrySource
     @abstractmethod
     def force(
         self, input_map: ProcessableMap, sources: List[RegisteredSource]
-    ) -> tuple[list[ForcedPhotometrySource], list[enmap.ndmap]]:
-        return [], []
+    ) -> list[ForcedPhotometrySource]:
+        return []
 
 
 class BlindSearchProvider(ABC):
@@ -32,4 +31,4 @@ class BlindSearchProvider(ABC):
         self,
         input_map: ProcessableMap,
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
-        return
+        return [], []
