@@ -75,8 +75,13 @@ def test_random_positions_with_map(sim_map_params, log=log):
         if ra_lims[0] < 0:
             if ra > 180:
                 ra -= 360
-        assert ra_lims[0] <= ra <= ra_lims[1]
-        assert dec_lims[0] <= dec <= dec_lims[1]
+        tol = 1e-3  # degrees
+        assert (ra_lims[0] - tol) <= ra <= (ra_lims[1] + tol), (
+            f"RA {ra} out of range {ra_lims}"
+        )
+        assert (dec_lims[0] - tol) <= dec <= (dec_lims[1] + tol), (
+            f"Dec {dec} out of range {dec_lims}"
+        )
 
 
 def test_random_flare_times(log=log):

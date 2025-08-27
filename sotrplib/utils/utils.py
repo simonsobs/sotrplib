@@ -497,7 +497,7 @@ def angular_separation(ra1, dec1, ra2, dec2):
     c2 = SkyCoord(ra2, dec2, unit=(u.deg, u.deg), frame="icrs")
     sep = c1.separation(c2).to(u.deg)
 
-    return sep.value
+    return sep
 
 
 def fit_poss(rho, kappa, poss, rmax=8 * pixell_utils.arcmin, tol=1e-4, snmin=3):

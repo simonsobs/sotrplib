@@ -75,8 +75,8 @@ class ProcessableMap(ABC):
 
     map_resolution: u.Quantity | None
 
-    __rho: enmap.ndmap | None = None
-    __kappa: enmap.ndmap | None = None
+    __rho: ndmap | None = None
+    __kappa: ndmap | None = None
 
     @abstractmethod
     def build(self):
@@ -173,7 +173,6 @@ class ProcessableMap(ABC):
         self.map_resolution = res * u.degree
 
         return self.map_resolution
-
 
     @abstractmethod
     def finalize(self):
@@ -572,10 +571,10 @@ class CoaddedMap(ProcessableMap):
         self,
         source_maps: list[ProcessableMap],
         log: FilteringBoundLogger | None = None,
-        time_start: enmap.ndmap | None = None,
-        time_mean: enmap.ndmap | None = None,
-        time_end: enmap.ndmap | None = None,
-        map_depth: enmap.ndmap | None = None,
+        time_start: ndmap | None = None,
+        time_mean: ndmap | None = None,
+        time_end: ndmap | None = None,
+        map_depth: ndmap | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         input_map_times: list[float] | None = None,
@@ -654,7 +653,7 @@ class CoaddedMap(ProcessableMap):
         return
 
     def get_time_and_mapdepth(self, new_map):
-        if isinstance(new_map.time_mean, enmap.ndmap):
+        if isinstance(new_map.time_mean, ndmap):
             if isinstance(self.time_mean, type(None)):
                 self.time_mean = (
                     new_map.time_mean.copy() + new_map.start_time.timestamp()

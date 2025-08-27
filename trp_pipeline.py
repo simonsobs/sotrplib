@@ -17,7 +17,7 @@ from sotrplib.sifter.core import DefaultSifter
 from sotrplib.sifter.crossmatch import crossmatch_position_and_flux
 from sotrplib.sims.sim_maps import inject_simulated_sources, make_noise_map
 from sotrplib.sims.sim_utils import get_sim_map_group, load_config_yaml
-from sotrplib.source_catalog.database import SourceCatalogDatabase
+from sotrplib.source_catalog.database import MockACTDatabase, SourceCatalogDatabase
 from sotrplib.source_catalog.source_catalog import load_catalog
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import (
@@ -187,6 +187,12 @@ logger = structlog.get_logger()
 logger = logger.bind(args=args)
 logger.info("pipeline.parsed")
 
+## load act source catalog into socat
+socat_db = MockACTDatabase(
+    args.source_catalog,
+    return_catalog=True,
+    log=logger,
+)
 
 cataloged_sources_db = SourceCatalogDatabase(args.output_dir + "so_source_catalog.csv")
 cataloged_sources_db.read_database()
@@ -548,6 +554,9 @@ for freq_arr_idx in indexed_map_groups:
         catalog_matches = sifter_result.source_candidates
         transient_candidates = sifter_result.transient_candidates
         noise_candidates = sifter_result.noise_candidates
+
+        socat_db.update_catalog(catalog_matches)
+        socat_db.update_catalog(transient_candidates)
 
         if args.sim:
             ## make sure the simulated sources are properly masked, and the injected transients are recovered
