@@ -3,7 +3,7 @@ from typing import Literal, Optional
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, PrivateAttr
 from structlog.types import FilteringBoundLogger
 
 
@@ -41,9 +41,7 @@ class RegisteredSource(BaseSource):
     extended: bool | None = None
     err_ra: AstroPydanticQuantity[u.deg] | None = None
     err_dec: AstroPydanticQuantity[u.deg] | None = None
-    log: FilteringBoundLogger | None = Field(default_factory=structlog.get_logger)
-
-    model_config = {"arbitrary_types_allowed": True}
+    _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
     def add_crossmatch(self, crossmatch: CrossMatch):
         """
@@ -53,7 +51,7 @@ class RegisteredSource(BaseSource):
         if self.crossmatches is None:
             self.crossmatches = []
         self.crossmatches.append(crossmatch)
-        self.log.info("registeredsource.added_crossmatch", crossmatch=crossmatch)
+        self._log.info("registeredsource.added_crossmatch", crossmatch=crossmatch)
 
     def update_crossmatches(
         self,
@@ -93,29 +91,15 @@ class BlindSearchSource(BaseSource):
     These don't a priori have a catalog counterpart.
     """
 
-    def __init__(
-        self,
-        ra: u.Quantity,
-        dec: u.Quantity,
-        flux: u.Quantity | None = None,
-        err_flux: u.Quantity | None = None,
-        err_ra: u.Quantity | None = None,
-        err_dec: u.Quantity | None = None,
-        extract_algorithm: Literal["photutils_segmentation"]
-        | None = "photutils_segmentation",
-        extract_params: dict | None = None,
-        fit_params: dict | None = None,
-        log: FilteringBoundLogger | None = None,
-    ):
-        super().__init__(ra, dec, flux)
-        self.err_flux = err_flux
-        self.err_ra = err_ra
-        self.err_dec = err_dec
-        self.extract_algorithm = extract_algorithm
-        self.extract_params = extract_params
-        self.fit_params = fit_params
-        self.log = log
-        self.log.info("blindsearchsource.created", BlindSearchSource=self)
+    err_flux: AstroPydanticQuantity[u.mJy] | None = None
+    err_ra: AstroPydanticQuantity[u.deg] | None = None
+    err_dec: AstroPydanticQuantity[u.deg] | None = None
+    extract_algorithm: Literal["photutils_segmentation"] | None = (
+        "photutils_segmentation"
+    )
+    extract_params: dict | None = None
+    fit_params: dict | None = None
+    _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
 
 class SourceCandidate(BaseModel):
