@@ -36,6 +36,23 @@ def test_socat_mock_db(dummy_socat_db):
     assert near_source.dec == 10.0 * u.deg
     assert near_source.source_id == "0"
 
+    db.add_source(ra=12.0 * u.deg, dec=10.0 * u.deg, name="test_source_2")
+    nearby = db.get_nearby_source(ra=10.0 * u.deg, dec=10.0 * u.deg, radius=1.0 * u.deg)
+    assert len(nearby) == 1
+    near_source = nearby[0]
+    assert near_source.crossmatches[0].name == "test_source_1"
+    assert near_source.ra == 10.0 * u.deg
+    assert near_source.dec == 10.0 * u.deg
+    assert near_source.source_id == "0"
+
+    nearby = db.get_nearby_source(ra=12.0 * u.deg, dec=10.0 * u.deg, radius=1.0 * u.deg)
+    assert len(nearby) == 1
+    near_source = nearby[0]
+    assert near_source.crossmatches[0].name == "test_source_2"
+    assert near_source.ra == 12.0 * u.deg
+    assert near_source.dec == 10.0 * u.deg
+    assert near_source.source_id == "1"
+
 
 def test_simple_source_catalog():
     outside_source = SourceCandidate(
