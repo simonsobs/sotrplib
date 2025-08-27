@@ -5,6 +5,7 @@ import structlog
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from sotrplib.config.source_simulation import AllSourceSimulationConfigTypes
 from sotrplib.handlers.basic import PipelineRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
 
     postprocessors: list[AllPostprocessorConfigTypes] = []
     "Map post-processors"
+
+    source_simulators: list[AllSourceSimulationConfigTypes] = []
+    "Any source simulators to add sources to the map"
 
     forced_photometry: AllForcedPhotometryConfigTypes = Field(
         default_factory=EmptyPhotometryConfig
@@ -67,11 +71,14 @@ class Settings(BaseSettings):
     def to_dependencies(self) -> dict[str, Any]:
         log = structlog.get_logger()
 
-        return {
+        contents = {
             "maps": [x.to_map(log=log) for x in self.maps],
             "preprocessors": [x.to_preprocessor(log=log) for x in self.preprocessors],
             "postprocessors": [
                 x.to_postprocessor(log=log) for x in self.postprocessors
+            ],
+            "source_simulators": [
+                x.to_simulator(log=log) for x in self.source_simulators
             ],
             "forced_photometry": self.forced_photometry.to_forced_photometry(log=log),
             "source_subtractor": self.source_subtractor.to_source_subtractor(log=log),
@@ -79,6 +86,8 @@ class Settings(BaseSettings):
             "sifter": self.sifter.to_sifter(log=log),
             "outputs": [x.to_output(log=log) for x in self.outputs],
         }
+
+        return contents
 
     def to_basic(self) -> PipelineRunner:
         return PipelineRunner(**self.to_dependencies())

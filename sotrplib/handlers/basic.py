@@ -8,6 +8,7 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
+from sotrplib.sims.sources.core import SourceSimulation
 from sotrplib.sources.core import (
     BlindSearchProvider,
     EmptyBlindSearch,
@@ -23,6 +24,7 @@ class PipelineRunner:
         maps: list[ProcessableMap],
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
+        source_simulators: list[SourceSimulation] | None,
         forced_photometry: ForcedPhotometryProvider | None,
         source_subtractor: SourceSubtractor | None,
         blind_search: BlindSearchProvider | None,
@@ -32,6 +34,7 @@ class PipelineRunner:
         self.maps = maps
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
+        self.source_simulators = source_simulators or []
         self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()
@@ -52,8 +55,14 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
+            for_forced_photometry = []
+
+            for simulator in self.source_simulators:
+                input_map, additional_sources = simulator.simulate(input_map=input_map)
+                for_forced_photometry.extend(additional_sources)
+
             forced_photometry_candidates, _ = self.forced_photometry.force(
-                input_map=input_map
+                input_map=input_map, extra_sources=for_forced_photometry
             )
 
             source_subtracted_map = self.source_subtractor.subtract(

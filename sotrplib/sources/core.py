@@ -23,13 +23,13 @@ class ForcedPhotometryProvider(ABC):
     # and we will likely want to send that up to the lightcurve server anyway.
     @abstractmethod
     def force(
-        self, input_map: ProcessableMap
+        self, input_map: ProcessableMap, extra_sources: list[SourceCandidate] | None
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
         return
 
 
 class EmptyForcedPhotometry(ForcedPhotometryProvider):
-    def force(self, input_map):
+    def force(self, input_map, extra_sources):
         return [], []
 
 
@@ -59,7 +59,7 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
         self.log = log or structlog.get_logger()
 
     def force(
-        self, input_map: ProcessableMap
+        self, input_map: ProcessableMap, extra_sources: list[SourceCandidate] | None
     ) -> tuple[list[SourceCandidate], list[enmap.ndmap]]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = u.Quantity(
@@ -69,10 +69,16 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
         size_deg = fwhm.to_value("degree")
         fwhm_arcmin = fwhm.to_value("arcmin")
 
+        extra_sources = extra_sources or []
+
+        log = self.log.bind(extra_sources=len(extra_sources))
+
+        log.info("forced_photometry.photutils_gaussian.begin")
+
         sources, thumbnails = photutils_2D_gauss_fit(
             flux_map=input_map.flux,
             snr_map=input_map.snr,
-            source_catalog=self.sources,
+            source_catalog=self.sources + extra_sources,
             flux_lim_fit_centroid=self.flux_limit_centroid.to_value("Jy"),
             size_deg=size_deg,
             fwhm_arcmin=fwhm_arcmin,
@@ -80,7 +86,7 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
             reproject_thumb=self.reproject_thumbnails,
             return_thumbnails=self.return_thumbnails,
             debug=True,
-            log=self.log,
+            log=log,
         )
 
         return sources, thumbnails

@@ -1,10 +1,16 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
+from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.core import EmptyForcedPhotometry, ForcedPhotometryProvider
+from sotrplib.sources.core import (
+    EmptyForcedPhotometry,
+    ForcedPhotometryProvider,
+    PhotutilsGaussianFitter,
+)
 
 
 class ForcedPhotometryConfig(BaseModel, ABC):
@@ -26,4 +32,19 @@ class EmptyPhotometryConfig(ForcedPhotometryConfig):
         return EmptyForcedPhotometry()
 
 
-AllForcedPhotometryConfigTypes = EmptyPhotometryConfig
+class PhotutilsGaussianFitterConfig(ForcedPhotometryConfig):
+    photometry_type: Literal["photutils"] = "photutils"
+    # TODO actually support passing sources here!
+    flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
+
+    def to_forced_photometry(
+        self, log: FilteringBoundLogger | None = None
+    ) -> PhotutilsGaussianFitter:
+        return PhotutilsGaussianFitter(
+            # TODO: Support non-simulated sources
+            sources=[],
+            flux_limit_centroid=self.flux_limit_centroid,
+        )
+
+
+AllForcedPhotometryConfigTypes = EmptyPhotometryConfig | PhotutilsGaussianFitterConfig

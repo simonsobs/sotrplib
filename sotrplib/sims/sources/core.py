@@ -9,7 +9,9 @@ from pathlib import Path
 import numpy as np
 import structlog
 from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pixell import enmap
+from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -144,16 +146,17 @@ class DatabaseSourceSimulation(SourceSimulation):
         ), injected_sources
 
 
-@dataclass
-class RandomSourceSimulationParameters:
+class RandomSourceSimulationParameters(BaseModel):
     n_sources: int
     "The number of sources to inject"
-    min_flux: u.Quantity
+    min_flux: AstroPydanticQuantity[u.Jy]
     "Minimum flux for the sources"
-    max_flux: u.Quantity
+    max_flux: AstroPydanticQuantity[u.Jy]
     "Maximum flux for the sources"
     fwhm_uncertainty_frac: float
     "Uncertainty in the FWHM"
+    fraction_return: float
+    "The fraction of sources to return (i.e. the fraction that are available to the forced photometry)"
 
 
 class RandomSourceSimulation(SourceSimulation):
@@ -208,7 +211,9 @@ class RandomSourceSimulation(SourceSimulation):
             snr=snr,
             time=input_map.time_mean,
             original_map=input_map,
-        ), injected_sources
+        ), injected_sources[
+            : int(len(injected_sources) * self.parameters.fraction_return)
+        ]
 
 
 class TransientDatabaseSourceSimulation(SourceSimulation):
