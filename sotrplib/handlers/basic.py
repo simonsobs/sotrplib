@@ -8,12 +8,9 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
-from sotrplib.sources.core import (
-    BlindSearchProvider,
-    EmptyBlindSearch,
-    EmptyForcedPhotometry,
-    ForcedPhotometryProvider,
-)
+from sotrplib.sources.blind import EmptyBlindSearch
+from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
+from sotrplib.sources.force import EmptyForcedPhotometry
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 

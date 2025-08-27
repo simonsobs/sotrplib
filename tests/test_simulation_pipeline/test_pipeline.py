@@ -10,7 +10,8 @@ from sotrplib.maps.core import SimulatedMap
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import SimpleCatalogSifter
 from sotrplib.source_catalog.core import SourceCandidateCatalog
-from sotrplib.sources.core import PhotutilsGaussianFitter, SigmaClipBlindSearch
+from sotrplib.sources.blind import SigmaClipBlindSearch
+from sotrplib.sources.force import PhotutilsGaussianFitter
 from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
 from sotrplib.sources.sources import SourceCandidate
 

@@ -213,6 +213,7 @@ def convert_photutils_qtable_to_json(
     for key in json_cat_out:
         json_cat_out[key] = np.array(json_cat_out[key])
     flux = json_cat_out.pop("flux")
+    ## this will be biased by the source
     json_cat_out["err_fluxJy"] = imap.std() * np.ones_like(flux)
     json_cat_out["fluxJy"] = flux
     json_cat_out["forced"] = np.ones_like(flux)

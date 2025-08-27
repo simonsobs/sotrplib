@@ -29,10 +29,10 @@ def test_registered_source(dummy_source):
         dec=dummy_source.dec,
         flux=dummy_source.flux,
         source_id="test_id",
-        source_type="Unknown",
+        source_type="unknown",
     )
     assert source.source_id == "test_id"
-    assert source.source_type == "Unknown"
+    assert source.source_type == "unknown"
     assert source.ra == dummy_source.ra
     assert source.dec == dummy_source.dec
     assert source.flux == dummy_source.flux
@@ -44,10 +44,10 @@ def test_update_crossmatch(dummy_source):
         dec=dummy_source.dec,
         flux=dummy_source.flux,
         source_id="test_id",
-        source_type="Unknown",
+        source_type="unknown",
     )
     assert source.source_id == "test_id"
-    assert source.source_type == "Unknown"
+    assert source.source_type == "unknown"
     assert source.ra == dummy_source.ra
     assert source.dec == dummy_source.dec
     assert source.flux == dummy_source.flux

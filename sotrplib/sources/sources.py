@@ -149,3 +149,19 @@ class SourceCandidate(BaseModel):
             self.crossmatch_probabilities.extend([None] * len(match_names))
 
         return
+
+    def to_forced_photometry_source(self) -> ForcedPhotometrySource:
+        """
+        Convert the SourceCandidate to a ForcedPhotometrySource.
+        """
+        return ForcedPhotometrySource(
+            source_id=self.sourceID,
+            flux=u.Quantity(self.flux, "mJy"),
+            err_flux=u.Quantity(self.err_flux, "mJy"),
+            ra=u.Quantity(self.ra, "deg"),
+            dec=u.Quantity(self.dec, "deg"),
+            err_ra=u.Quantity(self.err_ra, "deg"),
+            err_dec=u.Quantity(self.err_dec, "deg"),
+            fwhm_ra=u.Quantity(self.fwhm_a, "arcmin") if self.fwhm_a else None,
+            fwhm_dec=u.Quantity(self.fwhm_b, "arcmin") if self.fwhm_b else None,
+        )
