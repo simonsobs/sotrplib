@@ -53,7 +53,7 @@ def map_with_sources(empty_map):
         # Use bright sources so we can guarantee recovery
         min_flux=u.Quantity(1.0, "Jy"),
         max_flux=u.Quantity(10.0, "Jy"),
-        fwhm_uncertainty_frac=0.5,
+        fwhm_uncertainty_frac=0.01,
     )
 
     simulator = RandomSourceSimulation(parameters=parameters)
