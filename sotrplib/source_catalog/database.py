@@ -2,9 +2,179 @@ import os
 import threading
 
 import pandas as pd
+import structlog
+from astropy import units as u
+from astropy.io import fits
 from filelock import FileLock  # Import FileLock and Timeout for file-based locking
+from pixell.enmap import ndmap
+from socat.client import mock
+from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import CrossMatch, RegisteredSource, SourceCandidate
+from sotrplib.utils.utils import angular_separation
+
+
+class MockDatabase:
+    def __init__(self, log: FilteringBoundLogger | None = None):
+        self.cat = mock.Client()
+        self.log = log or structlog.get_logger()
+        self.log.info("EmptyMockDatabase.initialized")
+
+    def add_source(self, ra: u.Quantity, dec: u.Quantity, name: str):
+        self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
+
+    def get_nearby_source(
+        self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
+    ):
+        ra = ra.to(u.deg).value
+        dec = dec.to(u.deg).value
+        radius = radius.to(u.deg).value
+        ## ra,dec,radius in same units. default is decimal degrees
+        nearby = self.cat.get_box(
+            ra_min=ra - radius,
+            ra_max=ra + radius,
+            dec_min=dec - radius,
+            dec_max=dec + radius,
+        )
+        self.log.info(
+            "MockDatabase.get_nearby_source",
+            ra=ra,
+            dec=dec,
+            radius=radius,
+            nearby=nearby,
+        )
+        sources = []
+        if nearby:
+            sources = [
+                RegisteredSource(
+                    ra=s.ra * u.deg,
+                    dec=s.dec * u.deg,
+                    source_id=str(s.id),
+                    crossmatches=[
+                        CrossMatch(
+                            name=str(s.name),
+                            probability=1.0,
+                            distance=angular_separation(ra, dec, s.ra, s.dec),
+                            frequency=90 * u.GHz,
+                            catalog_name="mock",
+                            catalog_idx=None,
+                        )
+                    ],
+                )
+                for s in nearby
+            ]
+        self.log.info(
+            "MockDatabase.get_nearby_source.nearby_sources",
+            sources=sources,
+        )
+        return sources
+
+    def get_sources_in_box(self, box: list[list[u.Quantity]]) -> list[RegisteredSource]:
+        """
+        box is [[dec_min, ra_min], [dec_max, ra_max]] in radians
+        """
+        sources_in_map = self.cat.get_box(
+            ra_min=box[0][1].to(u.deg).value,
+            ra_max=box[1][1].to(u.deg).value,
+            dec_min=box[0][0].to(u.deg).value,
+            dec_max=box[1][0].to(u.deg).value,
+        )
+        sources = []
+        for s in sources_in_map:
+            sources.append(
+                RegisteredSource(
+                    ra=s.ra * u.deg,
+                    dec=s.dec * u.deg,
+                    source_id=str(s.id),
+                    crossmatches=[
+                        CrossMatch(
+                            name=str(s.name),
+                            probability=1.0,
+                            distance=0.0 * u.deg,
+                            frequency=90 * u.GHz,
+                            catalog_name="mock",
+                            catalog_idx=s.id,
+                        )
+                    ],
+                )
+            )
+        return sources
+
+    def get_sources_in_map(self, input_map: ndmap) -> list[RegisteredSource]:
+        map_bounds = input_map.box() * u.radian
+        return self.get_sources_in_box(box=map_bounds)
+
+    def get_all_sources(self) -> list[RegisteredSource]:
+        sources = self.get_sources_in_box(
+            box=[[-90 * u.deg, -180 * u.deg], [90 * u.deg, 180 * u.deg]]
+        )
+        return sources
+
+
+class MockACTDatabase:
+    def __init__(
+        self,
+        db_path: str,
+        log: FilteringBoundLogger | None = None,
+        catalog_list: list = [],
+    ):
+        self.log = log or structlog.get_logger()
+        hdu = fits.open(db_path)
+        mock_cat = hdu[1]
+        cat = MockDatabase()
+        self.log.info("MockACTDatabase.loading_act_catalog")
+        catalog_list = []
+        for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
+            ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
+            ra -= 180  # Convention difference
+            name = mock_cat.data["name"][i]
+            catalog_list.append(
+                RegisteredSource(
+                    ra=ra * u.deg,
+                    dec=dec * u.deg,
+                    source_id="%s"
+                    % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
+                    crossmatches=[
+                        CrossMatch(
+                            name=name,
+                            probability=1.0,
+                            distance=0.0 * u.deg,
+                            frequency=90 * u.GHz,
+                            catalog_name="ACT",
+                            catalog_idx=i,
+                        )
+                    ],
+                )
+            )
+            cat.add_source(ra=ra * u.deg, dec=dec * u.deg, name=name)
+        self.cat = cat
+        self.log.info(
+            "MockACTDatabase.loaded_act_catalog",
+            n_sources=len(mock_cat.data["raDeg"]),
+        )
+        self.catalog_list = catalog_list
+
+    def update_catalog(self, new_sources: list, match_radius=0.1):
+        """Update the catalog with new sources."""
+        for source in new_sources:
+            matches = self.cat.get_nearby_source(
+                source.ra, source.dec, radius=match_radius
+            )
+            if not matches:
+                s = self.cat.add_source(
+                    ra=source.ra, dec=source.dec, name=source.source_id
+                )
+                self.catalog_list.append(s)
+                self.log.info(
+                    "MockACTDatabase.update_catalog.new_source_added", source=s
+                )
+            else:
+                self.log.info(
+                    "MockACTDatabase.update_catalog.existing_source_found",
+                    source=source,
+                    matching_sources=matches,
+                )
+                pass
 
 
 class SourceCatalogDatabase:
