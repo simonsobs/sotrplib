@@ -50,7 +50,6 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.finalized = original_map.finalized
         self.map_resolution = original_map.map_resolution
 
-
         return
 
     def build(self):

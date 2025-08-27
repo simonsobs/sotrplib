@@ -1,0 +1,15 @@
+{
+    "maps": [
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-01",
+            "observation_end": "2025-01-02"
+        }
+    ],
+    "outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

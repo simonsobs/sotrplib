@@ -3,7 +3,6 @@ Core map objects.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -11,9 +10,11 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.units import Quantity, Unit
+from astropydantic import AstroPydanticQuantity
 from numpy.typing import ArrayLike
 from pixell import enmap
 from pixell.enmap import ndmap
+from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sims import sim_maps
@@ -188,19 +189,18 @@ class ProcessableMap(ABC):
         return
 
 
-@dataclass
-class SimulationParameters:
+class SimulationParameters(BaseModel):
     """
     Sky simulation parameters (geometry and noise level).
     Defaults are given to be the center of the Deep56 ACT field.
     """
 
-    center_ra: u.Quantity = u.Quantity(16.3, "deg")
-    center_dec: u.Quantity = u.Quantity(-1.8, "deg")
-    width_ra: u.Quantity = u.Quantity(2.0, "deg")
-    width_dec: u.Quantity = u.Quantity(1.0, "deg")
-    resolution: u.Quantity = u.Quantity(0.5, "arcmin")
-    map_noise: u.Quantity = u.Quantity(0.01, "Jy")
+    center_ra: AstroPydanticQuantity[u.deg] = u.Quantity(16.3, "deg")
+    center_dec: AstroPydanticQuantity[u.deg] = u.Quantity(-1.8, "deg")
+    width_ra: AstroPydanticQuantity[u.deg] = u.Quantity(2.0, "deg")
+    width_dec: AstroPydanticQuantity[u.deg] = u.Quantity(1.0, "deg")
+    resolution: AstroPydanticQuantity[u.arcmin] = u.Quantity(0.5, "arcmin")
+    map_noise: AstroPydanticQuantity[u.Jy] = u.Quantity(0.01, "Jy")
 
 
 class SimulatedMap(ProcessableMap):
@@ -211,8 +211,6 @@ class SimulatedMap(ProcessableMap):
         frequency: str | None = None,
         array: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
-        box: ArrayLike | None = None,
-        include_half_pixel_offset: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         """
@@ -228,17 +226,11 @@ class SimulatedMap(ProcessableMap):
             The array that this map represents.
         simulation_parameters: SimulationParameters, optional
             Parameters for the simulation. If None, defaults will be used.
-        box: np.ndarray, optional
-            Optional sky box to simulate in. Otherwise covers the whole sky.
-        include_half_pixel_offset: bool, False
-            Include the half-pixel offset in pixell constructors.
         log: FilteringBoundLogger, optional
             Logger to use. If None, a new one will be created.
         """
         self.observation_start = observation_start
         self.observation_end = observation_end
-        self.box = box
-        self.include_half_pixel_offset = include_half_pixel_offset
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
 
@@ -310,8 +302,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
         self,
         resolution: Quantity,
         geometry_source_map: Path,
-        start_time: datetime | None,
-        end_time: datetime | None,
+        observation_start: datetime | None,
+        observation_end: datetime | None,
         time_map_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -341,8 +333,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
             Logger to use. If None, a new one will be created.
         """
         self.resolution = resolution
-        self.observation_start = start_time
-        self.observation_end = end_time
+        self.observation_start = observation_start
+        self.observation_end = observation_end
 
         self.map_noise = map_noise
         self.geometry_source_map = geometry_source_map
@@ -350,12 +342,16 @@ class SimulatedMapFromGeometry(ProcessableMap):
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
 
-        if time_map_filename is None and start_time is None and end_time is None:
-            raise RuntimeError(
+        if (
+            time_map_filename is None
+            and observation_start is None
+            and observation_end is None
+        ):
+            raise ValueError(
                 "One of time_map_filename or start_time and end_time must be provided"
             )
 
-        self.observation_length = end_time - start_time
+        self.observation_length = observation_end - observation_start
         self.log = log or structlog.get_logger()
 
     def build(self):
