@@ -4,7 +4,6 @@ unknown sources in a map (blind search)
 """
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from pixell import enmap
 
@@ -20,7 +19,7 @@ class ForcedPhotometryProvider(ABC):
     # thumbnail now attribute of ForcedPhotometrySource
     @abstractmethod
     def force(
-        self, input_map: ProcessableMap, sources: List[RegisteredSource]
+        self, input_map: ProcessableMap, sources: list[RegisteredSource]
     ) -> list[ForcedPhotometrySource]:
         return []
 
