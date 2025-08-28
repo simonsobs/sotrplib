@@ -1,10 +1,15 @@
 from typing import Literal, Optional
 
+import numpy as np
 import structlog
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
+from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
+from numpydantic import NDArray
+from pixell import reproject
 from pydantic import BaseModel, PrivateAttr
 from structlog.types import FilteringBoundLogger
+
+from sotrplib.maps.core import ProcessableMap
 
 
 class BaseSource(BaseModel):
@@ -34,7 +39,7 @@ class RegisteredSource(BaseSource):
     """
 
     source_id: str | None = None
-    source_type: Literal["Extragalactic", "Star", "Asteroid", "Unknown"] | None = None
+    source_type: Literal["extragalactic", "star", "asteroid", "unknown"] | None = None
 
     crossmatches: list[CrossMatch] | None = None
 
@@ -77,11 +82,47 @@ class ForcedPhotometrySource(RegisteredSource):
     """
 
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
-
     fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
     fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
-    fit_method: Literal["2d_gaussian", "pixell.at", "other"] = "2d_gaussian"
+    fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
     fit_params: dict | None = None
+    thumbnail: NDArray | None = None
+    thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
+    thumbnail_unit: AstroPydanticUnit | None = None
+    _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
+
+    def extract_thumbnail(
+        self,
+        input_map: ProcessableMap,
+        thumb_width: AstroPydanticQuantity[u.deg] = 0.25 * u.deg,
+        reproject_thumb=False,
+    ):
+        """
+        Extract a thumbnail from the source's map.
+        """
+        if reproject_thumb:
+            thumb = reproject.thumbnails(
+                input_map.flux,
+                [self.dec.to(u.rad).value, self.ra.to(u.rad).value],
+                r=thumb_width.to(u.rad).value,
+                res=input_map.map_resolution.to(u.rad).value,
+            )
+        else:
+            thumb = input_map.flux.submap(
+                [
+                    [
+                        self.dec.to(u.rad).value - thumb_width.to(u.rad).value,
+                        self.ra.to(u.rad).value - thumb_width.to(u.rad).value,
+                    ],
+                    [
+                        self.dec.to(u.rad).value + thumb_width.to(u.rad).value,
+                        self.ra.to(u.rad).value + thumb_width.to(u.rad).value,
+                    ],
+                ],
+            )
+        self.thumbnail_res = input_map.map_resolution
+        self.thumbnail_unit = input_map.flux_units
+        self.thumbnail = np.asarray(thumb)
 
 
 class BlindSearchSource(BaseSource):
@@ -149,3 +190,19 @@ class SourceCandidate(BaseModel):
             self.crossmatch_probabilities.extend([None] * len(match_names))
 
         return
+
+    def to_forced_photometry_source(self) -> ForcedPhotometrySource:
+        """
+        Convert the SourceCandidate to a ForcedPhotometrySource.
+        """
+        return ForcedPhotometrySource(
+            source_id=self.sourceID,
+            flux=u.Quantity(self.flux, "mJy"),
+            err_flux=u.Quantity(self.err_flux, "mJy"),
+            ra=u.Quantity(self.ra, "deg"),
+            dec=u.Quantity(self.dec, "deg"),
+            err_ra=u.Quantity(self.err_ra, "deg"),
+            err_dec=u.Quantity(self.err_dec, "deg"),
+            fwhm_ra=u.Quantity(self.fwhm_a, "arcmin") if self.fwhm_a else None,
+            fwhm_dec=u.Quantity(self.fwhm_b, "arcmin") if self.fwhm_b else None,
+        )
