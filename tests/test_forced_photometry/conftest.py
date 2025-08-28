@@ -37,6 +37,7 @@ def map_with_single_source(empty_map):
         min_flux=u.Quantity(9.9999, "Jy"),
         max_flux=u.Quantity(10.0001, "Jy"),
         fwhm_uncertainty_frac=0.01,
+        fraction_return=1.0,
     )
 
     simulator = RandomSourceSimulation(parameters=parameters)
@@ -54,6 +55,7 @@ def map_with_sources(empty_map):
         min_flux=u.Quantity(9.999, "Jy"),
         max_flux=u.Quantity(10.001, "Jy"),
         fwhm_uncertainty_frac=0.01,
+        fraction_return=1.0,
     )
 
     simulator = RandomSourceSimulation(parameters=parameters)

@@ -85,8 +85,7 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
         self.log = log or get_logger()
 
     def force(
-        self,
-        input_map: ProcessableMap,
+        self, input_map: ProcessableMap, sources: list[RegisteredSource]
     ) -> list[ForcedPhotometrySource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = u.Quantity(
@@ -99,7 +98,7 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
         sources, thumbnails = photutils_2D_gauss_fit(
             flux_map=input_map.flux,
             snr_map=input_map.snr,
-            source_catalog=self.sources,
+            source_catalog=self.sources + sources,
             flux_lim_fit_centroid=self.flux_limit_centroid.to_value("Jy"),
             size_deg=size_deg,
             fwhm_arcmin=fwhm_arcmin,

@@ -1,0 +1,30 @@
+{
+    "maps": [
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-01",
+            "observation_end": "2025-01-02"
+        }
+    ],
+    "source_simulators": [
+        {
+            "simulation_type": "random",
+            "parameters": {
+                "n_sources": 32,
+                "min_flux": "3.0 Jy",
+                "max_flux": "10.0 Jy",
+                "fwhm_uncertainty_frac": 0.0,
+                "fraction_return": 0.5
+            }
+        }
+    ],
+    "forced_photometry": {
+        "photometry_type": "photutils"
+    },
+    "outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

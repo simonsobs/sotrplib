@@ -8,6 +8,7 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
+from sotrplib.sims.sources.core import SourceSimulation
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
 from sotrplib.sources.force import EmptyForcedPhotometry
@@ -20,6 +21,7 @@ class PipelineRunner:
         maps: list[ProcessableMap],
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
+        source_simulators: list[SourceSimulation] | None,
         forced_photometry: ForcedPhotometryProvider | None,
         source_subtractor: SourceSubtractor | None,
         blind_search: BlindSearchProvider | None,
@@ -29,6 +31,7 @@ class PipelineRunner:
         self.maps = maps
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
+        self.source_simulators = source_simulators or []
         self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()
@@ -49,15 +52,21 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
+            for_forced_photometry = []
+
+            for simulator in self.source_simulators:
+                input_map, additional_sources = simulator.simulate(input_map=input_map)
+                for_forced_photometry.extend(additional_sources)
+
             forced_photometry_candidates = self.forced_photometry.force(
-                input_map=input_map
+                input_map=input_map, sources=for_forced_photometry
             )
 
             source_subtracted_map = self.source_subtractor.subtract(
                 sources=forced_photometry_candidates, input_map=input_map
             )
 
-            blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
+            blind_sources = self.blind_search.search(input_map=source_subtracted_map)
 
             # Should we be passing the source subtracted map or the original to the sifter..?
             sifter_result = self.sifter.sift(blind_sources, input_map)
