@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -6,27 +5,28 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.units import Quantity
+from astropydantic import AstroPydanticQuantity
 from numpy.typing import ArrayLike
 from pixell import enmap
+from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sims import sim_maps
 
 
-@dataclass
-class SimulationParameters:
+class SimulationParameters(BaseModel):
     """
     Sky simulation parameters (geometry and noise level).
     Defaults are given to be the center of the Deep56 ACT field.
     """
 
-    center_ra: u.Quantity = u.Quantity(16.3, "deg")
-    center_dec: u.Quantity = u.Quantity(-1.8, "deg")
-    width_ra: u.Quantity = u.Quantity(2.0, "deg")
-    width_dec: u.Quantity = u.Quantity(1.0, "deg")
-    resolution: u.Quantity = u.Quantity(0.5, "arcmin")
-    map_noise: u.Quantity = u.Quantity(0.01, "Jy")
+    center_ra: AstroPydanticQuantity[u.deg] = u.Quantity(16.3, "deg")
+    center_dec: AstroPydanticQuantity[u.deg] = u.Quantity(-1.8, "deg")
+    width_ra: AstroPydanticQuantity[u.deg] = u.Quantity(2.0, "deg")
+    width_dec: AstroPydanticQuantity[u.deg] = u.Quantity(1.0, "deg")
+    resolution: AstroPydanticQuantity[u.arcmin] = u.Quantity(0.5, "arcmin")
+    map_noise: AstroPydanticQuantity[u.Jy] = u.Quantity(0.01, "Jy")
 
 
 class SimulatedMap(ProcessableMap):

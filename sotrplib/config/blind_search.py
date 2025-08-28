@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.core import (
+from sotrplib.sources.blind import (
     BlindSearchProvider,
     EmptyBlindSearch,
 )

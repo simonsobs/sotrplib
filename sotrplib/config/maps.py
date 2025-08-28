@@ -14,11 +14,10 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
     ProcessableMap,
+)
+from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
-    # RhoAndKappaMap,
-    # IntensityAndInverseVarianceMap,
-    # CoaddedMap,
     SimulationParameters,
 )
 

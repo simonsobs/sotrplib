@@ -6,7 +6,7 @@ from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.core import (
+from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     ForcedPhotometryProvider,
     PhotutilsGaussianFitter,
