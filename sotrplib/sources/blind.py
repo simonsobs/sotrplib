@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
@@ -26,12 +26,10 @@ class BlindSearchParameters:
     """
 
     sigma_threshold: float = 5.0
-    minimum_separation: list[AstroPydanticQuantity[u.arcmin]] = field(
-        default_factory=lambda: [AstroPydanticQuantity(u.Quantity(0.5, "arcmin"))]
-    )
-    sigma_threshold_for_minimum_separation: list[float] = field(
-        default_factory=lambda: [3.0]
-    )
+    minimum_separation: list[AstroPydanticQuantity[u.arcmin]] = [
+        AstroPydanticQuantity(u.Quantity(0.5, "arcmin"))
+    ]
+    sigma_threshold_for_minimum_separation: list[float] = [3.0]
 
 
 class SigmaClipBlindSearch(BlindSearchProvider):
