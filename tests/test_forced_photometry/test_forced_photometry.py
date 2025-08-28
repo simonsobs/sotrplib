@@ -16,9 +16,7 @@ def test_simple_forced_photometry(map_with_single_source):
     )
 
     assert len(results) == 1
-    assert results[0].flux.value == pytest.approx(
-        sources[0].flux, rel=2e-1 * sources[0].flux
-    )
+    assert results[0].flux.value == pytest.approx(sources[0].flux, rel=2e-1)
     assert results[0].fit_method == "nearest_neighbor"
 
 
