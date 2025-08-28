@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-"trp-pipeline" = "sotrplib.cli:main"
+"sotrp" = "sotrplib.cli:main"
 
 [tool.ruff.lint]
 extend-select = ["I"]

@@ -74,7 +74,7 @@ def convert_gauss_fit_to_source_cat(
         sources.pop(k)
     if "name" not in sources:
         sources["name"] = sources["sourceID"]
-    log.info("convert_gauss_fit_to_source_cat.success", sources=sources["name"])
+    log.info("convert_gauss_fit_to_source_cat.success", sources=len(sources))
     return sources
 
 
