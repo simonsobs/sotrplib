@@ -1,8 +1,7 @@
-from dataclasses import dataclass
-
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
+from pydantic import BaseModel
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -19,8 +18,7 @@ class EmptyBlindSearch(BlindSearchProvider):
         return [], []
 
 
-@dataclass
-class BlindSearchParameters:
+class BlindSearchParameters(BaseModel):
     """
     Parameters for blind source searching using photutils.
     """
