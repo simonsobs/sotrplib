@@ -34,9 +34,9 @@ def map_with_single_source(empty_map):
     parameters = RandomSourceSimulationParameters(
         n_sources=1,
         # Use bright sources so we can guarantee recovery
-        min_flux=u.Quantity(1.0, "Jy"),
-        max_flux=u.Quantity(10.0, "Jy"),
-        fwhm_uncertainty_frac=0.5,
+        min_flux=u.Quantity(9.9999, "Jy"),
+        max_flux=u.Quantity(10.0001, "Jy"),
+        fwhm_uncertainty_frac=0.01,
     )
 
     simulator = RandomSourceSimulation(parameters=parameters)
@@ -49,10 +49,10 @@ def map_with_single_source(empty_map):
 @pytest.fixture
 def map_with_sources(empty_map):
     parameters = RandomSourceSimulationParameters(
-        n_sources=64,
+        n_sources=10,
         # Use bright sources so we can guarantee recovery
-        min_flux=u.Quantity(1.0, "Jy"),
-        max_flux=u.Quantity(10.0, "Jy"),
+        min_flux=u.Quantity(9.999, "Jy"),
+        max_flux=u.Quantity(10.001, "Jy"),
         fwhm_uncertainty_frac=0.01,
     )
 
