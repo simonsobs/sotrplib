@@ -9,8 +9,8 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import (
-    curve_fit_2d_gaussian,
     photutils_2D_gauss_fit,
+    scipy_2d_gaussian_fit,
 )
 from sotrplib.sources.sources import ForcedPhotometrySource, RegisteredSource
 from sotrplib.utils.utils import get_fwhm
@@ -71,16 +71,14 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 
     def __init__(
         self,
-        sources: list[RegisteredSource],
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
-        plot: bool = False,
         reproject_thumbnails: bool = False,
+        thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
         log: FilteringBoundLogger | None = None,
     ):
-        self.sources = sources
         self.flux_limit_centroid = flux_limit_centroid
-        self.plot = plot
         self.reproject_thumbnails = reproject_thumbnails
+        self.thumbnail_half_width = thumbnail_half_width
         self.log = log or get_logger()
 
     def force(
@@ -91,38 +89,17 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             get_fwhm(freq=input_map.frequency, arr=input_map.array), "arcmin"
         )
 
-        size_deg = fwhm.to_value("degree")
-        fwhm_arcmin = fwhm.to_value("arcmin")
-
-        sources, thumbnails = curve_fit_2d_gaussian(
-            flux_map=input_map.flux,
-            snr_map=input_map.snr,
-            source_catalog=self.sources + sources,
-            flux_lim_fit_centroid=self.flux_limit_centroid.to_value("Jy"),
-            size_deg=size_deg,
-            fwhm_arcmin=fwhm_arcmin,
-            PLOT=self.plot,
+        fit_sources = scipy_2d_gaussian_fit(
+            input_map.flux,
+            sources,
+            flux_lim_fit_centroid=self.flux_limit_centroid,
+            thumbnail_half_width=self.thumbnail_half_width,
+            fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
-            return_thumbnails=self.return_thumbnails,
-            debug=True,
             log=self.log,
         )
-        ## workaround until photutils_2D_gauss_fit reutrns forcedphotometry sources.
-        ## convert the sourcecatalog to list of forcedphotometry sources
-        rs: list[ForcedPhotometrySource] = []
-        for i in range(len(sources["fluxJy"])):
-            rsi = ForcedPhotometrySource(
-                ra=sources["RADeg"][i] * u.deg,
-                dec=sources["decDeg"][i] * u.deg,
-                flux=sources["fluxJy"][i] * u.Jy,
-            )
-            if thumbnails:
-                rsi.thumbnail = np.asarray(thumbnails[i])
-                rsi.thumbnail_res = input_map.map_resolution
-                rsi.thumbnail_unit = input_map.flux_units
 
-            rs.append(rsi)
-        return rs
+        return fit_sources
 
 
 class PhotutilsGaussianFitter(ForcedPhotometryProvider):
