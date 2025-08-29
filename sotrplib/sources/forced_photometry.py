@@ -176,7 +176,8 @@ class Gaussian2DFitter:
                 theta_err,
                 offset_err,
             ) = perr
-            dec_fit, ra_fit = self.data.pix2sky([y0, x0]) * u.rad
+            dec_fit = y0 * self.map_resolution
+            ra_fit = x0 * np.cos(dec_fit.to(u.rad).value) * self.map_resolution
             dec_offset = dec_fit - self.thumbnail_center[1]
             ra_offset = ra_fit - self.thumbnail_center[0]
             if ra_offset > 180.0 * u.deg:
@@ -223,7 +224,7 @@ def scipy_2d_gaussian_fit(
     log: FilteringBoundLogger | None = None,
 ) -> list[ForcedPhotometrySource]:
     """ """
-
+    log = log or get_logger()
     log = log.bind(func_name="scipy_2d_gaussian_fit")
     preamble = "sources.fitting.scipy_2d_gaussian_fit."
     fit_method = "2d_gaussian"
