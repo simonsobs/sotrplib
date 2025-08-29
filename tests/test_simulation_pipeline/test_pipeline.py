@@ -11,13 +11,58 @@ from sotrplib.sifter.core import SimpleCatalogSifter
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import SourceCandidateCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
-from sotrplib.sources.force import PhotutilsGaussianFitter
-from sotrplib.sources.forced_photometry import photutils_2D_gauss_fit
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.force import PhotutilsGaussianFitter, Scipy2DGaussianFitter
+from sotrplib.sources.forced_photometry import (
+    photutils_2D_gauss_fit,
+    scipy_2d_gaussian_fit,
+)
+from sotrplib.sources.sources import RegisteredSource, SourceCandidate
 
 
 def test_created_map(empty_map: SimulatedMap):
     assert isinstance(empty_map, SimulatedMap)
+
+
+def test_injected_sources_scipy(
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+):
+    new_map, sources = map_with_sources
+
+    assert new_map.finalized
+    assert len(sources) > 0
+
+    # See if we can recover them
+    forced_sources = scipy_2d_gaussian_fit(
+        new_map, source_catalog=[s.to_forced_photometry_source() for s in sources]
+    )
+
+    assert len(forced_sources) == len(sources)
+
+
+def test_basic_pipeline_scipy(
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
+):
+    """
+    Tests a complete setup of the basic pipeline run.
+    """
+
+    new_map, sources = map_with_sources
+
+    runner = PipelineRunner(
+        maps=[new_map, new_map],
+        preprocessors=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=Scipy2DGaussianFitter(
+            sources=[s.to_forced_photometry_source() for s in sources]
+        ),
+        source_subtractor=None,
+        blind_search=None,
+        sifter=None,
+        outputs=[PickleSerializer(directory=tmp_path)],
+    )
+
+    runner.run()
 
 
 def test_injected_sources(map_with_sources: tuple[SimulatedMap, list[SourceCandidate]]):

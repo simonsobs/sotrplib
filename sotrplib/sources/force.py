@@ -65,17 +65,18 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     sources: list[RegisteredSource]
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
-    plot: bool
     reproject_thumbnails: bool
     log: FilteringBoundLogger
 
     def __init__(
         self,
+        sources: list[RegisteredSource] = [],
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
         log: FilteringBoundLogger | None = None,
     ):
+        self.sources = sources
         self.flux_limit_centroid = flux_limit_centroid
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
@@ -91,7 +92,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 
         fit_sources = scipy_2d_gaussian_fit(
             input_map,
-            sources,
+            self.sources + sources,
             flux_lim_fit_centroid=self.flux_limit_centroid,
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,

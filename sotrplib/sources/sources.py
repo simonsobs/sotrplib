@@ -204,8 +204,8 @@ class SourceCandidate(BaseModel):
         """
         return ForcedPhotometrySource(
             source_id=self.sourceID,
-            flux=u.Quantity(self.flux, "mJy"),
-            err_flux=u.Quantity(self.err_flux, "mJy"),
+            flux=u.Quantity(self.flux, "Jy"),
+            err_flux=u.Quantity(self.err_flux, "Jy"),
             ra=u.Quantity(self.ra, "deg"),
             dec=u.Quantity(self.dec, "deg"),
             err_ra=u.Quantity(self.err_ra, "deg"),
