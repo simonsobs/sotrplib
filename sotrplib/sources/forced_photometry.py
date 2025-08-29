@@ -61,6 +61,156 @@ def gaussian_2d(
     )
 
 
+class Gaussian2DFitter:
+    """
+    provide class for fitting a 2D gaussian
+    """
+
+    def __init__(
+        self,
+        flux_thumb: enmap.ndmap,
+        map_resolution: AstroPydanticQuantity[u.arcmin],
+        flux_map_units: AstroPydanticUnit,
+        fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
+        force_center: bool = False,
+        thumbnail_center: tuple[
+            AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]
+        ] = (u.Quantity(0.0, "deg"), u.Quantity(0.0, "deg")),
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or get_logger()
+        self.log = self.log.bind(func_name="Gaussian2DFitter")
+        self.data = flux_thumb
+        self.map_resolution = map_resolution
+        self.fwhm_guess = fwhm_guess
+        self.force_center = force_center
+        self.thumbnail_center = thumbnail_center
+        self.map_flux_units = flux_map_units
+
+    def initialize_model(self):
+        ny, nx = self.data.shape
+        x = np.arange(nx)
+        y = np.arange(ny)
+        X, Y = np.meshgrid(x, y)
+        xy = (X.ravel(), Y.ravel())
+        self.xy = xy
+        # Initial guess for parameters
+        amplitude_guess = self.data.max()
+        x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
+        sigma_guess = (
+            self.fwhm_guess / self.map_resolution / 2.355
+        )  # Rough width estimate
+        theta_guess = 0
+        offset_guess = 0
+
+        initial_guess = [
+            amplitude_guess,
+            x0_guess,
+            y0_guess,
+            sigma_guess,
+            sigma_guess,
+            theta_guess,
+            offset_guess,
+        ]
+
+        ## if force center, fix the x0,y0 guesses by not varying them
+        if self.force_center:
+
+            def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
+                return gaussian_2d(
+                    xy, amplitude, x0_guess, y0_guess, sigma_x, sigma_y, theta, offset
+                )
+
+            initial_guess = [
+                amplitude_guess,
+                sigma_guess,
+                sigma_guess,
+                theta_guess,
+                offset_guess,
+            ]
+            self.log.debug(
+                "curve_fit_2d_gaussian.force_center", initial_guess=initial_guess
+            )
+        else:
+            self.log.debug(
+                "curve_fit_2d_gaussian.free_center", initial_guess=initial_guess
+            )
+            gaussian_2d_model = gaussian_2d
+
+        self.model = gaussian_2d_model
+        self.initial_guess = initial_guess
+
+    def fit(self) -> GaussianFitParameters:
+        # Fit the data
+        self.fit_params = GaussianFitParameters()
+        try:
+            popt, pcov = curve_fit(
+                self.model,
+                self.xy,
+                self.data.ravel(),
+                p0=self.initial_guess,
+            )
+        except RuntimeError:
+            self.log.error("curve_fit_2d_gaussian.curve_fit.failed")
+            return
+
+        self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt)
+        perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
+        # Extract parameters and uncertainties
+        if self.force_center:
+            amplitude, sigma_x, sigma_y, theta, offset = popt
+            amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
+            ra_fit, dec_fit = None, None
+            ra_offset, dec_offset = None, None
+            ra_err, dec_err = None, None
+        else:
+            amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
+            (
+                amplitude_err,
+                x0_err,
+                y0_err,
+                sigma_x_err,
+                sigma_y_err,
+                theta_err,
+                offset_err,
+            ) = perr
+            dec_fit, ra_fit = self.data.pix2sky([y0, x0]) * u.rad
+            dec_offset = dec_fit - self.thumbnail_center[1]
+            ra_offset = ra_fit - self.thumbnail_center[0]
+            if ra_offset > 180.0 * u.deg:
+                ra_offset -= 360.0 * u.deg
+            elif ra_offset < -180.0 * u.deg:
+                ra_offset += 360.0 * u.deg
+            ra_err = x0_err * self.map_resolution
+            dec_err = y0_err * self.map_resolution
+
+        fwhm_x = 2.355 * sigma_x * self.map_resolution
+        fwhm_y = 2.355 * sigma_y * self.map_resolution
+        fwhm_x_err = 2.355 * sigma_x_err * self.map_resolution
+        fwhm_y_err = 2.355 * sigma_y_err * self.map_resolution
+        ## effectively set offset to zero
+        amplitude = AstroPydanticQuantity(amplitude + offset, self.map_flux_units)
+        amplitude_err = AstroPydanticQuantity(
+            np.sqrt(amplitude_err**2 + offset_err**2), self.map_flux_units
+        )
+
+        self.fit_params = GaussianFitParameters(
+            amplitude=amplitude,
+            amplitude_err=amplitude_err,
+            ra_offset=ra_offset,
+            ra_err=ra_err,
+            dec_offset=dec_offset,
+            dec_err=dec_err,
+            fwhm_ra=fwhm_x,
+            fwhm_dec=fwhm_y,
+            fwhm_ra_err=fwhm_x_err,
+            fwhm_dec_err=fwhm_y_err,
+            theta=theta * u.rad,
+            theta_err=theta_err * u.rad,
+        )
+        return self.fit_params
+
+
 def curve_fit_2d_gaussian(
     flux_thumb: enmap.ndmap,
     map_resolution: AstroPydanticQuantity[u.arcmin],
@@ -94,133 +244,19 @@ def curve_fit_2d_gaussian(
     log.info("curve_fit_2d_gaussian.start_fit")
     warnings.simplefilter("ignore", category=OptimizeWarning)
 
-    ny, nx = flux_thumb.shape
-    x = np.arange(nx)
-    y = np.arange(ny)
-    X, Y = np.meshgrid(x, y)
-    xy = (X.ravel(), Y.ravel())
-
-    # Initial guess for parameters
-    amplitude_guess = flux_thumb.max()
-    x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
-    sigma_guess = fwhm_guess / map_resolution / 2.355  # Rough width estimate
-    theta_guess = 0
-    offset_guess = 0
-    initial_guess = [
-        amplitude_guess,
-        x0_guess,
-        y0_guess,
-        sigma_guess,
-        sigma_guess,
-        theta_guess,
-        offset_guess,
-    ]
-
-    ## if force center, fix the x0,y0 guesses by not varying them
-    if force_center:
-
-        def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
-            return gaussian_2d(
-                xy, amplitude, x0_guess, y0_guess, sigma_x, sigma_y, theta, offset
-            )
-
-        initial_guess = [
-            amplitude_guess,
-            sigma_guess,
-            sigma_guess,
-            theta_guess,
-            offset_guess,
-        ]
-        log.debug("curve_fit_2d_gaussian.force_center", initial_guess=initial_guess)
-    else:
-        log.debug("curve_fit_2d_gaussian.free_center", initial_guess=initial_guess)
-        gaussian_2d_model = gaussian_2d
-
-    # Fit the data
-    try:
-        popt, pcov = curve_fit(
-            gaussian_2d_model,
-            xy,
-            flux_thumb.ravel(),
-            # sigma=1./snr_thumb.ravel(), ## can be used? never done it before.
-            p0=initial_guess,
-            # absolute_sigma=False
-        )
-    except RuntimeError:
-        log.error("curve_fit_2d_gaussian.curve_fit.failed")
-        return GaussianFitParameters()
-
-    log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt)
-    perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
-    # Extract parameters and uncertainties
-    if force_center:
-        amplitude, sigma_x, sigma_y, theta, offset = popt
-        amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
-        ra_fit, dec_fit = None, None
-        ra_offset, dec_offset = None, None
-        ra_err, dec_err = None, None
-    else:
-        amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
-        (
-            amplitude_err,
-            x0_err,
-            y0_err,
-            sigma_x_err,
-            sigma_y_err,
-            theta_err,
-            offset_err,
-        ) = perr
-        dec_fit, ra_fit = flux_thumb.pix2sky([y0, x0]) * u.rad
-        dec_offset = dec_fit - thumbnail_center[1]
-        ra_offset = ra_fit - thumbnail_center[0]
-        if ra_offset > 180.0 * u.deg:
-            ra_offset -= 360.0 * u.deg
-        elif ra_offset < -180.0 * u.deg:
-            ra_offset += 360.0 * u.deg
-        ra_err = x0_err * map_resolution
-        dec_err = y0_err * map_resolution
-
-    fwhm_x = 2.355 * sigma_x * map_resolution
-    fwhm_y = 2.355 * sigma_y * map_resolution
-    fwhm_x_err = 2.355 * sigma_x_err * map_resolution
-    fwhm_y_err = 2.355 * sigma_y_err * map_resolution
-    ## effectively set offset to zero
-    amplitude = AstroPydanticQuantity(amplitude + offset, flux_map_units)
-    amplitude_err = AstroPydanticQuantity(
-        np.sqrt(amplitude_err**2 + offset_err**2), flux_map_units
+    fitter = Gaussian2DFitter(
+        flux_thumb,
+        map_resolution,
+        flux_map_units,
+        snr_thumb=snr_thumb,
+        fwhm_guess=fwhm_guess,
+        thumbnail_center=thumbnail_center,
+        force_center=force_center,
+        log=log,
     )
-    log.debug(
-        "curve_fit_2d_gaussian.unitized_parameters",
-        amplitude=amplitude,
-        amplitude_err=amplitude_err,
-        fwhm_x=fwhm_x,
-        fwhm_x_err=fwhm_x_err,
-        fwhm_y=fwhm_y,
-        fwhm_y_err=fwhm_y_err,
-        ra_offset=ra_offset,
-        ra_err=ra_err,
-        dec_offset=dec_offset,
-        dec_err=dec_err,
-        theta=theta,
-        theta_err=theta_err,
-    )
+    fitter.initialize_model()
 
-    gauss_fit = GaussianFitParameters(
-        amplitude=amplitude,
-        amplitude_err=amplitude_err,
-        ra_offset=ra_offset,
-        ra_err=ra_err,
-        dec_offset=dec_offset,
-        dec_err=dec_err,
-        fwhm_ra=fwhm_x,
-        fwhm_dec=fwhm_y,
-        fwhm_ra_err=fwhm_x_err,
-        fwhm_dec_err=fwhm_y_err,
-        theta=theta * u.rad,
-        theta_err=theta_err * u.rad,
-    )
-
-    return gauss_fit
+    return fitter.fit()
 
 
 def scipy_2d_gaussian_fit(
