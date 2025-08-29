@@ -90,7 +90,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         )
 
         fit_sources = scipy_2d_gaussian_fit(
-            input_map.flux,
+            input_map,
             sources,
             flux_lim_fit_centroid=self.flux_limit_centroid,
             thumbnail_half_width=self.thumbnail_half_width,

@@ -30,6 +30,7 @@ class GaussianFitParameters(BaseModel):
     theta: AstroPydanticQuantity[u.deg] | None = None
     theta_err: AstroPydanticQuantity[u.deg] | None = None
     forced_center: bool | None = None
+    failed: bool = False
     failure_reasons: list[str] | None = None
 
 
@@ -248,7 +249,6 @@ def curve_fit_2d_gaussian(
         flux_thumb,
         map_resolution,
         flux_map_units,
-        snr_thumb=snr_thumb,
         fwhm_guess=fwhm_guess,
         thumbnail_center=thumbnail_center,
         force_center=force_center,
@@ -279,11 +279,11 @@ def scipy_2d_gaussian_fit(
     ):
         source = source_catalog[i]
         source_name = source.source_id
-        map_res = input_map.flux.map_resolution
+        map_res = input_map.map_resolution
         pix = input_map.flux.sky2pix(
             [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
         )
-        size_pix = thumbnail_half_width.to(u.deg).value / map_res.to(u.deg).value
+        size_pix = thumbnail_half_width / map_res
         fit = GaussianFitParameters()
 
         if (
@@ -292,6 +292,7 @@ def scipy_2d_gaussian_fit(
             or pix[0] - size_pix < 0
             or pix[1] - size_pix < 0
         ):
+            fit.failed = True
             fit.failure_reasons = ["source_near_map_edge"]
 
             log.warning(f"{preamble}source_near_map_edge", source=source_name)
@@ -303,7 +304,7 @@ def scipy_2d_gaussian_fit(
                     ra=source.ra,
                     dec=source.dec,
                     fit_method="2d_gaussian",
-                    fit_params=fit.to_dict(),
+                    fit_params=fit.model_dump(),
                 )
             )
 
@@ -320,13 +321,14 @@ def scipy_2d_gaussian_fit(
                 )
             except Exception as e:
                 log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
+                fit.failed = True
                 fit.failure_reasons = ["reproject_failed"]
                 fit_sources.append(
                     ForcedPhotometrySource(
                         ra=source.ra,
                         dec=source.dec,
                         fit_method="2d_gaussian",
-                        fit_params=fit.to_dict(),
+                        fit_params=fit.model_dump(),
                     )
                 )
                 continue
@@ -342,13 +344,14 @@ def scipy_2d_gaussian_fit(
 
         if np.any(np.isnan(flux_thumb)):
             log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
+            fit.failed = True
             fit.failure_reasons = ["flux_thumb_has_nan"]
             fit_sources.append(
                 ForcedPhotometrySource(
                     ra=source.ra,
                     dec=source.dec,
                     fit_method="2d_gaussian",
-                    fit_params=fit.to_dict(),
+                    fit_params=fit.model_dump(),
                 )
             )
             continue
@@ -356,7 +359,7 @@ def scipy_2d_gaussian_fit(
         fit = curve_fit_2d_gaussian(
             flux_thumb,
             map_resolution=abs(flux_thumb.wcs.wcs.cdelt[0]) * u.deg,
-            flux_map_units=input_map.flux.map_units,
+            flux_map_units=input_map.flux_units,
             snr_thumb=None,
             fwhm_guess=fwhm,
             thumbnail_center=thumbnail_center,
@@ -364,10 +367,25 @@ def scipy_2d_gaussian_fit(
             log=log,
         )
         log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
-        fit_sources.append(fit)
+
+        fit_sources.append(
+            ForcedPhotometrySource(
+                ra=source.ra,
+                dec=source.dec,
+                flux=fit.amplitude,
+                err_flux=fit.amplitude_err,
+                fwhm_ra=fit.fwhm_ra,
+                fwhm_dec=fit.fwhm_dec,
+                thumbnail=np.asarray(flux_thumb),
+                thumbnail_res=abs(flux_thumb.wcs.wcs.cdelt[0]) * u.deg,
+                thumbnail_unit=input_map.flux_units,
+                fit_method="2d_gaussian",
+                fit_params=fit.model_dump(),
+            )
+        )
     n_successful = 0
     for s in fit_sources:
-        if s.failure_reasons is None:
+        if not s.fit_params["failed"]:
             n_successful += 1
     log.info(f"{preamble}fits_complete", n_sources=len(fit_sources), n_fit=n_successful)
     return fit_sources
