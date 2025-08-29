@@ -1,13 +1,50 @@
+import warnings
 from typing import Union
 
 import numpy as np
-from pixell import enmap
+from astropy import units as u
+from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
+from numpy.typing import ArrayLike
+from pixell import enmap, reproject
+from pydantic import BaseModel
+from scipy.optimize import OptimizeWarning, curve_fit
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
+from tqdm import tqdm
+
+from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.sources import ForcedPhotometrySource, RegisteredSource
 
 
-def gaussian_2d(xy, amplitude, x0, y0, sigma_x, sigma_y, theta, offset):
+class GaussianFitParameters(BaseModel):
+    amplitude: AstroPydanticQuantity[u.mJy] | None = None
+    amplitude_err: AstroPydanticQuantity[u.mJy] | None = None
+    ra_offset: AstroPydanticQuantity[u.deg] | None = None
+    ra_err: AstroPydanticQuantity[u.deg] | None = None
+    dec_offset: AstroPydanticQuantity[u.deg] | None = None
+    dec_err: AstroPydanticQuantity[u.deg] | None = None
+    fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
+    fwhm_ra_err: AstroPydanticQuantity[u.deg] | None = None
+    fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
+    fwhm_dec_err: AstroPydanticQuantity[u.deg] | None = None
+    theta: AstroPydanticQuantity[u.deg] | None = None
+    theta_err: AstroPydanticQuantity[u.deg] | None = None
+    forced_center: bool | None = None
+    failure_reasons: list[str] | None = None
+
+
+def gaussian_2d(
+    xy: tuple[ArrayLike, ArrayLike],
+    amplitude: float,
+    x0: float,
+    y0: float,
+    sigma_x: float,
+    sigma_y: float,
+    theta: float,
+    offset: float,
+):
     """
     2D Gaussian function.
-
     """
     x, y = xy
     x0 = float(x0)
@@ -22,6 +59,282 @@ def gaussian_2d(xy, amplitude, x0, y0, sigma_x, sigma_y, theta, offset):
     return offset + amplitude * np.exp(
         -(a * (x - x0) ** 2 + 2 * b * (x - x0) * (y - y0) + c * (y - y0) ** 2)
     )
+
+
+def curve_fit_2d_gaussian(
+    flux_thumb: enmap.ndmap,
+    map_resolution: AstroPydanticQuantity[u.arcmin],
+    flux_map_units: AstroPydanticUnit,
+    snr_thumb: enmap.ndmap | None = None,
+    fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
+    thumbnail_center: tuple[
+        AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]
+    ] = (u.Quantity(0.0, "deg"), u.Quantity(0.0, "deg")),
+    force_center: bool = False,
+    log: FilteringBoundLogger | None = None,
+):
+    """
+    Fits a 2D Gaussian to the given data array and calculates uncertainties.
+
+    input_map: ProcessableMap
+        Must be finalized; i.e. have a flux and snr.
+        Should just be a thumbnail map, though not necessarily centered on the source as
+        you can set thumbnail center coordinates.
+
+    thumbnail_center: tuple
+        The ra,dec center of the thumbnail in decimal degrees. A reprojected map has center 0,0 so
+        the fits give the ra,dec offsets. If using a simple cut (flux_map[-x:x,-y:y]) the center is
+        at thumbnail_center so we will subtract that off to get the ra,dec offsets.
+
+    force_center: bool
+        if True, center of gaussian fit is centered at the expected location and not allowed to vary.
+
+    """
+    log = log or get_logger()
+    log.info("curve_fit_2d_gaussian.start_fit")
+    warnings.simplefilter("ignore", category=OptimizeWarning)
+
+    ny, nx = flux_thumb.shape
+    x = np.arange(nx)
+    y = np.arange(ny)
+    X, Y = np.meshgrid(x, y)
+    xy = (X.ravel(), Y.ravel())
+
+    # Initial guess for parameters
+    amplitude_guess = flux_thumb.max()
+    x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
+    sigma_guess = fwhm_guess / map_resolution / 2.355  # Rough width estimate
+    theta_guess = 0
+    offset_guess = 0
+    initial_guess = [
+        amplitude_guess,
+        x0_guess,
+        y0_guess,
+        sigma_guess,
+        sigma_guess,
+        theta_guess,
+        offset_guess,
+    ]
+
+    ## if force center, fix the x0,y0 guesses by not varying them
+    if force_center:
+
+        def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
+            return gaussian_2d(
+                xy, amplitude, x0_guess, y0_guess, sigma_x, sigma_y, theta, offset
+            )
+
+        initial_guess = [
+            amplitude_guess,
+            sigma_guess,
+            sigma_guess,
+            theta_guess,
+            offset_guess,
+        ]
+        log.debug("curve_fit_2d_gaussian.force_center", initial_guess=initial_guess)
+    else:
+        log.debug("curve_fit_2d_gaussian.free_center", initial_guess=initial_guess)
+        gaussian_2d_model = gaussian_2d
+
+    # Fit the data
+    try:
+        popt, pcov = curve_fit(
+            gaussian_2d_model,
+            xy,
+            flux_thumb.ravel(),
+            # sigma=1./snr_thumb.ravel(), ## can be used? never done it before.
+            p0=initial_guess,
+            # absolute_sigma=False
+        )
+    except RuntimeError:
+        log.error("curve_fit_2d_gaussian.curve_fit.failed")
+        return GaussianFitParameters()
+
+    log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt)
+    perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
+    # Extract parameters and uncertainties
+    if force_center:
+        amplitude, sigma_x, sigma_y, theta, offset = popt
+        amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
+        ra_fit, dec_fit = None, None
+        ra_offset, dec_offset = None, None
+        ra_err, dec_err = None, None
+    else:
+        amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
+        (
+            amplitude_err,
+            x0_err,
+            y0_err,
+            sigma_x_err,
+            sigma_y_err,
+            theta_err,
+            offset_err,
+        ) = perr
+        dec_fit, ra_fit = flux_thumb.pix2sky([y0, x0]) * u.rad
+        dec_offset = dec_fit - thumbnail_center[1]
+        ra_offset = ra_fit - thumbnail_center[0]
+        if ra_offset > 180.0 * u.deg:
+            ra_offset -= 360.0 * u.deg
+        elif ra_offset < -180.0 * u.deg:
+            ra_offset += 360.0 * u.deg
+        ra_err = x0_err * map_resolution
+        dec_err = y0_err * map_resolution
+
+    fwhm_x = 2.355 * sigma_x * map_resolution
+    fwhm_y = 2.355 * sigma_y * map_resolution
+    fwhm_x_err = 2.355 * sigma_x_err * map_resolution
+    fwhm_y_err = 2.355 * sigma_y_err * map_resolution
+    ## effectively set offset to zero
+    amplitude = AstroPydanticQuantity(amplitude + offset, flux_map_units)
+    amplitude_err = AstroPydanticQuantity(
+        np.sqrt(amplitude_err**2 + offset_err**2), flux_map_units
+    )
+    log.debug(
+        "curve_fit_2d_gaussian.unitized_parameters",
+        amplitude=amplitude,
+        amplitude_err=amplitude_err,
+        fwhm_x=fwhm_x,
+        fwhm_x_err=fwhm_x_err,
+        fwhm_y=fwhm_y,
+        fwhm_y_err=fwhm_y_err,
+        ra_offset=ra_offset,
+        ra_err=ra_err,
+        dec_offset=dec_offset,
+        dec_err=dec_err,
+        theta=theta,
+        theta_err=theta_err,
+    )
+
+    gauss_fit = GaussianFitParameters(
+        amplitude=amplitude,
+        amplitude_err=amplitude_err,
+        ra_offset=ra_offset,
+        ra_err=ra_err,
+        dec_offset=dec_offset,
+        dec_err=dec_err,
+        fwhm_ra=fwhm_x,
+        fwhm_dec=fwhm_y,
+        fwhm_ra_err=fwhm_x_err,
+        fwhm_dec_err=fwhm_y_err,
+        theta=theta * u.rad,
+        theta_err=theta_err * u.rad,
+    )
+
+    return gauss_fit
+
+
+def scipy_2d_gaussian_fit(
+    input_map: ProcessableMap,
+    source_catalog: list[RegisteredSource],
+    flux_lim_fit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy"),
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.25, "deg"),
+    fwhm: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
+    reproject_thumb: bool = False,
+    log: FilteringBoundLogger | None = None,
+) -> list[ForcedPhotometrySource]:
+    """ """
+
+    log = log.bind(func_name="scipy_2d_gaussian_fit")
+    preamble = "sources.fitting.scipy_2d_gaussian_fit."
+    fit_sources = []
+    for i in tqdm(
+        range(len(source_catalog)),
+        desc="Cutting thumbnails and fitting sources w 2D Gaussian",
+    ):
+        source = source_catalog[i]
+        source_name = source.source_id
+        map_res = input_map.flux.map_resolution
+        pix = input_map.flux.sky2pix(
+            [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
+        )
+        size_pix = thumbnail_half_width.to(u.deg).value / map_res.to(u.deg).value
+        fit = GaussianFitParameters()
+
+        if (
+            pix[0] + size_pix > input_map.flux.shape[0]
+            or pix[1] + size_pix > input_map.flux.shape[1]
+            or pix[0] - size_pix < 0
+            or pix[1] - size_pix < 0
+        ):
+            fit.failure_reasons = ["source_near_map_edge"]
+
+            log.warning(f"{preamble}source_near_map_edge", source=source_name)
+
+            ## add source information and fit here
+            ## somethign like this
+            fit_sources.append(
+                ForcedPhotometrySource(
+                    ra=source.ra,
+                    dec=source.dec,
+                    fit_method="2d_gaussian",
+                    fit_params=fit.to_dict(),
+                )
+            )
+
+            continue
+
+        if reproject_thumb:
+            thumbnail_center = (0 * u.deg, 0 * u.deg)
+            try:
+                flux_thumb = reproject.thumbnails(
+                    input_map.flux,
+                    [source.dec.to(u.rad).value, source.ra.to(u.rad).value],
+                    r=thumbnail_half_width.to(u.rad).value,
+                    res=map_res.to(u.rad).value,
+                )
+            except Exception as e:
+                log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
+                fit.failure_reasons = ["reproject_failed"]
+                fit_sources.append(
+                    ForcedPhotometrySource(
+                        ra=source.ra,
+                        dec=source.dec,
+                        fit_method="2d_gaussian",
+                        fit_params=fit.to_dict(),
+                    )
+                )
+                continue
+        else:
+            thumbnail_center = (source.ra, source.dec)
+            ra = source.ra.to(u.rad).value + map_res.to(u.rad).value / 2
+            dec = source.dec.to(u.rad).value + map_res.to(u.rad).value / 2
+            radius = thumbnail_half_width.to(u.rad).value
+            flux_thumb = input_map.flux.submap(
+                [[dec - radius, ra - radius], [dec + radius, ra + radius]],
+            )
+            flux_thumb = flux_thumb.upgrade(factor=2)
+
+        if np.any(np.isnan(flux_thumb)):
+            log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
+            fit.failure_reasons = ["flux_thumb_has_nan"]
+            fit_sources.append(
+                ForcedPhotometrySource(
+                    ra=source.ra,
+                    dec=source.dec,
+                    fit_method="2d_gaussian",
+                    fit_params=fit.to_dict(),
+                )
+            )
+            continue
+
+        fit = curve_fit_2d_gaussian(
+            flux_thumb,
+            map_resolution=abs(flux_thumb.wcs.wcs.cdelt[0]) * u.deg,
+            flux_map_units=input_map.flux.map_units,
+            snr_thumb=None,
+            fwhm_guess=fwhm,
+            thumbnail_center=thumbnail_center,
+            force_center=True if source.flux < flux_lim_fit_centroid else False,
+            log=log,
+        )
+        log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
+        fit_sources.append(fit)
+    n_successful = 0
+    for s in fit_sources:
+        if s.failure_reasons is None:
+            n_successful += 1
+    log.info(f"{preamble}fits_complete", n_sources=len(fit_sources), n_fit=n_successful)
+    return fit_sources
 
 
 def fit_2d_gaussian(
