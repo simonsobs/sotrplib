@@ -31,7 +31,7 @@ class GaussianFitParameters(BaseModel):
     theta_err: AstroPydanticQuantity[u.deg] | None = None
     forced_center: bool | None = None
     failed: bool = False
-    failure_reasons: list[str] | None = None
+    failure_reason: str | None = None
 
 
 def gaussian_2d(
@@ -153,6 +153,8 @@ class Gaussian2DFitter:
             )
         except RuntimeError:
             self.log.error("curve_fit_2d_gaussian.curve_fit.failed")
+            self.fit_params.failed = True
+            self.fit_params.failure_reason = "curve_fit_runtime_error"
             return
 
         self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt)

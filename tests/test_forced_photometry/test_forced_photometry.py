@@ -45,5 +45,14 @@ def test_scipy_curve_fit(map_with_single_source):
         input_map=input_map, sources=[s.to_forced_photometry_source() for s in sources]
     )
     assert len(results) == 1
+    if results[0].fit_failed:
+        assert results[0].fit_failure_reason == "source_near_map_edge"
+        while results[0].fit_failed:
+            input_map, sources = map_with_single_source
+            results = forced_photometry.force(
+                input_map=input_map,
+                sources=[s.to_forced_photometry_source() for s in sources],
+            )
+
     assert results[0].flux.to(u.Jy).value == pytest.approx(sources[0].flux, rel=2e-1)
     assert results[0].fit_method == "2d_gaussian"
