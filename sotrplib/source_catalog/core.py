@@ -10,12 +10,12 @@ import numpy as np
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
 
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import RegisteredSource
 
 
 class SourceCatalog(ABC):
     @abstractmethod
-    def source_by_id(self, id) -> SourceCandidate:
+    def source_by_id(self, id) -> RegisteredSource:
         """
         Get the information about a source by its internal ID.
         """
@@ -28,20 +28,20 @@ class SourceCatalog(ABC):
         dec: u.Quantity,
         radius: u.Quantity,
         method: Literal["closest", "all"],
-    ) -> list[SourceCandidate]:
+    ) -> list[RegisteredSource]:
         return
 
 
-class SourceCandidateCatalog(SourceCatalog):
+class RegisteredSourceCatalog(SourceCatalog):
     """
-    A source catalog generated purely from a list of 'source candidates',
+    A source catalog generated purely from a list of 'registered sources',
     usually those that are generated as part of the simulation process.
     """
 
-    sources: list[SourceCandidate]
+    sources: list[RegisteredSource]
     ra_dec_array: NDArray
 
-    def __init__(self, sources: list[SourceCandidate]):
+    def __init__(self, sources: list[RegisteredSource]):
         self.sources = sources
 
         # Generate the RA, Dec array for crossmatches.
@@ -56,7 +56,7 @@ class SourceCandidateCatalog(SourceCatalog):
         dec: u.Quantity,
         radius: u.Quantity,
         method: Literal["closest", "all"],
-    ) -> list[SourceCandidate]:
+    ) -> list[RegisteredSource]:
         """
         Get sources within radius of the catalog.
         """
@@ -69,3 +69,9 @@ class SourceCandidateCatalog(SourceCatalog):
         )
 
         return [self.sources[y] for _, y in matches]
+
+
+class SourceCandidateCatalog(SourceCatalog):
+    raise DeprecationWarning(
+        "SourceCandidateCatalog is deprecated, use RegisteredSourceCatalog instead."
+    )
