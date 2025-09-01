@@ -297,7 +297,7 @@ def inject_sources(
     from pixell.utils import arcmin, degree
     from tqdm import tqdm
 
-    from ..sources.sources import SourceCandidate
+    from ..sources.sources import RegisteredSource
     from ..utils.utils import get_fwhm
     from .sim_utils import make_2d_gaussian_model_param_table
 
@@ -351,22 +351,11 @@ def inject_sources(
 
         flux = source.get_flux(source_obs_time)
 
-        inj_source = SourceCandidate(
+        inj_source = RegisteredSource(
             ra=ra,
-            err_ra=0.0,
             dec=dec,
-            err_dec=0.0,
             flux=flux,
-            err_flux=0.0,
-            snr=np.inf,
-            freq=freq,
-            arr=arr if arr else "any",
-            ctime=source_obs_time,
-            fwhm_a=fwhm / arcmin,
-            fwhm_b=fwhm / arcmin,
             source_type="simulated",
-            orientation=0.0,
-            map_id=map_id if map_id else "",
         )
         injected_sources.append(inj_source)
     log.info("inject_sources.sources_to_inject", injected_sources=injected_sources)
