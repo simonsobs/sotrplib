@@ -82,13 +82,20 @@ class ForcedPhotometrySource(RegisteredSource):
     """
 
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
+    offset_ra: AstroPydanticQuantity[u.deg] | None = None
+    offset_dec: AstroPydanticQuantity[u.deg] | None = None
     fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
     fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
+    err_fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
+    err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
     fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
     fit_params: dict | None = None
+    fit_failed: bool = False
+    fit_failure_reason: str | None = None
     thumbnail: NDArray | None = None
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
     thumbnail_unit: AstroPydanticUnit | None = None
+
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
     def extract_thumbnail(
@@ -197,8 +204,8 @@ class SourceCandidate(BaseModel):
         """
         return ForcedPhotometrySource(
             source_id=self.sourceID,
-            flux=u.Quantity(self.flux, "mJy"),
-            err_flux=u.Quantity(self.err_flux, "mJy"),
+            flux=u.Quantity(self.flux, "Jy"),
+            err_flux=u.Quantity(self.err_flux, "Jy"),
             ra=u.Quantity(self.ra, "deg"),
             dec=u.Quantity(self.dec, "deg"),
             err_ra=u.Quantity(self.err_ra, "deg"),
