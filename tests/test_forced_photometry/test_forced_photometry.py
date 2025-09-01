@@ -47,11 +47,18 @@ def test_scipy_curve_fit(map_with_single_source):
     assert len(results) == 1
     if results[0].fit_failed:
         assert results[0].fit_failure_reason == "source_near_map_edge"
-        while results[0].fit_failed:
+        max_attempts = 10
+        attempts = 0
+        while results[0].fit_failed and attempts < max_attempts:
             input_map, sources = map_with_single_source
             results = forced_photometry.force(
                 input_map=input_map,
                 sources=[s.to_forced_photometry_source() for s in sources],
+            )
+            attempts += 1
+        if results[0].fit_failed:
+            pytest.fail(
+                f"Scipy2DGaussianFitter.fit repeatedly failed due to source_near_map_edge after {max_attempts} attempts"
             )
 
     assert results[0].flux.to(u.Jy).value == pytest.approx(sources[0].flux, rel=2e-1)
