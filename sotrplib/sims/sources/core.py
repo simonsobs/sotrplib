@@ -18,7 +18,7 @@ from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.maps import edge_map
 from sotrplib.sims import sim_maps, sim_sources, sim_utils
 from sotrplib.source_catalog.database import SourceCatalogDatabase
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import RegisteredSource
 
 
 class ProcessableMapWithSimulatedSources(ProcessableMap):
@@ -70,7 +70,7 @@ class SourceSimulation(ABC):
     @abstractmethod
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         """
         Simulate sources on the input map.
 
@@ -96,7 +96,7 @@ class SourceSimulationPassthrough(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         return input_map, []
 
 
@@ -116,7 +116,7 @@ class DatabaseSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         new_flux_map, injected_sources = sim_maps.inject_sources(
@@ -177,7 +177,7 @@ class RandomSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         log = self.log.bind(parameters=self.parameters)
@@ -232,7 +232,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         log = self.log.bind(transient_database_path=self.transient_database_path)
@@ -297,7 +297,7 @@ class TransientSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         log = self.log.bind(parameters=self.parameters)
