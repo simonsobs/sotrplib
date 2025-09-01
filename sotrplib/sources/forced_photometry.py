@@ -296,7 +296,7 @@ def scipy_2d_gaussian_fit(
         fit = fitter.fit()
         log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 
-        forced_source.fit_failed = False
+        forced_source.fit_failed = fit.failed
         forced_source.flux = fit.amplitude
         forced_source.err_flux = fit.amplitude_err
         forced_source.offset_ra = fit.ra_offset
