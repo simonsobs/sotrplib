@@ -64,7 +64,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 
 class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     sources: list[RegisteredSource]
-    flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
+    flux_limit_centroid: u.Quantity  # this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
     log: FilteringBoundLogger
 
