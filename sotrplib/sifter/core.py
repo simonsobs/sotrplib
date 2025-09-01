@@ -14,21 +14,21 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.finding import BlindSourceCandidate
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import ForcedPhotometrySource
 
 
 @dataclass
 class SifterResult:
-    source_candidates: list[SourceCandidate]
-    transient_candidates: list[SourceCandidate]
-    noise_candidates: list[SourceCandidate]
+    source_candidates: list[ForcedPhotometrySource]
+    transient_candidates: list[ForcedPhotometrySource]
+    noise_candidates: list[ForcedPhotometrySource]
 
 
 class SiftingProvider(ABC):
     @abstractmethod
     def sift(
         self,
-        sources: list[SourceCandidate],
+        sources: list[BlindSourceCandidate],
         input_map: ProcessableMap,
     ) -> SifterResult:
         raise NotImplementedError
@@ -37,7 +37,7 @@ class SiftingProvider(ABC):
 class EmptySifter(SiftingProvider):
     def sift(
         self,
-        sources: list[SourceCandidate],
+        sources: list[BlindSourceCandidate],
         input_map: ProcessableMap,
     ) -> SifterResult:
         return SifterResult(
@@ -162,7 +162,7 @@ class DefaultSifter(SiftingProvider):
 
     def sift(
         self,
-        sources: list[SourceCandidate],
+        sources: list[BlindSourceCandidate],
         input_map: ProcessableMap,
     ) -> SifterResult:
         from .crossmatch import sift
