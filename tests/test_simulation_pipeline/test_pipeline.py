@@ -9,14 +9,14 @@ from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import SimpleCatalogSifter
 from sotrplib.sims.maps import SimulatedMap
-from sotrplib.source_catalog.core import SourceCandidateCatalog
+from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import PhotutilsGaussianFitter, Scipy2DGaussianFitter
 from sotrplib.sources.forced_photometry import (
     photutils_2D_gauss_fit,
     scipy_2d_gaussian_fit,
 )
-from sotrplib.sources.sources import RegisteredSource, SourceCandidate
+from sotrplib.sources.sources import RegisteredSource
 
 
 def test_created_map(empty_map: SimulatedMap):
@@ -65,7 +65,9 @@ def test_basic_pipeline_scipy(
     runner.run()
 
 
-def test_injected_sources(map_with_sources: tuple[SimulatedMap, list[SourceCandidate]]):
+def test_injected_sources(
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+):
     new_map, sources = map_with_sources
 
     assert new_map.finalized
@@ -86,7 +88,7 @@ def test_injected_sources(map_with_sources: tuple[SimulatedMap, list[SourceCandi
 
 
 def test_basic_pipeline(
-    tmp_path, map_with_sources: tuple[SimulatedMap, list[SourceCandidate]]
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
 ):
     """
     Tests a complete setup of the basic pipeline run.
@@ -110,7 +112,7 @@ def test_basic_pipeline(
 
 
 def test_find_single_source_blind(
-    map_with_single_source: tuple[SimulatedMap, list[SourceCandidate]],
+    map_with_single_source: tuple[SimulatedMap, list[RegisteredSource]],
 ):
     """
     Tests that we can find a set of sources that we just injected with
@@ -126,7 +128,7 @@ def test_find_single_source_blind(
 
     # Check we can sift them out!
     sifter = SimpleCatalogSifter(
-        catalog=SourceCandidateCatalog(sources=sources),
+        catalog=RegisteredSourceCatalog(sources=sources),
         radius=u.Quantity(30.0, "arcsec"),
     )
 
@@ -137,7 +139,7 @@ def test_find_single_source_blind(
 
 
 def test_find_sources_blind(
-    map_with_sources: tuple[SimulatedMap, list[SourceCandidate]],
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
 ):
     """
     Tests that we can find a set of sources that we just injected with
@@ -153,8 +155,8 @@ def test_find_sources_blind(
 
     # Check we can sift them out!
     sifter = SimpleCatalogSifter(
-        catalog=SourceCandidateCatalog(sources=sources[:32]),
-        radius=u.Quantity(0.5, "arcsec"),
+        catalog=RegisteredSourceCatalog(sources=sources[:32]),
+        radius=u.Quantity(0.5, "arcmin"),
         method="closest",
     )
 

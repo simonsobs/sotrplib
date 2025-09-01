@@ -38,7 +38,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
 
         self.time_first = np.minimum(time, original_map.time_first)
         self.time_mean = time
-        self.time_last = np.maximum(time, original_map.time_first)
+        self.time_end = np.maximum(time, original_map.time_first)
 
         self.original_map = original_map
 
