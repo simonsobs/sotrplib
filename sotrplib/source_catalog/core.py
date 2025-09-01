@@ -69,9 +69,3 @@ class RegisteredSourceCatalog(SourceCatalog):
         )
 
         return [self.sources[y] for _, y in matches]
-
-
-class SourceCandidateCatalog(SourceCatalog):
-    raise DeprecationWarning(
-        "SourceCandidateCatalog is deprecated, use RegisteredSourceCatalog instead."
-    )
