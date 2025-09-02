@@ -17,6 +17,8 @@ from sotrplib.sources.finding import BlindSourceCandidate
 from sotrplib.sources.sources import ForcedPhotometrySource
 
 
+# TODO: do I want ForcedPhotometrySource here? i.e. would the sifter do the forced photometry?
+# otherwise, the sifter should just take in ForcedPhotometrySources.
 @dataclass
 class SifterResult:
     source_candidates: list[ForcedPhotometrySource]
@@ -80,10 +82,10 @@ class SimpleCatalogSifter(SiftingProvider):
             matches = self.catalog.crossmatch(
                 ra=source.ra, dec=source.dec, radius=self.radius, method=self.method
             )
-
+            # TODO: convert BlindSearchCandidate to RegisteredSource
             if matches:
                 source.update_crossmatches(
-                    match_names=[m.sourceID for m in matches],
+                    match_names=[m.source_id for m in matches],
                     match_probabilities=[1.0 / len(matches)] * len(matches),
                 )
                 log = log.bind(number_of_matches=len(matches))

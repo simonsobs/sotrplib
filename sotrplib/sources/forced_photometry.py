@@ -1,6 +1,7 @@
 from typing import Union
 
 import numpy as np
+import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
 from numpy.typing import ArrayLike
@@ -634,7 +635,7 @@ def convert_catalog_to_registered_source_objects(
     of RegisteredSource objects.
 
     """
-
+    log = log or structlog.get_logger()
     log = log.bind(func_name="convert_catalog_to_registered_source_objects")
 
     if isinstance(catalog_sources, list):
@@ -661,10 +662,10 @@ def convert_catalog_to_registered_source_objects(
             source_id=catalog_sources["name"][i],
             source_type=source_type,
         )
-
-        if catalog_sources["ra_offset_arcmin"][i]:
-            cs.err_ra = catalog_sources["err_ra_offset_arcmin"][i] * u.arcmin
-            cs.err_dec = catalog_sources["err_dec_offset_arcmin"][i] * u.arcmin
+        if "ra_offset_arcmin" in catalog_sources:
+            if catalog_sources["ra_offset_arcmin"][i]:
+                cs.err_ra = catalog_sources["err_ra_offset_arcmin"][i] * u.arcmin
+                cs.err_dec = catalog_sources["err_dec_offset_arcmin"][i] * u.arcmin
 
         cs.add_crossmatch(
             CrossMatch(

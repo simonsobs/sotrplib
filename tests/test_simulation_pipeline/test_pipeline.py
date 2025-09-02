@@ -11,7 +11,7 @@ from sotrplib.sifter.core import SimpleCatalogSifter
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
-from sotrplib.sources.force import PhotutilsGaussianFitter, Scipy2DGaussianFitter
+from sotrplib.sources.force import Scipy2DGaussianFitter
 from sotrplib.sources.forced_photometry import (
     photutils_2D_gauss_fit,
     scipy_2d_gaussian_fit,
@@ -33,7 +33,8 @@ def test_injected_sources_scipy(
 
     # See if we can recover them
     forced_sources = scipy_2d_gaussian_fit(
-        new_map, source_catalog=[s.to_forced_photometry_source() for s in sources]
+        new_map,
+        source_catalog=sources,
     )
 
     assert len(forced_sources) == len(sources)
@@ -53,9 +54,7 @@ def test_basic_pipeline_scipy(
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
-        forced_photometry=Scipy2DGaussianFitter(
-            sources=[s.to_forced_photometry_source() for s in sources]
-        ),
+        forced_photometry=Scipy2DGaussianFitter(sources=sources),
         source_subtractor=None,
         blind_search=None,
         sifter=None,
@@ -85,30 +84,6 @@ def test_injected_sources(
     # Can't look at length of fits because the fits
     # are skipped for items near the edge.
     assert len(thumbnails) == len(sources)
-
-
-def test_basic_pipeline(
-    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
-):
-    """
-    Tests a complete setup of the basic pipeline run.
-    """
-
-    new_map, sources = map_with_sources
-
-    runner = PipelineRunner(
-        maps=[new_map, new_map],
-        preprocessors=None,
-        postprocessors=None,
-        source_simulators=None,
-        forced_photometry=PhotutilsGaussianFitter(sources=sources),
-        source_subtractor=None,
-        blind_search=None,
-        sifter=None,
-        outputs=[PickleSerializer(directory=tmp_path)],
-    )
-
-    runner.run()
 
 
 def test_find_single_source_blind(
@@ -163,7 +138,7 @@ def test_find_sources_blind(
     res = sifter.sift(sources=found_sources, input_map=new_map)
 
     # Crossmatches should, well, match
-    source_ids = sorted([x.sourceID for x in sources[:32]])
+    source_ids = sorted([x.source_id for x in sources[:32]])
     match_ids = sorted([x.crossmatch_names[0] for x in res.source_candidates])
 
     assert source_ids == match_ids

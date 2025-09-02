@@ -23,6 +23,7 @@ class CrossMatch(BaseModel):
     probability: float | None = None
     distance: AstroPydanticQuantity[u.deg] | None = None
     flux: AstroPydanticQuantity[u.mJy] | None = None
+    err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     catalog_name: str | None = None
     catalog_idx: int | None = None
@@ -48,6 +49,7 @@ class RegisteredSource(BaseSource):
     extended: bool | None = None
     err_ra: AstroPydanticQuantity[u.deg] | None = None
     err_dec: AstroPydanticQuantity[u.deg] | None = None
+    err_flux: AstroPydanticQuantity[u.mJy] | None = None
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
     def add_crossmatch(self, crossmatch: CrossMatch):
@@ -141,6 +143,7 @@ class BlindSearchSource(BaseSource):
     These don't a priori have a catalog counterpart.
     """
 
+    source_id: str | None = None
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     err_ra: AstroPydanticQuantity[u.deg] | None = None
     err_dec: AstroPydanticQuantity[u.deg] | None = None

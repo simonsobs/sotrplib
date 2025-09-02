@@ -3,6 +3,10 @@ from datetime import datetime
 import numpy as np
 from pixell import enmap
 
+from sotrplib.sources.forced_photometry import (
+    convert_catalog_to_registered_source_objects,
+)
+
 from ..maps.maps import Depth1Map
 from ..source_catalog.database import SourceCatalogDatabase
 
@@ -147,6 +151,7 @@ def photutils_sim_n_sources(
     arr: str = "sim",
     map_id: str = None,
     ctime: float | enmap.ndmap = None,
+    return_registered_sources: bool = False,
     log=None,
 ):
     """ """
@@ -250,15 +255,20 @@ def photutils_sim_n_sources(
         params,
         imap=sim_map if isinstance(sim_map, enmap.ndmap) else sim_map.flux,
     )
-    injected_sources = convert_catalog_to_source_objects(
-        injected_sources,
-        freq=freq,
-        arr=arr,
-        ctime=ctime,
-        map_id=map_id if map_id else "",
-        source_type="simulated",
-        log=log,
-    )
+    if return_registered_sources:
+        injected_sources = convert_catalog_to_registered_source_objects(
+            injected_sources, source_type="simulated", log=log
+        )
+    else:
+        injected_sources = convert_catalog_to_source_objects(
+            injected_sources,
+            freq=freq,
+            arr=arr,
+            ctime=ctime,
+            map_id=map_id if map_id else "",
+            source_type="simulated",
+            log=log,
+        )
     log.info(
         "photutils_sim_n_sources.sources_injected", n_sources=len(injected_sources)
     )

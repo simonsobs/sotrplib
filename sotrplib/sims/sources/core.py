@@ -179,8 +179,9 @@ class RandomSourceSimulation(SourceSimulation):
         self, input_map: ProcessableMap
     ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
+        log = self.log or structlog.get_logger()
 
-        log = self.log.bind(parameters=self.parameters)
+        log = log.bind(parameters=self.parameters)
 
         # TODO: Store the source information as we should be injecting the
         # same sources in all maps in the run.
@@ -196,6 +197,7 @@ class RandomSourceSimulation(SourceSimulation):
             # TODO: Map IDs
             map_id=None,
             ctime=input_map.time_mean,
+            return_registered_sources=True,
             log=log,
         )
 
