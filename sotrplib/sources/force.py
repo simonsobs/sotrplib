@@ -107,6 +107,47 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         return fit_sources
 
 
+class Scipy2DGaussianFitter(ForcedPhotometryProvider):
+    sources: list[RegisteredSource]
+    flux_limit_centroid: u.Quantity  # this should probably not exist within the function; i.e. be decided before handing the list to the provider.
+    reproject_thumbnails: bool
+    log: FilteringBoundLogger
+
+    def __init__(
+        self,
+        sources: list[RegisteredSource] = [],
+        flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
+        reproject_thumbnails: bool = False,
+        thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.sources = sources
+        self.flux_limit_centroid = flux_limit_centroid
+        self.reproject_thumbnails = reproject_thumbnails
+        self.thumbnail_half_width = thumbnail_half_width
+        self.log = log or get_logger()
+
+    def force(
+        self, input_map: ProcessableMap, sources: list[RegisteredSource]
+    ) -> list[ForcedPhotometrySource]:
+        # TODO: refactor get_fwhm as part of the ProcessableMap
+        fwhm = u.Quantity(
+            get_fwhm(freq=input_map.frequency, arr=input_map.array), "arcmin"
+        )
+
+        fit_sources = scipy_2d_gaussian_fit(
+            input_map,
+            self.sources + sources,
+            flux_lim_fit_centroid=self.flux_limit_centroid,
+            thumbnail_half_width=self.thumbnail_half_width,
+            fwhm=fwhm,
+            reproject_thumb=self.reproject_thumbnails,
+            log=self.log,
+        )
+
+        return fit_sources
+
+
 class PhotutilsGaussianFitter(ForcedPhotometryProvider):
     # TODO: Figure out what type sources are
     sources: list
