@@ -9,6 +9,7 @@ from glob import glob
 
 import numpy as np
 import structlog
+from astropy import units as u
 from pixell.utils import arcmin, degree
 
 from sotrplib.maps.coadding import coadd_map_group, load_coadd_maps
@@ -21,8 +22,7 @@ from sotrplib.source_catalog.database import MockACTDatabase, SourceCatalogDatab
 from sotrplib.source_catalog.source_catalog import load_catalog
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.forced_photometry import (
-    convert_catalog_to_source_objects,
-    photutils_2D_gauss_fit,
+    scipy_2d_gaussian_fit,
 )
 from sotrplib.utils.plot import plot_map_thumbnail
 from sotrplib.utils.utils import get_cut_radius, get_fwhm, get_map_groups
@@ -190,7 +190,6 @@ logger.info("pipeline.parsed")
 ## load act source catalog into socat
 socat_db = MockACTDatabase(
     args.source_catalog,
-    return_catalog=True,
     log=logger,
 )
 
@@ -435,47 +434,25 @@ for freq_arr_idx in indexed_map_groups:
                 flux_threshold=args.flux_threshold,
                 mask_outside_map=True,
                 mask_map=mapdata.flux,
-                return_source_cand_list=True,
                 log=logger,
             )
 
         logger.info("pipeline.sources.fitting")
-        catalog_sources, thumbs = photutils_2D_gauss_fit(
-            mapdata.flux,
-            mapdata.flux / mapdata.snr
-            if not args.sim
-            else mapdata.flux / sim_params["maps"]["map_noise"],
+        catalog_sources = scipy_2d_gaussian_fit(
+            mapdata,
             catalog_sources,
-            size_deg=band_fwhm / degree,
-            PLOT=args.plot_all,
             reproject_thumb=not args.sim,
-            flux_lim_fit_centroid=args.bright_flux_threshold,
-            return_thumbnails=args.save_source_thumbnails,
+            flux_lim_fit_centroid=args.bright_flux_threshold * u.Jy,
             log=logger,
         )
 
-        ## Do something with the thumbnails?
-        logger.warning("Not doing anything with the thumbnails")
-        del thumbs
-
-        known_sources = []
         if catalog_sources:
-            known_sources = convert_catalog_to_source_objects(
-                catalog_sources,
-                mapdata.freq,
-                mapdata.wafer_name,
-                map_id=map_id,
-                ctime=mapdata.time_map,
-                log=logger,
-            )
-
-            ## update the source catalog
-            cataloged_sources_db.add_sources(known_sources)
+            socat_db.update_catalog(catalog_sources)
 
             ## subtract the detected (known) sources from the map
             ## ignore sources with wonky fits.
             srcmodel = mapdata.subtract_sources(
-                known_sources,
+                catalog_sources,
                 cuts={
                     "flux": [0.0, np.inf],
                     "err_flux": [-1.0, 1.0],
@@ -661,7 +638,6 @@ for freq_arr_idx in indexed_map_groups:
             noise_candidates,
             extracted_sources,
             catalog_sources,
-            known_sources,
             injected_sources,
         )
         logger.info("pipeline.write_to_db.updating_catalogs")

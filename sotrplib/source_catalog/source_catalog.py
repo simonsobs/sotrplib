@@ -2,6 +2,11 @@ from pixell.enmap import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.sources.forced_photometry import (
+    convert_catalog_to_registered_source_objects,
+    convert_catalog_to_source_objects,
+)
+
 
 class SourceCatalog:
     def __init__(self, ra, dec):
@@ -291,9 +296,9 @@ def load_catalog(
             sources = sources[source_mask]
         log.info("load_catalog.load_in_map", total_in_map_sources=sum(source_mask))
     if return_source_cand_list:
-        from ..sources.forced_photometry import convert_catalog_to_source_objects
-
         sources = convert_catalog_to_source_objects(sources, log=log)
+    else:
+        sources = convert_catalog_to_registered_source_objects(sources, log=log)
 
     log.info("load_catalog.complete")
     return sources

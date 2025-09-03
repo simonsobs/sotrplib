@@ -3,6 +3,8 @@ from datetime import datetime
 import numpy as np
 from astropy import units as u
 from pixell import enmap
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.maps import Depth1Map
 from sotrplib.sims.sim_sources import SimTransient
@@ -487,7 +489,7 @@ def inject_simulated_sources(
     inject_transients: bool = False,
     use_map_geometry: bool = False,
     simulated_transient_database: str = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Inject sources into a map using photutils.
@@ -505,6 +507,7 @@ def inject_simulated_sources(
     - simulated_transient_database: str, path to the database for simulated transients.
     - log: structlog bound logger object
     """
+    log = log or get_logger()
     log = log.bind(func_name="inject_simulated_sources")
     if not sim_params and not injected_source_db and not simulated_transient_database:
         log.info("inject_simulated_sources.skip")

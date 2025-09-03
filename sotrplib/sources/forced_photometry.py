@@ -627,7 +627,7 @@ def convert_catalog_to_source_objects(
 
 def convert_catalog_to_registered_source_objects(
     catalog_sources: dict,
-    source_type: str = "",
+    source_type: str | None = None,
     log=None,
 ):
     """

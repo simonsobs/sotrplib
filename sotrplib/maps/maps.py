@@ -307,7 +307,7 @@ class Depth1Map:
 
     def subtract_sources(
         self,
-        sources: list,
+        sources: list[ForcedPhotometrySource],
         src_model: enmap.ndmap = None,
         verbose=False,
         cuts={},
@@ -315,8 +315,8 @@ class Depth1Map:
     ):
         """
         src_model is a simulated (model) map of the sources in the list.
-        sources are fit using photutils, and are SourceCandidate objects
-        with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        sources are fit using photutils, and are ForcedPhotometrySource
+        objects with fwhm_a, fwhm_b, ra, dec, flux, and orientation
         """
         log.bind(func_name="subtract_sources")
         if len(sources) == 0:
@@ -331,7 +331,7 @@ class Depth1Map:
             src_model = make_model_source_map(
                 self.flux,
                 sources,
-                nominal_fwhm_arcmin=get_fwhm(self.freq),
+                nominal_fwhm=get_fwhm(self.freq) * u.arcmin,
                 verbose=verbose,
                 cuts=cuts,
                 log=log,
