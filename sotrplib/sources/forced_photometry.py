@@ -2,7 +2,6 @@ from typing import Union
 
 import numpy as np
 import structlog
-
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
 from numpy.typing import ArrayLike
