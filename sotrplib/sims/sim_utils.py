@@ -1,6 +1,9 @@
 import numpy as np
+from astropy import units as u
 from pixell import enmap
 from pixell.utils import degree
+
+from sotrplib.sources.sources import ForcedPhotometrySource
 
 
 def generate_random_positions_in_map(
@@ -302,8 +305,8 @@ def save_transients_to_db(
             VALUES (?, ?, ?, ?, ?, ?)
         """,
             (
-                pk.dumps((transient.dec, transient.ra)),
-                transient.peak_amplitude,
+                pk.dumps((transient.dec.to(u.deg).value, transient.ra.to(u.deg).value)),
+                transient.peak_amplitude.to(u.Jy).value,
                 transient.peak_time,
                 transient.flare_width,
                 transient.flare_morph,
@@ -347,8 +350,8 @@ def load_transients_from_db(
         position = pk.loads(row[0])
         beam_params = pk.loads(row[5])
         transient = SimTransient(
-            position=position,
-            peak_amplitude=row[1],
+            position=(position[0] * u.deg, position[1] * u.deg),
+            peak_amplitude=row[1] * u.Jy,
             peak_time=row[2],
             flare_width=row[3],
             flare_morph=row[4],
@@ -407,8 +410,8 @@ def get_sim_map_group(
 
 def make_2d_gaussian_model_param_table(
     imap: enmap.ndmap,
-    sources: list,
-    nominal_fwhm_arcmin: float = 2.2,
+    sources: list[ForcedPhotometrySource],
+    nominal_fwhm: u.Quantity = 2.2 * u.arcmin,
     verbose: bool = False,
     cuts={},
     log=None,
@@ -420,7 +423,6 @@ def make_2d_gaussian_model_param_table(
     The function returns an astropy Qtable compatible with photutils psf_image generation.
     """
     from astropy.table import QTable
-    from pixell.utils import arcmin, degree
 
     log = log.bind(func_name="make_2d_gaussian_model_param_table")
     model_params = {
@@ -433,31 +435,31 @@ def make_2d_gaussian_model_param_table(
         "id": [],
     }
     id_num = 0
-    res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
+    map_res = abs(imap.wcs.wcs.cdelt[0]) * u.deg
     log.info(
         "make_2d_gaussian_model_param_table.initialize_params",
         model_params=model_params,
     )
     for i in range(len(sources)):
         s = sources[i]
-        pix = imap.sky2pix(np.array([s.dec, s.ra]) * degree)
+        pix = imap.sky2pix(np.array([s.dec.to(u.rad).value, s.ra.to(u.rad).value]))
 
         ## unfortunate naming, a,b are semi-major and semi-minor axes,
         ## but really they're x,y from photutils gaussian fit.
         cut = False
         for cutkey in cuts.keys():
-            if cutkey not in s.__dict__.keys():
+            if cutkey not in s.model_dump():
                 log.error(
                     "make_2d_gaussian_model_param_table.cutkey_not_found", cutkey=cutkey
                 )
                 raise ValueError(f"Cut {cutkey} not found in source attributes.")
-            if s.__dict__[cutkey] is None:
+            if s.model_dump()[cutkey] is None:
                 cut = True
                 break
             if (
-                np.isnan(s.__dict__[cutkey])
-                or (s.__dict__[cutkey] < cuts[cutkey][0])
-                or (s.__dict__[cutkey] > cuts[cutkey][1])
+                np.isnan(s.model_dump()[cutkey])
+                or (s.model_dump()[cutkey] < cuts[cutkey][0])
+                or (s.model_dump()[cutkey] > cuts[cutkey][1])
             ):
                 if verbose:
                     log.debug(
@@ -469,23 +471,33 @@ def make_2d_gaussian_model_param_table(
                 cut = True
                 break
         if not cut:
-            fwhm_x = s.fwhm_a
-            fwhm_y = s.fwhm_b
-            if isinstance(fwhm_x, type(None)):
-                fwhm_x = nominal_fwhm_arcmin
-            if isinstance(fwhm_y, type(None)):
-                fwhm_y = nominal_fwhm_arcmin
-            if isinstance(s.orientation, type(None)):
-                s.orientation = 0.0
+            try:
+                fwhm_x = s.fwhm_ra
+                fwhm_y = s.fwhm_dec
+            except Exception:
+                fwhm_x = None
+                fwhm_y = None
+            if fwhm_x is None:
+                fwhm_x = nominal_fwhm
+            if fwhm_y is None:
+                fwhm_y = nominal_fwhm
+            try:
+                fit_params = s.fit_params
+            except Exception:
+                fit_params = {}
+            if "theta" in fit_params.keys():
+                theta = fit_params["theta"]
+            else:
+                theta = 0.0 * u.deg
 
-            omega_b = 1.02 * (np.pi / 4 / np.log(2)) * (fwhm_x * fwhm_y / res_arcmin**2)
+            omega_b = 1.02 * (np.pi / 4 / np.log(2)) * (fwhm_x * fwhm_y / map_res**2)
             # Define the PSF model parameters
             model_params["x_0"].append(pix[1])
             model_params["y_0"].append(pix[0])
-            model_params["x_fwhm"].append(fwhm_x / res_arcmin)
-            model_params["y_fwhm"].append(fwhm_y / res_arcmin)
-            model_params["flux"].append(s.flux * omega_b)
-            model_params["theta"].append(s.orientation)
+            model_params["x_fwhm"].append((fwhm_x / map_res).value)
+            model_params["y_fwhm"].append((fwhm_y / map_res).value)
+            model_params["flux"].append(s.flux.to(u.Jy).value * omega_b)
+            model_params["theta"].append(theta.to(u.rad).value)
             model_params["id"].append(id_num)
             id_num += 1
     if verbose:

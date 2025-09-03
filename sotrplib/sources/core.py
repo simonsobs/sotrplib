@@ -8,8 +8,8 @@ from abc import ABC, abstractmethod
 from pixell import enmap
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.finding import BlindSourceCandidate
 from sotrplib.sources.sources import (
-    BlindSearchSource,
     ForcedPhotometrySource,
     RegisteredSource,
 )
@@ -29,5 +29,5 @@ class BlindSearchProvider(ABC):
     def search(
         self,
         input_map: ProcessableMap,
-    ) -> tuple[list[BlindSearchSource], list[enmap.ndmap]]:
+    ) -> tuple[list[BlindSourceCandidate], list[enmap.ndmap]]:
         return [], []

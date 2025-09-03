@@ -1,14 +1,15 @@
 from datetime import datetime
 
 import numpy as np
+from astropy import units as u
 from pixell import enmap
 
+from sotrplib.maps.maps import Depth1Map
+from sotrplib.sims.sim_sources import SimTransient
+from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sources.forced_photometry import (
     convert_catalog_to_registered_source_objects,
 )
-
-from ..maps.maps import Depth1Map
-from ..source_catalog.database import SourceCatalogDatabase
 
 
 def make_enmap(
@@ -277,7 +278,7 @@ def photutils_sim_n_sources(
 
 def inject_sources(
     imap: enmap.ndmap | Depth1Map,
-    sources: list,
+    sources: list[SimTransient],
     observation_time: float | enmap.ndmap,
     freq: str = "f090",
     arr: str = None,
@@ -304,7 +305,6 @@ def inject_sources(
     from photutils.datasets import make_model_image
     from photutils.psf import GaussianPSF
     from pixell.enmap import sky2pix
-    from pixell.utils import arcmin, degree
     from tqdm import tqdm
 
     from ..sources.sources import RegisteredSource
@@ -326,9 +326,9 @@ def inject_sources(
         log.error("inject_sources.invalid_map_type", map_type=type(imap))
         raise ValueError("Input map must be a Depth1Map or enmap.ndmap object")
 
-    mapres = abs(wcs.wcs.cdelt[0]) * degree
-    fwhm = get_fwhm(freq, arr=arr) * arcmin
-    fwhm_pixels = fwhm / mapres
+    mapres = abs(wcs.wcs.cdelt[0]) * u.deg
+    fwhm = get_fwhm(freq, arr=arr) * u.arcmin
+    fwhm_pixels = (fwhm / mapres).value
 
     log.info("inject_sources.injecting_sources", n_sources=len(sources))
     injected_sources = []
@@ -336,7 +336,7 @@ def inject_sources(
     for source in tqdm(sources, desc="Injecting sources", disable=not debug):
         # Check if source is within the map bounds
         ra, dec = source.ra, source.dec
-        pix = sky2pix(shape, wcs, np.asarray([dec, ra]) * degree)
+        pix = sky2pix(shape, wcs, np.asarray([dec.to("rad").value, ra.to("rad").value]))
         if not (0 <= pix[0] < shape[-2] and 0 <= pix[1] < shape[-1]):
             removed_sources["out_of_bounds"] += 1
             continue
@@ -373,7 +373,7 @@ def inject_sources(
     model_params = make_2d_gaussian_model_param_table(
         imap if isinstance(imap, enmap.ndmap) else imap.flux,
         sources=injected_sources,
-        nominal_fwhm_arcmin=fwhm / arcmin,
+        nominal_fwhm=fwhm,
         cuts={},
         verbose=debug,
         log=log,

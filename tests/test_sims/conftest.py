@@ -1,4 +1,5 @@
 import pytest
+from astropy import units as u
 
 
 @pytest.fixture
@@ -47,9 +48,9 @@ def dummy_source():
     from sotrplib.sims.sim_sources import SimTransient
 
     ds = SimTransient()
-    ds.ra = 0.4
-    ds.dec = -0.4
-    ds.flux = 1.0
+    ds.ra = 0.4 * u.deg
+    ds.dec = -0.4 * u.deg
+    ds.flux = 1.0 * u.Jy
     ds.peak_time = 0.0
     ds.flare_width = 1.0
     return ds

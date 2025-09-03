@@ -1,7 +1,6 @@
 import pytest
+from astropy import units as u
 from pixell import enmap
-
-# from .conftest import sim_map_params, dummy_source
 from structlog import get_logger
 
 from sotrplib.sims import sim_maps
@@ -85,8 +84,6 @@ def test_inject_sources_bad_maptype(log=log):
 
 
 def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
-    from pixell.utils import degree
-
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     oob_source = dummy_source
     center_ra, center_dec = (
@@ -95,8 +92,8 @@ def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
     )
     ra_width = test_map.shape[-2] * test_map.wcs.wcs.cdelt[0] * 60  # arcmin
     dec_width = test_map.shape[-1] * test_map.wcs.wcs.cdelt[1] * 60  # arcmin
-    oob_source.ra = (center_ra + ra_width) / degree  # Out of bounds
-    oob_source.dec = (center_dec + dec_width) / degree  # Out of bounds
+    oob_source.ra = (center_ra + ra_width) * u.deg  # Out of bounds
+    oob_source.dec = (center_dec + dec_width) * u.deg  # Out of bounds
     _, injected = sim_maps.inject_sources(test_map, [oob_source], 0.0, log=log)
     assert injected == []
 
@@ -105,8 +102,8 @@ def test_inject_sources_not_flaring(sim_map_params, dummy_source, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # observation_time far from peak_time
     quiescent_source = dummy_source
-    quiescent_source.ra = sim_map_params["maps"]["center_ra"]
-    quiescent_source.dec = sim_map_params["maps"]["center_dec"]
+    quiescent_source.ra = sim_map_params["maps"]["center_ra"] * u.deg
+    quiescent_source.dec = sim_map_params["maps"]["center_dec"] * u.deg
     ## inject source with width 1. but 10 days after peak time
     _, injected = sim_maps.inject_sources(test_map, [quiescent_source], 10.0, log=log)
     assert injected == []

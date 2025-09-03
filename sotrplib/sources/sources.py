@@ -10,6 +10,7 @@ from pydantic import BaseModel, PrivateAttr
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.finding import BlindSourceCandidate
 
 
 class BaseSource(BaseModel):
@@ -135,24 +136,35 @@ class ForcedPhotometrySource(RegisteredSource):
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)
 
+    @classmethod
+    def from_blind_source_candidate(
+        cls, candidate: BlindSourceCandidate
+    ) -> "ForcedPhotometrySource":
+        """
+        Create a ForcedPhotometrySource from a BlindSourceCandidate.
+        """
+        # Calculate the components of the FWHM along RA and Dec axes
+        # orientation is in degrees, convert to radians
+        theta = (
+            candidate.orientation.to(u.rad).value
+            if hasattr(candidate, "orientation") and candidate.orientation is not None
+            else 0
+        )
+        a = candidate.semimajor_sigma
+        b = candidate.semiminor_sigma
+        # FWHM along RA: projection of ellipse along RA axis
+        fwhm_ra = 2.355 * abs(a * np.cos(theta)) + abs(b * np.sin(theta))
+        # FWHM along Dec: projection of ellipse along Dec axis
+        fwhm_dec = 2.355 * abs(a * np.sin(theta)) + abs(b * np.cos(theta))
 
-class BlindSearchSource(BaseSource):
-    """
-    A class for sources detected in the blind search.
-
-    These don't a priori have a catalog counterpart.
-    """
-
-    source_id: str | None = None
-    err_flux: AstroPydanticQuantity[u.mJy] | None = None
-    err_ra: AstroPydanticQuantity[u.deg] | None = None
-    err_dec: AstroPydanticQuantity[u.deg] | None = None
-    extract_algorithm: Literal["photutils_segmentation"] | None = (
-        "photutils_segmentation"
-    )
-    extract_params: dict | None = None
-    fit_params: dict | None = None
-    _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
+        return cls(
+            ra=candidate.ra,
+            dec=candidate.dec,
+            flux=candidate.peakval,
+            err_flux=candidate.peakval / candidate.peaksig,
+            fwhm_ra=fwhm_ra,
+            fwhm_dec=fwhm_dec,
+        )
 
 
 class SourceCandidate(BaseModel):

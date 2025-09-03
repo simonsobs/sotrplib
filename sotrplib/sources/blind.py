@@ -7,14 +7,13 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.core import BlindSearchProvider
-from sotrplib.sources.finding import extract_sources
-from sotrplib.sources.sources import BlindSearchSource
+from sotrplib.sources.finding import BlindSourceCandidate, extract_sources
 
 
 class EmptyBlindSearch(BlindSearchProvider):
     def search(
         self, input_map: ProcessableMap
-    ) -> tuple[list[BlindSearchSource], list[enmap.ndmap]]:
+    ) -> tuple[list[BlindSourceCandidate], list[enmap.ndmap]]:
         return [], []
 
 
@@ -45,7 +44,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
     def search(
         self,
         input_map: ProcessableMap,
-    ) -> tuple[list[BlindSearchSource], list[enmap.ndmap]]:
+    ) -> tuple[list[BlindSourceCandidate], list[enmap.ndmap]]:
         if not input_map.finalized:
             raise ValueError(
                 "Input map must be finalized before searching for sources."

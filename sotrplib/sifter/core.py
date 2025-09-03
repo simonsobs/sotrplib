@@ -14,7 +14,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.finding import BlindSourceCandidate
-from sotrplib.sources.sources import ForcedPhotometrySource
+from sotrplib.sources.sources import CrossMatch, ForcedPhotometrySource
 
 
 # TODO: do I want ForcedPhotometrySource here? i.e. would the sifter do the forced photometry?
@@ -82,12 +82,10 @@ class SimpleCatalogSifter(SiftingProvider):
             matches = self.catalog.crossmatch(
                 ra=source.ra, dec=source.dec, radius=self.radius, method=self.method
             )
-            # TODO: convert BlindSearchCandidate to RegisteredSource
+            source = ForcedPhotometrySource.from_blind_source_candidate(source)
+
             if matches:
-                source.update_crossmatches(
-                    match_names=[m.source_id for m in matches],
-                    match_probabilities=[1.0 / len(matches)] * len(matches),
-                )
+                source.crossmatches = [CrossMatch(name=m.source_id) for m in matches]
                 log = log.bind(number_of_matches=len(matches))
                 log = log.info("sifter.simple.matched")
                 source_candidates.append(source)
