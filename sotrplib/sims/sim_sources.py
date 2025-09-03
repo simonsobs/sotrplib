@@ -8,8 +8,8 @@ from .sim_utils import generate_random_positions, make_gaussian_flare
 class SimTransient:
     def __init__(
         self,
-        position: tuple[(AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg])]
-        | list[AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]] = None,
+        position: tuple[AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]] 
+        | list[AstroPydanticQuantity[u.deg]] = None,
         peak_amplitude: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
         peak_time: float = None,
         flare_width: float = None,
