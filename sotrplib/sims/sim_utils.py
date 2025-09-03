@@ -2,7 +2,10 @@ import numpy as np
 from astropy import units as u
 from pixell import enmap
 from pixell.utils import degree
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
 
+from sotrplib.sims.sim_sources import SimTransient
 from sotrplib.sources.sources import ForcedPhotometrySource
 
 
@@ -271,9 +274,9 @@ def dec_lims_valid(
 
 
 def save_transients_to_db(
-    transients,
-    db_path,
-    log=None,
+    transients: list[SimTransient],
+    db_path: str,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Save a list of SimTransient objects to a SQLite database.
@@ -285,6 +288,7 @@ def save_transients_to_db(
     import pickle as pk
     import sqlite3
 
+    log = log or get_logger()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("""
@@ -320,7 +324,7 @@ def save_transients_to_db(
 def load_transients_from_db(
     db_path,
     log=None,
-):
+) -> list[SimTransient]:
     """
     Load a list of SimTransient objects from a SQLite database.
 
