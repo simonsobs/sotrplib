@@ -2,13 +2,11 @@ from astropy import units as u
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 
-from .sim_utils import generate_random_positions, make_gaussian_flare
-
 
 class SimTransient:
     def __init__(
         self,
-        position: tuple[AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]] 
+        position: tuple[AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]]
         | list[AstroPydanticQuantity[u.deg]] = None,
         peak_amplitude: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
         peak_time: float = None,
@@ -28,6 +26,8 @@ class SimTransient:
         - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
         """
         if position is None:
+            from sotrplib.sims.sim_utils import generate_random_positions
+
             self.dec, self.ra = generate_random_positions(
                 n=1, ra_lims=(0, 360), dec_lims=(-60, 20)
             )[0]
@@ -52,6 +52,8 @@ class SimTransient:
         Returns:
         - Flux (amplitude) value at the given time.
         """
+        from sotrplib.sims.sim_utils import make_gaussian_flare
+
         if self.flare_morph == "Gaussian":
             # Calculate Gaussian amplitude
             if self.peak_time is None or self.flare_width is None:
