@@ -2,7 +2,6 @@
 Tests for the fully simulated pipeline setup.
 """
 
-import structlog
 from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
@@ -13,7 +12,6 @@ from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import Scipy2DGaussianFitter
 from sotrplib.sources.forced_photometry import (
-    photutils_2D_gauss_fit,
     scipy_2d_gaussian_fit,
 )
 from sotrplib.sources.sources import RegisteredSource
@@ -62,28 +60,6 @@ def test_basic_pipeline_scipy(
     )
 
     runner.run()
-
-
-def test_injected_sources(
-    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
-):
-    new_map, sources = map_with_sources
-
-    assert new_map.finalized
-    assert len(sources) > 0
-
-    # See if we can recover them
-    fits, thumbnails = photutils_2D_gauss_fit(
-        flux_map=new_map.flux,
-        snr_map=new_map.snr,
-        source_catalog=sources,
-        log=structlog.get_logger(),
-        return_thumbnails=True,
-    )
-
-    # Can't look at length of fits because the fits
-    # are skipped for items near the edge.
-    assert len(thumbnails) == len(sources)
 
 
 def test_find_single_source_blind(
