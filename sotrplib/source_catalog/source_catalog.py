@@ -1,4 +1,6 @@
 from pixell.enmap import enmap
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
 
 
 class SourceCatalog:
@@ -10,7 +12,7 @@ class SourceCatalog:
 def load_act_catalog(
     source_cat_file: str = "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
     flux_threshold: float = 0,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     source_cat_file is path to source catalog
@@ -21,6 +23,7 @@ def load_act_catalog(
     """
     from astropy.table import Table
 
+    log = log or get_logger()
     log.bind(func_name="load_act_catalog")
     sourcecat = None
     sourcecat = Table.read(source_cat_file)
