@@ -85,7 +85,7 @@ class SimpleCatalogSifter(SiftingProvider):
             source = ForcedPhotometrySource.from_blind_source_candidate(source)
 
             if matches:
-                source.crossmatches = [CrossMatch() for m in matches]
+                source.crossmatches = [CrossMatch(name=m.source_id) for m in matches]
                 log = log.bind(number_of_matches=len(matches))
                 log = log.info("sifter.simple.matched")
                 source_candidates.append(source)
