@@ -103,7 +103,7 @@ def test_find_sources_blind(
 
     # Check we can sift them out!
     sifter = SimpleCatalogSifter(
-        catalog=RegisteredSourceCatalog(sources=sources[:32]),
+        catalog=RegisteredSourceCatalog(sources=sources),
         radius=u.Quantity(0.5, "arcmin"),
         method="closest",
     )
@@ -111,10 +111,8 @@ def test_find_sources_blind(
     res = sifter.sift(sources=found_sources, input_map=new_map)
 
     # Crossmatches should, well, match
-    source_ids = sorted([x.source_id for x in sources[:32]])
+    source_ids = sorted([x.source_id for x in sources])
     match_ids = sorted([x.crossmatches[0].name for x in res.source_candidates])
-
     assert source_ids == match_ids
-
-    assert len(res.source_candidates) == 32
-    assert len(res.transient_candidates) == 32
+    assert len(res.source_candidates) == 4
+    assert len(res.transient_candidates) == 0

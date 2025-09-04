@@ -138,7 +138,8 @@ class ForcedPhotometrySource(RegisteredSource):
 
     @classmethod
     def from_blind_source_candidate(
-        cls, candidate: BlindSourceCandidate
+        cls,
+        candidate: BlindSourceCandidate,
     ) -> "ForcedPhotometrySource":
         """
         Create a ForcedPhotometrySource from a BlindSourceCandidate.
