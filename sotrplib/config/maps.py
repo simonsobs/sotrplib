@@ -95,9 +95,9 @@ class RhoKappaMapConfig(MapConfig):
     map_type: Literal["filtered"] = "filtered"
     rho_map_path: Path
     kappa_map_path: Path
-    time_map_path: Path | None
-    frequency: str = "f090"
-    array: str = "pa5"
+    time_map_path: Path | None = None
+    frequency: str | None = "f090"
+    array: str | None = "pa5"
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
@@ -120,9 +120,9 @@ class InverseVarianceMapConfig(MapConfig):
     map_type: Literal["inverse_variance"] = "inverse_variance"
     intensity_map_path: Path
     weights_map_path: Path
-    time_map_path: Path | None
-    frequency: str = "f090"
-    array: str = "pa5"
+    time_map_path: Path | None = None
+    frequency: str | None = "f090"
+    array: str | None = "pa5"
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
