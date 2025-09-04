@@ -14,6 +14,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
     ProcessableMap,
+    RhoAndKappaMap,
 )
 from sotrplib.sims.maps import (
     SimulatedMap,
@@ -89,4 +90,31 @@ class SimulatedMapFromGeometryConfig(MapConfig):
         )
 
 
-AllMapConfigTypes = SimulatedMapConfig | SimulatedMapFromGeometryConfig
+class RhoKappaMapConfig(MapConfig):
+    map_type: Literal["filtered"] = "filtered"
+    rho_map_path: Path
+    kappa_map_path: Path
+    time_map_path: Path | None
+    frequency: str = "f090"
+    array: str = "pa5"
+    observation_start: datetime | None = None
+    observation_end: datetime | None = None
+    box: AstroPydanticQuantity[u.deg] | None = None
+
+    def to_map(self, log: FilteringBoundLogger | None = None) -> RhoAndKappaMap:
+        return RhoAndKappaMap(
+            rho_filename=self.rho_map_path,
+            kappa_filename=self.kappa_map_path,
+            start_time=self.observation_start,
+            end_time=self.observation_end,
+            time_filename=self.time_map_path,
+            box=self.box.to(u.rad).value if self.box else self.box,
+            frequency=self.frequency,
+            array=self.array,
+            log=log,
+        )
+
+
+AllMapConfigTypes = (
+    SimulatedMapConfig | SimulatedMapFromGeometryConfig | RhoKappaMapConfig
+)

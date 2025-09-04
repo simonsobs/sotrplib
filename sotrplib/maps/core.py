@@ -281,22 +281,22 @@ class RhoAndKappaMap(ProcessableMap):
         try:
             self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=self.box)
             log.debug("rho_kappa.rho.read.sel")
-        except IndexError:
+        except (IndexError, AttributeError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=self.box)
             log.debug("rho_kappa.rho.read.nosel")
 
         log = log.new(kappa_filename=self.kappa_filename)
-        self.kappa = enmap.read_map(self.kappa_filename, box=self.box)
+        self.kappa = enmap.read_map(str(self.kappa_filename), box=self.box)
         log.debug("rho_kappa.kappa.read")
 
         # TODO: Set metadata from header e.g. frequency band.
-        self.map_resolution = self.res()
+        self.map_resolution = abs(self.rho.wcs.wcs.cdelt[0]) * u.deg
 
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(self.time_filename, box=self.box)
+            time_map = enmap.read_map(str(self.time_filename), box=self.box)
             log.debug("rho_kappa.time.read")
         else:
             time_map = None
