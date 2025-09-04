@@ -164,10 +164,10 @@ class ProcessableMap(ABC):
         else:
             for attribute in ["flux", "snr", "rho", "kappa"]:
                 if x := getattr(self, attribute, None):
-                    res = abs(x.wcs.wcs.cdelt[0])
+                    self.map_resolution = u.Quantity(
+                        abs(x.wcs.wcs.cdelt[0]), x.wcs.wcs.cunit[0]
+                    )
                     break
-
-        self.map_resolution = res * u.degree
 
         return self.map_resolution
 
@@ -234,7 +234,10 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             str(self.inverse_variance_filename), box=box
         )
         log.debug("intensity_ivar.ivar.read")
-        self.map_resolution = abs(self.intensity.wcs.wcs.cdelt[0]) * u.deg
+        self.map_resolution = u.Quantity(
+            abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
+        )
+
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
@@ -300,7 +303,9 @@ class RhoAndKappaMap(ProcessableMap):
         log.debug("rho_kappa.kappa.read")
 
         # TODO: Set metadata from header e.g. frequency band.
-        self.map_resolution = abs(self.rho.wcs.wcs.cdelt[0]) * u.deg
+        self.map_resolution = u.Quantity(
+            abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
+        )
 
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
@@ -388,7 +393,9 @@ class CoaddedMap(ProcessableMap):
 
         self.rho = base_map.rho.copy()
         self.kappa = base_map.kappa.copy()
-        self.map_resolution = np.abs(base_map.rho.wcs.wcs.cdelt[0]) * u.degrees
+        self.map_resolution = u.Quantity(
+            abs(base_map.rho.wcs.wcs.cdelt[0]), base_map.rho.wcs.wcs.cunit[0]
+        )
 
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
