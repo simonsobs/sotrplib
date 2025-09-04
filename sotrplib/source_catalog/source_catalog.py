@@ -1,4 +1,11 @@
 from pixell.enmap import enmap
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
+
+from sotrplib.sources.forced_photometry import (
+    convert_catalog_to_registered_source_objects,
+    convert_catalog_to_source_objects,
+)
 
 
 class SourceCatalog:
@@ -10,7 +17,7 @@ class SourceCatalog:
 def load_act_catalog(
     source_cat_file: str = "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
     flux_threshold: float = 0,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     source_cat_file is path to source catalog
@@ -21,6 +28,7 @@ def load_act_catalog(
     """
     from astropy.table import Table
 
+    log = log or get_logger()
     log.bind(func_name="load_act_catalog")
     sourcecat = None
     sourcecat = Table.read(source_cat_file)
@@ -288,9 +296,9 @@ def load_catalog(
             sources = sources[source_mask]
         log.info("load_catalog.load_in_map", total_in_map_sources=sum(source_mask))
     if return_source_cand_list:
-        from ..sources.forced_photometry import convert_catalog_to_source_objects
-
         sources = convert_catalog_to_source_objects(sources, log=log)
+    else:
+        sources = convert_catalog_to_registered_source_objects(sources, log=log)
 
     log.info("load_catalog.complete")
     return sources

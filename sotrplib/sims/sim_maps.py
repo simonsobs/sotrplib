@@ -1,10 +1,17 @@
 from datetime import datetime
 
 import numpy as np
+from astropy import units as u
 from pixell import enmap
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
 
-from ..maps.maps import Depth1Map
-from ..source_catalog.database import SourceCatalogDatabase
+from sotrplib.maps.maps import Depth1Map
+from sotrplib.sims.sim_sources import SimTransient
+from sotrplib.source_catalog.database import SourceCatalogDatabase
+from sotrplib.sources.forced_photometry import (
+    convert_catalog_to_registered_source_objects,
+)
 
 
 def make_enmap(
@@ -147,6 +154,7 @@ def photutils_sim_n_sources(
     arr: str = "sim",
     map_id: str = None,
     ctime: float | enmap.ndmap = None,
+    return_registered_sources: bool = False,
     log=None,
 ):
     """ """
@@ -250,15 +258,20 @@ def photutils_sim_n_sources(
         params,
         imap=sim_map if isinstance(sim_map, enmap.ndmap) else sim_map.flux,
     )
-    injected_sources = convert_catalog_to_source_objects(
-        injected_sources,
-        freq=freq,
-        arr=arr,
-        ctime=ctime,
-        map_id=map_id if map_id else "",
-        source_type="simulated",
-        log=log,
-    )
+    if return_registered_sources:
+        injected_sources = convert_catalog_to_registered_source_objects(
+            injected_sources, source_type="simulated", log=log
+        )
+    else:
+        injected_sources = convert_catalog_to_source_objects(
+            injected_sources,
+            freq=freq,
+            arr=arr,
+            ctime=ctime,
+            map_id=map_id if map_id else "",
+            source_type="simulated",
+            log=log,
+        )
     log.info(
         "photutils_sim_n_sources.sources_injected", n_sources=len(injected_sources)
     )
@@ -267,7 +280,7 @@ def photutils_sim_n_sources(
 
 def inject_sources(
     imap: enmap.ndmap | Depth1Map,
-    sources: list,
+    sources: list[SimTransient],
     observation_time: float | enmap.ndmap,
     freq: str = "f090",
     arr: str = None,
@@ -294,10 +307,9 @@ def inject_sources(
     from photutils.datasets import make_model_image
     from photutils.psf import GaussianPSF
     from pixell.enmap import sky2pix
-    from pixell.utils import arcmin, degree
     from tqdm import tqdm
 
-    from ..sources.sources import SourceCandidate
+    from ..sources.sources import RegisteredSource
     from ..utils.utils import get_fwhm
     from .sim_utils import make_2d_gaussian_model_param_table
 
@@ -316,9 +328,9 @@ def inject_sources(
         log.error("inject_sources.invalid_map_type", map_type=type(imap))
         raise ValueError("Input map must be a Depth1Map or enmap.ndmap object")
 
-    mapres = abs(wcs.wcs.cdelt[0]) * degree
-    fwhm = get_fwhm(freq, arr=arr) * arcmin
-    fwhm_pixels = fwhm / mapres
+    mapres = abs(wcs.wcs.cdelt[0]) * u.deg
+    fwhm = get_fwhm(freq, arr=arr) * u.arcmin
+    fwhm_pixels = (fwhm / mapres).value
 
     log.info("inject_sources.injecting_sources", n_sources=len(sources))
     injected_sources = []
@@ -326,7 +338,7 @@ def inject_sources(
     for source in tqdm(sources, desc="Injecting sources", disable=not debug):
         # Check if source is within the map bounds
         ra, dec = source.ra, source.dec
-        pix = sky2pix(shape, wcs, np.asarray([dec, ra]) * degree)
+        pix = sky2pix(shape, wcs, np.asarray([dec.to("rad").value, ra.to("rad").value]))
         if not (0 <= pix[0] < shape[-2] and 0 <= pix[1] < shape[-1]):
             removed_sources["out_of_bounds"] += 1
             continue
@@ -351,22 +363,11 @@ def inject_sources(
 
         flux = source.get_flux(source_obs_time)
 
-        inj_source = SourceCandidate(
+        inj_source = RegisteredSource(
             ra=ra,
-            err_ra=0.0,
             dec=dec,
-            err_dec=0.0,
             flux=flux,
-            err_flux=0.0,
-            snr=np.inf,
-            freq=freq,
-            arr=arr if arr else "any",
-            ctime=source_obs_time,
-            fwhm_a=fwhm / arcmin,
-            fwhm_b=fwhm / arcmin,
             source_type="simulated",
-            orientation=0.0,
-            map_id=map_id if map_id else "",
         )
         injected_sources.append(inj_source)
     log.info("inject_sources.sources_to_inject", injected_sources=injected_sources)
@@ -374,7 +375,7 @@ def inject_sources(
     model_params = make_2d_gaussian_model_param_table(
         imap if isinstance(imap, enmap.ndmap) else imap.flux,
         sources=injected_sources,
-        nominal_fwhm_arcmin=fwhm / arcmin,
+        nominal_fwhm=fwhm,
         cuts={},
         verbose=debug,
         log=log,
@@ -488,7 +489,7 @@ def inject_simulated_sources(
     inject_transients: bool = False,
     use_map_geometry: bool = False,
     simulated_transient_database: str = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Inject sources into a map using photutils.
@@ -506,6 +507,7 @@ def inject_simulated_sources(
     - simulated_transient_database: str, path to the database for simulated transients.
     - log: structlog bound logger object
     """
+    log = log or get_logger()
     log = log.bind(func_name="inject_simulated_sources")
     if not sim_params and not injected_source_db and not simulated_transient_database:
         log.info("inject_simulated_sources.skip")

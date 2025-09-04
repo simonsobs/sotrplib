@@ -5,7 +5,7 @@ Source subtraction steps.
 from abc import ABC, abstractmethod
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import ForcedPhotometrySource, SourceCandidate
 
 
 class SourceSubtractedMap(ProcessableMap):
@@ -16,7 +16,9 @@ class SourceSubtractedMap(ProcessableMap):
 class SourceSubtractor(ABC):
     @abstractmethod
     def subtract(
-        self, sources: list[SourceCandidate], input_map: ProcessableMap
+        self,
+        sources: list[SourceCandidate] | list[ForcedPhotometrySource],
+        input_map: ProcessableMap,
     ) -> SourceSubtractedMap:
         return
 
@@ -27,6 +29,8 @@ class EmptySourceSubtractor(SourceSubtractor):
     """
 
     def subtract(
-        self, sources: list[SourceCandidate], input_map: ProcessableMap
+        self,
+        sources: list[SourceCandidate] | list[ForcedPhotometrySource],
+        input_map: ProcessableMap,
     ) -> ProcessableMap:
         return input_map

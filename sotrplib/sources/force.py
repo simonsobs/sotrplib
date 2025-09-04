@@ -35,8 +35,10 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
     def __init__(
         self,
         mode: Literal["spline", "nn"],
+        log: FilteringBoundLogger | None = None,
     ):
         self.mode = mode
+        self.log = log or get_logger()
 
     def force(
         self,
@@ -45,7 +47,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
     ):
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
-
+        out_sources = []
         for source in sources:
             flux = input_map.flux.at(
                 [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
@@ -53,18 +55,20 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
             snr = input_map.snr.at(
                 [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
             )
-            source.flux = AstroPydanticQuantity(u.Quantity(flux, input_map.flux_units))
-            source.err_flux = AstroPydanticQuantity(
-                u.Quantity(flux / snr, input_map.flux_units)
+            out_source = ForcedPhotometrySource(
+                **source.model_dump(),
+                fit_method="nearest_neighbor" if self.mode == "nn" else "spline",
             )
-            source.fit_method = "nearest_neighbor" if self.mode == "nn" else "spline"
+            out_source.flux = AstroPydanticQuantity(flux, u.Jy)
+            out_source.err_flux = AstroPydanticQuantity(flux / snr, u.Jy)
+            out_sources.append(out_source)
 
-        return sources
+        return out_sources
 
 
 class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     sources: list[RegisteredSource]
-    flux_limit_centroid: u.Quantity  # this should probably not exist within the function; i.e. be decided before handing the list to the provider.
+    flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
     log: FilteringBoundLogger
 
