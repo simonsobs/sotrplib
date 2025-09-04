@@ -235,7 +235,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         )
         log.debug("intensity_ivar.ivar.read")
         self.map_resolution = u.Quantity(
-            abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
+            abs(self.inverse_variance.wcs.wcs.cdelt[0]),
+            self.inverse_variance.wcs.wcs.cunit[0],
         )
 
         log = log.new(time_filename=self.time_filename)
