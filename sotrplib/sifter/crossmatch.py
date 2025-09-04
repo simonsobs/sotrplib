@@ -13,7 +13,7 @@ from scipy import spatial
 
 from sotrplib.source_catalog.core import SourceCatalog
 
-from ..sources.sources import SourceCandidate
+from ..sources.sources import ForcedPhotometrySource, SourceCandidate
 
 
 def crossmatch_mask(
@@ -105,7 +105,7 @@ def crossmatch_with_million_quasar_catalog(
 
 
 def gaia_match(
-    cand: SourceCandidate,
+    cand: ForcedPhotometrySource,
     maxmag: float = 16,
     maxsep_deg: float = 1 * pixell_utils.degree,
     parallax_required=True,

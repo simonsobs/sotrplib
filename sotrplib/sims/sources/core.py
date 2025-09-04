@@ -18,7 +18,7 @@ from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.maps import edge_map
 from sotrplib.sims import sim_maps, sim_sources, sim_utils
 from sotrplib.source_catalog.database import SourceCatalogDatabase
-from sotrplib.sources.sources import SourceCandidate
+from sotrplib.sources.sources import RegisteredSource
 
 
 class ProcessableMapWithSimulatedSources(ProcessableMap):
@@ -38,7 +38,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
 
         self.time_first = np.minimum(time, original_map.time_first)
         self.time_mean = time
-        self.time_last = np.maximum(time, original_map.time_first)
+        self.time_end = np.maximum(time, original_map.time_first)
 
         self.original_map = original_map
 
@@ -70,7 +70,7 @@ class SourceSimulation(ABC):
     @abstractmethod
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         """
         Simulate sources on the input map.
 
@@ -96,7 +96,7 @@ class SourceSimulationPassthrough(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         return input_map, []
 
 
@@ -116,7 +116,7 @@ class DatabaseSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         new_flux_map, injected_sources = sim_maps.inject_sources(
@@ -177,10 +177,11 @@ class RandomSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
+        log = self.log or structlog.get_logger()
 
-        log = self.log.bind(parameters=self.parameters)
+        log = log.bind(parameters=self.parameters)
 
         # TODO: Store the source information as we should be injecting the
         # same sources in all maps in the run.
@@ -196,6 +197,7 @@ class RandomSourceSimulation(SourceSimulation):
             # TODO: Map IDs
             map_id=None,
             ctime=input_map.time_mean,
+            return_registered_sources=True,
             log=log,
         )
 
@@ -232,7 +234,7 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         log = self.log.bind(transient_database_path=self.transient_database_path)
@@ -297,7 +299,7 @@ class TransientSourceSimulation(SourceSimulation):
 
     def simulate(
         self, input_map: ProcessableMap
-    ) -> tuple[ProcessableMap, list[SourceCandidate]]:
+    ) -> tuple[ProcessableMap, list[RegisteredSource]]:
         noise_map = input_map.noise
 
         log = self.log.bind(parameters=self.parameters)

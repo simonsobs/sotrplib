@@ -3,8 +3,17 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from astropy import units as u
+
+# TODO: move photutils utilities to a separate file.
+from photutils.datasets import make_model_image
+from photutils.psf import GaussianPSF
 from pixell import enmap
 from pixell.utils import arcmin, degree
+
+from sotrplib.sources.sources import ForcedPhotometrySource
+
+from ..sims.sim_utils import make_2d_gaussian_model_param_table
 
 
 class Depth1Map:
@@ -298,7 +307,7 @@ class Depth1Map:
 
     def subtract_sources(
         self,
-        sources: list,
+        sources: list[ForcedPhotometrySource],
         src_model: enmap.ndmap = None,
         verbose=False,
         cuts={},
@@ -306,8 +315,8 @@ class Depth1Map:
     ):
         """
         src_model is a simulated (model) map of the sources in the list.
-        sources are fit using photutils, and are SourceCandidate objects
-        with fwhm_a, fwhm_b, ra, dec, flux, and orientation
+        sources are fit using photutils, and are ForcedPhotometrySource
+        objects with fwhm_a, fwhm_b, ra, dec, flux, and orientation
         """
         log.bind(func_name="subtract_sources")
         if len(sources) == 0:
@@ -322,7 +331,7 @@ class Depth1Map:
             src_model = make_model_source_map(
                 self.flux,
                 sources,
-                nominal_fwhm_arcmin=get_fwhm(self.freq),
+                nominal_fwhm=get_fwhm(self.freq) * u.arcmin,
                 verbose=verbose,
                 cuts=cuts,
                 log=log,
@@ -979,8 +988,8 @@ def preprocess_map(
 
 def make_model_source_map(
     imap: enmap.ndmap,
-    sources: list,
-    nominal_fwhm_arcmin: float = None,
+    sources: list[ForcedPhotometrySource],
+    nominal_fwhm: u.Quantity | None = None,
     matched_filtered=False,
     verbose=False,
     cuts={},
@@ -1005,29 +1014,24 @@ def make_model_source_map(
     if len(sources) == 0:
         log.warning("make_model_source_map.no_sources", num_sources=0)
         return imap
-    from photutils.datasets import make_model_image
-    from photutils.psf import GaussianPSF
-    from pixell.utils import arcmin, degree
-
-    from ..sims.sim_utils import make_2d_gaussian_model_param_table
 
     if matched_filtered:
-        nominal_fwhm_arcmin *= np.sqrt(2)
+        nominal_fwhm *= np.sqrt(2)
 
-    res_arcmin = abs(imap.wcs.wcs.cdelt[0] * degree / arcmin)
-    log.bind(nominal_fwhm_arcmin=nominal_fwhm_arcmin, res_arcmin=res_arcmin)
+    map_res = abs(imap.wcs.wcs.cdelt[0]) * u.deg
+    log.bind(nominal_fwhm=nominal_fwhm, res=map_res)
     model_params = make_2d_gaussian_model_param_table(
         imap,
         sources,
-        nominal_fwhm_arcmin=nominal_fwhm_arcmin,
+        nominal_fwhm=nominal_fwhm,
         cuts=cuts,
         verbose=verbose,
         log=log,
     )
 
     shape = (
-        int(5 * nominal_fwhm_arcmin / res_arcmin),
-        int(5 * nominal_fwhm_arcmin / res_arcmin),
+        int(5 * nominal_fwhm / map_res),
+        int(5 * nominal_fwhm / map_res),
     )
     log.info("make_model_source_map.make_model_image.start")
     model_map = make_model_image(

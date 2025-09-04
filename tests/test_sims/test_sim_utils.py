@@ -1,4 +1,5 @@
 import pytest
+from astropy import units as u
 from structlog import get_logger
 
 log = get_logger()
@@ -102,9 +103,9 @@ def test_read_write_transients_db(tmp_path, sim_transient_params, log=log):
     transients = []
     for _ in range(sim_transient_params["injected_transients"]["n_transients"]):
         transient = SimTransient()
-        transient.ra = 0
-        transient.dec = 0
-        transient.flux = 1
+        transient.ra = 0 * u.deg
+        transient.dec = 0 * u.deg
+        transient.flux = 1 * u.Jy
         transient.peak_time = 1.5e9
         transient.flare_width = 1.0
         transients.append(transient)

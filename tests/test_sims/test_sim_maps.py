@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from astropy import units as u
 from pixell import enmap
 from structlog import get_logger
 
@@ -133,20 +134,20 @@ def test_inject_sources_empty_and_not_flaring(sim_map_params, dummy_source, log=
 def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Place source out of bounds
-    dummy_source.ra = 999.0
-    dummy_source.dec = 999.0
+    dummy_source.ra = 999.0 * u.deg
+    dummy_source.dec = 999.0 * u.deg
     _, injected = sim_maps.inject_sources(test_map, [dummy_source], 0.0, log=log)
     assert injected == []
 
 
 def test_inject_sources_nan_mapval(sim_map_params, dummy_source, log=log):
-    from pixell.utils import degree
-
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Set a pixel to nan and inject source there
-    dummy_source.ra = sim_map_params["maps"]["center_ra"]
-    dummy_source.dec = sim_map_params["maps"]["center_dec"]
-    x, y = test_map.sky2pix([dummy_source.dec * degree, dummy_source.ra * degree])
+    dummy_source.ra = sim_map_params["maps"]["center_ra"] * u.deg
+    dummy_source.dec = sim_map_params["maps"]["center_dec"] * u.deg
+    x, y = test_map.sky2pix(
+        [dummy_source.dec.to(u.rad).value, dummy_source.ra.to(u.rad).value]
+    )
     test_map[int(x), int(y)] = np.nan
     _, injected = sim_maps.inject_sources(test_map, [dummy_source], 0.0, log=log)
     assert injected == []

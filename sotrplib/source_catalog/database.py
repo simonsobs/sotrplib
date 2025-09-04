@@ -5,7 +5,7 @@ import pandas as pd
 import structlog
 from astropy import units as u
 from astropy.io import fits
-from filelock import FileLock  # Import FileLock and Timeout for file-based locking
+from filelock import FileLock  # Import FileLock for file-based locking
 from pixell.enmap import ndmap
 from socat.client import mock
 from structlog.types import FilteringBoundLogger

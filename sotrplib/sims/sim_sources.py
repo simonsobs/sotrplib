@@ -1,13 +1,14 @@
+from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pixell import enmap
-
-from .sim_utils import generate_random_positions, make_gaussian_flare
 
 
 class SimTransient:
     def __init__(
         self,
-        position: tuple | list = None,
-        peak_amplitude: float = 0.0,
+        position: tuple[AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]]
+        | list[AstroPydanticQuantity[u.deg]] = None,
+        peak_amplitude: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
         peak_time: float = None,
         flare_width: float = None,
         flare_morph: str = "Gaussian",
@@ -24,12 +25,17 @@ class SimTransient:
         - flare_morph: The morphology of the flare ('Gaussian' supported for now).
         - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
         """
+        if position is None:
+            from sotrplib.sims.sim_utils import generate_random_positions
 
-        self.dec, self.ra = (
-            position
-            if isinstance(position, (tuple, list))
-            else generate_random_positions(n=1, ra_lims=(0, 360), dec_lims=(-60, 20))[0]
-        )
+            self.dec, self.ra = generate_random_positions(
+                n=1, ra_lims=(0, 360), dec_lims=(-60, 20)
+            )[0]
+            self.dec *= u.deg
+            self.ra *= u.deg
+        else:
+            self.dec, self.ra = position
+
         self.peak_amplitude = peak_amplitude
         self.peak_time = peak_time
         self.flare_width = flare_width
@@ -46,6 +52,8 @@ class SimTransient:
         Returns:
         - Flux (amplitude) value at the given time.
         """
+        from sotrplib.sims.sim_utils import make_gaussian_flare
+
         if self.flare_morph == "Gaussian":
             # Calculate Gaussian amplitude
             if self.peak_time is None or self.flare_width is None:
@@ -56,9 +64,9 @@ class SimTransient:
             flux = make_gaussian_flare(
                 delta_time,
                 flare_fwhm_s=self.flare_width,
-                flare_peak_Jy=self.peak_amplitude,
+                flare_peak_Jy=self.peak_amplitude.to(u.Jy).value,
             )
-            return flux
+            return flux * u.Jy
         else:
             raise NotImplementedError(
                 f"Flare morphology '{self.flare_morph}' is not supported."
@@ -183,8 +191,8 @@ def generate_transients(
 
     for i in range(len(positions)):
         transient = SimTransient(
-            position=positions[i],
-            peak_amplitude=peak_amplitudes[i],
+            position=(positions[i][0] * u.deg, positions[i][1] * u.deg),
+            peak_amplitude=peak_amplitudes[i] * u.Jy,
             peak_time=peak_times[i],
             flare_width=flare_widths[i],
             flare_morph=flare_morphs[i],

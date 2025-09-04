@@ -5,11 +5,9 @@ Testing source catalog generation and usage.
 import astropy.units as u
 import pytest
 
-from sotrplib.source_catalog.core import SourceCandidateCatalog
+from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.source_catalog.database import MockDatabase
-from sotrplib.sources.sources import (
-    SourceCandidate,
-)
+from sotrplib.sources.sources import RegisteredSource
 
 
 @pytest.fixture
@@ -55,33 +53,23 @@ def test_socat_mock_db(dummy_socat_db):
 
 
 def test_simple_source_catalog():
-    outside_source = SourceCandidate(
-        ra=10.0,
-        dec=10.0,
-        err_ra=0.0,
-        err_dec=0.0,
-        flux=10.0,
-        err_flux=0.1,
-        snr=10.0,
-        freq="f090",
-        ctime=12345.0,
-        arr="pa5",
+    outside_source = RegisteredSource(
+        ra=10.0 * u.deg,
+        dec=10.0 * u.deg,
+        err_ra=0.0 * u.deg,
+        err_dec=0.0 * u.deg,
+        flux=10.0 * u.Jy,
     )
 
-    inside_source = SourceCandidate(
-        ra=20.0,
-        dec=20.0,
-        err_ra=0.0,
-        err_dec=0.0,
-        flux=10.0,
-        err_flux=0.1,
-        snr=10.0,
-        freq="f090",
-        ctime=12345.0,
-        arr="pa5",
+    inside_source = RegisteredSource(
+        ra=20.0 * u.deg,
+        dec=20.0 * u.deg,
+        err_ra=0.0 * u.deg,
+        err_dec=0.0 * u.deg,
+        flux=10.0 * u.Jy,
     )
 
-    catalog = SourceCandidateCatalog(sources=[outside_source, inside_source])
+    catalog = RegisteredSourceCatalog(sources=[outside_source, inside_source])
 
     match = catalog.crossmatch(
         ra=20.1 * u.deg, dec=20.1 * u.deg, radius=2.0 * u.deg, method="all"
