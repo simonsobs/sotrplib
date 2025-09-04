@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
+    IntensityAndInverseVarianceMap,
     ProcessableMap,
     RhoAndKappaMap,
 )
@@ -108,7 +109,34 @@ class RhoKappaMapConfig(MapConfig):
             start_time=self.observation_start,
             end_time=self.observation_end,
             time_filename=self.time_map_path,
-            box=self.box.to(u.rad).value if self.box else self.box,
+            box=self.box,
+            frequency=self.frequency,
+            array=self.array,
+            log=log,
+        )
+
+
+class InverseVarianceMapConfig(MapConfig):
+    map_type: Literal["inverse_variance"] = "inverse_variance"
+    intensity_map_path: Path
+    weights_map_path: Path
+    time_map_path: Path | None
+    frequency: str = "f090"
+    array: str = "pa5"
+    observation_start: datetime | None = None
+    observation_end: datetime | None = None
+    box: AstroPydanticQuantity[u.deg] | None = None
+
+    def to_map(
+        self, log: FilteringBoundLogger | None = None
+    ) -> IntensityAndInverseVarianceMap:
+        return IntensityAndInverseVarianceMap(
+            intensity_filename=self.intensity_map_path,
+            inverse_variance_filename=self.weights_map_path,
+            time_filename=self.time_map_path,
+            start_time=self.observation_start,
+            end_time=self.observation_end,
+            box=self.box,
             frequency=self.frequency,
             array=self.array,
             log=log,
@@ -116,5 +144,8 @@ class RhoKappaMapConfig(MapConfig):
 
 
 AllMapConfigTypes = (
-    SimulatedMapConfig | SimulatedMapFromGeometryConfig | RhoKappaMapConfig
+    SimulatedMapConfig
+    | SimulatedMapFromGeometryConfig
+    | RhoKappaMapConfig
+    | InverseVarianceMapConfig
 )
