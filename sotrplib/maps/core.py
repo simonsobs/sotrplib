@@ -10,7 +10,7 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.units import Unit
-from numpy.typing import ArrayLike
+from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
@@ -164,10 +164,10 @@ class ProcessableMap(ABC):
         else:
             for attribute in ["flux", "snr", "rho", "kappa"]:
                 if x := getattr(self, attribute, None):
-                    res = abs(x.wcs.wcs.cdelt[0])
+                    self.map_resolution = u.Quantity(
+                        abs(x.wcs.wcs.cdelt[0]), x.wcs.wcs.cunit[0]
+                    )
                     break
-
-        self.map_resolution = res * u.degree
 
         return self.map_resolution
 
@@ -197,8 +197,10 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         inverse_variance_filename: Path,
         start_time: datetime,
         end_time: datetime,
-        box: ArrayLike | None,
+        box: AstroPydanticQuantity[u.deg] | None = None,
         time_filename: Path | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
@@ -207,32 +209,40 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.observation_start = start_time
         self.observation_end = end_time
         self.box = box
+        self.frequency = frequency
+        self.array = array
         self.log = log or structlog.get_logger()
 
     def build(self):
         log = self.log.bind(intensity_filename=self.intensity_filename)
+        box = self.box.to(u.rad).value if self.box is not None else None
+
         try:
             self.intensity = enmap.read_map(
-                str(self.intensity_filename), sel=0, box=self.box
+                str(self.intensity_filename), sel=0, box=box
             )
             log.debug("intensity_ivar.intensity.read.sel")
-        except IndexError:
+        except (IndexError, AttributeError):
             # Intensity map does not have Q, U
-            self.intensity = enmap.read_map(str(self.intensity_filename), box=self.box)
+            self.intensity = enmap.read_map(str(self.intensity_filename), box=box)
             log.debug("intensity_ivar.intensity.read.nosel")
 
         # TODO: Set metadata from header e.g. frequency band.
 
         log = log.new(inverse_variance_filename=self.inverse_variance_filename)
         self.inverse_variance = enmap.read_map(
-            self.inverse_variance_filename, box=self.box
+            str(self.inverse_variance_filename), box=box
         )
         log.debug("intensity_ivar.ivar.read")
-        self.map_resolution = self.res()
+        self.map_resolution = u.Quantity(
+            abs(self.inverse_variance.wcs.wcs.cdelt[0]),
+            self.inverse_variance.wcs.wcs.cunit[0],
+        )
+
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(self.time_filename, box=self.box)
+            time_map = enmap.read_map(str(self.time_filename), box=box)
             log.debug("intensity_ivar.time.read")
         else:
             time_map = None
@@ -252,6 +262,8 @@ class RhoAndKappaMap(ProcessableMap):
     """
     A set of FITS maps read from disk. Could be Depth 1, could
     be monthly or weekly co-adds. Or something else!
+
+    box is array of astropy Quantities: [[ra_min, dec_min], [ra_max, dec_max]]
     """
 
     def __init__(
@@ -260,7 +272,7 @@ class RhoAndKappaMap(ProcessableMap):
         kappa_filename: Path,
         start_time: datetime,
         end_time: datetime,
-        box: ArrayLike | None = None,
+        box: AstroPydanticQuantity[u.deg] | None = None,
         time_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -278,25 +290,28 @@ class RhoAndKappaMap(ProcessableMap):
 
     def build(self):
         log = self.log.bind(rho_filename=self.rho_filename)
+        box = self.box.to(u.rad).value if self.box is not None else None
         try:
-            self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=self.box)
+            self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=box)
             log.debug("rho_kappa.rho.read.sel")
-        except IndexError:
+        except (IndexError, AttributeError):
             # Rho map does not have Q, U
-            self.rho = enmap.read_map(str(self.rho_filename), box=self.box)
+            self.rho = enmap.read_map(str(self.rho_filename), box=box)
             log.debug("rho_kappa.rho.read.nosel")
 
         log = log.new(kappa_filename=self.kappa_filename)
-        self.kappa = enmap.read_map(self.kappa_filename, box=self.box)
+        self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
         log.debug("rho_kappa.kappa.read")
 
         # TODO: Set metadata from header e.g. frequency band.
-        self.map_resolution = self.res()
+        self.map_resolution = u.Quantity(
+            abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
+        )
 
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(self.time_filename, box=self.box)
+            time_map = enmap.read_map(str(self.time_filename), box=box)
             log.debug("rho_kappa.time.read")
         else:
             time_map = None
@@ -379,7 +394,9 @@ class CoaddedMap(ProcessableMap):
 
         self.rho = base_map.rho.copy()
         self.kappa = base_map.kappa.copy()
-        self.map_resolution = np.abs(base_map.rho.wcs.wcs.cdelt[0]) * u.degrees
+        self.map_resolution = u.Quantity(
+            abs(base_map.rho.wcs.wcs.cdelt[0]), base_map.rho.wcs.wcs.cunit[0]
+        )
 
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
