@@ -22,70 +22,70 @@ def test_make_enmap_shape_and_type(sim_map_params, log=log):
     # Check shape: width/resolution*2 (since width is +/-)
     expected_npix = int(
         2
-        * sim_map_params["maps"]["width_ra"]
-        / sim_map_params["maps"]["resolution"]
-        * 60
+        * sim_map_params["maps"]["width_ra"].to_value(u.deg)
+        / sim_map_params["maps"]["resolution"].to_value(u.deg)
     )
     # Allow for rounding
     assert abs(test_map.shape[-2] - expected_npix) < 5
     expected_npix = int(
         2
-        * sim_map_params["maps"]["width_dec"]
-        / sim_map_params["maps"]["resolution"]
-        * 60
+        * sim_map_params["maps"]["width_dec"].to_value(u.deg)
+        / sim_map_params["maps"]["resolution"].to_value(u.deg)
     )
     assert abs(test_map.shape[-1] - expected_npix) < 5
 
 
 def test_make_enmap_wcs(sim_map_params, log=log):
-    from pixell.utils import arcmin, degree
-
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Check WCS center
     y, x = np.array(test_map.shape) // 2
     dec, ra = enmap.pix2sky(test_map.shape, test_map.wcs, [y, x], safe=False)
-    assert np.isclose(ra, sim_map_params["maps"]["center_ra"] * degree, atol=1e-4)
-    assert np.isclose(dec, sim_map_params["maps"]["center_dec"] * degree, atol=1e-4)
-    assert (
-        abs(test_map.wcs.wcs.cdelt[0])
-        == sim_map_params["maps"]["resolution"] * arcmin / degree
+    assert np.isclose(
+        ra, sim_map_params["maps"]["center_ra"].to_value(u.rad), atol=1e-4
+    )
+    assert np.isclose(
+        dec, sim_map_params["maps"]["center_dec"].to_value(u.rad), atol=1e-4
     )
     assert (
-        abs(test_map.wcs.wcs.cdelt[1])
-        == sim_map_params["maps"]["resolution"] * arcmin / degree
+        u.Quantity(abs(test_map.wcs.wcs.cdelt[0]), test_map.wcs.wcs.cunit[0])
+        == sim_map_params["maps"]["resolution"]
+    )
+    assert (
+        u.Quantity(abs(test_map.wcs.wcs.cdelt[1]), test_map.wcs.wcs.cunit[1])
+        == sim_map_params["maps"]["resolution"]
     )
 
 
 def test_make_enmap_invalid_width(log=log):
     with pytest.raises(ValueError):
-        sim_maps.make_enmap(width_ra=-1, log=log)
+        sim_maps.make_enmap(width_ra=-1 * u.deg, log=log)
     with pytest.raises(ValueError):
-        sim_maps.make_enmap(width_dec=-1, log=log)
+        sim_maps.make_enmap(width_dec=-1 * u.deg, log=log)
     with pytest.raises(ValueError):
-        sim_maps.make_enmap(width_dec=0, log=log)
+        sim_maps.make_enmap(width_dec=0 * u.deg, log=log)
     with pytest.raises(ValueError):
-        sim_maps.make_enmap(width_ra=0, log=log)
+        sim_maps.make_enmap(width_ra=0 * u.deg, log=log)
 
 
 def test_make_enmap_invalid_dec(log=log):
     with pytest.raises(ValueError):
-        sim_maps.make_enmap(center_dec=89, width_dec=2, log=log)
+        sim_maps.make_enmap(center_dec=89 * u.deg, width_dec=2 * u.deg, log=log)
     with pytest.raises(ValueError):
-        sim_maps.make_enmap(center_dec=-89, width_dec=2, log=log)
+        sim_maps.make_enmap(center_dec=-89 * u.deg, width_dec=2 * u.deg, log=log)
 
 
 def test_make_noise_map_properties(sim_map_params, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
-    noise_std = 1.0
-    noise_mean = 0.0
+    noise_std = 1.0 * u.Jy
+    noise_mean = 0.0 * u.Jy
     noise_map = sim_maps.make_noise_map(
         test_map, map_noise_Jy=noise_std, map_mean_Jy=noise_mean, seed=8675309, log=log
     )
     assert isinstance(noise_map, enmap.ndmap)
     assert noise_map.shape == test_map.shape
     # Check mean and std are within 1%
-    assert np.isclose(np.mean(noise_map), noise_mean, atol=0.01)
-    assert np.isclose(np.std(noise_map), noise_std, atol=0.01)
+    assert np.isclose(np.mean(noise_map) * u.Jy, noise_mean, atol=0.01)
+    assert np.isclose(np.std(noise_map) * u.Jy, noise_std, atol=0.01)
 
 
 def test_make_noise_map_seed_behavior(sim_map_params, log=log):
@@ -93,7 +93,7 @@ def test_make_noise_map_seed_behavior(sim_map_params, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Should print warning and still return a map
     noise_map = sim_maps.make_noise_map(
-        test_map, map_noise_Jy=0.1, map_mean_Jy=0.0, seed=None, log=log
+        test_map, map_noise_Jy=0.1 * u.Jy, map_mean_Jy=0.0 * u.Jy, seed=None, log=log
     )
     assert isinstance(noise_map, enmap.ndmap)
 
@@ -106,7 +106,11 @@ def test_photutils_sim_n_sources_invalid_input(log=log):
     test_map = enmap.zeros((10, 10))
     with pytest.raises(ValueError):
         sim_maps.photutils_sim_n_sources(
-            test_map, n_sources=1, min_flux_Jy=1.0, max_flux_Jy=0.5, log=log
+            test_map,
+            n_sources=1,
+            min_flux_Jy=1.0 * u.Jy,
+            max_flux_Jy=0.5 * u.Jy,
+            log=log,
         )
 
 
@@ -143,8 +147,8 @@ def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
 def test_inject_sources_nan_mapval(sim_map_params, dummy_source, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Set a pixel to nan and inject source there
-    dummy_source.ra = sim_map_params["maps"]["center_ra"] * u.deg
-    dummy_source.dec = sim_map_params["maps"]["center_dec"] * u.deg
+    dummy_source.ra = sim_map_params["maps"]["center_ra"]
+    dummy_source.dec = sim_map_params["maps"]["center_dec"]
     x, y = test_map.sky2pix(
         [dummy_source.dec.to(u.rad).value, dummy_source.ra.to(u.rad).value]
     )

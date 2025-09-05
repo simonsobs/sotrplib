@@ -4,7 +4,6 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.forced_photometry import (
     convert_catalog_to_registered_source_objects,
-    convert_catalog_to_source_objects,
 )
 
 
@@ -125,7 +124,7 @@ def convert_json_to_act_format(json_list):
 
 def load_json_test_catalog(source_cat_file: str, flux_threshold: float = 0, log=None):
     """
-    Load the output file with SourceCandidate dictionaries
+    Load the output file with MeasuredSource dictionaries
     which is stored as a json file.
 
     flux_threshold is a threshold, in Jy, below which we ignore the sources.
@@ -295,10 +294,8 @@ def load_catalog(
         else:
             sources = sources[source_mask]
         log.info("load_catalog.load_in_map", total_in_map_sources=sum(source_mask))
-    if return_source_cand_list:
-        sources = convert_catalog_to_source_objects(sources, log=log)
-    else:
-        sources = convert_catalog_to_registered_source_objects(sources, log=log)
+
+    sources = convert_catalog_to_registered_source_objects(sources, log=log)
 
     log.info("load_catalog.complete")
     return sources

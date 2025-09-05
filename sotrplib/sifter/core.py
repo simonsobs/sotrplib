@@ -13,24 +13,21 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.sources.finding import BlindSourceCandidate
-from sotrplib.sources.sources import CrossMatch, ForcedPhotometrySource
+from sotrplib.sources.sources import CrossMatch, MeasuredSource
 
 
-# TODO: do I want ForcedPhotometrySource here? i.e. would the sifter do the forced photometry?
-# otherwise, the sifter should just take in ForcedPhotometrySources.
 @dataclass
 class SifterResult:
-    source_candidates: list[ForcedPhotometrySource]
-    transient_candidates: list[ForcedPhotometrySource]
-    noise_candidates: list[ForcedPhotometrySource]
+    source_candidates: list[MeasuredSource]
+    transient_candidates: list[MeasuredSource]
+    noise_candidates: list[MeasuredSource]
 
 
 class SiftingProvider(ABC):
     @abstractmethod
     def sift(
         self,
-        sources: list[BlindSourceCandidate],
+        sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> SifterResult:
         raise NotImplementedError
@@ -39,7 +36,7 @@ class SiftingProvider(ABC):
 class EmptySifter(SiftingProvider):
     def sift(
         self,
-        sources: list[BlindSourceCandidate],
+        sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> SifterResult:
         return SifterResult(
@@ -71,7 +68,7 @@ class SimpleCatalogSifter(SiftingProvider):
 
     def sift(
         self,
-        sources: list[BlindSourceCandidate],
+        sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> SifterResult:
         source_candidates = []
@@ -82,10 +79,11 @@ class SimpleCatalogSifter(SiftingProvider):
             matches = self.catalog.crossmatch(
                 ra=source.ra, dec=source.dec, radius=self.radius, method=self.method
             )
-            source = ForcedPhotometrySource.from_blind_source_candidate(source)
 
             if matches:
-                source.crossmatches = [CrossMatch(name=m.source_id) for m in matches]
+                source.crossmatches = [
+                    CrossMatch(source_id=m.source_id) for m in matches
+                ]
                 log = log.bind(number_of_matches=len(matches))
                 log = log.info("sifter.simple.matched")
                 source_candidates.append(source)
@@ -162,7 +160,7 @@ class DefaultSifter(SiftingProvider):
 
     def sift(
         self,
-        sources: list[BlindSourceCandidate],
+        sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> SifterResult:
         from .crossmatch import sift
