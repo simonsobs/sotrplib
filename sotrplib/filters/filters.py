@@ -209,11 +209,11 @@ def matched_filter_depth1_map(
     highpass: bool = False,
     band_height: float = 0 * utils.degree,
     shift: float = 0,
+    simple: bool = False,
     simple_lknee: float = 1000,
     simple_alpha: float = -3.5,
     lres=(70, 100),
     pixwin: str = "nn",
-    simple: bool = True,
 ):
     """
     copy of the script https://github.com/amaurea/tenki/blob/master/filter_depth1.py converted to a function.
@@ -239,7 +239,7 @@ def matched_filter_depth1_map(
         fwhm of the beam, in radian.
 
     beam1d:str=None
-        path to 1D b_l file (i think...)
+        beam transform file, the first column is ell 0,1,2,3,... and the second column B(ell)
 
     shrink_holes:float [0]
         hole size under which to ignore, radians
@@ -256,16 +256,29 @@ def matched_filter_depth1_map(
     highpass:bool [False]
         perform highpass filtering
 
-    band_height [0*utils.degree]
+    band_height:float [0*utils.degree]
         do filtering in dec bands of this height if >0, else one filtering for entire map, in radians.
 
-    shift = 0
-    simple_lknee = 1000,
-    simple_alpha = -3.5,
-    lres = (70,100),
-    pixwin = 'nn',
-    simple=True
+    shift:int [0]
+        apply a shift matrix to the data according to the infofile. 0 means no shift
 
+    simple:bool [False]
+        do a simple filtering using a noise model with lknee and alpha. If False it makes the noise model
+        from the data itself
+
+    simple_lknee:float [1000]
+        simple filtering lknee, values vary significant among frequencies e.g. ACT full maps had lknee
+        intensity values of 2100,3000,3800 for f090, f150, f220, respectively (See Naess 2025 2503.14451)
+
+    simple_alpha:float [-3.5]
+        simple filtering alpha, values are usually around -3 and -4, depending on the experiment
+
+    lres = (70,100)
+        y,x block size to use when smoothing the noise spectrum
+
+    pixwin:str ['nn']
+        apply pixel window function. This is included as part of the beam, which is valid in the flat sky
+        posible values are nearest neighbor "nn" "0" bilinear "lin" "bilin" "1" or "none"
 
     Returns:
     -----------
