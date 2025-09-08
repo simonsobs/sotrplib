@@ -11,7 +11,7 @@ from photutils.psf import GaussianPSF
 from pixell import enmap
 from pixell.utils import arcmin, degree
 
-from sotrplib.sources.sources import ForcedPhotometrySource
+from sotrplib.sources.sources import MeasuredSource
 
 from ..sims.sim_utils import make_2d_gaussian_model_param_table
 
@@ -307,7 +307,7 @@ class Depth1Map:
 
     def subtract_sources(
         self,
-        sources: list[ForcedPhotometrySource],
+        sources: list[MeasuredSource],
         src_model: enmap.ndmap = None,
         verbose=False,
         cuts={},
@@ -315,7 +315,7 @@ class Depth1Map:
     ):
         """
         src_model is a simulated (model) map of the sources in the list.
-        sources are fit using photutils, and are ForcedPhotometrySource
+        sources are fit using photutils, and are MeasuredSource
         objects with fwhm_a, fwhm_b, ra, dec, flux, and orientation
         """
         log.bind(func_name="subtract_sources")
@@ -988,7 +988,7 @@ def preprocess_map(
 
 def make_model_source_map(
     imap: enmap.ndmap,
-    sources: list[ForcedPhotometrySource],
+    sources: list[MeasuredSource],
     nominal_fwhm: u.Quantity | None = None,
     matched_filtered=False,
     verbose=False,

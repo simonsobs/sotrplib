@@ -231,6 +231,21 @@ def get_map_groups(
     return map_groups, map_group_time_range, time_bins
 
 
+def get_frequency(freq: str, arr: str = None):
+    # Array not used yet, but could have per array/freq band centers
+    ## from lat white paper https://arxiv.org/pdf/2503.00636
+    frequency = {
+        "f030": 30 * u.GHz,
+        "f040": 40 * u.GHz,
+        "f090": 90 * u.GHz,
+        "f150": 150 * u.GHz,
+        "f220": 220 * u.GHz,
+        "f280": 280 * u.GHz,
+    }
+
+    return frequency[freq]
+
+
 def get_fwhm(freq: str, arr: str = None):
     # Array not used yet, but could have per array/freq fwhm
     ## from lat white paper https://arxiv.org/pdf/2503.00636

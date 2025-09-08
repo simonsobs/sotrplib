@@ -29,7 +29,7 @@ class SimTransient:
             from sotrplib.sims.sim_utils import generate_random_positions
 
             self.dec, self.ra = generate_random_positions(
-                n=1, ra_lims=(0, 360), dec_lims=(-60, 20)
+                n=1, ra_lims=(0, 360) * u.deg, dec_lims=(-60, 20) * u.deg
             )[0]
             self.dec *= u.deg
             self.ra *= u.deg
@@ -76,12 +76,12 @@ class SimTransient:
 def generate_transients(
     n: int = None,
     imap: enmap.ndmap = None,
-    ra_lims: tuple = None,
-    dec_lims: tuple = None,
-    positions: list = None,
-    peak_amplitudes: list | tuple = None,
-    peak_times: list | tuple = None,
-    flare_widths: list | tuple = None,
+    ra_lims: AstroPydanticQuantity[u.deg] | None = None,
+    dec_lims: AstroPydanticQuantity[u.deg] | None = None,
+    positions: AstroPydanticQuantity[u.deg] | None = None,
+    peak_amplitudes: AstroPydanticQuantity[u.Jy] | None = None,
+    peak_times: list | None = None,
+    flare_widths: list | None = None,
     flare_morphs: list = None,
     beam_params: list = None,
     uniform_on_sky=False,
@@ -107,9 +107,6 @@ def generate_transients(
     - beam_params (list): List of dictionaries containing beam parameters for each transient.
     - uniform_on_sky (bool): generate random positions uniform on sky or uniform on imap flatsky
     """
-
-    from pixell.utils import degree
-
     from .sim_utils import (
         generate_random_flare_amplitudes,
         generate_random_flare_times,
@@ -119,9 +116,9 @@ def generate_transients(
     )
 
     transients = []
-    if n is None and not positions:
+    if n is None and positions is None:
         raise ValueError("Either n or positions must be provided.")
-    if n is not None and positions:
+    if n is not None and positions is not None:
         raise ValueError("Cannot provide both n and positions.")
     n_positions = None
     if n is not None:
@@ -140,7 +137,7 @@ def generate_transients(
             if isinstance(imap, enmap.ndmap):
                 for p in rand_pos:
                     if (
-                        imap.at([p[0] * degree, p[1] * degree], mode="nn")
+                        imap.at([p[0].to_value(u.rad), p[1].to_value(u.rad)], mode="nn")
                         and len(positions) < n
                     ):
                         positions.append(p)
@@ -191,8 +188,8 @@ def generate_transients(
 
     for i in range(len(positions)):
         transient = SimTransient(
-            position=(positions[i][0] * u.deg, positions[i][1] * u.deg),
-            peak_amplitude=peak_amplitudes[i] * u.Jy,
+            position=(positions[i][0], positions[i][1]),
+            peak_amplitude=peak_amplitudes[i],
             peak_time=peak_times[i],
             flare_width=flare_widths[i],
             flare_morph=flare_morphs[i],

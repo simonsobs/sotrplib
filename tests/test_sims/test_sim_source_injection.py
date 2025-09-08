@@ -14,9 +14,9 @@ def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
     out_map, injected_sources = sim_maps.photutils_sim_n_sources(
         test_map,
         n_sources=n_sources,
-        min_flux_Jy=0.2,
-        max_flux_Jy=0.5,
-        map_noise_Jy=0.01,
+        min_flux_Jy=0.2 * u.Jy,
+        max_flux_Jy=0.5 * u.Jy,
+        map_noise_Jy=0.01 * u.Jy,
         seed=8675309,
         log=log,
     )
@@ -31,9 +31,9 @@ def test_photutils_sim_n_sources_output_b(dummy_depth1_map, log=log):
     out_map, injected_sources = sim_maps.photutils_sim_n_sources(
         dummy_depth1_map,
         n_sources=n_sources,
-        min_flux_Jy=0.2,
-        max_flux_Jy=0.5,
-        map_noise_Jy=0.01,
+        min_flux_Jy=0.2 * u.Jy,
+        max_flux_Jy=0.5 * u.Jy,
+        map_noise_Jy=0.01 * u.Jy,
         seed=8675309,
         log=log,
     )
@@ -46,14 +46,15 @@ def test_photutils_sim_n_sources_output_b(dummy_depth1_map, log=log):
 def test_photutils_sim_n_sources_flux_range(sim_map_params, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     n_sources = 3
-    min_flux = 1.0
-    max_flux = 1.01
+    min_flux = 1.0 * u.Jy
+    max_flux = 1.01 * u.Jy
+    map_noise = 0.001 * u.Jy
     _, injected_sources = sim_maps.photutils_sim_n_sources(
         test_map,
         n_sources=n_sources,
         min_flux_Jy=min_flux,
         max_flux_Jy=max_flux,
-        map_noise_Jy=0.001,
+        map_noise_Jy=map_noise,
         seed=8675309,
         log=log,
     )
@@ -65,7 +66,11 @@ def test_photutils_sim_n_sources_invalid_flux(sim_map_params, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     with pytest.raises(ValueError):
         sim_maps.photutils_sim_n_sources(
-            test_map, n_sources=2, min_flux_Jy=1.0, max_flux_Jy=0.5, log=log
+            test_map,
+            n_sources=2,
+            min_flux_Jy=1.0 * u.Jy,
+            max_flux_Jy=0.5 * u.Jy,
+            log=log,
         )
 
 
@@ -92,8 +97,8 @@ def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
     )
     ra_width = test_map.shape[-2] * test_map.wcs.wcs.cdelt[0] * 60  # arcmin
     dec_width = test_map.shape[-1] * test_map.wcs.wcs.cdelt[1] * 60  # arcmin
-    oob_source.ra = (center_ra + ra_width) * u.deg  # Out of bounds
-    oob_source.dec = (center_dec + dec_width) * u.deg  # Out of bounds
+    oob_source.ra = center_ra + ra_width * u.arcmin  # Out of bounds
+    oob_source.dec = center_dec + dec_width * u.arcmin  # Out of bounds
     _, injected = sim_maps.inject_sources(test_map, [oob_source], 0.0, log=log)
     assert injected == []
 
@@ -102,8 +107,8 @@ def test_inject_sources_not_flaring(sim_map_params, dummy_source, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # observation_time far from peak_time
     quiescent_source = dummy_source
-    quiescent_source.ra = sim_map_params["maps"]["center_ra"] * u.deg
-    quiescent_source.dec = sim_map_params["maps"]["center_dec"] * u.deg
+    quiescent_source.ra = sim_map_params["maps"]["center_ra"]
+    quiescent_source.dec = sim_map_params["maps"]["center_dec"]
     ## inject source with width 1. but 10 days after peak time
     _, injected = sim_maps.inject_sources(test_map, [quiescent_source], 10.0, log=log)
     assert injected == []
@@ -176,8 +181,8 @@ def test_generate_transients_empty(log=log):
     # Should return an empty list if no transients are specified
     transients = sim_sources.generate_transients(
         n=1,
-        ra_lims=(1, 3),
-        dec_lims=(-3, -1),
+        ra_lims=(1, 3) * u.deg,
+        dec_lims=(-3, -1) * u.deg,
         peak_amplitudes=None,
         peak_times=None,
         flare_widths=None,
@@ -215,7 +220,7 @@ def test_generate_transients_value_error(log=log):
         )
         sim_sources.generate_transients(
             n=1,
-            positions=[1, 2],
+            positions=[1 * u.deg, 2 * u.deg],
             log=log,
         )
 
