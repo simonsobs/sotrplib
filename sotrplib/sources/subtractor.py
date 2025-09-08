@@ -17,7 +17,7 @@ class SourceSubtractor(ABC):
     @abstractmethod
     def subtract(
         self,
-        sources: list[MeasuredSource] | list[MeasuredSource],
+        sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> SourceSubtractedMap:
         return
@@ -30,7 +30,7 @@ class EmptySourceSubtractor(SourceSubtractor):
 
     def subtract(
         self,
-        sources: list[MeasuredSource] | list[MeasuredSource],
+        sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> ProcessableMap:
         return input_map
