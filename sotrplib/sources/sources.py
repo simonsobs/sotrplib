@@ -94,7 +94,7 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
     measurement_type: Literal["forced", "blind"] = "forced"
-    frequency: str | None = None
+    frequency: AstroPydanticQuantity[u.GHz] | None = None
 
     fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
     fit_params: dict | None = None

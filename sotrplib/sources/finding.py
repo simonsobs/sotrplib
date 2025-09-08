@@ -10,6 +10,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import MeasuredSource
+from sotrplib.utils.utils import get_frequency
 
 """
 Source finding routines from spt3g_software.
@@ -256,7 +257,7 @@ def convert_outstruct_to_measured_source_objects(
     for struct in output_struct.values():
         ms = MeasuredSource(**struct)
         ms.measurement_type = "blind"
-        ms.frequency = inmap.frequency if inmap else None
+        ms.frequency = get_frequency(inmap.frequency) if inmap else None
         outlist.append(ms)
     return outlist
 
