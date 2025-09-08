@@ -1,18 +1,19 @@
 import numpy as np
 from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pixell.utils import degree
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sims.sim_sources import SimTransient
-from sotrplib.sources.sources import ForcedPhotometrySource
+from sotrplib.sources.sources import MeasuredSource
 
 
 def generate_random_positions_in_map(
     n: int,
     imap: enmap.ndmap,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Generate n random positions uniformly distributed in the map.
@@ -26,11 +27,12 @@ def generate_random_positions_in_map(
     Returns:
         tuple: Two numpy arrays containing the RA and Dec positions.
     """
+    log = log or get_logger()
     x = np.random.uniform(0, imap.shape[0], n)
     y = np.random.uniform(0, imap.shape[1], n)
     positions = []
     for i in range(n):
-        positions.append(tuple(imap.pix2sky((x[i], y[i])) / degree))
+        positions.append(tuple(imap.pix2sky((x[i], y[i])) * u.rad))
 
     return positions
 
@@ -38,9 +40,9 @@ def generate_random_positions_in_map(
 def generate_random_positions(
     n: int,
     imap: enmap.ndmap = None,
-    ra_lims: tuple = None,
-    dec_lims: tuple = None,
-    log=None,
+    ra_lims: AstroPydanticQuantity[u.deg] | None = None,
+    dec_lims: AstroPydanticQuantity[u.deg] | None = None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Generate n random positions in RA and Dec uniformly distributed on the sphere
@@ -49,17 +51,18 @@ def generate_random_positions(
     Arguments:
         n (int): Number of positions to generate.
         imap (enmap.ndmap): Input map for generating random positions. If None, ra_lims and dec_lims must be provided.
-        ra_lims (tuple): Limits for RA in degrees (min_ra, max_ra).
-        dec_lims (tuple): Limits for Dec in degrees (min_dec, max_dec).
+        ra_lims (tuple): Limits for RA (min_ra, max_ra).
+        dec_lims (tuple): Limits for Dec  (min_dec, max_dec).
 
     Returns:
         array: zipped array of tuples containing (dec,ra) pairs.
     """
+    log = log or get_logger()
     if ra_lims is None or dec_lims is None:
         if imap is not None:
             shape, wcs = imap.shape, imap.wcs
-            dec_min, dec_max = enmap.box(shape, wcs)[:, 0] / degree
-            ra_min, ra_max = enmap.box(shape, wcs)[:, 1] / degree
+            dec_min, dec_max = enmap.box(shape, wcs)[:, 0] * u.rad
+            ra_min, ra_max = enmap.box(shape, wcs)[:, 1] * u.rad
             ra_lims = (ra_min, ra_max)
             dec_lims = (dec_min, dec_max)
         else:
@@ -68,25 +71,23 @@ def generate_random_positions(
             )
     ## assume that if limits are something like (350,10) that the ra limits wrap 0, so -10,10
     if ra_lims[0] > ra_lims[1]:
-        if ra_lims[0] > 180:
-            ra_lims[0] -= 360
-    # Convert limits to radians
-    ra_min, ra_max = np.radians(ra_lims)
-    dec_min, dec_max = np.radians(dec_lims)
+        if ra_lims[0] > 180 * u.deg:
+            ra_lims[0] -= 360 * u.deg
 
     # Generate RA uniformly between ra_lims
-    ra = np.random.uniform(ra_min, ra_max, n)
+    ra = (
+        np.random.uniform(ra_lims[0].to_value(u.rad), ra_lims[1].to_value(u.rad), n)
+        * u.rad
+    )
 
     # Generate Dec uniformly on the sphere
-    z_min = np.sin(dec_min)
-    z_max = np.sin(dec_max)
+    z_min = np.sin(dec_lims[0].to_value(u.rad))
+    z_max = np.sin(dec_lims[1].to_value(u.rad))
     z = np.random.uniform(z_min, z_max, n)
-    dec = np.arcsin(z)
+    dec = np.arcsin(z) * u.rad
 
-    # Convert back to degrees
-    ra = np.degrees(ra) % 360
-    dec = np.degrees(dec)
-    positions = list(zip(dec, ra))
+    ra = (ra.to_value(u.deg) % 360) * u.deg
+    positions = list(zip(dec.to(u.deg), ra.to(u.deg)))
     return positions
 
 
@@ -138,9 +139,9 @@ def generate_random_flare_widths(
 
 def generate_random_flare_amplitudes(
     n: int,
-    min_amplitude: float = 0.1,
-    max_amplitude: float = 10.0,
-    log=None,
+    min_amplitude: AstroPydanticQuantity[u.Jy] = 0.1 * u.Jy,
+    max_amplitude: AstroPydanticQuantity[u.Jy] = 10.0 * u.Jy,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Generate n random flare amplitudes uniformly distributed between min_amplitude and max_amplitude.
@@ -153,7 +154,10 @@ def generate_random_flare_amplitudes(
     Returns:
         numpy array: Array of random flare amplitudes.
     """
-    return np.random.uniform(min_amplitude, max_amplitude, n)
+    return (
+        np.random.uniform(min_amplitude.to_value(u.Jy), max_amplitude.to_value(u.Jy), n)
+        * u.Jy
+    )
 
 
 def make_gaussian_flare(
@@ -161,7 +165,7 @@ def make_gaussian_flare(
     flare_peak_time: float = 0.0,
     flare_fwhm_s: float = 1.0,
     flare_peak_Jy: float = 0.1,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Generate a Gaussian flare sampled at the given unix_times.
@@ -195,7 +199,6 @@ def convert_photutils_qtable_to_json(
 
     if imap supplied, will also get ra,dec
     """
-    from pixell.utils import degree
 
     json_cat_out = {}
     for p in params:
@@ -228,8 +231,8 @@ def convert_photutils_qtable_to_json(
 
 
 def ra_lims_valid(
-    ra_lims: tuple = None,
-    log=None,
+    ra_lims: AstroPydanticQuantity[u.deg] = None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Check if the RA limits are valid.
@@ -244,15 +247,15 @@ def ra_lims_valid(
         return False
     if len(ra_lims) != 2:
         return False
-    if ra_lims[0] < 0 or ra_lims[1] > 360:
+    if ra_lims[0] < 0 * u.deg or ra_lims[1] > 360 * u.deg:
         return False
 
     return True
 
 
 def dec_lims_valid(
-    dec_lims: tuple = None,
-    log=None,
+    dec_lims: AstroPydanticQuantity[u.deg] | None = None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Check if the Dec limits are valid.
@@ -267,7 +270,7 @@ def dec_lims_valid(
         return False
     if len(dec_lims) != 2:
         return False
-    if dec_lims[0] < -90 or dec_lims[1] > 90:
+    if dec_lims[0] < -90 * u.deg or dec_lims[1] > 90 * u.deg:
         return False
 
     return True
@@ -414,7 +417,7 @@ def get_sim_map_group(
 
 def make_2d_gaussian_model_param_table(
     imap: enmap.ndmap,
-    sources: list[ForcedPhotometrySource],
+    sources: list[MeasuredSource],
     nominal_fwhm: u.Quantity = 2.2 * u.arcmin,
     verbose: bool = False,
     cuts={},

@@ -2,6 +2,7 @@ from datetime import datetime
 
 import numpy as np
 from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -15,20 +16,19 @@ from sotrplib.sources.forced_photometry import (
 
 
 def make_enmap(
-    center_ra: float = 0.0,
-    center_dec: float = 0.0,
-    width_ra: float = 1.0,
-    width_dec: float = 1.0,
-    resolution: float = 0.5,
-    map_noise: float = None,
+    center_ra: AstroPydanticQuantity[u.deg] = 0.0 * u.deg,
+    center_dec: AstroPydanticQuantity[u.deg] = 0.0 * u.deg,
+    width_ra: AstroPydanticQuantity[u.deg] = 1.0 * u.deg,
+    width_dec: AstroPydanticQuantity[u.deg] = 1.0 * u.deg,
+    resolution: AstroPydanticQuantity[u.arcmin] = 0.5 * u.arcmin,
+    map_noise: AstroPydanticQuantity[u.Jy] = None,
     log=None,
 ):
     """ """
     from pixell.enmap import geometry, zeros
-    from pixell.utils import arcmin, degree
 
     log = log.bind(func_name="make_enmap")
-    if (width_ra <= 0) or (width_dec <= 0):
+    if (width_ra <= 0 * u.deg) or (width_dec <= 0 * u.deg):
         log.error(
             "make_enmap.invalid_map_dimensions", width_ra=width_ra, width_dec=width_dec
         )
@@ -36,25 +36,34 @@ def make_enmap(
 
     min_dec = center_dec - width_dec
     max_dec = center_dec + width_dec
-    if min_dec < -90:
+    if min_dec < -90 * u.deg:
         log.error("make_enmap.invalid_min_dec", min_dec=min_dec)
-        raise ValueError("Minimum declination, %.1f, is below -90" % min_dec)
-    if max_dec > 90:
+        raise ValueError(
+            "Minimum declination, %.1f deg, is below -90 deg" % min_dec.to(u.deg).value
+        )
+    if max_dec > 90 * u.deg:
         log.error("make_enmap.invalid_max_dec", max_dec=max_dec)
-        raise ValueError("Maximum declination, %.1f, is above 90" % max_dec)
+        raise ValueError(
+            "Maximum declination, %.1f deg, is above 90 deg" % max_dec.to(u.deg).value
+        )
 
     min_ra = center_ra - width_ra
     max_ra = center_ra + width_ra
     ## need to do something with ra limits unless geometry knows how to do the wrapping.
 
-    box = np.array([[min_dec, min_ra], [max_dec, max_ra]])
-    shape, wcs = geometry(box * degree, res=resolution * arcmin)
+    box = np.array(
+        [
+            [min_dec.to_value(u.rad), min_ra.to_value(u.rad)],
+            [max_dec.to_value(u.rad), max_ra.to_value(u.rad)],
+        ]
+    )
+    shape, wcs = geometry(box, res=resolution.to_value(u.rad))
     log.bind(box=box, shape=shape, wcs=wcs)
-    if map_noise:
+    if map_noise is not None:
         return make_noise_map(
             zeros(shape, wcs=wcs),
             map_noise_Jy=map_noise,
-            map_mean_Jy=0.0,
+            map_mean_Jy=0.0 * u.Jy,
             seed=None,
             log=log,
         )
@@ -89,8 +98,8 @@ def make_time_map(
 
 def make_noise_map(
     imap: enmap.ndmap,
-    map_noise_Jy: float = 0.01,
-    map_mean_Jy: float = 0.0,
+    map_noise_Jy: AstroPydanticQuantity[u.Jy] = 0.01 * u.Jy,
+    map_mean_Jy: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
     seed: int = None,
     log=None,
 ):
@@ -131,7 +140,11 @@ def make_noise_map(
             shape
         )  # If the mask is all zeros, invert it to create a full mask.
     noise_map += make_noise_image(
-        shape, distribution="gaussian", mean=map_mean_Jy, stddev=map_noise_Jy, seed=seed
+        shape,
+        distribution="gaussian",
+        mean=map_mean_Jy.to_value(u.Jy),
+        stddev=map_noise_Jy.to_value(u.Jy),
+        seed=seed,
     )
     noise_map *= mask
     log.info("make_noise_map.noise_map_created", shape=shape)
@@ -141,27 +154,24 @@ def make_noise_map(
 def photutils_sim_n_sources(
     sim_map: enmap.ndmap | Depth1Map,
     n_sources: float,
-    min_flux_Jy: float = 0.1,
-    max_flux_Jy: float = 2.0,
-    map_noise_Jy: float = 0.01,
-    gauss_fwhm_arcmin: float = 2.2,
+    min_flux_Jy: AstroPydanticQuantity[u.Jy] = 0.1 * u.Jy,
+    max_flux_Jy: AstroPydanticQuantity[u.Jy] = 2.0 * u.Jy,
+    map_noise_Jy: AstroPydanticQuantity[u.Jy] = 0.01 * u.Jy,
+    gauss_fwhm: AstroPydanticQuantity[u.arcmin] = 2.2 * u.arcmin,
     fwhm_uncert_frac: float = 0.01,
-    gauss_theta_min: float = 0,
-    gauss_theta_max: float = 90,
-    min_sep_arcmin: float = 5,
+    gauss_theta_min: AstroPydanticQuantity[u.deg] = 0 * u.deg,
+    gauss_theta_max: AstroPydanticQuantity[u.deg] = 90 * u.deg,
+    min_sep: AstroPydanticQuantity[u.arcmin] = 5 * u.arcmin,
     seed: int = None,
     freq: str = "f090",
     arr: str = "sim",
     map_id: str = None,
     ctime: float | enmap.ndmap = None,
-    return_registered_sources: bool = False,
     log=None,
 ):
     """ """
     from photutils.psf import GaussianPSF, make_psf_model_image
-    from pixell.utils import arcmin, degree
 
-    from ..sources.forced_photometry import convert_catalog_to_source_objects
     from .sim_utils import convert_photutils_qtable_to_json
 
     log = log.bind(func_name="photutils_sim_n_sources")
@@ -185,23 +195,22 @@ def photutils_sim_n_sources(
         log.error("photutils_sim_n_sources.invalid_map_type", sim_map=sim_map)
         raise ValueError("Input map must be a Depth1Map or enmap.ndmap object")
 
-    mapres = abs(wcs.wcs.cdelt[0]) * degree
-    gaussfwhm = gauss_fwhm_arcmin * arcmin
+    mapres = u.Quantity(abs(wcs.wcs.cdelt[0]), wcs.wcs.cunit[0])
     # Omega_b is the beam solid angle for a Gaussian beam in sr
     ## I've found that the recovered flux is low by 2% ish...
-    omega_b = 1.02 * (np.pi / 4 / np.log(2)) * (gaussfwhm) ** 2
+    omega_b = 1.02 * (np.pi / 4 / np.log(2)) * (gauss_fwhm.to_value(u.rad)) ** 2
 
-    gaussfwhm /= mapres
-    minfwhm = gaussfwhm - (fwhm_uncert_frac * gaussfwhm)
-    maxfwhm = gaussfwhm + (fwhm_uncert_frac * gaussfwhm)
-    minsep = min_sep_arcmin * arcmin / mapres
+    gauss_fwhm = gauss_fwhm.to(u.deg).value / mapres.to(u.deg).value  # in pixels
+    minfwhm = gauss_fwhm - (fwhm_uncert_frac * gauss_fwhm)
+    maxfwhm = gauss_fwhm + (fwhm_uncert_frac * gauss_fwhm)
+    minsep = min_sep.to(u.arcmin).value / mapres.to(u.arcmin).value  # in pixels
     log.bind(minfwhm=minfwhm, maxfwhm=maxfwhm, minsep=minsep, omega_b=omega_b)
     if not seed:
         seed = np.random.seed()
         log.debug("photutils_sim_n_sources.seed_randomized", seed=seed)
 
     ## set the window for each source to be 5x fwhm
-    model_window = (int(5 * gaussfwhm), int(5 * gaussfwhm))
+    model_window = (int(5 * gauss_fwhm), int(5 * gauss_fwhm))
     ## make the source map and add to input map
     data, params = make_psf_model_image(
         shape,
@@ -210,10 +219,10 @@ def photutils_sim_n_sources(
         model_shape=model_window,
         min_separation=minsep,
         border_size=int(minsep),
-        flux=(min_flux_Jy, max_flux_Jy),
+        flux=(min_flux_Jy.to(u.Jy).value, max_flux_Jy.to(u.Jy).value),
         x_fwhm=(minfwhm, maxfwhm),
         y_fwhm=(minfwhm, maxfwhm),
-        theta=(gauss_theta_min, gauss_theta_max),
+        theta=(gauss_theta_min.to(u.deg).value, gauss_theta_max.to(u.deg).value),
         seed=seed,
         normalize=False,
     )
@@ -223,7 +232,7 @@ def photutils_sim_n_sources(
     ## photutils distributes the flux over the solid angle
     ## so this map should be the intensity map in Jy/sr
     ## multiply by beam area in sq pixels
-    simflux = data * (omega_b / mapres**2)
+    simflux = data * (omega_b / mapres.to_value(u.rad) ** 2)
     if isinstance(sim_map, Depth1Map):
         sim_map.snr += simflux / (sim_map.flux / sim_map.snr)
         sim_map.flux += simflux
@@ -234,23 +243,24 @@ def photutils_sim_n_sources(
     log.info("photutils_sim_n_sources.beam_convolved")
 
     ## add noise to the map
-    if map_noise_Jy > 0:
+    if map_noise_Jy > 0 * u.Jy:
         if isinstance(sim_map, Depth1Map):
             sim_map.flux += make_noise_map(
                 sim_map.flux,
                 map_noise_Jy=map_noise_Jy,
-                map_mean_Jy=0.0,
+                map_mean_Jy=0.0 * u.Jy,
                 seed=seed,
                 log=log,
             )
         elif isinstance(sim_map, enmap.ndmap):
             sim_map += make_noise_map(
-                sim_map, map_noise_Jy=map_noise_Jy, map_mean_Jy=0.0, seed=seed, log=log
+                sim_map,
+                map_noise_Jy=map_noise_Jy,
+                map_mean_Jy=0.0 * u.Jy,
+                seed=seed,
+                log=log,
             )
         log.info("photutils_sim_n_sources.noise_added", map_noise_Jy=map_noise_Jy)
-
-    params["x_fwhm"] = params["x_fwhm"] * mapres / arcmin
-    params["y_fwhm"] = params["y_fwhm"] * mapres / arcmin
 
     ## photutils parameter table is in Astropy QTable
     ## convert to the json format we've been using.
@@ -258,20 +268,10 @@ def photutils_sim_n_sources(
         params,
         imap=sim_map if isinstance(sim_map, enmap.ndmap) else sim_map.flux,
     )
-    if return_registered_sources:
-        injected_sources = convert_catalog_to_registered_source_objects(
-            injected_sources, source_type="simulated", log=log
-        )
-    else:
-        injected_sources = convert_catalog_to_source_objects(
-            injected_sources,
-            freq=freq,
-            arr=arr,
-            ctime=ctime,
-            map_id=map_id if map_id else "",
-            source_type="simulated",
-            log=log,
-        )
+    injected_sources = convert_catalog_to_registered_source_objects(
+        injected_sources, source_type="simulated", log=log
+    )
+
     log.info(
         "photutils_sim_n_sources.sources_injected", n_sources=len(injected_sources)
     )
@@ -302,7 +302,7 @@ def inject_sources(
 
     Returns:
     - imap: enmap.ndmap, the map with sources injected.
-    - injected_sources: list of SourceCandidate objects representing the injected sources.
+    - injected_sources: list of MeasuredSource objects representing the injected sources.
     """
     from photutils.datasets import make_model_image
     from photutils.psf import GaussianPSF
@@ -435,7 +435,7 @@ def inject_random_sources(
     sim_params: dict,
     map_id: str,
     t0: float = 0.0,
-    fwhm_arcmin: float = 2.2,
+    fwhm_arcmin: AstroPydanticQuantity[u.arcmin] = 2.2 * u.arcmin,
     add_noise: bool = False,
     log=None,
 ):
@@ -464,9 +464,9 @@ def inject_random_sources(
         sim_params["injected_sources"]["n_sources"],
         min_flux_Jy=sim_params["injected_sources"]["min_flux"],
         max_flux_Jy=sim_params["injected_sources"]["max_flux"],
-        map_noise_Jy=sim_params["maps"]["map_noise"] if add_noise else 0.0,
+        map_noise_Jy=sim_params["maps"]["map_noise"] if add_noise else 0.0 * u.Jy,
         fwhm_uncert_frac=sim_params["injected_sources"]["fwhm_uncert_frac"],
-        gauss_fwhm_arcmin=fwhm_arcmin,
+        gauss_fwhm=fwhm_arcmin,
         freq=mapdata.freq,
         arr=mapdata.wafer_name,
         map_id=map_id if map_id else "",
@@ -540,7 +540,7 @@ def inject_simulated_sources(
         sim_params,
         map_id=map_id if map_id else "",
         t0=t0,
-        fwhm_arcmin=get_fwhm(mapdata.freq, arr=mapdata.wafer_name),
+        fwhm_arcmin=get_fwhm(mapdata.freq, arr=mapdata.wafer_name) * u.arcmin,
         add_noise=False,
         log=log,
     )

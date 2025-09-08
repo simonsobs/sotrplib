@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import Any, Union
+from typing import Union
 
 import numpy as np
 from astropy import units as u
@@ -10,50 +9,14 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.sources import MeasuredSource
+from sotrplib.utils.utils import get_frequency
 
 """
 Source finding routines from spt3g_software.
 Photutils version implemented by Melanie Archipley
 
 """
-
-
-@dataclass
-class BlindSourceCandidate:
-    xpeak: float
-    ypeak: float
-    peakval: float
-    peaksig: float
-    ellipticity: u.Quantity
-    elongation: u.Quantity
-    fwhm: u.Quantity
-    semimajor_sigma: float
-    semiminor_sigma: float
-    orientation: float
-    ra: u.Quantity
-    dec: u.Quantity
-    time: float
-    time_start: float
-    time_end: float
-    crossmatch_names: list = field(default_factory=list)
-    crossmatch_probabilities: list = field(default_factory=list)
-    fit_type: str = field(default="blind")
-
-    def update_crossmatches(
-        self,
-        match_names: list,
-        match_probabilities: list = None,
-    ):
-        """
-        Update the crossmatch names and probabilities with new matches.
-        """
-        self.crossmatch_names.extend(match_names)
-        if match_probabilities is not None:
-            self.crossmatch_probabilities.extend(match_probabilities)
-        else:
-            self.crossmatch_probabilities.extend([None] * len(match_names))
-
-        return
 
 
 def get_source_sky_positions(extracted_sources, skymap):
@@ -125,7 +88,7 @@ def extract_sources(
     sigma_thresh_for_minrad: list[float] = [0.0],
     pixel_mask: NDArray = None,
     log: FilteringBoundLogger | None = None,
-) -> list[BlindSourceCandidate]:
+) -> list[MeasuredSource]:
     log = log or get_logger()
     log.bind(func_name="extract_sources")
     if not inmap.finalized:
@@ -278,42 +241,24 @@ def extract_sources(
     )
     output_struct = get_source_sky_positions(output_struct, inmap.flux)
     output_struct = get_source_observation_time(output_struct, inmap)
-    output_data = convert_outstruct_to_blind_source_candidates(output_struct)
+    output_data = convert_outstruct_to_measured_source_objects(output_struct, inmap)
     log.info("extract_sources.output_dict_finalized")
     return output_data
 
 
-def convert_blind_source_dictionary_to_models(
-    output_struct: dict[int, dict[str, Any]],
-):
-    models = []
-
-    for struct in output_struct.values():
-        fwhm = struct.pop("fwhm")
-        ra = struct.pop("ra")
-        dec = struct.pop("dec")
-
-        if not isinstance(ra, u.Quantity):
-            ra *= u.rad
-        if not isinstance(dec, u.Quantity):
-            dec *= u.rad
-        if not isinstance(fwhm, u.Quantity):
-            fwhm *= u.arcmin
-
-        models.append(BlindSourceCandidate(ra=ra, dec=dec, fwhm=fwhm))
-
-    return models
-
-
-def convert_outstruct_to_blind_source_candidates(
+def convert_outstruct_to_measured_source_objects(
     output_struct: dict,
-) -> list[BlindSourceCandidate]:
+    inmap: ProcessableMap | None = None,
+) -> list[MeasuredSource]:
     """
-    Convert the output dictionary from extract_sources to BlindSourceCandidate objects.
+    Convert the output dictionary from extract_sources to MeasuredSource objects.
     """
     outlist = []
     for struct in output_struct.values():
-        outlist.append(BlindSourceCandidate(**struct))
+        ms = MeasuredSource(**struct)
+        ms.measurement_type = "blind"
+        ms.frequency = get_frequency(inmap.frequency) if inmap else None
+        outlist.append(ms)
     return outlist
 
 

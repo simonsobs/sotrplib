@@ -188,16 +188,15 @@ class RandomSourceSimulation(SourceSimulation):
         new_flux_map, injected_sources = sim_maps.photutils_sim_n_sources(
             sim_map=input_map.flux.copy(),
             n_sources=self.parameters.n_sources,
-            min_flux_Jy=self.parameters.min_flux.to_value("Jy"),
-            max_flux_Jy=self.parameters.max_flux.to_value("Jy"),
-            map_noise_Jy=0.0,  # Disabled now
+            min_flux_Jy=self.parameters.min_flux,
+            max_flux_Jy=self.parameters.max_flux,
+            map_noise_Jy=0.0 * u.Jy,  # Disabled now
             fwhm_uncert_frac=self.parameters.fwhm_uncertainty_frac,
             freq=input_map.frequency,
             arr=input_map.array,
             # TODO: Map IDs
             map_id=None,
             ctime=input_map.time_mean,
-            return_registered_sources=True,
             log=log,
         )
 

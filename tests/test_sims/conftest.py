@@ -6,12 +6,12 @@ from astropy import units as u
 def sim_map_params():
     return {
         "maps": {
-            "map_noise": 0.01,
-            "center_ra": 2.0,
-            "center_dec": -2.0,
-            "width_ra": 1.0,
-            "width_dec": 1.0,
-            "resolution": 0.5,
+            "map_noise": 0.01 * u.Jy,
+            "center_ra": 2.0 * u.deg,
+            "center_dec": -2.0 * u.deg,
+            "width_ra": 1.0 * u.deg,
+            "width_dec": 1.0 * u.deg,
+            "resolution": 0.5 * u.arcmin,
         }
     }
 
@@ -21,8 +21,8 @@ def sim_source_params():
     return {
         "injected_sources": {
             "n_sources": 2,
-            "min_flux": 0.1,
-            "max_flux": 0.2,
+            "min_flux": 0.1 * u.Jy,
+            "max_flux": 0.2 * u.Jy,
             "fwhm_uncert_frac": 0.01,
         }
     }
@@ -33,8 +33,8 @@ def sim_transient_params():
     return {
         "injected_transients": {
             "n_transients": 1,
-            "min_flux": 0.1,
-            "max_flux": 0.2,
+            "min_flux": 0.1 * u.Jy,
+            "max_flux": 0.2 * u.Jy,
             "min_width": 1.0,
             "max_width": 2.0,
             "min_peak_time": 0.0,
