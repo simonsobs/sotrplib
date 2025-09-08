@@ -298,23 +298,19 @@ def sift(
             "sift.candidate_info",
             source_name=source_string_name,
             crossmatch_name=crossmatch_name,
-            flux=catalog_sources["fluxJy"][catalog_match[source][0][1]]
+            flux=catalog_sources[catalog_match[source][0][1]].flux
             if isin_cat[source]
             else None,
             forced_photometry_info=source_measurement,
         )
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
-        if "err_ra" not in source_measurement or "err_dec" not in source_measurement:
-            source_measurement["err_ra"] = fwhm / np.sqrt(source_measurement["peaksig"])
-            source_measurement["err_dec"] = fwhm / np.sqrt(
-                source_measurement["peaksig"]
-            )
+        if source_measurement.err_ra is None or source_measurement.err_dec is None:
+            source_measurement.err_ra = fwhm / np.sqrt(source_measurement.peaksig)
+            source_measurement.err_dec = fwhm / np.sqrt(source_measurement.peaksig)
 
-        source_measurement["err_ra"] = np.sqrt(
-            source_measurement["err_ra"] ** 2 + ra_jitter**2
-        )
-        source_measurement["err_dec"] = np.sqrt(
-            source_measurement["err_dec"] ** 2 + dec_jitter**2
+        source_measurement.err_ra = np.sqrt(source_measurement.err_ra**2 + ra_jitter**2)
+        source_measurement.err_dec = np.sqrt(
+            source_measurement.err_dec**2 + dec_jitter**2
         )
 
         if source_measurement.crossmatches is None:
@@ -334,18 +330,18 @@ def sift(
                 "sift.source_crossmatch",
                 source=source,
                 crossmatch_name=crossmatch_name,
-                flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                flux=catalog_sources[catalog_match[source][0][1]].flux,
             )
 
             if alert_on_flare(
-                catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                catalog_sources[catalog_match[source][0][1]].flux,
                 source_measurement.flux,
             ):
                 log.info(
                     "sift.source_crossmatch.flare_alert",
                     source_name=source_string_name,
                     crossmatch_name=crossmatch_name,
-                    flux=catalog_sources["fluxJy"][catalog_match[source][0][1]],
+                    flux=catalog_sources[catalog_match[source][0][1]].flux,
                     cand_flux=source_measurement.flux,
                 )
                 transient_candidates.append(source_measurement)
@@ -357,7 +353,7 @@ def sift(
                 "sift.source_cut",
                 source_name=source_string_name,
                 crossmatch_name=crossmatch_name,
-                flux=catalog_sources["fluxJy"][catalog_match[source][0][1]]
+                flux=catalog_sources[catalog_match[source][0][1]].flux
                 if isin_cat[source]
                 else None,
                 forced_photometry_info=source_measurement,
