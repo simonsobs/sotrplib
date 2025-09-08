@@ -381,8 +381,8 @@ def sift(
                     pass
             # TODO: may have to add radec to source name to make it unique
             ## give the transient candidate source a name indicating that it is a transient
-            source_measurement.sourceID = "-T".join(
-                source_measurement.sourceID.split("-S")
+            source_measurement.source_id = "-T".join(
+                source_measurement.source_id.split("-S")
             )
             transient_candidates.append(source_measurement)
             log = log.bind(transient_cand=source_measurement)
