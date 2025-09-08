@@ -51,7 +51,7 @@ def test_basic_pipeline_scipy(
         source_simulators=None,
         forced_photometry=Scipy2DGaussianFitter(sources=sources),
         source_subtractor=None,
-        blind_search=None,
+        blind_search=SigmaClipBlindSearch(),
         sifter=None,
         outputs=[PickleSerializer(directory=tmp_path)],
     )

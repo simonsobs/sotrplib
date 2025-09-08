@@ -1,12 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
+from numpydantic import NDArray
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.blind import (
+    BlindSearchParameters,
     BlindSearchProvider,
     EmptyBlindSearch,
+    SigmaClipBlindSearch,
 )
 
 
@@ -29,4 +32,22 @@ class EmptyBlindSearchConfig(BlindSearchConfig):
         return EmptyBlindSearch()
 
 
-AllBlindSearchConfigTypes = EmptyBlindSearchConfig
+class PhotutilsBlindSearchConfig(BlindSearchConfig):
+    search_type: Literal["photutils"] = "photutils"
+    parameters: BlindSearchParameters | None = None
+    pixel_mask: NDArray | None = None
+
+    def to_search_provider(
+        self, log: FilteringBoundLogger | None = None
+    ) -> SigmaClipBlindSearch:
+        return SigmaClipBlindSearch(
+            parameters=self.parameters,
+            pixel_mask=self.pixel_mask,
+            log=log,
+        )
+
+
+AllBlindSearchConfigTypes = (
+    EmptyBlindSearchConfig,
+    PhotutilsBlindSearchConfig,
+)
