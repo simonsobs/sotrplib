@@ -39,7 +39,7 @@ class PhotutilsBlindSearchConfig(BlindSearchConfig):
 
     def to_search_provider(
         self, log: FilteringBoundLogger | None = None
-    ) -> BlindSearchProvider:
+    ) -> SigmaClipBlindSearch:
         return SigmaClipBlindSearch(
             parameters=self.parameters,
             pixel_mask=self.pixel_mask,
