@@ -114,9 +114,9 @@ class DefaultSifter(SiftingProvider):
     cuts: dict[str, list[float]]
     "a dictionary of cuts to apply to the source candidates, in the form of {cut_name: [min_value, max_value]}."
     crossmatch_with_gaia: bool
-    "if True, will crossmatch with gaia catalog and add the gaia source name to the sourceID."
+    "if True, will crossmatch with gaia catalog and add the gaia source name to the source_id."
     crossmatch_with_million_quasar: bool
-    "if True, will crossmatch with the million quasar catalog and add the source name to the sourceID."
+    "if True, will crossmatch with the million quasar catalog and add the source name to the source_id."
     additional_catalogs: dict[str, Any]
     "a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}."
     log: FilteringBoundLogger

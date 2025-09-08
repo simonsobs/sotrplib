@@ -217,9 +217,9 @@ def sift(
        dec_jitter:float=0.0
               jitter in the dec direction, in arcmin, to add to the uncertainty of the source position. 
        crossmatch_with_gaia:bool=True
-              if True, will crossmatch with gaia catalog and add the gaia source name to the sourceID.
+              if True, will crossmatch with gaia catalog and add the gaia source name to the source_id.
        crossmatch_with_million_quasar:bool=True
-                if True, will crossmatch with the million quasar catalog and add the source name to the sourceID.
+                if True, will crossmatch with the million quasar catalog and add the source name to the source_id.
        additional_catalogs:dict={}
                 a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}.
                 for example: {"million_quasar":mq_catalog}
