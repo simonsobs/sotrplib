@@ -2,14 +2,15 @@ import numpy as np
 import pandas as pd
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropydantic import AstroPydanticQuantity
 from astroquery.simbad import Simbad
 from tqdm import tqdm
 
 
 def cone_query_gaia(
-    ra_deg: float,
-    dec_deg: float,
-    radius_arcmin: float = 1.0,
+    ra: AstroPydanticQuantity[u.deg],
+    dec: AstroPydanticQuantity[u.deg],
+    radius: AstroPydanticQuantity[u.arcmin] = 1.0 * u.arcmin,
     columns=[
         "designation",
         "ra",
@@ -29,10 +30,8 @@ def cone_query_gaia(
     from astroquery.gaia import Gaia
 
     Gaia.ROW_LIMIT = 100
-    coord = SkyCoord(ra=ra_deg, dec=dec_deg, unit=(u.degree, u.degree), frame="icrs")
-    gaia_results = Gaia.cone_search(
-        coord, radius=u.Quantity(radius_arcmin, u.arcmin), columns=columns
-    ).get_results()
+    coord = SkyCoord(ra=ra, dec=dec, frame="icrs")
+    gaia_results = Gaia.cone_search(coord, radius=radius, columns=columns).get_results()
     if not gaia_results:
         return {}
     else:

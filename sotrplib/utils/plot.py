@@ -1,8 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..maps.maps import Depth1Map
-
 
 def fancy_plot(fontsize=25):
     plt.rc("text", usetex=True)
@@ -136,7 +134,7 @@ def plot_map_thumbnail(
 
 
 def plot_depth1_thumbnail(
-    imap: Depth1Map,
+    imap,
     ra: float,
     dec: float,
     source_name: str = "",

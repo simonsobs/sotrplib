@@ -10,14 +10,14 @@ from pathlib import Path
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
-from sotrplib.sources.sources import ForcedPhotometrySource
+from sotrplib.sources.sources import MeasuredSource
 
 
 class SourceOutput(ABC):
     @abstractmethod
     def output(
         self,
-        forced_photometry_candidates: list[ForcedPhotometrySource],
+        forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
     ):
@@ -40,7 +40,7 @@ class JSONSerializer(SourceOutput):
 
     def output(
         self,
-        forced_photometry_candidates: list[ForcedPhotometrySource],
+        forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
     ):
@@ -72,7 +72,7 @@ class PickleSerializer(SourceOutput):
 
     def output(
         self,
-        forced_photometry_candidates: list[ForcedPhotometrySource],
+        forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
     ):

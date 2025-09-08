@@ -12,7 +12,7 @@ from sotrplib.sources.forced_photometry import (
     photutils_2D_gauss_fit,
     scipy_2d_gaussian_fit,
 )
-from sotrplib.sources.sources import ForcedPhotometrySource, RegisteredSource
+from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 from sotrplib.utils.utils import get_fwhm
 
 
@@ -25,7 +25,7 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
         self,
         input_map: ProcessableMap,
         sources: List[RegisteredSource],
-    ) -> list[ForcedPhotometrySource]:
+    ) -> list[MeasuredSource]:
         return []
 
 
@@ -55,7 +55,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
             snr = input_map.snr.at(
                 [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
             )
-            out_source = ForcedPhotometrySource(
+            out_source = MeasuredSource(
                 **source.model_dump(),
                 fit_method="nearest_neighbor" if self.mode == "nn" else "spline",
             )
@@ -88,7 +88,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 
     def force(
         self, input_map: ProcessableMap, sources: list[RegisteredSource]
-    ) -> list[ForcedPhotometrySource]:
+    ) -> list[MeasuredSource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = u.Quantity(
             get_fwhm(freq=input_map.frequency, arr=input_map.array), "arcmin"
@@ -134,7 +134,7 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
 
     def force(
         self, input_map: ProcessableMap, sources: list[RegisteredSource]
-    ) -> list[ForcedPhotometrySource]:
+    ) -> list[MeasuredSource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = u.Quantity(
             get_fwhm(freq=input_map.frequency, arr=input_map.array), "arcmin"
@@ -158,9 +158,9 @@ class PhotutilsGaussianFitter(ForcedPhotometryProvider):
         )
         ## workaround until photutils_2D_gauss_fit reutrns forcedphotometry sources.
         ## convert the sourcecatalog to list of forcedphotometry sources
-        rs: list[ForcedPhotometrySource] = []
+        rs: list[MeasuredSource] = []
         for i in range(len(sources["fluxJy"])):
-            rsi = ForcedPhotometrySource(
+            rsi = MeasuredSource(
                 ra=sources["RADeg"][i] * u.deg,
                 dec=sources["decDeg"][i] * u.deg,
                 flux=sources["fluxJy"][i] * u.Jy,

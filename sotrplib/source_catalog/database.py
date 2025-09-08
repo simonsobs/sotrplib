@@ -10,7 +10,7 @@ from pixell.enmap import ndmap
 from socat.client import mock
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import CrossMatch, RegisteredSource, SourceCandidate
+from sotrplib.sources.sources import CrossMatch, MeasuredSource, RegisteredSource
 from sotrplib.utils.utils import angular_separation
 
 
@@ -52,7 +52,7 @@ class MockDatabase:
                     source_id=str(s.id),
                     crossmatches=[
                         CrossMatch(
-                            name=str(s.name),
+                            source_id=str(s.name),
                             probability=1.0,
                             distance=angular_separation(ra, dec, s.ra, s.dec),
                             frequency=90 * u.GHz,
@@ -88,7 +88,7 @@ class MockDatabase:
                     source_id=str(s.id),
                     crossmatches=[
                         CrossMatch(
-                            name=str(s.name),
+                            source_id=str(s.name),
                             probability=1.0,
                             distance=0.0 * u.deg,
                             frequency=90 * u.GHz,
@@ -136,7 +136,7 @@ class MockACTDatabase:
                     % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
                     crossmatches=[
                         CrossMatch(
-                            name=name,
+                            source_id=name,
                             probability=1.0,
                             distance=0.0 * u.deg,
                             frequency=90 * u.GHz,
@@ -189,7 +189,6 @@ class SourceCatalogDatabase:
     def initialize_database(self):
         self.df = pd.DataFrame(
             columns=[
-                "map_id",
                 "source_type",
                 "ra",
                 "dec",
@@ -197,28 +196,19 @@ class SourceCatalogDatabase:
                 "err_dec",
                 "flux",
                 "err_flux",
-                "snr",
-                "freq",
+                "frequency",
                 "ctime",
                 "arr",
-                "sourceID",
-                "matched_filtered",
-                "renormalized",
+                "source_id",
                 "catalog_crossmatch",
                 "crossmatch_names",
                 "crossmatch_probabilities",
                 "fit_type",
-                "fwhm_a",
-                "fwhm_b",
-                "err_fwhm_a",
-                "err_fwhm_b",
+                "fwhm_ra",
+                "fwhm_dec",
+                "err_fwhm_ra",
+                "err_fwhm_dec",
                 "orientation",
-                "kron_flux",
-                "kron_fluxerr",
-                "kron_radius",
-                "ellipticity",
-                "elongation",
-                "fwhm",
             ]
         )
 
@@ -237,12 +227,11 @@ class SourceCatalogDatabase:
                 self.initialize_database()
 
     def add_sources(self, sources: list):
-        """Add a list of SourceCandidates to the database."""
+        """Add a list of MeasuredSource objects to the database."""
         for source in sources:
             new_entry = pd.DataFrame(
                 [
                     {
-                        "map_id": source.map_id,
                         "source_type": source.source_type,
                         "ra": source.ra,
                         "dec": source.dec,
@@ -250,28 +239,19 @@ class SourceCatalogDatabase:
                         "err_dec": source.err_dec,
                         "flux": source.flux,
                         "err_flux": source.err_flux,
-                        "snr": source.snr,
-                        "freq": source.freq,
+                        "frequency": source.frequency,
                         "ctime": source.ctime,
                         "arr": source.arr,
-                        "sourceID": source.sourceID,
-                        "matched_filtered": source.matched_filtered,
-                        "renormalized": source.renormalized,
+                        "source_id": source.source_id,
                         "catalog_crossmatch": source.catalog_crossmatch,
                         "crossmatch_names": source.crossmatch_names,
                         "crossmatch_probabilities": source.crossmatch_probabilities,
                         "fit_type": source.fit_type,
-                        "fwhm_a": source.fwhm_a,
-                        "fwhm_b": source.fwhm_b,
-                        "err_fwhm_a": source.err_fwhm_a,
-                        "err_fwhm_b": source.err_fwhm_b,
+                        "fwhm_ra": source.fwhm_ra,
+                        "fwhm_dec": source.fwhm_dec,
+                        "err_fwhm_ra": source.err_fwhm_ra,
+                        "err_fwhm_dec": source.err_fwhm_dec,
                         "orientation": source.orientation,
-                        "kron_flux": source.kron_flux,
-                        "kron_fluxerr": source.kron_fluxerr,
-                        "kron_radius": source.kron_radius,
-                        "ellipticity": source.ellipticity,
-                        "elongation": source.elongation,
-                        "fwhm": source.fwhm,
                     }
                 ]
             )
@@ -307,35 +287,25 @@ class SourceCatalogDatabase:
 
         data = json.loads(json_data)
         for entry in data:
-            source = SourceCandidate(
+            source = MeasuredSource(
                 ra=entry["ra"],
                 dec=entry["dec"],
                 err_ra=entry.get("err_ra"),
                 err_dec=entry.get("err_dec"),
                 flux=entry["flux"],
                 err_flux=entry.get("err_flux"),
-                snr=entry.get("snr"),
-                freq=entry.get("freq"),
+                frequency=entry.get("frequency"),
                 ctime=entry.get("ctime"),
                 arr=entry.get("arr"),
-                map_id=entry["map_id"],
-                sourceID=entry.get("sourceID"),
-                matched_filtered=entry.get("matched_filtered", False),
-                renormalized=entry.get("renormalized", False),
+                source_id=entry.get("source_id"),
                 catalog_crossmatch=entry.get("catalog_crossmatch", False),
                 crossmatch_names=entry.get("crossmatch_names", []),
                 crossmatch_probabilities=entry.get("crossmatch_probabilities", []),
                 fit_type=entry.get("fit_type", "forced"),
-                fwhm_a=entry.get("fwhm_a"),
-                fwhm_b=entry.get("fwhm_b"),
-                err_fwhm_a=entry.get("err_fwhm_a"),
-                err_fwhm_b=entry.get("err_fwhm_b"),
+                fwhm_ra=entry.get("fwhm_ra"),
+                fwhm_dec=entry.get("fwhm_dec"),
+                err_fwhm_ra=entry.get("err_fwhm_ra"),
+                err_fwhm_dec=entry.get("err_fwhm_dec"),
                 orientation=entry.get("orientation"),
-                kron_flux=entry.get("kron_flux"),
-                kron_fluxerr=entry.get("kron_fluxerr"),
-                kron_radius=entry.get("kron_radius"),
-                ellipticity=entry.get("ellipticity"),
-                elongation=entry.get("elongation"),
-                fwhm=entry.get("fwhm"),
             )
             self.add_source(source, overwrite)

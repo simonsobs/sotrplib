@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 import structlog
 from astropy import units as u
@@ -15,7 +13,7 @@ from tqdm import tqdm
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import (
     CrossMatch,
-    ForcedPhotometrySource,
+    MeasuredSource,
     RegisteredSource,
 )
 
@@ -227,7 +225,7 @@ def scipy_2d_gaussian_fit(
     fwhm: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
     reproject_thumb: bool = False,
     log: FilteringBoundLogger | None = None,
-) -> list[ForcedPhotometrySource]:
+) -> list[MeasuredSource]:
     """ """
     log = log or get_logger()
     log = log.bind(func_name="scipy_2d_gaussian_fit")
@@ -245,8 +243,8 @@ def scipy_2d_gaussian_fit(
             [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
         )
         size_pix = thumbnail_half_width / map_res
-        ## setup default forcedphotometrysource
-        forced_source = ForcedPhotometrySource(
+        ## setup default MeasuredSource
+        forced_source = MeasuredSource(
             ra=source.ra, dec=source.dec, source_id=source.source_id, flux=source.flux
         )
         forced_source.fit_method = fit_method
@@ -503,128 +501,6 @@ def fit_2d_gaussian(
     return gauss_fit
 
 
-def convert_catalog_to_source_objects(
-    catalog_sources: dict,
-    freq: str = "none",
-    arr: str = "none",
-    ctime: Union[float, enmap.ndmap] = None,
-    map_id: str = "",
-    source_type: str = "",
-    log=None,
-):
-    """
-    take each source in the catalog and convert to a list
-    of Source objects.
-
-    """
-    from pixell.utils import arcmin, degree
-
-    from ..sources.sources import SourceCandidate
-
-    log = log.bind(func_name="convert_catalog_to_source_objects")
-
-    if isinstance(catalog_sources, list):
-        log.info(
-            "convert_catalog_to_source_objects.catalog_is_list",
-            num_sources=len(catalog_sources),
-        )
-        return catalog_sources
-    if not catalog_sources:
-        log.warning("convert_catalog_to_source_objects.catalog_is_empty", num_sources=0)
-        return []
-
-    known_sources = []
-    for i in range(len(catalog_sources["name"])):
-        if "gauss_fit_flag" in catalog_sources:
-            bad_fit = catalog_sources["gauss_fit_flag"][i]
-        else:
-            bad_fit = True
-
-        fit_type = None
-        if "forced" in catalog_sources:
-            if catalog_sources["forced"][i]:
-                fit_type = "forced"
-            else:
-                fit_type = "pointing"
-        else:
-            fit_type = "none"
-
-        source_ra = catalog_sources["RADeg"][i] % 360
-        source_dec = catalog_sources["decDeg"][i]
-        if isinstance(ctime, enmap.ndmap):
-            x, y = ctime.sky2pix([source_dec * degree, source_ra * degree])
-            source_ctime = ctime[int(x), int(y)]
-        elif isinstance(ctime, float):
-            source_ctime = ctime
-        else:
-            source_ctime = np.nan
-        ra_uncert = np.nan
-        if bad_fit:
-            cs = SourceCandidate(
-                ra=source_ra,
-                dec=source_dec,
-                err_ra=np.nan,
-                err_dec=np.nan,
-                flux=catalog_sources["fluxJy"][i],
-                err_flux=catalog_sources["err_fluxJy"][i],
-                snr=np.nan,
-                freq=freq,
-                arr=arr,
-                ctime=source_ctime,
-                map_id=map_id,
-                sourceID=catalog_sources["name"][i],
-                crossmatch_names=[catalog_sources["name"][i]],
-                crossmatch_probabilities=[1.0],
-                catalog_crossmatch=True,
-                fit_type=fit_type,
-                source_type=source_type,
-            )
-        else:
-            if catalog_sources["ra_offset_arcmin"][i]:
-                source_ra += catalog_sources["ra_offset_arcmin"][i] * arcmin / degree
-                ra_uncert = catalog_sources["err_ra_offset_arcmin"][i] * arcmin / degree
-
-            dec_uncert = np.nan
-            if catalog_sources["dec_offset_arcmin"][i]:
-                source_dec += catalog_sources["dec_offset_arcmin"][i] * arcmin / degree
-                dec_uncert = (
-                    catalog_sources["err_dec_offset_arcmin"][i] * arcmin / degree
-                )
-            cs = SourceCandidate(
-                ra=source_ra,
-                dec=source_dec,
-                err_ra=ra_uncert,
-                err_dec=dec_uncert,
-                flux=catalog_sources["fluxJy"][i],
-                err_flux=catalog_sources["err_fluxJy"][i],
-                snr=np.nan,
-                freq=freq,
-                arr=arr,
-                ctime=source_ctime,
-                map_id=map_id,
-                sourceID=catalog_sources["name"][i],
-                crossmatch_names=[catalog_sources["name"][i]],
-                crossmatch_probabilities=[1.0],
-                catalog_crossmatch=True,
-                fwhm_a=catalog_sources["fwhm_x_arcmin"][i],
-                fwhm_b=catalog_sources["fwhm_y_arcmin"][i],
-                err_fwhm_a=catalog_sources["err_fwhm_x_arcmin"][i],
-                err_fwhm_b=catalog_sources["err_fwhm_y_arcmin"][i],
-                orientation=catalog_sources["theta"][i],
-                fit_type=fit_type,
-                source_type=source_type,
-            )
-
-            if cs.err_flux > 0.0:
-                cs.snr = cs.flux / cs.err_flux
-        known_sources.append(cs)
-    log.info(
-        "convert_catalog_to_source_objects.catalog_converted",
-        num_sources=len(known_sources),
-    )
-    return known_sources
-
-
 def convert_catalog_to_registered_source_objects(
     catalog_sources: dict,
     source_type: str | None = None,
@@ -669,7 +545,7 @@ def convert_catalog_to_registered_source_objects(
 
         cs.add_crossmatch(
             CrossMatch(
-                name=catalog_sources["name"][i],
+                source_id=catalog_sources["name"][i],
                 probability=1.0,
                 catalog_idx=i,
             )
@@ -688,7 +564,7 @@ def return_initial_catalog_entry(
     keyconv={},
 ):
     """
-    source is a SourceCandidate object
+    source is a MeasuredSource object
     """
     outdict = {}
     for item in vars(source):

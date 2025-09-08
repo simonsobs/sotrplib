@@ -112,7 +112,7 @@ def test_find_sources_blind(
 
     # Crossmatches should, well, match
     source_ids = sorted([x.source_id for x in sources])
-    match_ids = sorted([x.crossmatches[0].name for x in res.source_candidates])
+    match_ids = sorted([x.crossmatches[0].source_id for x in res.source_candidates])
     assert source_ids == match_ids
     assert len(res.source_candidates) == 4
     assert len(res.transient_candidates) == 0

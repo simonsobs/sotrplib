@@ -8,24 +8,24 @@ log = get_logger()
 def test_ra_lims_valid():
     from sotrplib.sims.sim_utils import ra_lims_valid
 
-    assert ra_lims_valid((0, 360))
-    assert ra_lims_valid((0, 180))
-    assert not ra_lims_valid((-10, 10))
-    assert not ra_lims_valid((370, 380))
-    assert not ra_lims_valid((0, 370))
+    assert ra_lims_valid((0, 360) * u.deg)
+    assert ra_lims_valid((0, 180) * u.deg)
+    assert not ra_lims_valid((-10, 10) * u.deg)
+    assert not ra_lims_valid((370, 380) * u.deg)
+    assert not ra_lims_valid((0, 370) * u.deg)
     assert not ra_lims_valid()
-    assert not ra_lims_valid([0])
+    assert not ra_lims_valid([0 * u.deg])
 
 
 def test_dec_lims_valid():
     from sotrplib.sims.sim_utils import dec_lims_valid
 
-    assert dec_lims_valid((-90, 90))
-    assert dec_lims_valid((-45, 45))
-    assert not dec_lims_valid((-100, 100))
-    assert not dec_lims_valid((0, 100))
+    assert dec_lims_valid((-90, 90) * u.deg)
+    assert dec_lims_valid((-45, 45) * u.deg)
+    assert not dec_lims_valid((-100, 100) * u.deg)
+    assert not dec_lims_valid((0, 100) * u.deg)
     assert not dec_lims_valid()
-    assert not dec_lims_valid([0])
+    assert not dec_lims_valid([0 * u.deg])
 
 
 def test_random_positions(
@@ -50,9 +50,9 @@ def test_random_positions(
     )
     assert len(positions) == 10
     for dec, ra in positions:
-        if ra_lims[0] < 0:
-            if ra > 180:
-                ra -= 360
+        if ra_lims[0] < 0 * u.deg:
+            if ra > 180 * u.deg:
+                ra -= 360 * u.deg
         assert ra_lims[0] <= ra <= ra_lims[1]
         assert dec_lims[0] <= dec <= dec_lims[1]
 
@@ -73,10 +73,10 @@ def test_random_positions_with_map(sim_map_params, log=log):
         sim_map_params["maps"]["center_dec"] + sim_map_params["maps"]["width_dec"],
     )
     for dec, ra in positions:
-        if ra_lims[0] < 0:
-            if ra > 180:
-                ra -= 360
-        tol = 1e-3  # degrees
+        if ra_lims[0] < 0 * u.deg:
+            if ra > 180 * u.deg:
+                ra -= 360 * u.deg
+        tol = 1e-3 * u.deg
         assert (ra_lims[0] - tol) <= ra <= (ra_lims[1] + tol), (
             f"RA {ra} out of range {ra_lims}"
         )

@@ -78,12 +78,12 @@ class SimulatedMap(ProcessableMap):
 
         # Flux
         self.flux = sim_maps.make_enmap(
-            center_ra=self.simulation_parameters.center_ra.to_value("deg"),
-            center_dec=self.simulation_parameters.center_dec.to_value("deg"),
-            width_ra=self.simulation_parameters.width_ra.to_value("deg"),
-            width_dec=self.simulation_parameters.width_dec.to_value("deg"),
-            resolution=self.simulation_parameters.resolution.to_value("arcmin"),
-            map_noise=self.simulation_parameters.map_noise.to_value("Jy"),
+            center_ra=self.simulation_parameters.center_ra,
+            center_dec=self.simulation_parameters.center_dec,
+            width_ra=self.simulation_parameters.width_ra,
+            width_dec=self.simulation_parameters.width_dec,
+            resolution=self.simulation_parameters.resolution,
+            map_noise=self.simulation_parameters.map_noise,
             log=log,
         )
 
@@ -98,7 +98,7 @@ class SimulatedMap(ProcessableMap):
         ):
             log.debug(
                 "simulated_map.build.noise",
-                map_noise=self.simulation_parameters.map_noise.to_value("Jy"),
+                map_noise=self.simulation_parameters.map_noise,
             )
             self.snr = self.flux / self.simulation_parameters.map_noise.to_value("Jy")
         else:

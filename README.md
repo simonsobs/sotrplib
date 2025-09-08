@@ -38,7 +38,7 @@ An example use of the source extraction pipeline can be run using the script `so
 
 This script can also be used to coadd depth1 maps before source-finding.
 
-Right now, sources are saved as pandas databases as `SourceCandidate` objects which will in the future be directly stored in the SO source catalog and lightcurve databases.
+Right now, sources are saved as pandas databases as `MeasuredSource` objects which will in the future be directly stored in the SO source catalog and lightcurve databases.
 
 > *You have to create the output directory before running.*
 

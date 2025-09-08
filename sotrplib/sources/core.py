@@ -8,19 +8,18 @@ from abc import ABC, abstractmethod
 from pixell import enmap
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sources.finding import BlindSourceCandidate
 from sotrplib.sources.sources import (
-    ForcedPhotometrySource,
+    MeasuredSource,
     RegisteredSource,
 )
 
 
 class ForcedPhotometryProvider(ABC):
-    # thumbnail now attribute of ForcedPhotometrySource
+    # thumbnail now attribute of MeasuredSource
     @abstractmethod
     def force(
         self, input_map: ProcessableMap, sources: list[RegisteredSource]
-    ) -> list[ForcedPhotometrySource]:
+    ) -> list[MeasuredSource]:
         return []
 
 
@@ -29,5 +28,5 @@ class BlindSearchProvider(ABC):
     def search(
         self,
         input_map: ProcessableMap,
-    ) -> tuple[list[BlindSourceCandidate], list[enmap.ndmap]]:
+    ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         return [], []
