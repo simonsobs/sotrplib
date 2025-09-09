@@ -6,7 +6,7 @@ from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.outputs.core import PickleSerializer
-from sotrplib.sifter.core import SimpleCatalogSifter
+from sotrplib.sifter.core import DefaultSifter, SimpleCatalogSifter
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
@@ -110,6 +110,35 @@ def test_find_sources_blind(
 
     res = sifter.sift(sources=found_sources, input_map=new_map)
 
+    # Crossmatches should, well, match
+    source_ids = sorted([x.source_id for x in sources])
+    match_ids = sorted([x.crossmatches[0].source_id for x in res.source_candidates])
+    assert source_ids == match_ids
+    assert len(res.source_candidates) == 4
+    assert len(res.transient_candidates) == 0
+
+
+def test_default_sifter(
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+):
+    """
+    Tests that we can find a set of sources that we just injected with
+    the blind search algorithm.
+    """
+    new_map, sources = map_with_sources
+
+    searcher = SigmaClipBlindSearch()
+
+    found_sources, _ = searcher.search(input_map=new_map)
+
+    assert len(found_sources) == len(sources)
+
+    # Check we can sift them out!
+    sifter = DefaultSifter(
+        catalog_sources=sources,
+    )
+
+    res = sifter.sift(sources=found_sources, input_map=new_map)
     # Crossmatches should, well, match
     source_ids = sorted([x.source_id for x in sources])
     match_ids = sorted([x.crossmatches[0].source_id for x in res.source_candidates])

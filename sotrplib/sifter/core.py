@@ -9,6 +9,7 @@ from typing import Any, Literal
 import astropy.units as u
 import numpy as np
 import structlog
+from astropydantic import AstroPydanticQuantity
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -103,13 +104,13 @@ class SimpleCatalogSifter(SiftingProvider):
 class DefaultSifter(SiftingProvider):
     catalog_sources: list
     "the list of sources to match against with this sifter"
-    radius_1Jy: float
+    radius_1Jy: AstroPydanticQuantity[u.Jy]
     "matching radius for a 1Jy source, arcmin"
-    min_match_radius: float
+    min_match_radius: AstroPydanticQuantity[u.arcmin]
     "minimum matching radius, i.e. for a zero flux source, arcmin"
-    ra_jitter: float
+    ra_jitter: AstroPydanticQuantity[u.arcmin]
     "jitter in the ra direction, in arcmin, to add to the uncertainty of the source position."
-    dec_jitter: float
+    dec_jitter: AstroPydanticQuantity[u.arcmin]
     "jitter in the dec direction, in arcmin, to add to the uncertainty of the source position."
     cuts: dict[str, list[float]]
     "a dictionary of cuts to apply to the source candidates, in the form of {cut_name: [min_value, max_value]}."
@@ -127,10 +128,16 @@ class DefaultSifter(SiftingProvider):
     def __init__(
         self,
         catalog_sources: list,
-        radius_1Jy: float = 30.0,
-        min_match_radius: float = 1.5,
-        ra_jitter: float = 0.0,
-        dec_jitter: float = 0.0,
+        radius_1Jy: AstroPydanticQuantity[u.Jy] = AstroPydanticQuantity(30.0, "arcmin"),
+        min_match_radius: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
+            1.5, "arcmin"
+        ),
+        ra_jitter: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
+            0.0, "arcmin"
+        ),
+        dec_jitter: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
+            0.0, "arcmin"
+        ),
         cuts: dict[str, list[float]] | None = None,
         crossmatch_with_gaia: bool = True,
         crossmatch_with_million_quasar: bool = True,
@@ -144,7 +151,8 @@ class DefaultSifter(SiftingProvider):
         self.ra_jitter = ra_jitter
         self.dec_jitter = dec_jitter
         self.cuts = cuts or {
-            "fwhm": [0.5, 5.0],
+            "fwhm_ra": [0.5 * u.arcmin, 5.0 * u.arcmin],
+            "fwhm_dec": [0.5 * u.arcmin, 5.0 * u.arcmin],
             "snr": [5.0, np.inf],
         }
         self.crossmatch_with_gaia = crossmatch_with_gaia
@@ -168,8 +176,6 @@ class DefaultSifter(SiftingProvider):
         map_freq = input_map.frequency
         arr = input_map.array
         flux_map = input_map.flux
-        # TODO: Map IDs
-        map_id = ""
 
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
@@ -183,7 +189,6 @@ class DefaultSifter(SiftingProvider):
             crossmatch_with_million_quasar=self.crossmatch_with_million_quasar,
             additional_catalogs=self.additional_catalogs,
             map_freq=map_freq,
-            map_id=map_id,
             arr=arr,
             cuts=self.cuts,
             log=self.log,

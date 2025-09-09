@@ -95,9 +95,13 @@ def crossmatch_with_million_quasar_catalog(
     - match_threshold: The matching radius.
 
     """
-
     log = log if log else get_logger()
     log = log.bind(func_name="crossmatch_million_quasar_catalog")
+
+    if mq_catalog is None:
+        log.warning("crossmatch_with_million_quasar_catalog.no_catalog")
+        return np.zeros(len(extracted_sources), dtype=bool), {}
+
     isin_mq_cat = np.zeros(len(extracted_sources), dtype=bool)
     log.info("crossmatching", n_sources=len(extracted_sources))
     matches = []
@@ -181,7 +185,8 @@ def sift(
     map_freq: str | None = None,
     arr: str | None = None,
     cuts: dict = {
-        "fwhm": [0.5, 5.0],
+        "fwhm_ra": [0.5 * u.arcmin, 5.0 * u.arcmin],
+        "fwhm_dec": [0.5 * u.arcmin, 5.0 * u.arcmin],
         "snr": [5.0, np.inf],
     },
     crossmatch_with_gaia: bool = True,
@@ -236,14 +241,17 @@ def sift(
 
     fwhm = get_fwhm(map_freq, arr=arr) * u.arcmin
 
-    if source_fluxes is None:
-        log.warning("sift.source_fluxes.not_provided")
-        source_fluxes = np.asarray(
-            [extracted_sources[f]["peakval"] for f in extracted_sources]
-        )
+    extracted_ra = (
+        np.asarray([es.ra.to(u.deg).value for es in extracted_sources]) * u.deg
+    )
+    extracted_dec = (
+        np.asarray([es.dec.to(u.deg).value for es in extracted_sources]) * u.deg
+    )
 
-    extracted_ra = np.asarray([extracted_sources[f]["ra"] for f in extracted_sources])
-    extracted_dec = np.asarray([extracted_sources[f]["dec"] for f in extracted_sources])
+    if source_fluxes is None:
+        source_fluxes = (
+            np.asarray([es.flux.to(u.Jy).value for es in extracted_sources]) * u.Jy
+        )
 
     if catalog_sources is None:
         isin_cat = np.zeros(len(extracted_ra), dtype=bool)
@@ -254,19 +262,12 @@ def sift(
             np.maximum(source_fluxes.to(u.Jy).value * radius1Jy, min_match_radius),
             120 * u.arcmin,
         )
-        # TODO: convert crossmatch_mask to take unitful quantities
+
+        cat_ra = np.asarray([cs.ra.to(u.deg).value for cs in catalog_sources]) * u.deg
+        cat_dec = np.asarray([cs.dec.to(u.deg).value for cs in catalog_sources]) * u.deg
         isin_cat, catalog_match = crossmatch_mask(
-            np.asarray(
-                [
-                    extracted_dec,
-                    extracted_ra,
-                ]
-            )
-            .T.to(u.deg)
-            .value,
-            np.asarray([catalog_sources["decDeg"], catalog_sources["RADeg"]])
-            .T.to(u.deg)
-            .value,
+            np.stack([extracted_dec, extracted_ra], axis=1).to(u.deg).value,
+            np.stack([cat_dec, cat_ra], axis=1).to(u.deg).value,
             list(crossmatch_radius.to(u.arcmin).value),
             mode="closest",
             return_matches=True,
@@ -290,14 +291,24 @@ def sift(
         )
 
         if isin_cat[source]:
-            crossmatch_name = catalog_sources["name"][catalog_match[source][0][1]]
+            source_measurement.crossmatches = catalog_sources[
+                catalog_match[source][0][1]
+            ].crossmatches
+
         else:
-            crossmatch_name = ""
+            source_measurement.crossmatches = []
+
+        if isin_mq_cat[source]:
+            source_measurement.crossmatches.append(
+                CrossMatch(
+                    mq_catalog_match[source].source_id, mq_catalog_match[source].pvalue
+                )
+            )
 
         log.debug(
             "sift.candidate_info",
             source_name=source_string_name,
-            crossmatch_name=crossmatch_name,
+            crossmatches=source_measurement.crossmatches,
             flux=catalog_sources[catalog_match[source][0][1]].flux
             if isin_cat[source]
             else None,
@@ -305,31 +316,25 @@ def sift(
         )
         ## get the ra,dec uncertainties as quadrature sum of sigma/sqrt(SNR) and any pointing uncertainty (ra,dec jitter)
         if source_measurement.err_ra is None or source_measurement.err_dec is None:
-            source_measurement.err_ra = fwhm / np.sqrt(source_measurement.peaksig)
-            source_measurement.err_dec = fwhm / np.sqrt(source_measurement.peaksig)
+            source_measurement.err_ra = fwhm / np.sqrt(
+                source_measurement.flux / source_measurement.err_flux
+            )
+            source_measurement.err_dec = fwhm / np.sqrt(
+                source_measurement.flux / source_measurement.err_flux
+            )
 
         source_measurement.err_ra = np.sqrt(source_measurement.err_ra**2 + ra_jitter**2)
         source_measurement.err_dec = np.sqrt(
             source_measurement.err_dec**2 + dec_jitter**2
         )
 
-        if source_measurement.crossmatches is None:
-            source_measurement.crossmatches = []
-        if isin_mq_cat[source]:
-            source_measurement.crossmatches.append(
-                CrossMatch(
-                    mq_catalog_match[source].source_id, mq_catalog_match[source].pvalue
-                )
-            )
-        log = log.bind(cand=source_measurement)
-        ## do sifting operations here...
         is_cut = get_cut_decision(source_measurement, cuts, debug=debug)
 
         if isin_cat[source] and not is_cut:
             log.debug(
                 "sift.source_crossmatch",
                 source=source,
-                crossmatch_name=crossmatch_name,
+                crossmatches=source_measurement.crossmatches,
                 flux=catalog_sources[catalog_match[source][0][1]].flux,
             )
 
@@ -340,7 +345,7 @@ def sift(
                 log.info(
                     "sift.source_crossmatch.flare_alert",
                     source_name=source_string_name,
-                    crossmatch_name=crossmatch_name,
+                    crossmatches=source_measurement.crossmatches,
                     flux=catalog_sources[catalog_match[source][0][1]].flux,
                     cand_flux=source_measurement.flux,
                 )
@@ -352,7 +357,7 @@ def sift(
             log.debug(
                 "sift.source_cut",
                 source_name=source_string_name,
-                crossmatch_name=crossmatch_name,
+                crossmatches=source_measurement.crossmatches,
                 flux=catalog_sources[catalog_match[source][0][1]].flux
                 if isin_cat[source]
                 else None,
@@ -385,8 +390,7 @@ def sift(
                 source_measurement.source_id.split("-S")
             )
             transient_candidates.append(source_measurement)
-            log = log.bind(transient_cand=source_measurement)
-            log.info("sift.transient_candidate")
+            log.info("sift.transient_candidate", transient_cand=source_measurement)
 
     log.info(
         "sift.initial_candidates",
