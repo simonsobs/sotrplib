@@ -46,3 +46,7 @@ ignore = ["F841"]
 source = [
     "sotrplib",
 ]
+omit = [
+    "sotrplib/config",
+    "sotrplib/cli.py",
+]
