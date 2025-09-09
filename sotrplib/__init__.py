@@ -1,7 +1,5 @@
 from . import (
     filters,
-    lightcurves,
-    map_io,
     maps,
     observatories,
     sifter,
@@ -12,8 +10,6 @@ from . import (
 
 __all__ = [
     "filters",
-    "lightcurves",
-    "map_io",
     "maps",
     "observatories",
     "sifter",

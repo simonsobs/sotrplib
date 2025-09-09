@@ -10,6 +10,7 @@ from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     ForcedPhotometryProvider,
     PhotutilsGaussianFitter,
+    SimpleForcedPhotometry,
 )
 
 
@@ -32,6 +33,14 @@ class EmptyPhotometryConfig(ForcedPhotometryConfig):
         return EmptyForcedPhotometry()
 
 
+class SimpleForcedPhotometryConfig(ForcedPhotometryConfig):
+    photometry_type: Literal["simple"] = "simple"
+    mode: Literal["spline", "nn"]
+
+    def to_forced_photometry(self, log=None) -> SimpleForcedPhotometry:
+        return SimpleForcedPhotometry(mode=self.mode, log=log)
+
+
 class PhotutilsGaussianFitterConfig(ForcedPhotometryConfig):
     photometry_type: Literal["photutils"] = "photutils"
     # TODO actually support passing sources here!
@@ -47,4 +56,6 @@ class PhotutilsGaussianFitterConfig(ForcedPhotometryConfig):
         )
 
 
-AllForcedPhotometryConfigTypes = EmptyPhotometryConfig | PhotutilsGaussianFitterConfig
+AllForcedPhotometryConfigTypes = (
+    EmptyPhotometryConfig | PhotutilsGaussianFitterConfig | SimpleForcedPhotometryConfig
+)
