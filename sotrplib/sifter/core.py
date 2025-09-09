@@ -128,7 +128,7 @@ class DefaultSifter(SiftingProvider):
     def __init__(
         self,
         catalog_sources: list,
-        radius_1Jy: AstroPydanticQuantity[u.Jy] = AstroPydanticQuantity(30.0, "arcmin"),
+        radius_1Jy: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(30.0, "arcmin"),
         min_match_radius: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
             1.5, "arcmin"
         ),
