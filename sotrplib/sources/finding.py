@@ -258,6 +258,25 @@ def convert_outstruct_to_measured_source_objects(
         ms = MeasuredSource(**struct)
         ms.measurement_type = "blind"
         ms.frequency = get_frequency(inmap.frequency) if inmap else None
+        ms.flux = struct["peakval"]
+        ms.err_flux = struct["peakval"] / struct["peaksig"]
+        ms.snr = struct["peaksig"]
+
+        sigma_maj = struct["semimajor_sigma"]
+        sigma_min = struct["semiminor_sigma"]
+        theta = struct["orientation"].to(u.rad).value
+        sigma_ra = np.sqrt(
+            sigma_maj**2 * np.cos(theta) ** 2 + sigma_min**2 * np.sin(theta) ** 2
+        )
+        sigma_dec = np.sqrt(
+            sigma_maj**2 * np.sin(theta) ** 2 + sigma_min**2 * np.cos(theta) ** 2
+        )
+        ms.err_ra = sigma_ra
+        ms.err_dec = sigma_dec
+        # convert to FWHM
+        k = 2.0 * np.sqrt(2.0 * np.log(2.0))  # ≈ 2.354820045
+        ms.fwhm_ra = k * sigma_ra
+        ms.fwhm_dec = k * sigma_dec
         outlist.append(ms)
     return outlist
 

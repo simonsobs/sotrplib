@@ -86,6 +86,7 @@ class MeasuredSource(RegisteredSource):
 
     """
 
+    snr: float | None = None
     offset_ra: AstroPydanticQuantity[u.deg] | None = None
     offset_dec: AstroPydanticQuantity[u.deg] | None = None
     fwhm_ra: AstroPydanticQuantity[u.deg] | None = None

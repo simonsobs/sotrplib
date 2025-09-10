@@ -66,7 +66,7 @@ class PipelineRunner:
                 sources=forced_photometry_candidates, input_map=input_map
             )
 
-            blind_sources = self.blind_search.search(input_map=source_subtracted_map)
+            blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
             # Should we be passing the source subtracted map or the original to the sifter..?
             sifter_result = self.sifter.sift(blind_sources, input_map)

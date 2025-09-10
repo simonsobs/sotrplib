@@ -63,6 +63,12 @@ P.add_argument(
     default=False,
     help="Dont cleanup the initial lc_dir.",
 )
+P.add_argument(
+    "--overwrite",
+    action="store_true",
+    default=False,
+    help="Overwrite output files if they exist.",
+)
 
 
 def collate_lightcurve_files(lc_files, out_file, cleanup=True):
@@ -75,7 +81,7 @@ def collate_lightcurve_files(lc_files, out_file, cleanup=True):
                 inlines.append(line)
 
     headerlines = 0
-    with open(out_file, "w") as f:
+    with open(out_file, "a" if not args.overwrite else "w") as f:
         for i in range(len(inlines)):
             if "#" in inlines[i]:
                 headerlines += 1
