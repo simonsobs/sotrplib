@@ -30,7 +30,7 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
 
 class SimpleForcedPhotometry(ForcedPhotometryProvider):
     mode: Literal["spline", "nn"]
-    sources = list[RegisteredSource]
+    sources: list[RegisteredSource]
 
     def __init__(
         self,
