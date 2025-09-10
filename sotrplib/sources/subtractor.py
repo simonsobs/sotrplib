@@ -34,3 +34,19 @@ class EmptySourceSubtractor(SourceSubtractor):
         input_map: ProcessableMap,
     ) -> ProcessableMap:
         return input_map
+
+
+class PhotutilsSourceSubtractor(SourceSubtractor):
+    """
+    Subtract sources using photutils.
+    """
+
+    def subtract(
+        self,
+        sources: list[MeasuredSource],
+        input_map: ProcessableMap,
+    ) -> ProcessableMap:
+        from sotrplib.maps.maps import subtract_sources
+
+        subtract_sources(input_map, sources, log=None)
+        return input_map

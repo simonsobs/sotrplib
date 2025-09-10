@@ -1,0 +1,32 @@
+{
+    "maps": [
+        {
+            "map_type": "filtered",
+            "rho_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_rho.fits",
+            "kappa_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_kappa.fits",
+            "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_time.fits",
+            "frequency": "f090",
+            "band": "pa5"
+        }
+    ],
+    "preprocessors": [
+        {
+            "preprocessor_type": "kappa_rho"
+        }
+    ],
+    "blind_search": {
+            "search_type": "default"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy"
+    },
+    "sifter": {
+        "sifter_type": "default"
+    },
+    "outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

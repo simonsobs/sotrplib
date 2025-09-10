@@ -26,4 +26,18 @@ class EmptySourceSubtractorConfig(SourceSubtractorConfig):
         return EmptySourceSubtractor()
 
 
-AllSourceSubtractorConfigTypes = EmptySourceSubtractorConfig
+class PhotutilsSourceSubtractorConfig(SourceSubtractorConfig):
+    subtractor_type: Literal["photutils"] = "photutils"
+
+    def to_source_subtractor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> SourceSubtractor:
+        from sotrplib.sources.subtractor import PhotutilsSourceSubtractor
+
+        return PhotutilsSourceSubtractor()
+
+
+AllSourceSubtractorConfigTypes = (
+    EmptySourceSubtractorConfig,
+    PhotutilsSourceSubtractorConfig,
+)
