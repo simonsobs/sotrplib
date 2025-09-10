@@ -14,7 +14,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.sources.sources import CrossMatch, MeasuredSource
+from sotrplib.sources.sources import CrossMatch, MeasuredSource, RegisteredSource
 
 
 @dataclass
@@ -102,7 +102,7 @@ class SimpleCatalogSifter(SiftingProvider):
 
 
 class DefaultSifter(SiftingProvider):
-    catalog_sources: list
+    catalog_sources: list[RegisteredSource]
     "the list of sources to match against with this sifter"
     radius_1Jy: AstroPydanticQuantity[u.Jy]
     "matching radius for a 1Jy source, arcmin"
@@ -127,17 +127,11 @@ class DefaultSifter(SiftingProvider):
 
     def __init__(
         self,
-        catalog_sources: list,
-        radius_1Jy: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(30.0, "arcmin"),
-        min_match_radius: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
-            1.5, "arcmin"
-        ),
-        ra_jitter: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
-            0.0, "arcmin"
-        ),
-        dec_jitter: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(
-            0.0, "arcmin"
-        ),
+        catalog_sources: list[RegisteredSource],
+        radius_1Jy: u.Quantity = u.Quantity(30.0, "arcmin"),
+        min_match_radius: u.Quantity = u.Quantity(1.5, "arcmin"),
+        ra_jitter: u.Quantity = u.Quantity(0.0, "arcmin"),
+        dec_jitter: u.Quantity = u.Quantity(0.0, "arcmin"),
         cuts: dict[str, list[float]] | None = None,
         crossmatch_with_gaia: bool = True,
         crossmatch_with_million_quasar: bool = True,
