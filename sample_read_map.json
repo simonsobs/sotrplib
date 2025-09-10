@@ -14,8 +14,11 @@
             "preprocessor_type": "kappa_rho"
         }
     ],
+    "source_subtractor": {
+            "subtractor_type": "photutils"
+    },
     "blind_search": {
-            "search_type": "default"
+            "search_type": "photutils"
     },
     "forced_photometry": {
         "photometry_type": "scipy"

@@ -4,7 +4,11 @@ from typing import Literal
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
+from sotrplib.sources.subtractor import (
+    EmptySourceSubtractor,
+    PhotutilsSourceSubtractor,
+    SourceSubtractor,
+)
 
 
 class SourceSubtractorConfig(BaseModel, ABC):
@@ -32,12 +36,9 @@ class PhotutilsSourceSubtractorConfig(SourceSubtractorConfig):
     def to_source_subtractor(
         self, log: FilteringBoundLogger | None = None
     ) -> SourceSubtractor:
-        from sotrplib.sources.subtractor import PhotutilsSourceSubtractor
-
         return PhotutilsSourceSubtractor()
 
 
 AllSourceSubtractorConfigTypes = (
-    EmptySourceSubtractorConfig,
-    PhotutilsSourceSubtractorConfig,
+    EmptySourceSubtractorConfig | PhotutilsSourceSubtractorConfig
 )

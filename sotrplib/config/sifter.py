@@ -34,4 +34,4 @@ class DefaultSifterConfig(SifterConfig):
         )
 
 
-AllSifterConfigTypes = (EmptySifterConfig, DefaultSifterConfig)
+AllSifterConfigTypes = EmptySifterConfig | DefaultSifterConfig
