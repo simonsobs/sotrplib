@@ -297,7 +297,7 @@ def scipy_2d_gaussian_fit(
             if reproject_thumb
             else (source.ra, source.dec),
             fwhm_guess=fwhm,
-            force_center=forced_source.flux > flux_lim_fit_centroid
+            force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
             else False,
             log=log,
