@@ -23,6 +23,7 @@ from sotrplib.sources.force import SimpleForcedPhotometry
 from sotrplib.sources.subtractor import PhotutilsSourceSubtractor
 
 
+@pytest.mark.skip(reason="this needs tiger path, not a runtime test")
 def test_mock_forced_photometry_database(
     db_path="/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
     log: FilteringBoundLogger | None = None,
