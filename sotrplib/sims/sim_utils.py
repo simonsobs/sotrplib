@@ -489,7 +489,7 @@ def make_2d_gaussian_model_param_table(
             if fwhm_y is None:
                 fwhm_y = nominal_fwhm
             try:
-                fit_params = s.fit_params
+                fit_params = s.fit_params if s.fit_params is not None else {}
             except Exception:
                 fit_params = {}
             if "theta" in fit_params.keys():

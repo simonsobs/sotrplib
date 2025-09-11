@@ -276,6 +276,7 @@ class RhoAndKappaMap(ProcessableMap):
         time_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
+        flux_units: Unit = u.Jy,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -286,6 +287,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.box = box
         self.frequency = frequency
         self.array = array
+        self.flux_units = flux_units
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -300,8 +302,13 @@ class RhoAndKappaMap(ProcessableMap):
             log.debug("rho_kappa.rho.read.nosel")
 
         log = log.new(kappa_filename=self.kappa_filename)
-        self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
-        log.debug("rho_kappa.kappa.read")
+        try:
+            self.kappa = enmap.read_map(str(self.kappa_filename), sel=0, box=box)
+            log.debug("rho_kappa.kappa.read.sel")
+        except (IndexError, AttributeError):
+            # Kappa map does not have Q, U
+            self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
+            log.debug("rho_kappa.kappa.read.nosel")
 
         # TODO: Set metadata from header e.g. frequency band.
         self.map_resolution = u.Quantity(

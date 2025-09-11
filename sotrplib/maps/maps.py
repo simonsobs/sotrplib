@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import structlog
 from astropy import units as u
 
 # TODO: move photutils utilities to a separate file.
@@ -10,8 +11,9 @@ from photutils.datasets import make_model_image
 from photutils.psf import GaussianPSF
 from pixell import enmap
 from pixell.utils import arcmin, degree
+from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import MeasuredSource
+from sotrplib.sources.sources import MeasuredSource, ProcessableMap
 
 from ..sims.sim_utils import make_2d_gaussian_model_param_table
 
@@ -305,44 +307,43 @@ class Depth1Map:
 
         return
 
-    def subtract_sources(
-        self,
-        sources: list[MeasuredSource],
-        src_model: enmap.ndmap = None,
-        verbose=False,
-        cuts={},
-        log=None,
-    ):
-        """
-        src_model is a simulated (model) map of the sources in the list.
-        sources are fit using photutils, and are MeasuredSource
-        objects with fwhm_a, fwhm_b, ra, dec, flux, and orientation
-        """
-        log.bind(func_name="subtract_sources")
-        if len(sources) == 0:
-            log.warning("subtract_sources.no_sources", num_sources=0)
-            return
-        if not isinstance(self.flux, enmap.ndmap):
-            log.error("subtract_sources.flux_is_none", map=self)
-            raise ValueError("self.flux is None, cannot subtract sources.")
-        if not isinstance(src_model, enmap.ndmap):
-            from ..utils.utils import get_fwhm
 
-            src_model = make_model_source_map(
-                self.flux,
-                sources,
-                nominal_fwhm=get_fwhm(self.freq) * u.arcmin,
-                verbose=verbose,
-                cuts=cuts,
-                log=log,
-            )
+def subtract_sources(
+    input_map: ProcessableMap,
+    sources: list[MeasuredSource],
+    src_model: enmap.ndmap = None,
+    verbose=False,
+    cuts={},
+    log: FilteringBoundLogger | None = None,
+):
+    """
+    src_model is a simulated (model) map of the sources in the list.
+    sources are fit using photutils, and are MeasuredSource
+    objects with fwhm_ra, fwhm_dec, ra, dec, flux, and orientation
+    """
+    log = log if log else structlog.get_logger()
+    log.bind(func_name="subtract_sources")
+    if len(sources) == 0:
+        log.warning("subtract_sources.no_sources", num_sources=0)
+        return
+    if src_model is None:
+        from ..utils.utils import get_fwhm
 
-        self.flux -= src_model
-        log.info("subtract_sources.source_flux_subtracted")
-        ## mask the snr map as well since we've subtracted the sources we want to ignore them.
-        self.snr[abs(src_model) > 1e-8] = 0.0
-        log.info("subtract_sources.source_snr_masked")
-        return src_model
+        src_model = make_model_source_map(
+            input_map.flux,
+            sources,
+            nominal_fwhm=get_fwhm(input_map.frequency) * u.arcmin,
+            verbose=verbose,
+            cuts=cuts,
+            log=log,
+        )
+
+    input_map.flux -= src_model
+    log.info("subtract_sources.source_flux_subtracted")
+    ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
+    input_map.snr[abs(src_model) > 1e-8] = 0.0
+    log.info("subtract_sources.source_snr_masked")
+    return src_model
 
 
 def enmap_map_union(map1, map2):

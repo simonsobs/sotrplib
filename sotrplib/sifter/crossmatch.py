@@ -162,21 +162,23 @@ def gaia_match(
 
 
 def alert_on_flare(
-    previous_flux: float,
-    new_flux: float,
+    previous_flux: u.Quantity[u.Jy],
+    new_flux: u.Quantity[u.Jy],
     ratio_threshold: float = 5.0,
 ):
     """
     Check if the new flux is significantly larger than the previous flux.
     If the ratio of new flux to previous flux is greater than the threshold, return True.
     """
-    return new_flux / previous_flux > ratio_threshold
+    if previous_flux is None or new_flux is None:
+        return False
+    return new_flux.to(u.Jy).value / previous_flux.to(u.Jy).value > ratio_threshold
 
 
 def sift(
     extracted_sources: list[MeasuredSource],
     catalog_sources: list[RegisteredSource] | None = None,
-    imap: ProcessableMap = None,
+    input_map: ProcessableMap = None,
     radius1Jy: AstroPydanticQuantity[u.arcmin] = 30.0 * u.arcmin,
     min_match_radius: AstroPydanticQuantity[u.arcmin] = 1.5 * u.arcmin,
     ra_jitter: AstroPydanticQuantity[u.arcmin] = 0.0 * u.arcmin,
@@ -386,9 +388,7 @@ def sift(
                     pass
             # TODO: may have to add radec to source name to make it unique
             ## give the transient candidate source a name indicating that it is a transient
-            source_measurement.source_id = "-T".join(
-                source_measurement.source_id.split("-S")
-            )
+            source_measurement.source_id = "-T".join(source_string_name.split("-S"))
             transient_candidates.append(source_measurement)
             log.info("sift.transient_candidate", transient_cand=source_measurement)
 
@@ -398,18 +398,18 @@ def sift(
         noise_candidates=noise_candidates,
         source_candidates=source_candidates,
     )
-    if isinstance(imap, enmap.ndmap):
-        transient_candidates, new_noise_candidates = recalculate_local_snr(
-            transient_candidates,
-            imap,
-            thumb_size_deg=0.5,
-            fwhm_arcmin=fwhm,
-            snr_cut=cuts["snr"][0],
-        )
-        if new_noise_candidates:
-            log = log.bind(updated_noise_candidates=new_noise_candidates)
-            log.info("sift.recalc_snr")
-        noise_candidates.extend(new_noise_candidates)
+
+    transient_candidates, new_noise_candidates = recalculate_local_snr(
+        transient_candidates,
+        input_map,
+        thumb_size=0.5 * u.deg,
+        fwhm=fwhm,
+        snr_cut=cuts["snr"][0],
+    )
+    if new_noise_candidates:
+        log = log.bind(updated_noise_candidates=new_noise_candidates)
+        log.info("sift.recalc_snr")
+    noise_candidates.extend(new_noise_candidates)
 
     log.info(
         "sift.final_counts",
@@ -451,10 +451,10 @@ def get_cut_decision(candidate: MeasuredSource, cuts: dict = {}, debug=False) ->
 
 
 def recalculate_local_snr(
-    transient_candidates: list,
-    imap: enmap.ndmap,
-    thumb_size_deg: float = 0.5,
-    fwhm_arcmin: float = 2.2,
+    transient_candidates: list[MeasuredSource],
+    imap: ProcessableMap,
+    thumb_size: u.Quantity = 0.5 * u.deg,
+    fwhm: u.Quantity = 2.2 * u.arcmin,
     snr_cut: float = 5.0,
     ratio_cut: float = 1.3,
 ):
@@ -476,8 +476,6 @@ def recalculate_local_snr(
     - updated_transient_candidates: List of transient source candidates with updated SNR.
     - updated_noise_candidates: List of noise source candidates with updated SNR.
     """
-    from pixell.utils import arcmin, degree
-
     from ..maps.maps import get_submap
     from ..utils.utils import get_pix_from_peak_to_noise
 
@@ -489,20 +487,25 @@ def recalculate_local_snr(
         # Extract a thumbnail of the transient source
         ra, dec = candidate.ra, candidate.dec
         thumbnail = get_submap(
-            imap,
-            ra,
-            dec,
-            size_deg=thumb_size_deg,
+            imap.flux,
+            ra.to(u.deg).value,
+            dec.to(u.deg).value,
+            size_deg=thumb_size.to(u.deg).value,
         )
 
         # Mask the center out to 2 times the FWHM
         # if isinstance(mask,type(None)):
         center = tuple(int(t / 2) for t in thumbnail.shape)
-        fwhm_pix = fwhm_arcmin / abs(thumbnail.wcs.wcs.cdelt[0] * degree / arcmin)
+        fwhm_pix = (
+            fwhm.to(u.arcmin).value
+            / u.Quantity(abs(thumbnail.wcs.wcs.cdelt[0]), thumbnail.wcs.wcs.cunit[0])
+            .to(u.arcmin)
+            .value
+        )
 
         mask_radius = get_pix_from_peak_to_noise(
-            candidate.flux,
-            candidate.flux / candidate.snr,
+            candidate.flux.to(u.Jy).value,
+            candidate.flux.to(u.Jy).value / candidate.snr,
             fwhm_pix=fwhm_pix,
         )[0]
         mask_radius *= np.sqrt(2)  ## for matched filter size
@@ -515,7 +518,7 @@ def recalculate_local_snr(
         rms_noise = np.nanstd(unmasked_flux)
         # Recalculate the SNR using the new RMS noise
         old_snr = candidate.snr
-        candidate.snr = candidate.flux / rms_noise
+        candidate.snr = candidate.flux.to(imap.flux_units).value / rms_noise
         new_snr = candidate.snr
         snr_ratio = old_snr / new_snr
         # print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux,rms_noise))
