@@ -192,11 +192,6 @@ class RandomSourceSimulation(SourceSimulation):
             max_flux_Jy=self.parameters.max_flux,
             map_noise_Jy=0.0 * u.Jy,  # Disabled now
             fwhm_uncert_frac=self.parameters.fwhm_uncertainty_frac,
-            freq=input_map.frequency,
-            arr=input_map.array,
-            # TODO: Map IDs
-            map_id=None,
-            ctime=input_map.time_mean,
             log=log,
         )
 
@@ -250,8 +245,6 @@ class TransientDatabaseSourceSimulation(SourceSimulation):
             observation_time=input_map.time_mean,
             freq=input_map.frequency,
             arr=input_map.array,
-            # TODO: map IDs
-            map_id=None,
             debug=True,
             log=log,
         )
@@ -333,8 +326,6 @@ class TransientSourceSimulation(SourceSimulation):
             observation_time=input_map.time_mean,
             freq=input_map.frequency,
             arr=input_map.array,
-            # TODO: map_id
-            map_id=None,
             debug=True,
             log=log,
         )

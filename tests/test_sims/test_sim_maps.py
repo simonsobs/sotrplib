@@ -165,10 +165,9 @@ def test_inject_sources_from_db_empty(tmp_path, sim_map_params, log=log):
 
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     mapdata = type("MapData", (), {})()
-    mapdata.time_map = test_map
-    mapdata.freq = "f090"
-    mapdata.wafer_name = "sim"
-    mapdata.map_id = "test"
+    mapdata.time_mean = test_map
+    mapdata.frequency = "f090"
+    mapdata.array = "sim"
     injected = sim_maps.inject_sources_from_db(mapdata, DummyDB(), log=log)
     assert injected == []
 
