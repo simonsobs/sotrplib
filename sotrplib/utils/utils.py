@@ -20,8 +20,6 @@ def radec_to_str_name(
     ra: float, dec: float, source_class="pointsource", observatory="SO"
 ):
     """
-    ## stolen from spt3g_software -AF
-
     Convert RA & dec (in radians) to IAU-approved string name.
 
     Arguments

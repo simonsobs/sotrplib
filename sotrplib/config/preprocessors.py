@@ -25,7 +25,7 @@ class KappaRhoCleanerConfig(PreprocessorConfig):
     def to_preprocessor(
         self, log: FilteringBoundLogger | None = None
     ) -> KappaRhoCleaner:
-        return KappaRhoCleaner(cut_on=self.cut_on, fraction=self.cut_on)
+        return KappaRhoCleaner(cut_on=self.cut_on, fraction=self.fraction)
 
 
 AllPreprocessorConfigTypes = KappaRhoCleanerConfig
