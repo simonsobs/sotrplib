@@ -38,7 +38,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         pixel_mask: enmap.ndmap | None = None,
     ):
         self.log = log or get_logger()
-        self.parameters = parameters or BlindSearchParameters()
+        self.parameters = parameters if parameters else BlindSearchParameters()
         self.pixel_mask = pixel_mask
         self.log.info("sigma_clip_blind_search.initialized", parameters=self.parameters)
 

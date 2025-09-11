@@ -108,10 +108,16 @@ def extract_sources(
 
     if pixel_mask is not None:
         inmap.flux *= pixel_mask
+    else:
+        pixel_mask = np.ones(inmap.flux.shape)
+        pixel_mask[np.isnan(inmap.flux)] = 0.0
+        inmap.flux *= pixel_mask
+        inmap.snr *= pixel_mask
 
     # get rms in map if not supplied
     if maprms is None:
         maprms = np.asarray(inmap.flux / inmap.snr)
+        maprms *= pixel_mask
         log.bind(map_rms="flux/snr map")
     else:
         maprms = maprms
@@ -401,7 +407,10 @@ def find_using_photutils(
             tbl.rename_column(v, k)
     tbl.sort("maxvals", reverse=True)
 
-    # store signal at each source location
+    ## photutils seems to return nan sometimes
+    mask = ~np.isnan(tbl["xcen"]) & ~np.isnan(tbl["ycen"])
+    # only compute indices for valid entries
+    tbl = tbl[mask]
     ix, iy = [np.floor(tbl[k] + 0.5).astype(int) for k in ("xcen", "ycen")]
     tbl["sigvals"] = Tmap[iy, ix] / signoise[iy, ix]
 

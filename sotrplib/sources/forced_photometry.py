@@ -101,8 +101,10 @@ class Gaussian2DFitter:
         amplitude_guess = self.data.max()
         x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
         sigma_guess = (
-            self.fwhm_guess / self.map_resolution / 2.355
-        )  # Rough width estimate
+            self.fwhm_guess.to(u.arcmin).value
+            / self.map_resolution.to(u.arcmin).value
+            / 2.355
+        )  # Rough width estimate, in pixels
         theta_guess = 0
         offset_guess = 0
 
@@ -220,9 +222,9 @@ class Gaussian2DFitter:
 def scipy_2d_gaussian_fit(
     input_map: ProcessableMap,
     source_catalog: list[RegisteredSource],
-    flux_lim_fit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy"),
-    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.25, "deg"),
-    fwhm: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
+    flux_lim_fit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
+    thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
+    fwhm: u.Quantity = u.Quantity(2.2, "arcmin"),
     reproject_thumb: bool = False,
     log: FilteringBoundLogger | None = None,
 ) -> list[MeasuredSource]:
@@ -257,8 +259,12 @@ def scipy_2d_gaussian_fit(
             or pix[0] - size_pix < 0
             or pix[1] - size_pix < 0
         ):
-            fit.failure_reason = "source_near_map_edge"
-            log.warning(f"{preamble}source_near_map_edge", source=source_name)
+            fit.failure_reason = "source_outside_map_bounds"
+            log.warning(
+                f"{preamble}source_outside_map_bounds",
+                source=source_name,
+                thumb_size_pix=size_pix.value,
+            )
             forced_source.fit_params = fit.model_dump()
             fit_sources.append(forced_source)
             continue
@@ -279,7 +285,7 @@ def scipy_2d_gaussian_fit(
 
         if np.any(np.isnan(forced_source.thumbnail)):
             log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
-            forced_source.failure_reason = "flux_thumb_has_nan"
+            forced_source.fit_failure_reason = "flux_thumb_has_nan"
             fit_sources.append(forced_source)
             continue
 
@@ -291,7 +297,9 @@ def scipy_2d_gaussian_fit(
             if reproject_thumb
             else (source.ra, source.dec),
             fwhm_guess=fwhm,
-            force_center=forced_source.flux < flux_lim_fit_centroid,
+            force_center=forced_source.flux < flux_lim_fit_centroid
+            if forced_source.flux is not None
+            else False,
             log=log,
         )
 

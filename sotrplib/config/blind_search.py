@@ -47,7 +47,4 @@ class PhotutilsBlindSearchConfig(BlindSearchConfig):
         )
 
 
-AllBlindSearchConfigTypes = (
-    EmptyBlindSearchConfig,
-    PhotutilsBlindSearchConfig,
-)
+AllBlindSearchConfigTypes = EmptyBlindSearchConfig | PhotutilsBlindSearchConfig

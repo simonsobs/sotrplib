@@ -9,7 +9,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     ForcedPhotometryProvider,
-    PhotutilsGaussianFitter,
+    Scipy2DGaussianFitter,
     SimpleForcedPhotometry,
 )
 
@@ -41,21 +41,25 @@ class SimpleForcedPhotometryConfig(ForcedPhotometryConfig):
         return SimpleForcedPhotometry(mode=self.mode, log=log)
 
 
-class PhotutilsGaussianFitterConfig(ForcedPhotometryConfig):
-    photometry_type: Literal["photutils"] = "photutils"
-    # TODO actually support passing sources here!
+class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
+    photometry_type: Literal["scipy"] = "scipy"
     flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
+    reproject_thumbnails: bool = False
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.25, "deg")
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
-    ) -> PhotutilsGaussianFitter:
-        return PhotutilsGaussianFitter(
+    ) -> Scipy2DGaussianFitter:
+        return Scipy2DGaussianFitter(
             # TODO: Support non-simulated sources
             sources=[],
             flux_limit_centroid=self.flux_limit_centroid,
+            reproject_thumbnails=self.reproject_thumbnails,
+            thumbnail_half_width=self.thumbnail_half_width,
+            log=log,
         )
 
 
 AllForcedPhotometryConfigTypes = (
-    EmptyPhotometryConfig | PhotutilsGaussianFitterConfig | SimpleForcedPhotometryConfig
+    EmptyPhotometryConfig | ScipyGaussianFitterConfig | SimpleForcedPhotometryConfig
 )

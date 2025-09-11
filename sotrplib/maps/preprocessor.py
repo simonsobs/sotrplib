@@ -24,6 +24,14 @@ class KappaRhoCleaner(MapPreprocessor):
     cut_on: Literal["median", "percentile", "max"] = "median"
     fraction: float = 0.05
 
+    def __init__(
+        self,
+        cut_on: Literal["median", "percentile", "max"] = "median",
+        fraction: float = 0.05,
+    ):
+        self.cut_on = cut_on
+        self.fraction = fraction
+
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         # TODO: Figure out what warnings this raises
         input_map.kappa = kappa_clean(kappa=input_map.kappa, rho=input_map.rho)

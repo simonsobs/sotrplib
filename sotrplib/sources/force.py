@@ -2,7 +2,6 @@ from typing import List, Literal
 
 import numpy as np
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -31,13 +30,16 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
 
 class SimpleForcedPhotometry(ForcedPhotometryProvider):
     mode: Literal["spline", "nn"]
+    sources: list[RegisteredSource]
 
     def __init__(
         self,
         mode: Literal["spline", "nn"],
+        sources: List[RegisteredSource] = [],
         log: FilteringBoundLogger | None = None,
     ):
         self.mode = mode
+        self.sources = sources
         self.log = log or get_logger()
 
     def force(
@@ -48,21 +50,33 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
         out_sources = []
-        for source in sources:
-            flux = input_map.flux.at(
-                [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
+        for source in self.sources + sources:
+            self.log.debug(
+                "SimpleForcedPhotometry.source",
+                ra=source.ra.to(u.deg),
+                dec=source.dec.to(u.deg),
+                crossmatch=source.crossmatches,
             )
-            snr = input_map.snr.at(
-                [source.dec.to_value(u.rad), source.ra.to_value(u.rad)], mode=self.mode
-            )
+            source_pos = np.array(
+                [[source.dec.to_value(u.rad)], [source.ra.to_value(u.rad)]]
+            )  # [[dec],[ra]] in radians
+            flux = input_map.flux.at(source_pos, mode=self.mode)[0]
+            snr = input_map.snr.at(source_pos, mode=self.mode)[0]
             out_source = MeasuredSource(
                 **source.model_dump(),
                 fit_method="nearest_neighbor" if self.mode == "nn" else "spline",
             )
-            out_source.flux = AstroPydanticQuantity(flux, u.Jy)
-            out_source.err_flux = AstroPydanticQuantity(flux / snr, u.Jy)
+            out_source.flux = flux * input_map.flux_units
+            out_source.err_flux = flux / snr * input_map.flux_units
             out_sources.append(out_source)
-
+            self.log.info(
+                "SimpleForcedPhotometry.source_measured",
+                ra=source.ra,
+                dec=source.dec,
+                flux=out_source.flux,
+                err_flux=out_source.err_flux,
+                snr=snr,
+            )
         return out_sources
 
 

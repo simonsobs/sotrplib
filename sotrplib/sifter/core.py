@@ -169,12 +169,11 @@ class DefaultSifter(SiftingProvider):
 
         map_freq = input_map.frequency
         arr = input_map.array
-        flux_map = input_map.flux
 
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
             catalog_sources=self.catalog_sources,
-            imap=flux_map,
+            input_map=input_map,
             radius1Jy=self.radius_1Jy,
             min_match_radius=self.min_match_radius,
             ra_jitter=self.ra_jitter,
