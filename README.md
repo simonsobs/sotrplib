@@ -26,6 +26,10 @@ Tests are performed using `pytest`.
 
 astroquery
 photutils
+structlog
+astropydantic
+numpydantic
+pixell
 
 ## SO depth-1 sims 
 pipe-s0004 sims for 3 days and 4 optics tubes at 90 / 150 GHz are available in the productdb and have been saved to tiger3 in 
