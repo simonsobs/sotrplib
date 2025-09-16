@@ -3,7 +3,7 @@ Simons Observatory Time Resolved Pipeline Library
 
 Creating a test setup of the SO map-domain transient pipeline which will start by ingesting .FITS depth-1 maps.
 
-Currently, the output is three pandas databases in csv format.
+Currently, the output is a pandas database in csv format.
 
 Now supports sim mode which can create gaussian noise maps, inject and recover sources and also inject sources into depth1 maps.
 More below  in the ## simulations section
@@ -26,6 +26,27 @@ Tests are performed using `pytest`.
 
 astroquery
 photutils
+
+
+
+## Setting up and Running the Pipeline
+
+After following the development instructions above, you will be able to run the pipeline by running the following:
+
+`sotrp -c [path to config file]`
+
+The config file is a .json which contains a dictionary of all the handlers and inputs to the pipeline. 
+You can see two examples: `sample.json` and `sample_read_map.json` in the top level directory.
+
+A config file is read in by a basic handler (see `sotrplib/handlers/basic.py`), which de-serializes to Python objects using the
+code in `sotrplib/config/config.py` and the relevant config files.
+
+An example of the pipeline after de-serializing the real data loading example is given in `sotrplib/docs/act.md`. Here the only 
+additional step is adding a distinct catalog for the forced photometry sources.
+
+
+
+# Below is Deprecated
 
 ## SO depth-1 sims 
 pipe-s0004 sims for 3 days and 4 optics tubes at 90 / 150 GHz are available in the productdb and have been saved to tiger3 in 
