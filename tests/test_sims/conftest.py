@@ -86,7 +86,6 @@ def build_wcs(sim_map_params):
         shape=nshape,
         res=sim_map_params["maps"]["resolution"].to(u.deg).value,
     )
-    print(wcs)
     return nshape, wcs
 
 
