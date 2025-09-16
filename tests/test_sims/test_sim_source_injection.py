@@ -26,10 +26,10 @@ def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
     assert len(injected_sources) == n_sources
 
 
-def test_photutils_sim_n_sources_output_b(dummy_depth1_map, log=log):
+def test_photutils_sim_n_sources_output_b(dummy_map, log=log):
     n_sources = 5
     out_map, injected_sources = sim_maps.photutils_sim_n_sources(
-        dummy_depth1_map,
+        dummy_map,
         n_sources=n_sources,
         min_flux_Jy=0.2 * u.Jy,
         max_flux_Jy=0.5 * u.Jy,
@@ -38,7 +38,7 @@ def test_photutils_sim_n_sources_output_b(dummy_depth1_map, log=log):
         log=log,
     )
     # Check output types
-    assert isinstance(out_map, type(dummy_depth1_map))
+    assert isinstance(out_map, type(dummy_map))
     assert isinstance(injected_sources, list)
     assert len(injected_sources) == n_sources
 
@@ -128,7 +128,7 @@ def test_inject_simulated_sources_all_none(log=log):
 
 
 def test_inject_simulated_sources_random_only(
-    dummy_depth1_map, sim_map_params, sim_source_params, log=log
+    dummy_map, sim_map_params, sim_source_params, log=log
 ):
     from sotrplib.sims import sim_maps
 
@@ -139,7 +139,7 @@ def test_inject_simulated_sources_random_only(
     }
     # Should return a list of injected sources, no transients
     catalog_sources, injected_sources = sim_maps.inject_simulated_sources(
-        dummy_depth1_map, sim_params=sim_params, verbose=False, log=log
+        dummy_map, sim_params=sim_params, verbose=False, log=log
     )
     assert isinstance(catalog_sources, list)
     assert isinstance(injected_sources, list)
@@ -150,7 +150,7 @@ def test_inject_simulated_sources_random_only(
 
 
 def test_inject_simulated_sources_use_geometry(
-    dummy_depth1_map, sim_map_params, sim_source_params, log=log
+    dummy_map, sim_map_params, sim_source_params, log=log
 ):
     from sotrplib.sims import sim_maps
 
@@ -161,7 +161,7 @@ def test_inject_simulated_sources_use_geometry(
     }
     # Should return a list of injected sources, no transients
     catalog_sources, injected_sources = sim_maps.inject_simulated_sources(
-        dummy_depth1_map,
+        dummy_map,
         sim_params=sim_params,
         use_map_geometry=True,
         verbose=False,
@@ -226,7 +226,7 @@ def test_generate_transients_value_error(log=log):
 
 
 def test_inject_simulated_sources_with_db_and_transients(
-    dummy_depth1_map, sim_map_params, sim_transient_params, sim_source_params, log=log
+    dummy_map, sim_map_params, sim_transient_params, sim_source_params, log=log
 ):
     from sotrplib.sims import sim_maps
 
@@ -234,7 +234,7 @@ def test_inject_simulated_sources_with_db_and_transients(
     sim_params = {**sim_map_params, **sim_transient_params, **sim_source_params}
 
     catalog_sources, injected_sources = sim_maps.inject_simulated_sources(
-        dummy_depth1_map,
+        dummy_map,
         injected_source_db=None,
         sim_params=sim_params,
         inject_transients=True,

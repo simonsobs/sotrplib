@@ -310,7 +310,6 @@ class RhoAndKappaMap(ProcessableMap):
             self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
             log.debug("rho_kappa.kappa.read.nosel")
 
-        # TODO: Set metadata from header e.g. frequency band.
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
         )
@@ -329,6 +328,24 @@ class RhoAndKappaMap(ProcessableMap):
         self.time_mean = time_map
 
         return
+
+    def add_time_offset(self, offset: timedelta):
+        """
+        Add a time offset to the time maps. Useful if you have a time map
+        that is relative to the start of the observation, and you want to
+        convert it to an absolute time map.
+
+        time maps are in unix time (seconds).
+
+        ACT time maps are stored in seconds since the start of the observation,
+        thus if you want absolute time you need to add the start time of the observation.
+        """
+        if self.time_first is not None:
+            self.time_first += offset.timestamp()
+        if self.time_end is not None:
+            self.time_end += offset.timestamp()
+        if self.time_mean is not None:
+            self.time_mean += offset.timestamp()
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
