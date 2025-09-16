@@ -566,15 +566,15 @@ def inject_simulated_sources(
                 else:
                     ra_lims = (
                         sim_params["maps"]["center_ra"]
-                        - sim_params["maps"]["width_ra"],
+                        - 0.5 * sim_params["maps"]["width_ra"],
                         sim_params["maps"]["center_ra"]
-                        + sim_params["maps"]["width_ra"],
+                        + 0.5 * sim_params["maps"]["width_ra"],
                     )
                     dec_lims = (
                         sim_params["maps"]["center_dec"]
-                        - sim_params["maps"]["width_dec"],
+                        - 0.5 * sim_params["maps"]["width_dec"],
                         sim_params["maps"]["center_dec"]
-                        + sim_params["maps"]["width_dec"],
+                        + 0.5 * sim_params["maps"]["width_dec"],
                     )
                     hits_map = None
                 log = log.bind(ra_lims=ra_lims, dec_lims=dec_lims, hits_map=hits_map)

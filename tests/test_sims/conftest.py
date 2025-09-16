@@ -126,12 +126,8 @@ def ones_map_set(tmp_path, sim_map_params):
 
 @pytest.fixture
 def dummy_map(sim_map_params, ones_map_set):
-    from structlog import get_logger
-
     from sotrplib.maps.core import RhoAndKappaMap
-    from sotrplib.sims import sim_maps
 
-    log = get_logger("dummy_map")
     DummyMap = RhoAndKappaMap(
         rho_filename=ones_map_set["rho"],
         kappa_filename=ones_map_set["kappa"],
@@ -142,10 +138,6 @@ def dummy_map(sim_map_params, ones_map_set):
     DummyMap.build()
     DummyMap.add_time_offset(DummyMap.observation_start)
     DummyMap.finalize()
-    DummyMap.flux = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
-    DummyMap.snr = 10 + abs(
-        sim_maps.make_enmap(**sim_map_params["maps"], log=log)
-    )  ## just keep above 0
     DummyMap.frequency = "f090"
     DummyMap.array = "sim"
     return DummyMap
