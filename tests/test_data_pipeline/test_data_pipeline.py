@@ -23,6 +23,7 @@ from sotrplib.sources.force import SimpleForcedPhotometry
 from sotrplib.sources.subtractor import PhotutilsSourceSubtractor
 
 
+
 @pytest.mark.skip(reason="this needs tiger path, not a runtime test")
 def test_mock_forced_photometry_database(
     db_path="/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
@@ -42,7 +43,7 @@ def test_mock_forced_photometry_database(
         assert source.ra is not None
         assert source.dec is not None
 
-
+        
 @pytest.mark.skip(reason="this runs a full pipeline on real data, not a runtime test")
 def test_basic_map_pipeline(
     tmp_path,
@@ -91,3 +92,4 @@ def test_basic_map_pipeline(
     )
 
     runner.run()
+

@@ -27,6 +27,7 @@ pip-delete-this-directory.txt
 # Unit test / coverage reports
 .tox/
 .coverage
+.coverage*
 .cache
 nosetests.xml
 coverage.xml
@@ -48,3 +49,6 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+
+# Example output data
+*.pickle
