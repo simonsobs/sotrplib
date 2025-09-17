@@ -97,7 +97,7 @@ def extract_sources(
     pixel_mask can be supplied to mask out bad pixels (0=bad, 1=good).
 
     High snr pixels are returned by photutils and grouped into sources based on their
-    signifiance and the minrad values.
+    significance and the minrad values.
 
     """
     log = log or get_logger()
@@ -166,8 +166,6 @@ def extract_sources(
         minrad_pix_all = np.full(npeaks, minrad_pix[0])
 
     output_struct = {}
-    peak_assoc = np.zeros(npeaks, dtype=int)
-
     for j in range(npeaks):
         if output_struct:
             prev_x = np.array([src["xpeak"] for src in output_struct.values()])
@@ -179,7 +177,6 @@ def extract_sources(
             if len(close_idx) > 0:
                 # npeaks sorted by snr.
                 # if it's already associated with a source, skip it
-                peak_assoc[j] = close_idx[distpix[close_idx].argmin()]
                 continue
 
         k = len(output_struct)
@@ -195,7 +192,6 @@ def extract_sources(
             "semiminor_sigma": peaks["semiminor_sigma"][j].value * inmap.map_resolution,
             "orientation": peaks["orientation"][j].value * u.deg,
         }
-        peak_assoc[j] = k
 
     log.info(
         "extract_sources.output_dict_prepared",
@@ -207,6 +203,7 @@ def extract_sources(
     output_struct = get_source_observation_time(output_struct, inmap)
     output_data = convert_outstruct_to_measured_source_objects(output_struct, inmap)
     log.info("extract_sources.output_dict_finalized")
+
     return output_data
 
 
