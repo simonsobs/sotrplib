@@ -1,9 +1,8 @@
-from typing import Union
-
 import numpy as np
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
 from numpydantic import NDArray
+from photutils import segmentation as pseg
 from pixell.enmap import ndmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -89,8 +88,21 @@ def extract_sources(
     pixel_mask: NDArray = None,
     log: FilteringBoundLogger | None = None,
 ) -> list[MeasuredSource]:
+    """
+    Use photutils to find sources above nsigma in a map.
+    maprms can be supplied as a map or a single value.
+    minrad is the minimum distance to the nearest source, in angular units.
+    If multiple values are given, minrad and sigma_thresh_for_minrad should be 1:1.
+    The highest significance sources should have the largest minrad (i.e. group more pixels together).
+    pixel_mask can be supplied to mask out bad pixels (0=bad, 1=good).
+
+    High snr pixels are returned by photutils and grouped into sources based on their
+    signifiance and the minrad values.
+
+    """
     log = log or get_logger()
     log.bind(func_name="extract_sources")
+
     if not inmap.finalized:
         log.error("extract_sources.map_not_finalized")
         return []
@@ -103,9 +115,10 @@ def extract_sources(
         )
         raise ValueError(
             "If you are specifying multiple avoidance radii,"
-            + "please supply a threshold level for each one."
+            " please supply a threshold level for each one."
         )
 
+    # Apply mask
     if pixel_mask is not None:
         inmap.flux *= pixel_mask
     else:
@@ -114,14 +127,15 @@ def extract_sources(
         inmap.flux *= pixel_mask
         inmap.snr *= pixel_mask
 
-    # get rms in map if not supplied
+    # Get rms in map if not supplied
     if maprms is None:
         maprms = np.asarray(inmap.flux / inmap.snr)
         maprms *= pixel_mask
         log.bind(map_rms="flux/snr map")
     else:
-        maprms = maprms
         log.bind(map_rms=maprms)
+
+    # Find peaks
     peaks = find_using_photutils(
         np.asarray(inmap.flux),
         maprms,
@@ -135,116 +149,60 @@ def extract_sources(
     if npeaks == 0:
         return []
 
-    # gather detected peaks into output structure, ignoring repeat
-    # detections of same object
-    xpeaks = peaks["xcen"]
-    ypeaks = peaks["ycen"]
-    peakvals = peaks["maxvals"]
-    peaksigs = peaks["sigvals"]
-    ellipticities = peaks["ellipticity"]
-    elongations = peaks["elongation"]
-    fwhms = peaks["fwhm"]
-    sigma_major = peaks["semimajor_sigma"]
-    sigma_minor = peaks["semiminor_sigma"]
-    orientation = peaks["orientation"]
-    peak_assoc = np.zeros(npeaks)
-
-    output_struct = dict()
-    for i in np.arange(npeaks):
-        output_struct[i] = {
-            "xpeak": xpeaks[0],
-            "ypeak": ypeaks[0],
-            "peakval": peakvals[0] * inmap.flux_units,
-            "peaksig": peaksigs[0],
-            "ellipticity": ellipticities[0],
-            "elongation": elongations[0],
-            "fwhm": fwhms[0].value * inmap.map_resolution,
-            "semimajor_sigma": sigma_major[0].value * inmap.map_resolution,
-            "semiminor_sigma": sigma_minor[0].value * inmap.map_resolution,
-            "orientation": orientation[0].value * u.deg,
-        }
-
+    # Convert minrad to pixel units
     minrad_pix = [
         mr.to(u.rad).value / inmap.map_resolution.to(u.rad).value for mr in minrad
     ]
     log.info("extract_sources.output_dict_initialized", minrad_pix=minrad_pix)
 
-    ksource = 1
-    # different accounting if exclusion radius is specified as a function
-    # of significance
+    # Assign exclusion radii per peak
+    # If multiple radii are given, assign based on significance thresholds
+    # (highest significance gets largest radius, start from lowest threshold)
     if len(minrad) > 1:
         minrad_pix_all = np.zeros(npeaks)
-        sthresh = np.argsort(sigma_thresh_for_minrad)
-        for j in np.arange(len(minrad)):
-            i = sthresh[j]
-            whgthresh = np.where(peaksigs >= sigma_thresh_for_minrad[i])[0]
-            if len(whgthresh) > 0:
-                minrad_pix_all[whgthresh] = minrad_pix[i]
-        minrad_pix_os = np.zeros(npeaks)
-        minrad_pix_os[0] = minrad_pix_all[0]
-        for j in np.arange(npeaks):
-            prev_x = np.array(
-                [output_struct[n]["xpeak"] for n in np.arange(0, ksource)]
-            )
-            prev_y = np.array(
-                [output_struct[n]["ypeak"] for n in np.arange(0, ksource)]
-            )
-            distpix = np.sqrt((prev_x - xpeaks[j]) ** 2 + (prev_y - ypeaks[j]) ** 2)
-            whclose = np.where(distpix <= minrad_pix_os[0:ksource])[0]
-            if len(whclose) == 0:
-                output_struct[ksource] = {
-                    "xpeak": xpeaks[j],
-                    "ypeak": ypeaks[j],
-                    "peakval": peakvals[j] * inmap.flux_units,
-                    "peaksig": peaksigs[j],
-                    "ellipticity": ellipticities[j],
-                    "elongation": elongations[j],
-                    "fwhm": fwhms[j].value * inmap.map_resolution,
-                    "semimajor_sigma": sigma_major[j].value * inmap.map_resolution,
-                    "semiminor_sigma": sigma_minor[j].value * inmap.map_resolution,
-                    "orientation": orientation[j].value * u.deg,
-                }
-
-                peak_assoc[j] = ksource
-                minrad_pix_os[ksource] = minrad_pix_all[j]
-                ksource += 1
-            else:
-                mindist = min(distpix)
-                peak_assoc[j] = distpix.argmin()
+        for t, r in sorted(zip(sigma_thresh_for_minrad, minrad_pix)):
+            minrad_pix_all[peaks["sigvals"] >= t] = r
     else:
-        for j in range(npeaks):
-            prev_x = np.array(
-                [output_struct[n]["xpeak"] for n in np.arange(0, ksource)]
+        minrad_pix_all = np.full(npeaks, minrad_pix[0])
+
+    output_struct = {}
+    peak_assoc = np.zeros(npeaks, dtype=int)
+
+    for j in range(npeaks):
+        if output_struct:
+            prev_x = np.array([src["xpeak"] for src in output_struct.values()])
+            prev_y = np.array([src["ypeak"] for src in output_struct.values()])
+            distpix = np.sqrt(
+                (prev_x - peaks["xcen"][j]) ** 2 + (prev_y - peaks["ycen"][j]) ** 2
             )
-            prev_y = np.array(
-                [output_struct[n]["ypeak"] for n in np.arange(0, ksource)]
-            )
-            distpix = np.sqrt((prev_x - xpeaks[j]) ** 2 + (prev_y - ypeaks[j]) ** 2)
-            mindist = min(distpix)
-            if mindist > minrad_pix[0]:
-                output_struct[ksource] = {
-                    "xpeak": xpeaks[j],
-                    "ypeak": ypeaks[j],
-                    "peakval": peakvals[j] * inmap.flux_units,
-                    "peaksig": peaksigs[j],
-                    "ellipticity": ellipticities[j],
-                    "elongation": elongations[j],
-                    "fwhm": fwhms[j].value * inmap.map_resolution,
-                    "semimajor_sigma": sigma_major[j].value * inmap.map_resolution,
-                    "semiminor_sigma": sigma_minor[j].value * inmap.map_resolution,
-                    "orientation": orientation[j].value * u.deg,
-                }
-                peak_assoc[j] = ksource
-                ksource += 1
-            else:
-                peak_assoc[j] = distpix.argmin()
-    for src in list(output_struct.keys()):
-        if src >= ksource:
-            del output_struct[src]
+            close_idx = np.where(distpix <= minrad_pix_all[j])[0]
+            if len(close_idx) > 0:
+                # npeaks sorted by snr.
+                # if it's already associated with a source, skip it
+                peak_assoc[j] = close_idx[distpix[close_idx].argmin()]
+                continue
+
+        k = len(output_struct)
+        output_struct[k] = {
+            "xpeak": peaks["xcen"][j],
+            "ypeak": peaks["ycen"][j],
+            "peakval": peaks["maxvals"][j] * inmap.flux_units,
+            "peaksig": peaks["sigvals"][j],
+            "ellipticity": peaks["ellipticity"][j],
+            "elongation": peaks["elongation"][j],
+            "fwhm": peaks["fwhm"][j].value * inmap.map_resolution,
+            "semimajor_sigma": peaks["semimajor_sigma"][j].value * inmap.map_resolution,
+            "semiminor_sigma": peaks["semiminor_sigma"][j].value * inmap.map_resolution,
+            "orientation": peaks["orientation"][j].value * u.deg,
+        }
+        peak_assoc[j] = k
+
     log.info(
         "extract_sources.output_dict_prepared",
         n_sources=len(list(output_struct.keys())),
     )
+
+    # Post-processing
     output_struct = get_source_sky_positions(output_struct, inmap.flux)
     output_struct = get_source_observation_time(output_struct, inmap)
     output_data = convert_outstruct_to_measured_source_objects(output_struct, inmap)
@@ -289,7 +247,7 @@ def convert_outstruct_to_measured_source_objects(
 
 def find_using_photutils(
     Tmap: ndmap,
-    signoise: Union[float, ndmap] = None,
+    signoise: float | ndmap = None,
     minnum: int = 2,
     nsigma: float = 5.0,
     log=None,
@@ -343,10 +301,6 @@ def find_using_photutils(
 
     Function written by Melanie Archipley, adapted by AF Jan 2025
     """
-    # this import is here instead of at the beginning because it has strange
-    # dependencies that I (Melanie) do not want to cause problems for other people
-    from photutils import segmentation as pseg
-
     log.bind(func_name="find_using_photutils")
     default_keys = {
         "maxvals": "max_value",
@@ -420,6 +374,7 @@ def find_using_photutils(
         if k in tbl.columns:
             groups[k] = tbl[k]
     log.info("find_using_photutils.end")
+
     return groups
 
 
