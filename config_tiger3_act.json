@@ -10,8 +10,12 @@
             "frequency": "f090",
             "band": "pa5",
             "flux_units": "mJy"
+<<<<<<< HEAD
         },
         {
+=======
+        },        {
+>>>>>>> main
             "map_type": "filtered",
             "rho_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa4_f150_rho.fits",
             "kappa_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa4_f150_kappa.fits",
