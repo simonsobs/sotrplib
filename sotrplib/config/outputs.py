@@ -32,4 +32,4 @@ class JSONOutputConfig(OutputConfig):
         return JSONSerializer(directory=self.directory)
 
 
-AllOutputConfigTypes = PickleOutputConfig
+AllOutputConfigTypes = PickleOutputConfig | JSONOutputConfig
