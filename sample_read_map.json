@@ -10,6 +10,21 @@
             "flux_units": "mJy"
         }
     ],
+    "forced_photometry_catalog":
+        {
+            "catalog_type": "mock_forced_photometry",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": 0.3,
+            "flux_units": "mJy"
+        },
+    "source_catalogs": [
+        {
+            "catalog_type": "mock_act",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": 0.03,
+            "flux_units": "Jy"
+        }
+    ],
     "preprocessors": [
         {
             "preprocessor_type": "kappa_rho"

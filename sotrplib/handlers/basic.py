@@ -9,6 +9,7 @@ from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sims.sources.core import SourceSimulation
+from sotrplib.source_catalog.database import MockDatabase
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
 from sotrplib.sources.force import EmptyForcedPhotometry
@@ -19,6 +20,8 @@ class PipelineRunner:
     def __init__(
         self,
         maps: list[ProcessableMap],
+        forced_photometry_catalog: MockDatabase | None,
+        source_catalogs: list[MockDatabase] | None,
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
         source_simulators: list[SourceSimulation] | None,
@@ -29,6 +32,8 @@ class PipelineRunner:
         outputs: list[SourceOutput] | None,
     ):
         self.maps = maps
+        self.forced_photometry_catalog = forced_photometry_catalog
+        self.source_catalogs = source_catalogs or []
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
         self.source_simulators = source_simulators or []
@@ -52,7 +57,15 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
+            crossmatch_catalog = []
+            for catalog in self.source_catalogs:
+                crossmatch_catalog.extend(catalog.cat.get_all_sources())
+
             for_forced_photometry = []
+            if self.forced_photometry_catalog:
+                for_forced_photometry.extend(
+                    self.forced_photometry_catalog.cat.get_all_sources()
+                )
 
             for simulator in self.source_simulators:
                 input_map, additional_sources = simulator.simulate(input_map=input_map)
@@ -68,8 +81,8 @@ class PipelineRunner:
 
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
-            # Should we be passing the source subtracted map or the original to the sifter..?
-            sifter_result = self.sifter.sift(blind_sources, input_map)
+            self.sifter.catalog_sources = crossmatch_catalog
+            sifter_result = self.sifter.sift(blind_sources, source_subtracted_map)
 
             for output in self.outputs:
                 output.output(
