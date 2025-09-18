@@ -9,7 +9,7 @@
             "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_time.fits",
             "frequency": "f090",
             "band": "pa5",
-            "flux_units": "Jy"
+            "flux_units": "mJy"
         },        {
             "map_type": "filtered",
             "rho_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa4_f150_rho.fits",
@@ -17,7 +17,7 @@
             "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa4_f150_time.fits",
             "frequency": "f150",
             "band": "pa4",
-            "flux_units": "Jy"
+            "flux_units": "mJy"
         }
     ],
     "preprocessors": [
@@ -39,7 +39,7 @@
     },
     "outputs": [
         {
-            "output_type": "json",
+            "output_type": "pickle",
             "directory": "."
         }
     ]
