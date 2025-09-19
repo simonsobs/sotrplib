@@ -151,7 +151,7 @@ class MockACTDatabase:
             if ra > 180:
                 ra -= 360  # Convention difference
             name = mock_cat.data["name"][i]
-            registred_source = RegisteredSource(
+            registered_source = RegisteredSource(
                 ra=ra * u.deg,
                 dec=dec * u.deg,
                 source_id="%s" % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
@@ -166,7 +166,7 @@ class MockACTDatabase:
                     )
                 ],
             )
-            catalog_list.append(registred_source)
+            catalog_list.append(registered_source)
             cat.add_source(ra=ra * u.deg, dec=dec * u.deg, name=name)
         self.cat = cat
         self.log.info(
