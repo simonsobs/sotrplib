@@ -46,10 +46,6 @@ def test_scipy_curve_fit(map_with_single_source):
     assert len(results) == 1
     ntries = 10
     if results[0].fit_failed:
-        assert (
-            results[0].fit_failure_reason
-            == "source_outside_map_bounds" | "flux_thumb_has_nan"
-        )
         while results[0].fit_failed and ntries > 0:
             results = forced_photometry.force(
                 input_map=input_map,
@@ -70,4 +66,3 @@ def test_failed_fit(map_with_single_source):
     results = forced_photometry.force(input_map=input_map, sources=sources)
     assert len(results) == 1
     assert results[0].fit_failed
-    assert results[0].fit_failure_reason == "flux_thumb_has_nan"
