@@ -159,7 +159,7 @@ class Gaussian2DFitter:
             self.log.error("curve_fit_2d_gaussian.curve_fit.failed")
             self.fit_params.failed = True
             self.fit_params.failure_reason = "curve_fit_runtime_error"
-            return
+            return self.fit_params
 
         self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt)
         perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
@@ -279,12 +279,14 @@ def scipy_2d_gaussian_fit(
             log.error(
                 f"{preamble}extract_thumbnail_failed", source=source_name, error=e
             )
+            forced_source.fit_failed = True
             forced_source.fit_failure_reason = "extract_thumbnail_failed"
             fit_sources.append(forced_source)
             continue
 
         if np.any(np.isnan(forced_source.thumbnail)):
             log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
+            forced_source.fit_failed = True
             forced_source.fit_failure_reason = "flux_thumb_has_nan"
             fit_sources.append(forced_source)
             continue

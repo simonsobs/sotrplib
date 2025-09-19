@@ -12,16 +12,16 @@
     ],
     "forced_photometry_catalog":
         {
-            "catalog_type": "mock_forced_photometry",
+            "catalog_type": "mock_socat",
             "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
             "flux_lower_limit": 0.3,
-            "flux_units": "mJy"
+            "flux_units": "Jy"
         },
     "source_catalogs": [
         {
-            "catalog_type": "mock_act",
+            "catalog_type": "mock_socat",
             "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
-            "flux_lower_limit": 0.03,
+            "flux_lower_limit": 0.01,
             "flux_units": "Jy"
         }
     ],

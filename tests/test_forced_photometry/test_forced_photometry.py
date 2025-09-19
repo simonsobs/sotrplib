@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from astropy import units as u
 
@@ -57,3 +58,14 @@ def test_scipy_curve_fit(map_with_single_source):
         sources[0].flux.to(u.Jy).value, rel=2e-1
     )
     assert results[0].fit_method == "2d_gaussian"
+
+
+def test_failed_fit(map_with_single_source):
+    input_map, sources = map_with_single_source
+    input_map.flux *= np.nan
+    forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=True)
+    results = forced_photometry.force(input_map=input_map, sources=sources)
+    print(results)
+    assert len(results) == 1
+    assert results[0].fit_failed
+    assert results[0].fit_failure_reason == "flux_thumb_has_nan"

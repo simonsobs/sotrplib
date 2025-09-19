@@ -6,10 +6,10 @@ import structlog
 from astropy import units as u
 from astropy.io import fits
 from filelock import FileLock  # Import FileLock for file-based locking
-from pixell.enmap import ndmap
 from socat.client import mock
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, MeasuredSource, RegisteredSource
 from sotrplib.utils.utils import angular_separation
 
@@ -18,7 +18,7 @@ class MockDatabase:
     def __init__(self, log: FilteringBoundLogger | None = None):
         self.cat = mock.Client()
         self.log = log or structlog.get_logger()
-        self.log.info("EmptyMockDatabase.initialized")
+        self.log.info("mock_database.initialized")
 
     def add_source(self, ra: u.Quantity, dec: u.Quantity, name: str):
         self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)
@@ -37,7 +37,7 @@ class MockDatabase:
             dec_max=dec + radius,
         )
         self.log.info(
-            "MockDatabase.get_nearby_source",
+            "mock_database.get_nearby_source",
             ra=ra,
             dec=dec,
             radius=radius,
@@ -64,7 +64,7 @@ class MockDatabase:
                 for s in nearby
             ]
         self.log.info(
-            "MockDatabase.get_nearby_source.nearby_sources",
+            "mock_database.get_nearby_source.nearby_sources",
             sources=sources,
         )
         return sources
@@ -100,8 +100,8 @@ class MockDatabase:
             )
         return sources
 
-    def get_sources_in_map(self, input_map: ndmap) -> list[RegisteredSource]:
-        map_bounds = input_map.box() * u.radian
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        map_bounds = input_map.flux.box() * u.radian
         return self.get_sources_in_box(box=map_bounds)
 
     def get_all_sources(self) -> list[RegisteredSource]:
@@ -117,13 +117,13 @@ class MockACTDatabase:
         db_path: str,
         log: FilteringBoundLogger | None = None,
         catalog_list: list = [],
-        flux_lower_limit: u.Quantity = 0.3 * u.Jy,
+        flux_lower_limit: u.Quantity = 0.01 * u.Jy,
     ):
         self.log = log or structlog.get_logger()
         hdu = fits.open(db_path)
         mock_cat = hdu[1]
         cat = MockDatabase()
-        self.log.info("MockACTDatabase.loading_act_catalog")
+        self.log.info("mock_act_database.loading_act_catalog")
         catalog_list = []
         for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
             if mock_cat.data["fluxJy"][i] * u.Jy < flux_lower_limit:
@@ -132,29 +132,27 @@ class MockACTDatabase:
             if ra > 180:
                 ra -= 360  # Convention difference
             name = mock_cat.data["name"][i]
-            catalog_list.append(
-                RegisteredSource(
-                    ra=ra * u.deg,
-                    dec=dec * u.deg,
-                    source_id="%s"
-                    % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
-                    crossmatches=[
-                        CrossMatch(
-                            source_id=name,
-                            probability=1.0,
-                            distance=0.0 * u.deg,
-                            frequency=90 * u.GHz,
-                            catalog_name="ACT",
-                            catalog_idx=i,
-                        )
-                    ],
-                )
+            registred_source = RegisteredSource(
+                ra=ra * u.deg,
+                dec=dec * u.deg,
+                source_id="%s" % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
+                crossmatches=[
+                    CrossMatch(
+                        source_id=name,
+                        probability=1.0,
+                        distance=0.0 * u.deg,
+                        frequency=90 * u.GHz,
+                        catalog_name="ACT",
+                        catalog_idx=i,
+                    )
+                ],
             )
+            catalog_list.append(registred_source)
             cat.add_source(ra=ra * u.deg, dec=dec * u.deg, name=name)
         self.cat = cat
         self.log.info(
-            "MockACTDatabase.loaded_act_catalog",
-            n_sources=len(mock_cat.data["raDeg"]),
+            "mock_act_database.loaded_act_catalog",
+            n_sources=len(catalog_list),
         )
         self.catalog_list = catalog_list
 
@@ -170,63 +168,15 @@ class MockACTDatabase:
                 )
                 self.catalog_list.append(s)
                 self.log.info(
-                    "MockACTDatabase.update_catalog.new_source_added", source=s
+                    "mock_act_database.update_catalog.new_source_added", source=s
                 )
             else:
                 self.log.info(
-                    "MockACTDatabase.update_catalog.existing_source_found",
+                    "mock_act_database.update_catalog.existing_source_found",
                     source=source,
                     matching_sources=matches,
                 )
                 pass
-
-
-class MockForcedPhotometryDatabase:
-    def __init__(
-        self,
-        db_path: str,
-        log: FilteringBoundLogger | None = None,
-        flux_lower_limit: u.Quantity = 0.3 * u.Jy,
-        catalog_list: list = [],
-    ):
-        self.log = log or structlog.get_logger()
-        hdu = fits.open(db_path)
-        mock_cat = hdu[1]
-        cat = MockDatabase()
-        self.log.info("MockForcedPhotometryDatabase.loading_act_catalog")
-        catalog_list = []
-        for i in range(len(mock_cat.data["raDeg"])):  # This could be a zip I guess
-            ra, dec = mock_cat.data["raDeg"][i], mock_cat.data["decDeg"][i]
-            if ra > 180:
-                ra -= 360  # Convention difference
-            name = mock_cat.data["name"][i]
-            flux = mock_cat.data["fluxJy"][i] * u.Jy
-            if flux > flux_lower_limit:
-                catalog_list.append(
-                    RegisteredSource(
-                        ra=ra * u.deg,
-                        dec=dec * u.deg,
-                        source_id="%s"
-                        % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
-                        crossmatches=[
-                            CrossMatch(
-                                source_id=name,
-                                probability=1.0,
-                                distance=0.0 * u.deg,
-                                frequency=90 * u.GHz,
-                                catalog_name="ACT",
-                                catalog_idx=i,
-                            )
-                        ],
-                    )
-                )
-                cat.add_source(ra=ra * u.deg, dec=dec * u.deg, name=name)
-        self.cat = cat
-        self.log.info(
-            "MockForcedPhotometryDatabase.loaded_act_catalog",
-            n_sources=len(mock_cat.data["raDeg"]),
-        )
-        self.catalog_list = catalog_list
 
 
 class SourceCatalogDatabase:

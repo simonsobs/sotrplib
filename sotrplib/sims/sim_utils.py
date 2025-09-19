@@ -454,6 +454,16 @@ def make_2d_gaussian_model_param_table(
         ## unfortunate naming, a,b are semi-major and semi-minor axes,
         ## but really they're x,y from photutils gaussian fit.
         cut = False
+        if s.fit_failed:
+            cut = True
+            if verbose:
+                log.debug(
+                    "make_2d_gaussian_model_param_table.cut_fit_failed",
+                    source_id=i,
+                    cutkey="fit_failed",
+                )
+            continue
+
         for cutkey in cuts.keys():
             if cutkey not in s.model_dump():
                 log.error(

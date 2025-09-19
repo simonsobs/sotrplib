@@ -59,12 +59,12 @@ class PipelineRunner:
 
             crossmatch_catalog = []
             for catalog in self.source_catalogs:
-                crossmatch_catalog.extend(catalog.cat.get_all_sources())
+                crossmatch_catalog.extend(catalog.cat.get_sources_in_map(input_map))
 
             for_forced_photometry = []
             if self.forced_photometry_catalog:
                 for_forced_photometry.extend(
-                    self.forced_photometry_catalog.cat.get_all_sources()
+                    self.forced_photometry_catalog.cat.get_sources_in_map(input_map)
                 )
 
             for simulator in self.source_simulators:
