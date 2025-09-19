@@ -182,6 +182,8 @@ class Gaussian2DFitter:
             ) = perr
             x_size, y_size = self.data.shape
             dec_offset = (y_size / 2 - y0) * self.map_resolution
+            ## if the thumbnail is reprojected or just cut out of the map
+            ## determines the sign of the RA offset given the declination.
             x_sign = -1 if self.thumbnail_center[1] >= 0 * u.deg else 1
             ra_offset = (
                 x_sign
