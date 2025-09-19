@@ -289,7 +289,7 @@ def sift(
     for source, cand_pos in enumerate(zip(extracted_ra, extracted_dec)):
         source_measurement = extracted_sources[source]
         source_string_name = radec_to_str_name(
-            cand_pos[0].to(u.rad).value, cand_pos[1].to(u.rad).value
+            cand_pos[0].to(u.deg).value, cand_pos[1].to(u.deg).value
         )
 
         if isin_cat[source]:
