@@ -98,11 +98,30 @@ class MockDatabase:
                     ],
                 )
             )
+        self.log.info(
+            "mock_database.get_sources_in_box",
+            box=box,
+            n_sources=len(sources),
+        )
         return sources
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
         map_bounds = input_map.flux.box() * u.radian
-        return self.get_sources_in_box(box=map_bounds)
+        self.log.info(
+            "mock_database.get_sources_in_map",
+            map_bounds_deg=map_bounds.to(u.deg),
+        )
+        # if ra_min is greater than ra_max, we are crossing the 0 point
+        # so we need to split the box into two boxes.
+        # sicnce pixell uses -180 to 180 convention, we need to go 0 to ra_min then ra_max to 0
+        if map_bounds[0][1] > map_bounds[1][1]:
+            box1 = [[map_bounds[0][0], 0 * u.rad], [map_bounds[1][0], map_bounds[0][1]]]
+            box2 = [[map_bounds[0][0], map_bounds[1][1]], [map_bounds[1][0], 0 * u.rad]]
+            sources1 = self.get_sources_in_box(box=box1)
+            sources2 = self.get_sources_in_box(box=box2)
+            return sources1 + sources2
+        else:
+            return self.get_sources_in_box(box=map_bounds)
 
     def get_all_sources(self) -> list[RegisteredSource]:
         sources = self.get_sources_in_box(
