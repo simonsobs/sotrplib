@@ -2,7 +2,6 @@ import numpy as np
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
-from pixell.utils import degree
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -191,7 +190,7 @@ def make_gaussian_flare(
 def convert_photutils_qtable_to_json(
     params,
     imap: enmap.ndmap = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     photutils params is an Astropy QTable with:
@@ -199,7 +198,8 @@ def convert_photutils_qtable_to_json(
 
     if imap supplied, will also get ra,dec
     """
-
+    log = log or get_logger()
+    log.bind(func_name="convert_photutils_qtable_to_json")
     json_cat_out = {}
     for p in params:
         for k in p.keys():
@@ -208,7 +208,7 @@ def convert_photutils_qtable_to_json(
             json_cat_out[k].append(p[k])
 
         if isinstance(imap, enmap.ndmap):
-            dec, ra = imap.pix2sky([p["y_0"], p["x_0"]]) / degree
+            dec, ra = np.degrees(imap.pix2sky([p["y_0"], p["x_0"]]))
         else:
             ra, dec = np.nan, np.nan
         if "RADeg" not in json_cat_out:

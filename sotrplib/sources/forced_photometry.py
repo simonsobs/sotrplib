@@ -167,7 +167,6 @@ class Gaussian2DFitter:
         if self.force_center:
             amplitude, sigma_x, sigma_y, theta, offset = popt
             amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
-            ra_fit, dec_fit = None, None
             ra_offset, dec_offset = None, None
             ra_err, dec_err = None, None
         else:
@@ -181,14 +180,21 @@ class Gaussian2DFitter:
                 theta_err,
                 offset_err,
             ) = perr
-            dec_fit = y0 * self.map_resolution
-            ra_fit = x0 * np.cos(dec_fit.to(u.rad).value) * self.map_resolution
-            dec_offset = dec_fit - self.thumbnail_center[1]
-            ra_offset = ra_fit - self.thumbnail_center[0]
+            x_size, y_size = self.data.shape
+            dec_offset = (y_size / 2 - y0) * self.map_resolution
+            x_sign = -1 if self.thumbnail_center[1] >= 0 * u.deg else 1
+            ra_offset = (
+                x_sign
+                * (x_size / 2 - x0)
+                * np.cos(self.thumbnail_center[1].to(u.rad).value)
+                * self.map_resolution
+            )
+
             if ra_offset > 180.0 * u.deg:
                 ra_offset -= 360.0 * u.deg
             elif ra_offset < -180.0 * u.deg:
                 ra_offset += 360.0 * u.deg
+
             ra_err = x0_err * self.map_resolution
             dec_err = y0_err * self.map_resolution
 
@@ -310,7 +316,8 @@ def scipy_2d_gaussian_fit(
         fit = fitter.fit()
         log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 
-        forced_source.fit_failed = False
+        forced_source.fit_failed = fit.failed
+        forced_source.fit_failure_reason = fit.failure_reason
         forced_source.flux = fit.amplitude
         forced_source.err_flux = fit.amplitude_err
         forced_source.offset_ra = fit.ra_offset
@@ -515,7 +522,7 @@ def fit_2d_gaussian(
 def convert_catalog_to_registered_source_objects(
     catalog_sources: dict,
     source_type: str | None = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     take each source in the catalog and convert to a list
@@ -586,158 +593,6 @@ def return_initial_catalog_entry(
             outdict[keyconv[key]] = outdict.pop(key)
 
     return outdict
-
-
-def photutils_2D_gauss_fit(
-    flux_map,
-    snr_map,
-    source_catalog: list,
-    rakey: str = "RADeg",
-    deckey: str = "decDeg",
-    fluxkey: str = "fluxJy",
-    dfluxkey: str = "err_fluxJy",
-    flux_lim_fit_centroid: float = 0.3,
-    size_deg=0.1,
-    fwhm_arcmin=2.2,
-    PLOT: bool = False,
-    reproject_thumb: bool = False,
-    return_thumbnails: bool = False,
-    debug=False,
-    log=None,
-):
-    """ """
-    from pixell.utils import arcmin, degree
-    from tqdm import tqdm
-
-    from ..source_catalog.source_catalog import convert_gauss_fit_to_source_cat
-
-    log = log.bind(func_name="photutils_2D_gauss_fit")
-    preamble = "sources.fitting.photutils2DGauss."
-    fits = []
-    thumbnails = []
-    ## these are the keys output by the fitting function
-    ## but including the failed fit flag
-    failed_fit_dict = {
-        "ra_offset_arcmin": (None, None),
-        "dec_offset_arcmin": (None, None),
-        "fwhm_x_arcmin": (None, None),
-        "fwhm_y_arcmin": (None, None),
-        "theta": (None, None),
-        "pix": (None, None),
-        "forced": None,
-        "gauss_fit_flag": 1,
-    }
-
-    for i in tqdm(range(len(source_catalog)), desc="Fitting sources w 2D Gaussian"):
-        sc = source_catalog[i]
-        source_name = sc.sourceID
-        map_res = abs(flux_map.wcs.wcs.cdelt[0] * degree)
-        pix = flux_map.sky2pix([sc.dec * degree, sc.ra * degree])
-        failed_fit_dict["pix"] = pix
-        thumbsize = size_deg * degree / map_res
-        ## set default to failed dictionary
-        fit_dict = return_initial_catalog_entry(
-            sc,
-            add_dict=failed_fit_dict,
-            keyconv={
-                "ra": rakey,
-                "dec": deckey,
-                "flux": fluxkey,
-                "err_flux": dfluxkey,
-                "name": "SourceID",
-            },
-        )
-        if (
-            pix[0] + thumbsize > flux_map.shape[0]
-            or pix[1] + thumbsize > flux_map.shape[1]
-            or pix[0] - thumbsize < 0
-            or pix[1] - thumbsize < 0
-        ):
-            fits.append(fit_dict)
-
-            log.warning(f"{preamble}source_near_map_edge", source=source_name)
-
-            if return_thumbnails:
-                thumbnails.append([])
-
-            continue
-        if reproject_thumb:
-            thumbnail_center = (0, 0)
-            try:
-                flux_thumb = reproject.thumbnails(
-                    flux_map,
-                    [sc.dec * degree, sc.ra * degree],
-                    r=size_deg * degree,
-                    res=map_res,
-                )
-                snr_thumb = reproject.thumbnails(
-                    snr_map,
-                    [sc.dec * degree, sc.ra * degree],
-                    r=size_deg * degree,
-                    res=map_res,
-                )
-                with np.errstate(divide="ignore"):
-                    noise_thumb = flux_thumb / snr_thumb
-            except Exception as e:
-                log.warning(f"{preamble}reproject_failed", source=source_name, error=e)
-                fits.append(fit_dict)
-                if return_thumbnails:
-                    thumbnails.append([])
-                continue
-        else:
-            thumbnail_center = (sc.ra, sc.dec)
-            ra = sc.ra * degree + map_res / 2
-            dec = sc.dec * degree + map_res / 2
-            radius = size_deg * degree
-            flux_thumb = flux_map.submap(
-                [[dec - radius, ra - radius], [dec + radius, ra + radius]],
-            )
-            snr_thumb = snr_map.submap(
-                [[dec - radius, ra - radius], [dec + radius, ra + radius]],
-            )
-            noise_thumb = flux_thumb / snr_thumb
-            flux_thumb = flux_thumb.upgrade(factor=2)
-            noise_thumb = noise_thumb.upgrade(factor=2)
-
-        if np.any(np.isnan(flux_thumb)):
-            log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
-            fits.append(fit_dict)
-            if return_thumbnails:
-                thumbnails.append([flux_thumb, noise_thumb])
-            continue
-
-        map_res = abs(flux_thumb.wcs.wcs.cdelt[0] * degree)
-        gauss_fit = fit_2d_gaussian(
-            flux_thumb,
-            noise_thumb,
-            map_res / arcmin,
-            fwhm_guess_arcmin=fwhm_arcmin,
-            thumbnail_center=thumbnail_center,
-            force_center=True if sc.flux < flux_lim_fit_centroid else False,
-            PLOT=PLOT,
-        )
-        if debug:
-            log.debug(f"{preamble}gauss_fit", source=source_name, fit=gauss_fit)
-        if gauss_fit:
-            gauss_fit[rakey] = sc.ra
-            gauss_fit[deckey] = sc.dec
-            gauss_fit["pix"] = pix
-            gauss_fit[fluxkey], gauss_fit["err_%s" % fluxkey] = gauss_fit.pop(
-                "amplitude"
-            )
-            for key in vars(sc):
-                if key not in gauss_fit:
-                    gauss_fit[key] = getattr(sc, key)
-            gauss_fit["gauss_fit_flag"] = 0
-            fits.append(gauss_fit)
-        else:
-            log.warning(f"{preamble}gauss_fit_failed", source=source_name)
-            fits.append(fit_dict)
-        if return_thumbnails:
-            thumbnails.append([flux_thumb, noise_thumb])
-    fits = convert_gauss_fit_to_source_cat(fits, log=log)
-    log.info(f"{preamble}fit_complete", source=source_name)
-    return fits, thumbnails
 
 
 def fit_xy_slices(

@@ -40,8 +40,7 @@ def test_empty_forced_photometry(map_with_single_source):
 
 def test_scipy_curve_fit(map_with_single_source):
     input_map, sources = map_with_single_source
-
-    forced_photometry = Scipy2DGaussianFitter()
+    forced_photometry = Scipy2DGaussianFitter(thumbnail_half_width=0.1 * u.deg)
     results = forced_photometry.force(input_map=input_map, sources=sources)
     assert len(results) == 1
     ntries = 10
@@ -56,6 +55,8 @@ def test_scipy_curve_fit(map_with_single_source):
     assert results[0].flux.to(u.Jy).value == pytest.approx(
         sources[0].flux.to(u.Jy).value, rel=2e-1
     )
+    assert results[0].offset_ra.to(u.arcmin).value < 0.5
+    assert results[0].offset_dec.to(u.arcmin).value < 0.5
     assert results[0].fit_method == "2d_gaussian"
 
 
@@ -66,3 +67,16 @@ def test_failed_fit(map_with_single_source):
     results = forced_photometry.force(input_map=input_map, sources=sources)
     assert len(results) == 1
     assert results[0].fit_failed
+
+
+def test_source_offset(map_with_single_source):
+    input_map, sources = map_with_single_source
+    forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=False)
+    ra_offset = 0.03 * u.deg
+    sources[0].ra += ra_offset
+    results = forced_photometry.force(input_map=input_map, sources=sources)
+    assert len(results) == 1
+    assert not results[0].fit_failed
+    assert results[0].offset_ra.to(u.arcmin).value == pytest.approx(
+        ra_offset.to(u.arcmin).value, abs=0.5
+    )
