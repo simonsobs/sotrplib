@@ -250,9 +250,11 @@ def scipy_2d_gaussian_fit(
             ra=source.ra, dec=source.dec, source_id=source.source_id, flux=source.flux
         )
         forced_source.fit_method = fit_method
+        ## set default fit to empty parameters and fit_failed.
+        ## once the fit is successfully completed, this will be updated.
         fit = GaussianFitParameters()
         fit.failed = True
-
+        forced_source.fit_failed = True
         if (
             pix[0] + size_pix > input_map.flux.shape[0]
             or pix[1] + size_pix > input_map.flux.shape[1]
@@ -260,6 +262,7 @@ def scipy_2d_gaussian_fit(
             or pix[1] - size_pix < 0
         ):
             fit.failure_reason = "source_outside_map_bounds"
+            forced_source.fit_failure_reason = "source_outside_map_bounds"
             log.warning(
                 f"{preamble}source_outside_map_bounds",
                 source=source_name,
@@ -279,14 +282,12 @@ def scipy_2d_gaussian_fit(
             log.error(
                 f"{preamble}extract_thumbnail_failed", source=source_name, error=e
             )
-            forced_source.fit_failed = True
             forced_source.fit_failure_reason = "extract_thumbnail_failed"
             fit_sources.append(forced_source)
             continue
 
         if np.any(np.isnan(forced_source.thumbnail)):
             log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
-            forced_source.fit_failed = True
             forced_source.fit_failure_reason = "flux_thumb_has_nan"
             fit_sources.append(forced_source)
             continue
