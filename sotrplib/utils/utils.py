@@ -20,14 +20,14 @@ def radec_to_str_name(
     ra: float, dec: float, source_class="pointsource", observatory="SO"
 ):
     """
-    Convert RA & dec (in radians) to IAU-approved string name.
+    Convert RA & dec (in degrees) to IAU-approved string name.
 
     Arguments
     ---------
     ra : float
-        Source right ascension in radians
+        Source right ascension in degrees
     dec : float
-        Source declination in radians
+        Source declination in degrees
     source_class : str
         The class of source to which this name is assigned.  Supported classes
         are ``pointsource``, ``cluster`` or ``transient``.  Shorthand class

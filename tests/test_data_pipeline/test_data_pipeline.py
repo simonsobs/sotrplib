@@ -16,7 +16,6 @@ from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter
 from sotrplib.source_catalog.database import (
     MockACTDatabase,
-    MockForcedPhotometryDatabase,
 )
 from sotrplib.sources.blind import BlindSearchParameters, SigmaClipBlindSearch
 from sotrplib.sources.force import SimpleForcedPhotometry
@@ -32,7 +31,7 @@ def test_mock_forced_photometry_database(
     Tests loading a mock forced photometry database.
     """
     log = log or structlog.get_logger()
-    catalog = MockForcedPhotometryDatabase(db_path=db_path)
+    catalog = MockACTDatabase(db_path=db_path, flux_lower_limit=1 * u.Jy)
     assert len(catalog.catalog_list) > 0
     log.info(
         "mock_forced_photometry_catalog.catalog_list",
@@ -65,7 +64,7 @@ def test_basic_map_pipeline(
         frequency="f090",
         array="pa5",
     )
-    forced_photometry_sources = MockForcedPhotometryDatabase(
+    forced_photometry_sources = MockACTDatabase(
         db_path="/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
         flux_lower_limit=1 * u.Jy,
     ).catalog_list

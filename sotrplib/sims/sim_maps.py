@@ -13,6 +13,7 @@ from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sources.forced_photometry import (
     convert_catalog_to_registered_source_objects,
 )
+from sotrplib.sources.sources import MeasuredSource
 
 
 def make_enmap(
@@ -305,7 +306,6 @@ def inject_sources(
     from pixell.enmap import sky2pix
     from tqdm import tqdm
 
-    from ..sources.sources import RegisteredSource
     from ..utils.utils import get_fwhm
     from .sim_utils import make_2d_gaussian_model_param_table
 
@@ -360,11 +360,15 @@ def inject_sources(
 
         flux = source.get_flux(source_obs_time)
 
-        inj_source = RegisteredSource(
+        inj_source = MeasuredSource(
             ra=ra,
             dec=dec,
             flux=flux,
             source_type="simulated",
+            fit_failed=False,
+            fwhm_ra=fwhm,
+            fwhm_dec=fwhm,
+            frequency=float(freq[1:]) * u.GHz if freq.startswith("f") else None,
         )
         injected_sources.append(inj_source)
     log.info("inject_sources.sources_to_inject", injected_sources=injected_sources)
