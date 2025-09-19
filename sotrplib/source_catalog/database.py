@@ -113,7 +113,7 @@ class MockDatabase:
         )
         # if ra_min is greater than ra_max, we are crossing the 0 point
         # so we need to split the box into two boxes.
-        # sicnce pixell uses -180 to 180 convention, we need to go 0 to ra_min then ra_max to 0
+        # since pixell uses -180 to 180 convention, we need to go 0 to ra_min then ra_max to 0
         if map_bounds[0][1] > map_bounds[1][1]:
             box1 = [[map_bounds[0][0], 0 * u.rad], [map_bounds[1][0], map_bounds[0][1]]]
             box2 = [[map_bounds[0][0], map_bounds[1][1]], [map_bounds[1][0], 0 * u.rad]]
