@@ -1,13 +1,15 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.source_catalog.database import (
-    MockACTDatabase,
     MockDatabase,
+    MockSourceCatalog,
 )
 
 
@@ -32,16 +34,15 @@ class EmptySourceCatalogConfig(SourceCatalogConfig):
 
 class MockSourceCatalogConfig(SourceCatalogConfig):
     catalog_type: Literal["mock_socat"] = "mock_socat"
-    db_path: str | None = None
-    flux_lower_limit: float = 0.03
-    flux_units: str = "Jy"
+    db_path: Path | None = None
+    flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
 
     def to_source_catalog(
         self, log: FilteringBoundLogger | None = None
-    ) -> MockACTDatabase:
-        return MockACTDatabase(
+    ) -> MockSourceCatalog:
+        return MockSourceCatalog(
             db_path=self.db_path,
-            flux_lower_limit=u.Quantity(self.flux_lower_limit, self.flux_units),
+            flux_lower_limit=self.flux_lower_limit,
             log=log,
         )
 

@@ -89,7 +89,7 @@ class Settings(BaseSettings):
                 log=log
             )
             if self.forced_photometry_catalog
-            else None,
+            else EmptySourceCatalogConfig().to_source_catalog(log=log),
             "source_catalogs": [
                 x.to_source_catalog(log=log) for x in self.source_catalogs
             ],

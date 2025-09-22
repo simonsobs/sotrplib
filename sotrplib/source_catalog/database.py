@@ -1,5 +1,6 @@
 import os
 import threading
+from pathlib import Path
 
 import pandas as pd
 import structlog
@@ -130,16 +131,16 @@ class MockDatabase:
         return sources
 
 
-class MockACTDatabase:
+class MockSourceCatalog:
     def __init__(
         self,
-        db_path: str,
+        db_path: Path,
         log: FilteringBoundLogger | None = None,
         catalog_list: list = [],
         flux_lower_limit: u.Quantity = 0.01 * u.Jy,
     ):
         self.log = log or structlog.get_logger()
-        hdu = fits.open(db_path)
+        hdu = fits.open(str(db_path))
         mock_cat = hdu[1]
         cat = MockDatabase()
         self.log.info("mock_act_database.loading_act_catalog")
