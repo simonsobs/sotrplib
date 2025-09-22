@@ -57,15 +57,14 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
-            crossmatch_catalog = []
-            for catalog in self.source_catalogs:
-                crossmatch_catalog.extend(catalog.cat.get_sources_in_map(input_map))
+            crossmatch_catalog = [
+                c.cat.get_sources_in_map(input_map=input_map)
+                for c in self.source_catalogs
+            ]
 
-            for_forced_photometry = []
-            if self.forced_photometry_catalog:
-                for_forced_photometry.extend(
-                    self.forced_photometry_catalog.cat.get_sources_in_map(input_map)
-                )
+            for_forced_photometry = (
+                self.forced_photometry_catalog.cat.get_sources_in_map(input_map)
+            )
 
             for simulator in self.source_simulators:
                 input_map, additional_sources = simulator.simulate(input_map=input_map)
