@@ -81,7 +81,9 @@ class PipelineRunner:
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
             self.sifter.catalog_sources = crossmatch_catalog
-            sifter_result = self.sifter.sift(blind_sources, source_subtracted_map)
+            sifter_result = self.sifter.sift(
+                sources=blind_sources, input_map=source_subtracted_map
+            )
 
             for output in self.outputs:
                 output.output(
