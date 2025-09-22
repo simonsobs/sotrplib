@@ -254,7 +254,20 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
         return
 
+    ## TODO: need to filter before calculating snr and flux
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.intensity / np.sqrt(self.inverse_variance)
+        return snr
+
+    def get_flux(self):
+        with np.errstate(divide="ignore"):
+            flux = self.intensity
+        return flux
+
     def finalize(self):
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
         super().finalize()
 
 
