@@ -131,6 +131,39 @@ class MockDatabase:
         return sources
 
 
+class EmptyMockSourceCatalog:
+    def __init__(
+        self,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or structlog.get_logger()
+        self.cat = MockDatabase()
+        self.log.info("mock_empty_database.")
+        self.catalog_list = []
+
+    def update_catalog(self, new_sources: list, match_radius=0.1):
+        """Update the catalog with new sources."""
+        for source in new_sources:
+            matches = self.cat.get_nearby_source(
+                source.ra, source.dec, radius=match_radius
+            )
+            if not matches:
+                s = self.cat.add_source(
+                    ra=source.ra, dec=source.dec, name=source.source_id
+                )
+                self.catalog_list.append(s)
+                self.log.info(
+                    "mock_act_database.update_catalog.new_source_added", source=s
+                )
+            else:
+                self.log.info(
+                    "mock_act_database.update_catalog.existing_source_found",
+                    source=source,
+                    matching_sources=matches,
+                )
+                pass
+
+
 class MockSourceCatalog:
     def __init__(
         self,
@@ -155,7 +188,7 @@ class MockSourceCatalog:
             registered_source = RegisteredSource(
                 ra=ra * u.deg,
                 dec=dec * u.deg,
-                source_id="%s" % str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
+                source_id=str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
                 crossmatches=[
                     CrossMatch(
                         source_id=name,

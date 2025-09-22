@@ -9,7 +9,7 @@ from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sims.sources.core import SourceSimulation
-from sotrplib.source_catalog.database import MockDatabase
+from sotrplib.source_catalog.database import EmptyMockSourceCatalog, MockDatabase
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
 from sotrplib.sources.force import EmptyForcedPhotometry
@@ -32,7 +32,9 @@ class PipelineRunner:
         outputs: list[SourceOutput] | None,
     ):
         self.maps = maps
-        self.forced_photometry_catalog = forced_photometry_catalog
+        self.forced_photometry_catalog = (
+            forced_photometry_catalog or EmptyMockSourceCatalog()
+        )
         self.source_catalogs = source_catalogs or []
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
