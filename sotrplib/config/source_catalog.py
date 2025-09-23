@@ -11,6 +11,7 @@ from sotrplib.source_catalog.database import (
     MockDatabase,
     MockSourceCatalog,
 )
+from sotrplib.source_catalog.socat import SOCatFITSCatalog
 
 
 class SourceCatalogConfig(BaseModel, ABC):
@@ -47,4 +48,21 @@ class MockSourceCatalogConfig(SourceCatalogConfig):
         )
 
 
-AllSourceCatalogConfigTypes = EmptySourceCatalogConfig | MockSourceCatalogConfig
+class SOCatFITSCatalogConfig(SourceCatalogConfig):
+    catalog_type: Literal["fits"] = "fits"
+    path: Path
+    hdu: int = 1
+    flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
+
+    def to_source_catalog(self, log=None) -> SOCatFITSCatalog:
+        return SOCatFITSCatalog(
+            path=self.path,
+            hdu=self.hdu,
+            flux_lower_limit=self.flux_lower_limit,
+            log=log,
+        )
+
+
+AllSourceCatalogConfigTypes = (
+    EmptySourceCatalogConfig | MockSourceCatalogConfig | SOCatFITSCatalogConfig
+)

@@ -7,7 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from sotrplib.config.source_catalog import (
     AllSourceCatalogConfigTypes,
-    EmptySourceCatalogConfig,
 )
 from sotrplib.config.source_simulation import AllSourceSimulationConfigTypes
 from sotrplib.handlers.basic import PipelineRunner
@@ -32,11 +31,6 @@ class Settings(BaseSettings):
 
     maps: list[AllMapConfigTypes] = []
     "Input maps"
-
-    forced_photometry_catalog: AllSourceCatalogConfigTypes = Field(
-        default_factory=EmptySourceCatalogConfig
-    )
-    "Catalogs to use for forced photometry"
 
     source_catalogs: list[AllSourceCatalogConfigTypes] = []
     "Source catalogs to use"
@@ -85,11 +79,6 @@ class Settings(BaseSettings):
 
         contents = {
             "maps": [x.to_map(log=log) for x in self.maps],
-            "forced_photometry_catalog": self.forced_photometry_catalog.to_source_catalog(
-                log=log
-            )
-            if self.forced_photometry_catalog
-            else EmptySourceCatalogConfig().to_source_catalog(log=log),
             "source_catalogs": [
                 x.to_source_catalog(log=log) for x in self.source_catalogs
             ],
