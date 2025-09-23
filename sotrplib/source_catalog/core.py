@@ -75,7 +75,9 @@ class RegisteredSourceCatalog(SourceCatalog):
             [(x.ra.to("deg").value, x.dec.to("deg").value) for x in self.sources]
         )
 
-    @abstractmethod
+    def add_sources(self, sources: list[RegisteredSource]):
+        self.sources.extend(sources)
+
     def sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
@@ -91,7 +93,6 @@ class RegisteredSourceCatalog(SourceCatalog):
             x for x in self.sources if (left < x.ra < right) and (bottom < x.dec < top)
         ]
 
-    @abstractmethod
     def forced_photometry_sources(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
@@ -122,15 +123,15 @@ class RegisteredSourceCatalog(SourceCatalog):
 
         return [
             CrossMatch(
-                source_id=s.source_id,
+                source_id=str(s.source_id),
                 probability=1.0 / len(sources),
                 distance=angular_separation(s.ra, ra, s.dec, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
-                catalog_name=s.catalog_name,
-                catalog_idx=y,
-                alternate_names=s.alternate_names,
+                catalog_name="registered",
+                catalog_idx=y[1],
+                alternate_names=[],
             )
             for s, y in zip(sources, matches)
         ]
