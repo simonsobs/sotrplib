@@ -7,14 +7,40 @@ from typing import Literal
 
 import numpy as np
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
+from astropy.coordinates import SkyCoord
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
 
-from sotrplib.sources.sources import RegisteredSource
+from sotrplib.sources.sources import CrossMatch, RegisteredSource
+from sotrplib.utils.utils import angular_separation
 
 
 class SourceCatalog(ABC):
+    @abstractmethod
+    def add_sources(self, sources: list[RegisteredSource]):
+        """
+        Add sources to the main internal list for searching.
+        """
+        return
+
+    @abstractmethod
+    def sources_in_box(
+        self, box: list[SkyCoord] | None = None
+    ) -> list[RegisteredSource]:
+        """
+        Get sources that live in a specific box on the sky.
+        """
+        return
+
+    @abstractmethod
+    def forced_photometry_sources(
+        self, box: list[SkyCoord] | None = None
+    ) -> list[RegisteredSource]:
+        """
+        Get the list of sources to be used for forced photometry
+        """
+        return
+
     @abstractmethod
     def source_by_id(self, id) -> RegisteredSource:
         """
@@ -25,11 +51,11 @@ class SourceCatalog(ABC):
     @abstractmethod
     def crossmatch(
         self,
-        ra: AstroPydanticQuantity[u.deg],
-        dec: AstroPydanticQuantity[u.deg],
-        radius: AstroPydanticQuantity[u.arcmin],
+        ra: u.Quantity,
+        dec: u.Quantity,
+        radius: u.Quantity,
         method: Literal["closest", "all"],
-    ) -> list[RegisteredSource]:
+    ) -> list[CrossMatch]:
         return
 
 
@@ -49,16 +75,38 @@ class RegisteredSourceCatalog(SourceCatalog):
             [(x.ra.to("deg").value, x.dec.to("deg").value) for x in self.sources]
         )
 
+    @abstractmethod
+    def sources_in_box(
+        self, box: list[SkyCoord] | None = None
+    ) -> list[RegisteredSource]:
+        if box is None:
+            return self.sources
+
+        left = box[0].ra
+        right = box[1].ra
+        bottom = box[0].dec
+        top = box[1].dec
+
+        return [
+            x for x in self.sources if (left < x.ra < right) and (bottom < x.dec < top)
+        ]
+
+    @abstractmethod
+    def forced_photometry_sources(
+        self, box: list[SkyCoord] | None = None
+    ) -> list[RegisteredSource]:
+        return self.sources_in_box(box=box)
+
     def source_by_id(self, id: int):
         return self.sources[id]
 
     def crossmatch(
         self,
-        ra: AstroPydanticQuantity[u.deg],
-        dec: AstroPydanticQuantity[u.deg],
-        radius: AstroPydanticQuantity[u.arcmin],
+        ra: u.Quantity,
+        dec: u.Quantity,
+        radius: u.Quantity,
         method: Literal["closest", "all"],
-    ) -> list[RegisteredSource]:
+    ) -> list[CrossMatch]:
         """
         Get sources within radius of the catalog.
         """
@@ -70,4 +118,19 @@ class RegisteredSourceCatalog(SourceCatalog):
             mode=method,
         )
 
-        return [self.sources[y] for _, y in matches]
+        sources = [self.sources[y] for _, y in matches]
+
+        return [
+            CrossMatch(
+                source_id=s.source_id,
+                probability=1.0 / len(sources),
+                distance=angular_separation(s.ra, ra, s.dec, dec),
+                flux=s.flux,
+                err_flux=s.err_flux,
+                frequency=s.frequency,
+                catalog_name=s.catalog_name,
+                catalog_idx=y,
+                alternate_names=s.alternate_names,
+            )
+            for s, y in zip(sources, matches)
+        ]
