@@ -19,7 +19,7 @@
         }
     ],
     "forced_photometry": {
-        "photometry_type": "photutils"
+        "photometry_type": "scipy"
     },
     "outputs": [
         {
