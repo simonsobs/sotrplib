@@ -276,7 +276,7 @@ class RhoAndKappaMap(ProcessableMap):
     A set of FITS maps read from disk. Could be Depth 1, could
     be monthly or weekly co-adds. Or something else!
 
-    box is array of astropy Quantities: [[ra_min, dec_min], [ra_max, dec_max]]
+    box is array of astropy Quantities: [[dec_min, ra_min], [dec_max, ra_max]]
     """
 
     def __init__(
