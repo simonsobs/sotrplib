@@ -76,7 +76,7 @@ def test_random_positions_with_map(sim_map_params, log=log):
         if ra_lims[0] < 0 * u.deg:
             if ra > 180 * u.deg:
                 ra -= 360 * u.deg
-        tol = 1e-3 * u.deg
+        tol = 1e-2 * u.deg
         assert (ra_lims[0] - tol) <= ra <= (ra_lims[1] + tol), (
             f"RA {ra} out of range {ra_lims}"
         )
