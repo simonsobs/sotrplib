@@ -1,76 +1,86 @@
+import math
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
+from typing import Literal
+
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 
 
-class SimTransient:
+class SimulatedSource(ABC):
+    @abstractmethod
+    def position(self, time: datetime) -> SkyCoord:
+        return
+
+    @abstractmethod
+    def flux(self, time: datetime) -> u.Quantity:
+        return
+
+
+class FixedSimulatedSource(SimulatedSource):
     def __init__(
         self,
-        position: tuple[AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]]
-        | list[AstroPydanticQuantity[u.deg]] = None,
-        peak_amplitude: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
-        peak_time: float = None,
-        flare_width: float = None,
-        flare_morph: str = "Gaussian",
-        beam_params: dict = {},
+        position: SkyCoord,
+        flux: u.Quantity,
+    ):
+        self._position = position
+        self._flux = flux
+
+        return
+
+    def position(self, time):
+        return self._position
+
+    def flux(self, time):
+        return self._flux
+
+
+class TransientSimulatedSource(SimulatedSource):
+    def __init__(
+        self,
+        position: SkyCoord,
+        peak_time: datetime,
+        flare_width: timedelta,
+        flare_morph: Literal["Gaussian"] = "Gaussian",
+        peak_amplitude: u.Quantity = 0.0 * u.Jy,
+        beam_parameters: dict | None = None,
     ):
         """
         Initialize a simulated source.
 
         Parameters:
-        - position: Tuple|list (dec, ra) specifying the position of the source. If None, a random position is generated.
+        - position: Sky position of the source
         - peak_amplitude: The peak amplitude of the flare.
         - peak_time: The time at which the flare peaks.
         - flare_width: The width of the flare (e.g., standard deviation for Gaussian).
         - flare_morph: The morphology of the flare ('Gaussian' supported for now).
         - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
         """
-        if position is None:
-            from sotrplib.sims.sim_utils import generate_random_positions
-
-            self.dec, self.ra = generate_random_positions(
-                n=1, ra_lims=(0, 360) * u.deg, dec_lims=(-60, 20) * u.deg
-            )[0]
-            self.dec *= u.deg
-            self.ra *= u.deg
-        else:
-            self.dec, self.ra = position
-
-        self.peak_amplitude = peak_amplitude
+        self._position = position
         self.peak_time = peak_time
         self.flare_width = flare_width
         self.flare_morph = flare_morph
-        self.beam_params = beam_params
+        self.peak_amplitude = peak_amplitude
+        self.beam_parameters = beam_parameters
 
-    def get_flux(self, time):
-        """
-        Calculate the flux (amplitude) at a given time based on the flare morphology.
+        return
 
-        Parameters:
-        - time: The time at which to evaluate the flux.
+    def position(self, time: datetime) -> SkyCoord:
+        return self._position
 
-        Returns:
-        - Flux (amplitude) value at the given time.
-        """
-        from sotrplib.sims.sim_utils import make_gaussian_flare
+    def flux(self, time: datetime) -> u.Quantity:
+        match self.flare_morph:
+            case "Gaussian":
+                delta_time = time - self.peak_time
 
-        if self.flare_morph == "Gaussian":
-            # Calculate Gaussian amplitude
-            if self.peak_time is None or self.flare_width is None:
-                raise ValueError(
-                    "peak_time and flare_width must be defined for Gaussian flare."
-                )
-            delta_time = time - self.peak_time
-            flux = make_gaussian_flare(
-                delta_time,
-                flare_fwhm_s=self.flare_width,
-                flare_peak_Jy=self.peak_amplitude.to(u.Jy).value,
-            )
-            return flux * u.Jy
-        else:
-            raise NotImplementedError(
-                f"Flare morphology '{self.flare_morph}' is not supported."
-            )
+                sigma = self.flare_fwhm_s / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+                exponent = delta_time / self.flare_width
+
+                return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
+            case _:
+                raise ValueError("Only Gaussian flares are supported")
 
 
 def generate_transients(
@@ -186,15 +196,15 @@ def generate_transients(
     ):
         raise ValueError("All input lists must be of the same length.")
 
-    for i in range(len(positions)):
-        transient = SimTransient(
-            position=(positions[i][0], positions[i][1]),
-            peak_amplitude=peak_amplitudes[i],
-            peak_time=peak_times[i],
-            flare_width=flare_widths[i],
-            flare_morph=flare_morphs[i],
-            beam_params=beam_params[i],
-        )
-        transients.append(transient)
+    # for i in range(len(positions)):
+    # transient = SimTransient(
+    #     position=(positions[i][0], positions[i][1]),
+    #     peak_amplitude=peak_amplitudes[i],
+    #     peak_time=peak_times[i],
+    #     flare_width=flare_widths[i],
+    #     flare_morph=flare_morphs[i],
+    #     beam_params=beam_params[i],
+    # )
+    # transients.append(transient)
 
-    return transients
+    # return transients
