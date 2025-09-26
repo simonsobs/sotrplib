@@ -25,7 +25,7 @@ class SourceSimulationConfig(BaseModel, ABC):
 
 
 class FixedSourceGeneratorConfig(SourceSimulationConfig):
-    simulation_type: Literal["random"] = "random"
+    simulation_type: Literal["fixed"] = "fixed"
     min_flux: AstroPydanticQuantity[u.Jy]
     max_flux: AstroPydanticQuantity[u.Jy]
     number: int

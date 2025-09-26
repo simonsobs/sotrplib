@@ -17,7 +17,7 @@ from .outputs import AllOutputConfigTypes
 from .postprocessors import AllPostprocessorConfigTypes
 from .preprocessors import AllPreprocessorConfigTypes
 from .sifter import AllSifterConfigTypes, EmptySifterConfig
-from .source_injector import EmptySourceInjectorConfig
+from .source_injector import AllSourceInjectorConfigTypes, EmptySourceInjectorConfig
 from .source_simulation import AllSourceSimulationConfigTypes
 from .source_subtractor import (
     AllSourceSubtractorConfigTypes,
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     source_simulators: list[AllSourceSimulationConfigTypes] = []
     "Any source simulators to add sources to the map"
 
-    source_injector: AllSourceSimulationConfigTypes = Field(
+    source_injector: AllSourceInjectorConfigTypes = Field(
         default_factory=EmptySourceInjectorConfig
     )
     "Source injector to use for adding simulated sources to maps"

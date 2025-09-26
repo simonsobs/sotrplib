@@ -13,7 +13,7 @@ from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sims.sim_source_generators import SimulatedSourceGenerator
 from sotrplib.sims.source_injector import EmptySourceInjector, SourceInjector
-from sotrplib.source_catalog.database import EmptyMockSourceCatalog, MockDatabase
+from sotrplib.source_catalog.database import MockDatabase
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
 from sotrplib.sources.force import EmptyForcedPhotometry
@@ -26,7 +26,6 @@ class PipelineRunner:
         maps: list[ProcessableMap],
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
-        forced_photometry_catalog: MockDatabase | None,
         source_catalogs: list[MockDatabase] | None,
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
@@ -39,9 +38,6 @@ class PipelineRunner:
         self.maps = maps
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
-        self.forced_photometry_catalog = (
-            forced_photometry_catalog or EmptyMockSourceCatalog()
-        )
         self.source_catalogs = source_catalogs or []
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
