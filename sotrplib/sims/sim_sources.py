@@ -51,7 +51,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
         - position: Sky position of the source
         - peak_amplitude: The peak amplitude of the flare.
         - peak_time: The time at which the flare peaks.
-        - flare_width: The width of the flare (e.g., standard deviation for Gaussian).
+        - flare_width: The FWHM of the flare (e.g., standard deviation for Gaussian).
         - flare_morph: The morphology of the flare ('Gaussian' supported for now).
         - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
         """
@@ -68,10 +68,14 @@ class GaussianTransientSimulatedSource(SimulatedSource):
     def flux(self, time: datetime) -> u.Quantity:
         delta_time = time - self.peak_time
 
-        sigma = self.flare_fwhm_s / (2.0 * math.sqrt(2.0 * math.log(2.0)))
-        exponent = delta_time / self.flare_width
+        sigma = self.flare_width / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+        exponent = delta_time / sigma
 
-        return self.peak_amplitude * sigma * math.exp(-0.5 * exponent * exponent)
+        return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
+
+
+class SimTransient:
+    pass
 
 
 def generate_transients(

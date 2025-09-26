@@ -1,11 +1,44 @@
+import datetime
+
 import pytest
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from pixell import enmap
 from structlog import get_logger
 
-from sotrplib.sims import sim_maps
+from sotrplib.sims import sim_maps, sim_sources
 
 log = get_logger()
+
+
+def test_fixed_source_type():
+    position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
+    flux = u.Quantity(1.0, "Jy")
+    time = datetime.datetime.now()
+
+    source = sim_sources.FixedSimulatedSource(position=position, flux=flux)
+    assert source.flux(time=time) == flux
+    assert source.position(time=time) == position
+
+
+def test_gaussian_source_type():
+    position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
+    flux = u.Quantity(1.0, "Jy")
+    width = datetime.timedelta(days=1)
+    time = datetime.datetime.now()
+
+    source = sim_sources.GaussianTransientSimulatedSource(
+        position=position, peak_time=time, flare_width=width, peak_amplitude=flux
+    )
+
+    # Peak flux as described
+    assert u.isclose(source.flux(time=time), flux, rtol=0.001)
+    assert source.flux(time=time - datetime.timedelta(hours=1)) < source.flux(time=time)
+    assert source.flux(time=time + datetime.timedelta(hours=1)) < source.flux(time=time)
+
+    assert source.position(time=time) == position
+    assert source.position(time=time - width) == position
+    assert source.position(time=time + width) == position
 
 
 def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
