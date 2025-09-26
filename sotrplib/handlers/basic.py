@@ -3,7 +3,6 @@ A basic pipeline handler. Takes all the components and runs
 them in the pre-specified order.
 """
 
-from astropy import units as u
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
@@ -13,7 +12,7 @@ from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sims.sim_source_generators import SimulatedSourceGenerator
 from sotrplib.sims.source_injector import EmptySourceInjector, SourceInjector
-from sotrplib.source_catalog.database import MockDatabase
+from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
 from sotrplib.sources.force import EmptyForcedPhotometry
@@ -26,7 +25,7 @@ class PipelineRunner:
         maps: list[ProcessableMap],
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
-        source_catalogs: list[MockDatabase] | None,
+        source_catalogs: list[SourceCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
         forced_photometry: ForcedPhotometryProvider | None,
@@ -57,25 +56,23 @@ class PipelineRunner:
                 preprocessor.preprocess(input_map=input_map)
 
         # Generate sources based upon maximal bounding box of all maps
-        bbox = [
-            SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-            SkyCoord(ra=360.0 * u.deg, dec=90.0 * u.deg),
-        ]
+        bbox = self.maps[0].bbox
 
-        for input_map in self.maps:
+        for input_map in self.maps[1:]:
             map_bbox = input_map.bbox
-            bbox[0].ra = min(bbox[0].ra, map_bbox[0].ra)
-            bbox[0].dec = min(bbox[0].dec, map_bbox[0].dec)
-            bbox[1].ra = max(bbox[1].ra, map_bbox[1].ra)
-            bbox[1].dec = max(bbox[1].dec, map_bbox[1].dec)
+            left = min(bbox[0].ra, map_bbox[0].ra)
+            bottom = min(bbox[0].dec, map_bbox[0].dec)
+            right = max(bbox[1].ra, map_bbox[1].ra)
+            top = max(bbox[1].dec, map_bbox[1].dec)
+            bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
 
         all_simulated_sources = []
 
         for simulator in self.source_simulators:
-            simulated_sources, catalog = simulator.generate_sources(bbox=bbox)
+            simulated_sources, catalog = simulator.generate(box=bbox)
 
             all_simulated_sources.extend(simulated_sources)
-            self.source_catalogs.extend(catalog)
+            self.source_catalogs.append(catalog)
 
         for input_map in self.maps:
             input_map = self.source_injector.inject(
@@ -98,7 +95,9 @@ class PipelineRunner:
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
             sifter_result = self.sifter.sift(
-                catalogs=self.source_catalogs, input_map=source_subtracted_map
+                sources=blind_sources,
+                catalogs=self.source_catalogs,
+                input_map=source_subtracted_map,
             )
 
             for output in self.outputs:

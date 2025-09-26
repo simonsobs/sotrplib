@@ -113,7 +113,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 
         fit_sources = scipy_2d_gaussian_fit(
             input_map,
-            sources=list(
+            source_catalog=list(
                 itertools.chain(
                     *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
                 )

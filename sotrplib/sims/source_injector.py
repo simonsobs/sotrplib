@@ -131,10 +131,15 @@ class PhotutilsSourceInjector(SourceInjector):
 
         simulated_source_flux_map = model_image * omega_b
 
-        new_flux = input_map.flux + simulated_source_flux_map
+        # Must assign array indicies so that we can add the maps together and
+        # have them _remain ENMAPS_.
+
+        new_flux = input_map.flux.copy()
+        new_flux[:] += simulated_source_flux_map[:]
 
         map_noise = input_map.flux / input_map.snr
-        new_snr = new_flux / map_noise
+        new_snr = input_map.snr.copy()
+        new_snr[:] = (new_flux / map_noise)[:]
 
         log.info("source_injection.photutils.complete")
 

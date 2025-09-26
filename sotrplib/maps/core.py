@@ -73,6 +73,7 @@ class ProcessableMap(ABC):
 
     map_resolution: u.Quantity | None
 
+    box: tuple[SkyCoord, SkyCoord] | None = None
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
@@ -164,7 +165,7 @@ class ProcessableMap(ABC):
             return self.map_resolution
         else:
             for attribute in ["flux", "snr", "rho", "kappa"]:
-                if x := getattr(self, attribute, None):
+                if (x := getattr(self, attribute, None)) is not None:
                     self.map_resolution = u.Quantity(
                         abs(x.wcs.wcs.cdelt[0]), x.wcs.wcs.cunit[0]
                     )
@@ -181,17 +182,16 @@ class ProcessableMap(ABC):
             return self.box
         else:
             for attribute in ["flux", "snr", "rho", "kappa"]:
-                if x := getattr(self, attribute, None):
+                if (x := getattr(self, attribute, None)) is not None:
                     shape = x.shape[-2:]
                     wcs = x.wcs
 
-                    top_left = enmap.pix2sky(shape, [0, 0], wcs)
-                    bottom_right = enmap.pix2sky(shape, [shape[0], shape[1]], wcs)
+                    bottom_left = wcs.array_index_to_world(0, 0)
+                    top_right = wcs.array_index_to_world(shape[0], shape[1])
+
                     self.box = (
-                        SkyCoord(ra=top_left[0] * u.rad, dec=top_left[1] * u.rad),
-                        SkyCoord(
-                            ra=bottom_right[0] * u.rad, dec=bottom_right[1] * u.rad
-                        ),
+                        bottom_left,
+                        top_right,
                     )
 
                     break

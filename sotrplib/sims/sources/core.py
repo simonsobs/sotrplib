@@ -51,6 +51,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.array = original_map.array
         self.finalized = original_map.finalized
         self.map_resolution = original_map.map_resolution
+        self.box = original_map.box
 
         return
 

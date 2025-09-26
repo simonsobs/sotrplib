@@ -78,16 +78,18 @@ class SimpleCatalogSifter(SiftingProvider):
         for i, source in enumerate(sources):
             log = self.log.bind(source=i, ra=source.ra, dec=source.dec)
 
-            matches = itertools.chain(
-                *[
-                    c.crossmatch(
-                        ra=source.ra,
-                        dec=source.dec,
-                        radius=self.radius,
-                        method=self.method,
-                    )
-                    for c in catalogs
-                ]
+            matches = list(
+                itertools.chain(
+                    *[
+                        c.crossmatch(
+                            ra=source.ra,
+                            dec=source.dec,
+                            radius=self.radius,
+                            method=self.method,
+                        )
+                        for c in catalogs
+                    ]
+                )
             )
 
             if matches:
