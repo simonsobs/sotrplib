@@ -1,3 +1,4 @@
+import itertools
 from typing import List, Literal
 
 import numpy as np
@@ -6,6 +7,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import (
     scipy_2d_gaussian_fit,
@@ -44,12 +46,14 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
     def force(
         self,
         input_map: ProcessableMap,
-        sources: List[RegisteredSource],
+        catalogs: List[SourceCatalog],
     ):
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
         out_sources = []
-        for source in self.sources + sources:
+        for source in itertools.chain(
+            *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
+        ):
             self.log.debug(
                 "SimpleForcedPhotometry.source",
                 ra=source.ra.to(u.deg),
@@ -100,7 +104,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         self.log = log or get_logger()
 
     def force(
-        self, input_map: ProcessableMap, sources: list[RegisteredSource]
+        self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
     ) -> list[MeasuredSource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = u.Quantity(
@@ -109,7 +113,11 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 
         fit_sources = scipy_2d_gaussian_fit(
             input_map,
-            self.sources + sources,
+            sources=list(
+                itertools.chain(
+                    *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
+                )
+            ),
             flux_lim_fit_centroid=self.flux_limit_centroid,
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
