@@ -8,7 +8,8 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
-from sotrplib.sims.sources.core import SourceSimulation
+from sotrplib.sims.sim_source_generators import SimulatedSourceGenerator
+from sotrplib.sims.source_injector import EmptySourceInjector, SourceInjector
 from sotrplib.source_catalog.database import EmptyMockSourceCatalog, MockDatabase
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
@@ -20,11 +21,12 @@ class PipelineRunner:
     def __init__(
         self,
         maps: list[ProcessableMap],
+        source_simulators: list[SimulatedSourceGenerator] | None,
+        source_injector: SourceInjector | None,
         forced_photometry_catalog: MockDatabase | None,
         source_catalogs: list[MockDatabase] | None,
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
-        source_simulators: list[SourceSimulation] | None,
         forced_photometry: ForcedPhotometryProvider | None,
         source_subtractor: SourceSubtractor | None,
         blind_search: BlindSearchProvider | None,
@@ -32,13 +34,14 @@ class PipelineRunner:
         outputs: list[SourceOutput] | None,
     ):
         self.maps = maps
+        self.source_simulators = source_simulators or []
+        self.source_injector = source_injector or EmptySourceInjector()
         self.forced_photometry_catalog = (
             forced_photometry_catalog or EmptyMockSourceCatalog()
         )
         self.source_catalogs = source_catalogs or []
         self.preprocessors = preprocessors or []
         self.postprocessors = postprocessors or []
-        self.source_simulators = source_simulators or []
         self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()

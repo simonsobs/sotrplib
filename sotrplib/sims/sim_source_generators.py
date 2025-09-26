@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.source_catalog.core import (
     CrossMatch,
@@ -48,12 +50,14 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         min_flux: u.Quantity,
         max_flux: u.Quantity,
         number: int,
-        catalog_fraction: 1.0,
+        catalog_fraction: float = 1.0,
+        log: FilteringBoundLogger | None = None,
     ):
         self.min_flux = min_flux.to(u.Jy)
         self.max_flux = max_flux.to(u.Jy)
         self.number = number
         self.catalog_fraction = catalog_fraction
+        self.log = log or get_logger()
 
     def generate(self, box: tuple[SkyCoord] | None = None):
         if box is None:
@@ -62,11 +66,15 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
+        log = self.log.bind(box=box)
+
         # Potential issue with this setup is that you've got overlapping sources..?
         # But that's something we should probably handle anyway...
         # Another issue is that we're not actually generating sources on the
         # sphere, but that is not critical.
         base = random.randint(0, 100000)
+
+        log = log.bind(base_id=base)
 
         sources = [
             RegisteredSource(
@@ -90,6 +98,8 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
             for i in range(self.number)
         ]
 
+        log = log.bind(n_sources=len(sources))
+
         catalog = RegisteredSourceCatalog(
             sources=sources[: int(self.number * self.catalog_fraction)]
         )
@@ -97,6 +107,8 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
             FixedSimulatedSource(position=SkyCoord(ra=x.ra, dec=x.dec), flux=x.flux)
             for x in sources
         ]
+
+        log.info("source_generation.fixed.complete")
 
         return simulated_sources, catalog
 
@@ -111,7 +123,8 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         peak_amplitude_minimum: u.Quantity,
         peak_amplitude_maximum: u.Quantity,
         number: int,
-        catalog_fraction: 1.0,
+        catalog_fraction: float = 1.0,
+        log: FilteringBoundLogger | None = None,
     ):
         self.flare_earliest_time = flare_earliest_time
         self.flare_latest_time = flare_latest_time
@@ -121,6 +134,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         self.peak_amplitude_maximum = peak_amplitude_maximum.to(u.Jy)
         self.number = number
         self.catalog_fraction = catalog_fraction
+        self.log = log or get_logger()
 
     def generate(self, box: tuple[SkyCoord] | None = None):
         if box is None:
@@ -129,7 +143,11 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
+        log = self.log.bind(box=box)
+
         base = random.randint(0, 100000)
+
+        log = log.bind(base_id=base)
 
         def random_datetime(start, end):
             """Generate a random datetime between `start` and `end`"""
@@ -175,6 +193,12 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             for i in range(self.number)
         ]
 
+        log = log.bind(
+            n_sources=len(sources),
+            earliest_flare=min(sources, key=lambda x: x.peak_time).peak_time,
+            latest_flare=max(sources, key=lambda x: x.peak_time).peak_time,
+        )
+
         catalog = RegisteredSourceCatalog(
             sources=sources[: int(self.number * self.catalog_fraction)]
         )
@@ -191,5 +215,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             )
             for x in sources
         ]
+
+        log.info("source_simulation.gaussian.complete")
 
         return simulated_sources, catalog

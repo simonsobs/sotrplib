@@ -8,7 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sotrplib.config.source_catalog import (
     AllSourceCatalogConfigTypes,
 )
-from sotrplib.config.source_simulation import AllSourceSimulationConfigTypes
 from sotrplib.handlers.basic import PipelineRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
@@ -18,6 +17,8 @@ from .outputs import AllOutputConfigTypes
 from .postprocessors import AllPostprocessorConfigTypes
 from .preprocessors import AllPreprocessorConfigTypes
 from .sifter import AllSifterConfigTypes, EmptySifterConfig
+from .source_injector import EmptySourceInjectorConfig
+from .source_simulation import AllSourceSimulationConfigTypes
 from .source_subtractor import (
     AllSourceSubtractorConfigTypes,
     EmptySourceSubtractorConfig,
@@ -32,6 +33,14 @@ class Settings(BaseSettings):
     maps: list[AllMapConfigTypes] = []
     "Input maps"
 
+    source_simulators: list[AllSourceSimulationConfigTypes] = []
+    "Any source simulators to add sources to the map"
+
+    source_injector: AllSourceSimulationConfigTypes = Field(
+        default_factory=EmptySourceInjectorConfig
+    )
+    "Source injector to use for adding simulated sources to maps"
+
     source_catalogs: list[AllSourceCatalogConfigTypes] = []
     "Source catalogs to use"
 
@@ -40,9 +49,6 @@ class Settings(BaseSettings):
 
     postprocessors: list[AllPostprocessorConfigTypes] = []
     "Map post-processors"
-
-    source_simulators: list[AllSourceSimulationConfigTypes] = []
-    "Any source simulators to add sources to the map"
 
     forced_photometry: AllForcedPhotometryConfigTypes = Field(
         default_factory=EmptyPhotometryConfig
@@ -79,15 +85,16 @@ class Settings(BaseSettings):
 
         contents = {
             "maps": [x.to_map(log=log) for x in self.maps],
+            "source_simulators": [
+                x.to_simulator(log=log) for x in self.source_simulators
+            ],
+            "source_injector": self.source_injector.to_injector(log=log),
             "source_catalogs": [
                 x.to_source_catalog(log=log) for x in self.source_catalogs
             ],
             "preprocessors": [x.to_preprocessor(log=log) for x in self.preprocessors],
             "postprocessors": [
                 x.to_postprocessor(log=log) for x in self.postprocessors
-            ],
-            "source_simulators": [
-                x.to_simulator(log=log) for x in self.source_simulators
             ],
             "forced_photometry": self.forced_photometry.to_forced_photometry(log=log),
             "source_subtractor": self.source_subtractor.to_source_subtractor(log=log),

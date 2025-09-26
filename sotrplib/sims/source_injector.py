@@ -11,6 +11,8 @@ from astropy import units as u
 from astropy.table import Table
 from photutils.psf import GaussianPSF
 from photutils.psf.simulation import make_model_image
+from structlog import get_logger
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sims.sources.core import ProcessableMapWithSimulatedSources
@@ -28,6 +30,15 @@ class SourceInjector(ABC):
         return
 
 
+class EmptySourceInjector(SourceInjector):
+    def inject(
+        self,
+        input_map: ProcessableMap,
+        simulated_sources: list[SimulatedSource],
+    ) -> ProcessableMapWithSimulatedSources:
+        return input_map
+
+
 class PhotutilsSourceInjector(SourceInjector):
     def __init__(
         self,
@@ -36,12 +47,14 @@ class PhotutilsSourceInjector(SourceInjector):
         gauss_theta_max: u.Quantity[u.deg] = 90 * u.deg,
         fwhm_uncertainty_fraction: float = 0.01,
         progress_bar: bool = False,
+        log: FilteringBoundLogger | None = None,
     ):
         self.gauss_fwhm = gauss_fwhm
         self.gauss_theta_min = gauss_theta_min
         self.gauss_theta_max = gauss_theta_max
         self.fwhm_uncertainty_fraction = fwhm_uncertainty_fraction
         self.progress_bar = progress_bar
+        self.log = log or get_logger()
 
         return
 
@@ -52,6 +65,8 @@ class PhotutilsSourceInjector(SourceInjector):
     ) -> ProcessableMapWithSimulatedSources:
         # Create the photutils source injection table and 'model image' - the
         # template to add to the map.
+
+        log = self.log.bind(num_simulated_sources=len(simulated_sources))
 
         # First, filter the sources for those that lie on top of a pixel with
         # a valid 'hit'.
@@ -70,6 +85,8 @@ class PhotutilsSourceInjector(SourceInjector):
 
         valid_sources = list(filter(source_in_map, simulated_sources))
 
+        log = log.bind(num_valid_sources=len(valid_sources))
+
         shape = input_map.flux.shape
         model = GaussianPSF()
 
@@ -78,6 +95,10 @@ class PhotutilsSourceInjector(SourceInjector):
         max_fwhm = (1.0 + self.fwhm_uncertainty_fraction) * gauss_fwhm_pixels
         theta_min = self.gauss_theta_min.to_value(u.deg)
         theta_max = self.gauss_theta_max.to_value(u.deg)
+
+        log = log.bind(
+            gauss_fwhm_pixels=gauss_fwhm_pixels, min_fwhm=min_fwhm, max_fwhm=max_fwhm
+        )
 
         table_data = {
             "x_0": [source_to_array_index(x)[1] for x in valid_sources],
@@ -97,6 +118,8 @@ class PhotutilsSourceInjector(SourceInjector):
             progress_bar=self.progress_bar,
         )
 
+        log.info("source_injection.photutils.model_image_complete")
+
         # Unit conversion: photituls distributes the flux over the solid angle
         # so this map should be the intensity map in Jy/sr.
 
@@ -104,12 +127,16 @@ class PhotutilsSourceInjector(SourceInjector):
         omega_b = (math.pi / (4.0 * math.log(2.0))) * self.gauss_fwhm * self.gauss_fwhm
         omega_b /= input_map.map_resolution**2
 
+        log = log.bind(omega_b=omega_b)
+
         simulated_source_flux_map = model_image * omega_b
 
         new_flux = input_map.flux + simulated_source_flux_map
 
         map_noise = input_map.flux / input_map.snr
         new_snr = new_flux / map_noise
+
+        log.info("source_injection.photutils.complete")
 
         return ProcessableMapWithSimulatedSources(
             flux=new_flux, snr=new_snr, time=input_map.time_mean, original_map=input_map
