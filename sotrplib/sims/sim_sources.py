@@ -1,7 +1,6 @@
 import math
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Literal
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -37,15 +36,13 @@ class FixedSimulatedSource(SimulatedSource):
         return self._flux
 
 
-class TransientSimulatedSource(SimulatedSource):
+class GaussianTransientSimulatedSource(SimulatedSource):
     def __init__(
         self,
         position: SkyCoord,
         peak_time: datetime,
         flare_width: timedelta,
-        flare_morph: Literal["Gaussian"] = "Gaussian",
         peak_amplitude: u.Quantity = 0.0 * u.Jy,
-        beam_parameters: dict | None = None,
     ):
         """
         Initialize a simulated source.
@@ -61,9 +58,7 @@ class TransientSimulatedSource(SimulatedSource):
         self._position = position
         self.peak_time = peak_time
         self.flare_width = flare_width
-        self.flare_morph = flare_morph
         self.peak_amplitude = peak_amplitude
-        self.beam_parameters = beam_parameters
 
         return
 
@@ -71,16 +66,12 @@ class TransientSimulatedSource(SimulatedSource):
         return self._position
 
     def flux(self, time: datetime) -> u.Quantity:
-        match self.flare_morph:
-            case "Gaussian":
-                delta_time = time - self.peak_time
+        delta_time = time - self.peak_time
 
-                sigma = self.flare_fwhm_s / (2.0 * math.sqrt(2.0 * math.log(2.0)))
-                exponent = delta_time / self.flare_width
+        sigma = self.flare_fwhm_s / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+        exponent = delta_time / self.flare_width
 
-                return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
-            case _:
-                raise ValueError("Only Gaussian flares are supported")
+        return self.peak_amplitude * sigma * math.exp(-0.5 * exponent * exponent)
 
 
 def generate_transients(
