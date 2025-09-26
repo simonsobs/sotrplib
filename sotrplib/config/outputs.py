@@ -5,7 +5,12 @@ from typing import Literal
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.outputs.core import JSONSerializer, PickleSerializer, SourceOutput
+from sotrplib.outputs.core import (
+    CutoutImageOutput,
+    JSONSerializer,
+    PickleSerializer,
+    SourceOutput,
+)
 
 
 class OutputConfig(BaseModel, ABC):
@@ -32,4 +37,12 @@ class JSONOutputConfig(OutputConfig):
         return JSONSerializer(directory=self.directory)
 
 
-AllOutputConfigTypes = PickleOutputConfig
+class CutoutImageOutputConfig(OutputConfig):
+    output_type: Literal["cutout"] = "cutout"
+    directory: Path
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> CutoutImageOutput:
+        return CutoutImageOutput(directory=self.directory)
+
+
+AllOutputConfigTypes = PickleOutputConfig | JSONOutputConfig | CutoutImageOutputConfig

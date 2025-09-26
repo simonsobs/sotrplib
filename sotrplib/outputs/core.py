@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sources.sources import MeasuredSource
@@ -88,5 +90,44 @@ class PickleSerializer(SourceOutput):
                 },
                 file=handle,
             )
+
+        return
+
+
+class CutoutImageOutput(SourceOutput):
+    """
+    Output cutout images around each source candidate.
+    """
+
+    directory: Path
+
+    def __init__(self, directory: Path):
+        self.directory = directory
+
+    def output(
+        self,
+        forced_photometry_candidates: list[MeasuredSource],
+        sifter_result: SifterResult,
+        input_map: ProcessableMap,
+    ):
+        for source in forced_photometry_candidates:
+            cutout = source.thumbnail
+
+            if cutout is None:
+                continue
+
+            filename = self.directory / f"forced_photometry_{source.source_id}.png"
+            plt.imsave(fname=filename, arr=cutout, cmap="viridis")
+
+        for source in (
+            sifter_result.source_candidates + sifter_result.transient_candidates
+        ):
+            cutout = source.thumbnail
+
+            if cutout is None:
+                continue
+
+            filename = self.directory / f"blind_search_{source.source_id}.png"
+            plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 
         return

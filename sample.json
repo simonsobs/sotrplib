@@ -32,6 +32,10 @@
     },
     "outputs": [
         {
+            "output_type": "cutout",
+            "directory": "."
+        },
+        {
             "output_type": "pickle",
             "directory": "."
         }
