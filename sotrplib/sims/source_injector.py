@@ -80,8 +80,8 @@ class PhotutilsSourceInjector(SourceInjector):
         theta_max = self.gauss_theta_max.to_value(u.deg)
 
         table_data = {
-            "x_0": [source_to_array_index(x)[0] for x in valid_sources],
-            "y_0": [source_to_array_index(x)[1] for x in valid_sources],
+            "x_0": [source_to_array_index(x)[1] for x in valid_sources],
+            "y_0": [source_to_array_index(x)[0] for x in valid_sources],
             "flux": [x.flux(time=input_map.observation_time) for x in valid_sources],
             "x_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
             "y_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],

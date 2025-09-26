@@ -144,10 +144,10 @@ def test_source_injection_into_map():
     # Grab the geometry -- TODO actually have this as a property
     # of maps...
     sp = base_map.simulation_parameters
-    left = sp.center_ra - sp.width_ra * 0.5
-    right = sp.center_ra + sp.width_ra * 0.5
-    bottom = sp.center_dec - sp.width_dec * 0.5
-    top = sp.center_dec + sp.width_dec * 0.5
+    left = sp.center_ra - sp.width_ra
+    right = sp.center_ra + sp.width_ra
+    bottom = sp.center_dec - sp.width_dec
+    top = sp.center_dec + sp.width_dec
 
     box = [
         SkyCoord(ra=left, dec=bottom),
@@ -164,6 +164,15 @@ def test_source_injection_into_map():
     assert new_map.original_map == base_map
 
     assert (new_map.flux != base_map.flux).any()
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(2)
+
+    ax[0].imshow(new_map.flux, vmin=0.0, vmax=0.1)
+    ax[1].imshow(base_map.flux, vmin=0.0, vmax=0.1)
+
+    fig.savefig("test.png")
 
 
 def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
