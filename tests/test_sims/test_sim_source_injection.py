@@ -6,7 +6,13 @@ from astropy.coordinates import SkyCoord
 from pixell import enmap
 from structlog import get_logger
 
-from sotrplib.sims import sim_maps, sim_source_generators, sim_sources
+from sotrplib.sims import (
+    maps,
+    sim_maps,
+    sim_source_generators,
+    sim_sources,
+    source_injector,
+)
 
 log = get_logger()
 
@@ -109,6 +115,55 @@ def test_gaussian_source_generation():
         assert left < source.position(time).ra < right
         assert bottom < source.position(time).dec < top
         assert shortest < source.flare_width < longest
+
+
+def test_source_injection_into_map():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(10.0, "Jy")
+    number = 32
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=min_flux,
+        max_flux=max_flux,
+        number=number,
+        catalog_fraction=0.5,
+    )
+
+    start_obs = datetime.datetime.now() - datetime.timedelta(hours=2)
+    end_obs = datetime.datetime.now()
+
+    base_map = maps.SimulatedMap(
+        observation_start=start_obs,
+        observation_end=end_obs,
+        frequency="f090",
+        array="pa5",
+    )
+
+    base_map.build()
+
+    # Grab the geometry -- TODO actually have this as a property
+    # of maps...
+    sp = base_map.simulation_parameters
+    left = sp.center_ra - sp.width_ra * 0.5
+    right = sp.center_ra + sp.width_ra * 0.5
+    bottom = sp.center_dec - sp.width_dec * 0.5
+    top = sp.center_dec + sp.width_dec * 0.5
+
+    box = [
+        SkyCoord(ra=left, dec=bottom),
+        SkyCoord(ra=right, dec=top),
+    ]
+
+    injector = source_injector.PhotutilsSourceInjector()
+    sources, catalog = generator.generate(box=box)
+    new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+
+    new_map.finalize()
+
+    assert new_map != base_map
+    assert new_map.original_map == base_map
+
+    assert (new_map.flux != base_map.flux).any()
 
 
 def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):

@@ -28,7 +28,7 @@ class SourceInjector(ABC):
         return
 
 
-class SimpleSourceInjector(SourceInjector):
+class PhotutilsSourceInjector(SourceInjector):
     def __init__(
         self,
         gauss_fwhm: u.Quantity = 2.2 * u.arcmin,
@@ -68,7 +68,7 @@ class SimpleSourceInjector(SourceInjector):
             except IndexError:
                 return False
 
-        valid_sources = filter(source_in_map, simulated_sources)
+        valid_sources = list(filter(source_in_map, simulated_sources))
 
         shape = input_map.flux.shape
         model = GaussianPSF()
@@ -79,18 +79,16 @@ class SimpleSourceInjector(SourceInjector):
         theta_min = self.gauss_theta_min.to_value(u.deg)
         theta_max = self.gauss_theta_max.to_value(u.deg)
 
-        params_table = Table(
-            data={
-                "x_0": [source_to_array_index(x)[0] for x in valid_sources],
-                "y_0": [source_to_array_index(x)[1] for x in valid_sources],
-                "flux": [
-                    x.flux(time=input_map.observation_time) for x in valid_sources
-                ],
-                "x_fwhm": [random.random(min_fwhm, max_fwhm) for _ in valid_sources],
-                "y_fwhm": [random.random(min_fwhm, max_fwhm) for _ in valid_sources],
-                "theta": [random.random(theta_min, theta_max) for _ in valid_sources],
-            }
-        )
+        table_data = {
+            "x_0": [source_to_array_index(x)[0] for x in valid_sources],
+            "y_0": [source_to_array_index(x)[1] for x in valid_sources],
+            "flux": [x.flux(time=input_map.observation_time) for x in valid_sources],
+            "x_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
+            "y_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
+            "theta": [random.uniform(theta_min, theta_max) for _ in valid_sources],
+        }
+
+        params_table = Table(data=table_data)
 
         model_image = make_model_image(
             shape=shape,
@@ -110,7 +108,7 @@ class SimpleSourceInjector(SourceInjector):
 
         new_flux = input_map.flux + simulated_source_flux_map
 
-        map_noise = input_map.snr / input_map.flux - 1.0
+        map_noise = input_map.flux / input_map.snr
         new_snr = new_flux / map_noise
 
         return ProcessableMapWithSimulatedSources(
