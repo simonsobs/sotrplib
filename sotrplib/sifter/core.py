@@ -2,6 +2,7 @@
 The core dependency for the sifter
 """
 
+import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -14,7 +15,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.sources.sources import CrossMatch, MeasuredSource, RegisteredSource
+from sotrplib.sources.sources import CrossMatch, MeasuredSource
 
 
 @dataclass
@@ -29,6 +30,7 @@ class SiftingProvider(ABC):
     def sift(
         self,
         sources: list[MeasuredSource],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         raise NotImplementedError
@@ -38,6 +40,7 @@ class EmptySifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         return SifterResult(
@@ -46,8 +49,6 @@ class EmptySifter(SiftingProvider):
 
 
 class SimpleCatalogSifter(SiftingProvider):
-    catalog: SourceCatalog
-    "The source catalog to sift against"
     radius: u.Quantity
     "Radius to search within"
     log: FilteringBoundLogger
@@ -57,12 +58,10 @@ class SimpleCatalogSifter(SiftingProvider):
 
     def __init__(
         self,
-        catalog: SourceCatalog,
         radius: u.Quantity = u.Quantity(2.0, "arcmin"),
         method: Literal["closest", "all"] = "all",
         log: FilteringBoundLogger | None = None,
     ):
-        self.catalog = catalog
         self.radius = radius
         self.method = method
         self.log = log or structlog.get_logger()
@@ -70,6 +69,7 @@ class SimpleCatalogSifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         source_candidates = []
@@ -77,8 +77,17 @@ class SimpleCatalogSifter(SiftingProvider):
 
         for i, source in enumerate(sources):
             log = self.log.bind(source=i, ra=source.ra, dec=source.dec)
-            matches = self.catalog.crossmatch(
-                ra=source.ra, dec=source.dec, radius=self.radius, method=self.method
+
+            matches = itertools.chain(
+                *[
+                    c.crossmatch(
+                        ra=source.ra,
+                        dec=source.dec,
+                        radius=self.radius,
+                        method=self.method,
+                    )
+                    for c in catalogs
+                ]
             )
 
             if matches:
@@ -102,8 +111,6 @@ class SimpleCatalogSifter(SiftingProvider):
 
 
 class DefaultSifter(SiftingProvider):
-    catalog_sources: list[RegisteredSource]
-    "the list of sources to match against with this sifter"
     radius_1Jy: AstroPydanticQuantity[u.Jy]
     "matching radius for a 1Jy source, arcmin"
     min_match_radius: AstroPydanticQuantity[u.arcmin]
@@ -127,7 +134,6 @@ class DefaultSifter(SiftingProvider):
 
     def __init__(
         self,
-        catalog_sources: list[RegisteredSource],
         radius_1Jy: u.Quantity = u.Quantity(30.0, "arcmin"),
         min_match_radius: u.Quantity = u.Quantity(1.5, "arcmin"),
         ra_jitter: u.Quantity = u.Quantity(0.0, "arcmin"),
@@ -139,7 +145,6 @@ class DefaultSifter(SiftingProvider):
         log: FilteringBoundLogger | None = None,
         debug: bool = False,
     ):
-        self.catalog_sources = catalog_sources
         self.radius_1Jy = radius_1Jy
         self.min_match_radius = min_match_radius
         self.ra_jitter = ra_jitter
@@ -163,6 +168,7 @@ class DefaultSifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         from .crossmatch import sift
@@ -172,7 +178,9 @@ class DefaultSifter(SiftingProvider):
 
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
-            catalog_sources=self.catalog_sources,
+            catalog_sources=itertools.chain(
+                *[c.sources_in_box(box=input_map.bbox) for c in catalogs]
+            ),
             input_map=input_map,
             radius1Jy=self.radius_1Jy,
             min_match_radius=self.min_match_radius,
