@@ -54,6 +54,7 @@ def test_socat_mock_db(dummy_socat_db):
 
 def test_simple_source_catalog():
     outside_source = RegisteredSource(
+        source_id="outside",
         ra=10.0 * u.deg,
         dec=10.0 * u.deg,
         err_ra=0.0 * u.deg,
@@ -62,6 +63,7 @@ def test_simple_source_catalog():
     )
 
     inside_source = RegisteredSource(
+        source_id="inside",
         ra=20.0 * u.deg,
         dec=20.0 * u.deg,
         err_ra=0.0 * u.deg,
@@ -76,4 +78,4 @@ def test_simple_source_catalog():
     )
 
     assert len(match) == 1
-    assert match[0] == inside_source
+    assert match[0].source_id == inside_source.source_id

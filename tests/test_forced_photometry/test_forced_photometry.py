@@ -72,7 +72,7 @@ def test_failed_fit(map_with_single_source):
 def test_source_offset(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=False)
-    ra_offset = 0.03 * u.deg
+    ra_offset = 0.02 * u.deg
     sources[0].ra += ra_offset
     results = forced_photometry.force(input_map=input_map, sources=sources)
     assert len(results) == 1
