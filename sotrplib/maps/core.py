@@ -9,6 +9,7 @@ from pathlib import Path
 import astropy.units as u
 import numpy as np
 import structlog
+from astropy.coordinates import SkyCoord
 from astropy.units import Unit
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
@@ -170,6 +171,32 @@ class ProcessableMap(ABC):
                     break
 
         return self.map_resolution
+
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        """
+        if self.box is not None:
+            return self.box
+        else:
+            for attribute in ["flux", "snr", "rho", "kappa"]:
+                if x := getattr(self, attribute, None):
+                    shape = x.shape[-2:]
+                    wcs = x.wcs
+
+                    top_left = enmap.pix2sky(shape, [0, 0], wcs)
+                    bottom_right = enmap.pix2sky(shape, [shape[0], shape[1]], wcs)
+                    self.box = (
+                        SkyCoord(ra=top_left[0] * u.rad, dec=top_left[1] * u.rad),
+                        SkyCoord(
+                            ra=bottom_right[0] * u.rad, dec=bottom_right[1] * u.rad
+                        ),
+                    )
+
+                    break
+
+        return self.box
 
     @abstractmethod
     def finalize(self):

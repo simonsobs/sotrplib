@@ -3,6 +3,9 @@ A basic pipeline handler. Takes all the components and runs
 them in the pre-specified order.
 """
 
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
@@ -57,25 +60,39 @@ class PipelineRunner:
             for preprocessor in self.preprocessors:
                 preprocessor.preprocess(input_map=input_map)
 
+        # Generate sources based upon maximal bounding box of all maps
+        bbox = [
+            SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+            SkyCoord(ra=360.0 * u.deg, dec=90.0 * u.deg),
+        ]
+
+        for input_map in self.maps:
+            map_bbox = input_map.bbox
+            bbox[0].ra = min(bbox[0].ra, map_bbox[0].ra)
+            bbox[0].dec = min(bbox[0].dec, map_bbox[0].dec)
+            bbox[1].ra = max(bbox[1].ra, map_bbox[1].ra)
+            bbox[1].dec = max(bbox[1].dec, map_bbox[1].dec)
+
+        all_simulated_sources = []
+
+        for simulator in self.source_simulators:
+            simulated_sources, catalog = simulator.generate_sources(bbox=bbox)
+
+            all_simulated_sources.extend(simulated_sources)
+            self.source_catalogs.extend(catalog)
+
+        for input_map in self.maps:
+            input_map = self.source_injector.inject(
+                input_map=input_map, simulated_sources=all_simulated_sources
+            )
+
             input_map.finalize()
 
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
-            crossmatch_catalog = []
-            for c in self.source_catalogs:
-                crossmatch_catalog.extend(c.cat.get_sources_in_map(input_map=input_map))
-
-            for_forced_photometry = (
-                self.forced_photometry_catalog.cat.get_sources_in_map(input_map)
-            )
-
-            for simulator in self.source_simulators:
-                input_map, additional_sources = simulator.simulate(input_map=input_map)
-                for_forced_photometry.extend(additional_sources)
-
             forced_photometry_candidates = self.forced_photometry.force(
-                input_map=input_map, sources=for_forced_photometry
+                input_map=input_map, catalogs=self.source_catalogs
             )
 
             source_subtracted_map = self.source_subtractor.subtract(
@@ -84,9 +101,8 @@ class PipelineRunner:
 
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
-            self.sifter.catalog_sources = crossmatch_catalog
             sifter_result = self.sifter.sift(
-                sources=blind_sources, input_map=source_subtracted_map
+                catalogs=self.source_catalogs, input_map=source_subtracted_map
             )
 
             for output in self.outputs:
