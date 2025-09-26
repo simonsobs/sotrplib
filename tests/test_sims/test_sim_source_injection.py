@@ -6,7 +6,7 @@ from astropy.coordinates import SkyCoord
 from pixell import enmap
 from structlog import get_logger
 
-from sotrplib.sims import sim_maps, sim_sources
+from sotrplib.sims import sim_maps, sim_source_generators, sim_sources
 
 log = get_logger()
 
@@ -39,6 +39,76 @@ def test_gaussian_source_type():
     assert source.position(time=time) == position
     assert source.position(time=time - width) == position
     assert source.position(time=time + width) == position
+
+
+def test_fixed_source_generation():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(10.0, "Jy")
+    left = 10.0 * u.deg
+    right = 20.0 * u.deg
+    bottom = 0.0 * u.deg
+    top = 10.0 * u.deg
+    time = datetime.datetime.now()
+    number = 32
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=min_flux,
+        max_flux=max_flux,
+        number=number,
+        catalog_fraction=0.5,
+    )
+
+    sources, cat = generator.generate(
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+
+    assert len(sources) == number
+    assert len(cat.sources) == int(number * 0.5)
+
+    for source in sources:
+        assert min_flux < source.flux(time) < max_flux
+        assert left < source.position(time).ra < right
+        assert bottom < source.position(time).dec < top
+
+
+def test_gaussian_source_generation():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(10.0, "Jy")
+    left = 10.0 * u.deg
+    right = 20.0 * u.deg
+    bottom = 0.0 * u.deg
+    top = 10.0 * u.deg
+    time = datetime.datetime.now()
+    dt = datetime.timedelta(hours=2)
+    earliest = time - dt
+    latest = time + dt
+    shortest = datetime.timedelta(hours=1.0)
+    longest = datetime.timedelta(hours=2.0)
+    number = 32
+
+    generator = sim_source_generators.GaussianTransientSourceGenerator(
+        flare_earliest_time=earliest,
+        flare_latest_time=latest,
+        flare_width_shortest=shortest,
+        flare_width_longest=longest,
+        peak_amplitude_minimum=min_flux,
+        peak_amplitude_maximum=max_flux,
+        number=number,
+        catalog_fraction=0.5,
+    )
+
+    sources, cat = generator.generate(
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+
+    assert len(sources) == number
+    assert len(cat.sources) == int(number * 0.5)
+
+    for source in sources:
+        assert min_flux < source.peak_amplitude < max_flux
+        assert left < source.position(time).ra < right
+        assert bottom < source.position(time).dec < top
+        assert shortest < source.flare_width < longest
 
 
 def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):

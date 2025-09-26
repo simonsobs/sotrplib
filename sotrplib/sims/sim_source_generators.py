@@ -70,14 +70,14 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 
         sources = [
             RegisteredSource(
-                ra=random.random(box[0].ra.to_value("deg"), box[1].ra.to_value("deg"))
+                ra=random.uniform(box[0].ra.to_value("deg"), box[1].ra.to_value("deg"))
                 * u.deg,
-                dec=random.random(
+                dec=random.uniform(
                     box[0].dec.to_value("deg"), box[1].dec.to_value("deg")
                 )
                 * u.deg,
-                frequency="f090",
-                flux=random.random(
+                frequency=90.0 * u.GHz,
+                flux=random.uniform(
                     self.min_flux.to_value("Jy"), self.max_flux.to_value("Jy")
                 )
                 * u.Jy,
@@ -85,7 +85,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
-                err_flux=0.0 * u.deg,
+                err_flux=0.0 * u.Jy,
             )
             for i in range(self.number)
         ]
@@ -147,14 +147,14 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
 
         sources = [
             RegisteredSource(
-                ra=random.random(box[0].ra.to_value("deg"), box[1].ra.to_value("deg"))
+                ra=random.uniform(box[0].ra.to_value("deg"), box[1].ra.to_value("deg"))
                 * u.deg,
-                dec=random.random(
+                dec=random.uniform(
                     box[0].dec.to_value("deg"), box[1].dec.to_value("deg")
                 )
                 * u.deg,
-                frequency="f090",
-                flux=random.random(
+                frequency=90.0 * u.GHz,
+                flux=random.uniform(
                     self.peak_amplitude_minimum.to_value("Jy"),
                     self.peak_amplitude_maximum.to_value("Jy"),
                 )
@@ -163,7 +163,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
-                err_flux=0.0 * u.deg,
+                err_flux=0.0 * u.Jy,
                 crossmatches=[
                     CrossMatch(
                         source_id=f"sim-{base + i:07d}",
