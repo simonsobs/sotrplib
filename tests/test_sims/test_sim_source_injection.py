@@ -165,15 +165,6 @@ def test_source_injection_into_map():
 
     assert (new_map.flux != base_map.flux).any()
 
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(2)
-
-    ax[0].imshow(new_map.flux, vmin=0.0, vmax=0.1)
-    ax[1].imshow(base_map.flux, vmin=0.0, vmax=0.1)
-
-    fig.savefig("test.png")
-
 
 def test_photutils_sim_n_sources_output_a(sim_map_params, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
