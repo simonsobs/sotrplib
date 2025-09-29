@@ -154,7 +154,6 @@ def test_source_injection_into_map():
     injector = source_injector.PhotutilsSourceInjector()
     sources, catalog = generator.generate(box=box)
     new_map = injector.inject(input_map=base_map, simulated_sources=sources)
-
     new_map.finalize()
 
     assert new_map != base_map

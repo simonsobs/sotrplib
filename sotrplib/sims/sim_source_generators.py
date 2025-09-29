@@ -62,7 +62,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
     def generate(self, box: tuple[SkyCoord] | None = None):
         if box is None:
             box = [
-                SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
+                SkyCoord(ra=0.01 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 

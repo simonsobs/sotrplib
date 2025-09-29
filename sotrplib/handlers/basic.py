@@ -75,11 +75,11 @@ class PipelineRunner:
             self.source_catalogs.append(catalog)
 
         for input_map in self.maps:
+            input_map.finalize()
+
             input_map = self.source_injector.inject(
                 input_map=input_map, simulated_sources=all_simulated_sources
             )
-
-            input_map.finalize()
 
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)

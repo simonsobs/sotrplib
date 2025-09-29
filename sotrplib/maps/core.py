@@ -201,8 +201,8 @@ class ProcessableMap(ABC):
     @abstractmethod
     def finalize(self):
         """
-        Called after source injection to ensure that the snr, flux, and time maps
-        are available.
+        Called just before source injection to ensure that the snr, flux, and
+        time maps are available.
         """
         del self.rho
         del self.kappa
