@@ -85,7 +85,7 @@ def test_source_offset(map_with_single_source):
     new_sources = [x.model_copy() for x in sources]
     new_sources[0].ra += ra_offset
 
-    catalog = RegisteredSourceCatalog(sources=sources)
+    catalog = RegisteredSourceCatalog(sources=new_sources)
 
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
     assert len(results) == 1

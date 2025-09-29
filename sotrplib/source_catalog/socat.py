@@ -52,7 +52,7 @@ class SOCatWrapper:
                     probability=1.0,
                     distance=0.0 * u.deg,
                     # TBD read this from SOCat
-                    frequency=90.0 * u.Ghz,
+                    frequency=90.0 * u.GHz,
                     catalog_name="mock",
                     catalog_idx=socat_source.id,
                 )
@@ -177,7 +177,6 @@ class SOCatFITSCatalog(SourceCatalog):
         """
 
         close_sources = self.sources_in_box(
-            self,
             [
                 SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
                 SkyCoord(ra=ra + 2.0 * radius, dec=dec + 2.0 * radius),
