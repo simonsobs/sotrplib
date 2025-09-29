@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.source_catalog.database import (
+    EmptyMockSourceCatalog,
     MockDatabase,
     MockSourceCatalog,
 )
@@ -29,8 +30,8 @@ class EmptySourceCatalogConfig(SourceCatalogConfig):
 
     def to_source_catalog(
         self, log: FilteringBoundLogger | None = None
-    ) -> MockDatabase:
-        return MockDatabase(log=log)
+    ) -> EmptyMockSourceCatalog:
+        return EmptyMockSourceCatalog(log=log)
 
 
 class MockSourceCatalogConfig(SourceCatalogConfig):
