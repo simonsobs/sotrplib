@@ -32,3 +32,8 @@ def main():
     config = Settings.from_file(args.config)
     pipeline = config.to_basic()
     pipeline.run()
+
+
+def prefect_flow():
+    from sotrplib.handlers.prefect import analyze_from_configuration
+    analyze_from_configuration.serve()

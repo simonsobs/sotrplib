@@ -37,7 +37,7 @@ dev = [
 
 [project.scripts]
 "sotrp" = "sotrplib.cli:main"
-"sotrp-prefect" = "sotrplib.handlers.prefect:basic"
+"sotrp-prefect" = "sotrplib.cli:prefect_flow"
 
 [tool.ruff.lint]
 extend-select = ["I"]
