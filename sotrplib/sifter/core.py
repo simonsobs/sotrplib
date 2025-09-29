@@ -180,8 +180,10 @@ class DefaultSifter(SiftingProvider):
 
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
-            catalog_sources=itertools.chain(
-                *[c.sources_in_box(box=input_map.bbox) for c in catalogs]
+            catalog_sources=list(
+                itertools.chain(
+                    *[c.sources_in_box(box=input_map.bbox) for c in catalogs]
+                )
             ),
             input_map=input_map,
             radius1Jy=self.radius_1Jy,

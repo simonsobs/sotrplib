@@ -46,15 +46,15 @@ def test_basic_pipeline_scipy(
 
     runner = PipelineRunner(
         maps=[new_map, new_map],
-        forced_photometry_catalog=None,
         source_catalogs=[],
+        source_injector=None,
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
         forced_photometry=Scipy2DGaussianFitter(sources=sources),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
-        sifter=DefaultSifter(catalog_sources=sources),
+        sifter=DefaultSifter(),
         outputs=[PickleSerializer(directory=tmp_path)],
     )
 
@@ -78,11 +78,14 @@ def test_find_single_source_blind(
 
     # Check we can sift them out!
     sifter = SimpleCatalogSifter(
-        catalog=RegisteredSourceCatalog(sources=sources),
         radius=u.Quantity(30.0, "arcsec"),
     )
 
-    res = sifter.sift(sources=found_sources, input_map=new_map)
+    res = sifter.sift(
+        sources=found_sources,
+        input_map=new_map,
+        catalogs=[RegisteredSourceCatalog(sources=sources)],
+    )
 
     assert len(res.source_candidates) == 1
     assert len(res.transient_candidates) == 0
@@ -105,12 +108,15 @@ def test_find_sources_blind(
 
     # Check we can sift them out!
     sifter = SimpleCatalogSifter(
-        catalog=RegisteredSourceCatalog(sources=sources),
         radius=u.Quantity(0.5, "arcmin"),
         method="closest",
     )
 
-    res = sifter.sift(sources=found_sources, input_map=new_map)
+    res = sifter.sift(
+        sources=found_sources,
+        input_map=new_map,
+        catalogs=[RegisteredSourceCatalog(sources=sources)],
+    )
 
     # Crossmatches should, well, match
     source_ids = sorted([x.source_id for x in sources])
@@ -136,11 +142,13 @@ def test_default_sifter(
     assert len(found_sources) == len(sources)
 
     # Check we can sift them out!
-    sifter = DefaultSifter(
-        catalog_sources=sources,
-    )
+    sifter = DefaultSifter()
 
-    res = sifter.sift(sources=found_sources, input_map=new_map)
+    res = sifter.sift(
+        sources=found_sources,
+        input_map=new_map,
+        catalogs=[RegisteredSourceCatalog(sources=sources)],
+    )
     # Crossmatches should, well, match
     source_ids = sorted([x.source_id for x in sources])
     match_ids = sorted([x.crossmatches[0].source_id for x in res.source_candidates])

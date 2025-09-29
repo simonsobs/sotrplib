@@ -193,12 +193,6 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             for i in range(self.number)
         ]
 
-        log = log.bind(
-            n_sources=len(sources),
-            earliest_flare=min(sources, key=lambda x: x.peak_time).peak_time,
-            latest_flare=max(sources, key=lambda x: x.peak_time).peak_time,
-        )
-
         catalog = RegisteredSourceCatalog(
             sources=sources[: int(self.number * self.catalog_fraction)]
         )
@@ -215,6 +209,12 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             )
             for x in sources
         ]
+
+        log = log.bind(
+            n_simulated_sources=len(simulated_sources),
+            earliest_flare=min(simulated_sources, key=lambda x: x.peak_time).peak_time,
+            latest_flare=max(simulated_sources, key=lambda x: x.peak_time).peak_time,
+        )
 
         log.info("source_simulation.gaussian.complete")
 

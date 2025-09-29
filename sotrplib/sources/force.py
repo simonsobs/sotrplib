@@ -24,7 +24,7 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
     def force(
         self,
         input_map: ProcessableMap,
-        sources: List[RegisteredSource],
+        catalogs: List[SourceCatalog],
     ) -> list[MeasuredSource]:
         return []
 

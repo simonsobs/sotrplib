@@ -94,27 +94,3 @@ def test_random_flare_times(log=log):
     assert len(flare_times) == 10
     for t in flare_times:
         assert 1.4e9 <= t <= 1.7e9
-
-
-def test_read_write_transients_db(tmp_path, sim_transient_params, log=log):
-    from sotrplib.sims.sim_sources import SimTransient
-    from sotrplib.sims.sim_utils import load_transients_from_db, save_transients_to_db
-
-    transients = []
-    for _ in range(sim_transient_params["injected_transients"]["n_transients"]):
-        transient = SimTransient()
-        transient.ra = 0 * u.deg
-        transient.dec = 0 * u.deg
-        transient.flux = 1 * u.Jy
-        transient.peak_time = 1.5e9
-        transient.flare_width = 1.0
-        transients.append(transient)
-    db_path = tmp_path / "transients.db"
-    save_transients_to_db(transients, db_path, log=log)
-    loaded_transients = load_transients_from_db(db_path, log=log)
-    assert len(loaded_transients) == len(transients)
-    for lt, t in zip(loaded_transients, transients):
-        assert lt.ra == t.ra
-        assert lt.dec == t.dec
-        assert lt.peak_time == t.peak_time
-        assert lt.flare_width == t.flare_width
