@@ -11,6 +11,7 @@ from sotrplib.config.source_catalog import (
 )
 from sotrplib.config.source_simulation import AllSourceSimulationConfigTypes
 from sotrplib.handlers.basic import PipelineRunner
+from sotrplib.handlers.prefect import PrefectRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
@@ -111,3 +112,6 @@ class Settings(BaseSettings):
 
     def to_basic(self) -> PipelineRunner:
         return PipelineRunner(**self.to_dependencies())
+
+    def to_prefect(self) -> PrefectRunner:
+        return PrefectRunner(**self.to_dependencies())
