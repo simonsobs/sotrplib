@@ -18,8 +18,8 @@ def test_basic_pipeline_rhokappa(tmp_path, ones_map_set):
     ).to_map()
     runner = PipelineRunner(
         maps=[input_map],
-        forced_photometry_catalog=None,
         source_catalogs=[],
+        source_injector=None,
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
@@ -45,8 +45,8 @@ def test_basic_pipeline_ivar(tmp_path, ones_map_set):
     ).to_map()
     runner = PipelineRunner(
         maps=[input_map],
-        forced_photometry_catalog=None,
         source_catalogs=[],
+        source_injector=None,
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
