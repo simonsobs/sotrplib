@@ -8,20 +8,33 @@
     ],
     "source_simulators": [
         {
-            "simulation_type": "random",
-            "parameters": {
-                "n_sources": 32,
-                "min_flux": "3.0 Jy",
-                "max_flux": "10.0 Jy",
-                "fwhm_uncertainty_frac": 0.0,
-                "fraction_return": 0.5
-            }
+            "simulation_type": "fixed",
+            "number": 32,
+            "min_flux": "3.0 Jy",
+            "max_flux": "10.0 Jy",
+            "catalog_fraction": 0.5
         }
     ],
+    "source_injector": {
+        "injector_type": "photutils"
+    },
     "forced_photometry": {
         "photometry_type": "scipy"
     },
+    "source_subtractor": {
+        "subtractor_type": "photutils"
+    },
+    "blind_search": {
+        "search_type": "photutils"
+    },
+    "sifter": {
+        "sifter_type": "simple"
+    },
     "outputs": [
+        {
+            "output_type": "cutout",
+            "directory": "."
+        },
         {
             "output_type": "pickle",
             "directory": "."

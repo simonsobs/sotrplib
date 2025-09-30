@@ -8,17 +8,16 @@ from abc import ABC, abstractmethod
 from pixell import enmap
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.sources import (
     MeasuredSource,
-    RegisteredSource,
 )
 
 
 class ForcedPhotometryProvider(ABC):
-    # thumbnail now attribute of MeasuredSource
     @abstractmethod
     def force(
-        self, input_map: ProcessableMap, sources: list[RegisteredSource]
+        self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
     ) -> list[MeasuredSource]:
         return []
 

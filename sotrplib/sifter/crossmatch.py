@@ -243,11 +243,13 @@ def sift(
 
     fwhm = get_fwhm(map_freq, arr=arr) * u.arcmin
 
-    extracted_ra = (
-        np.asarray([es.ra.to(u.deg).value for es in extracted_sources]) * u.deg
+    angle_coords = u.deg
+
+    extracted_ra = np.asarray(
+        [es.ra.to_value(angle_coords) for es in extracted_sources]
     )
-    extracted_dec = (
-        np.asarray([es.dec.to(u.deg).value for es in extracted_sources]) * u.deg
+    extracted_dec = np.asarray(
+        [es.dec.to_value(angle_coords) for es in extracted_sources]
     )
 
     if source_fluxes is None:
@@ -265,11 +267,11 @@ def sift(
             120 * u.arcmin,
         )
 
-        cat_ra = np.asarray([cs.ra.to(u.deg).value for cs in catalog_sources]) * u.deg
-        cat_dec = np.asarray([cs.dec.to(u.deg).value for cs in catalog_sources]) * u.deg
+        cat_ra = np.asarray([cs.ra.to_value(angle_coords) for cs in catalog_sources])
+        cat_dec = np.asarray([cs.dec.to_value(angle_coords) for cs in catalog_sources])
         isin_cat, catalog_match = crossmatch_mask(
-            np.stack([extracted_dec, extracted_ra], axis=1).to(u.deg).value,
-            np.stack([cat_dec, cat_ra], axis=1).to(u.deg).value,
+            np.stack([extracted_dec, extracted_ra], axis=1),
+            np.stack([cat_dec, cat_ra], axis=1),
             list(crossmatch_radius.to(u.arcmin).value),
             mode="closest",
             return_matches=True,
@@ -288,9 +290,7 @@ def sift(
     noise_candidates = []
     for source, cand_pos in enumerate(zip(extracted_ra, extracted_dec)):
         source_measurement = extracted_sources[source]
-        source_string_name = radec_to_str_name(
-            cand_pos[0].to(u.deg).value, cand_pos[1].to(u.deg).value
-        )
+        source_string_name = radec_to_str_name(cand_pos[0], cand_pos[1])
 
         if isin_cat[source]:
             source_measurement.crossmatches = catalog_sources[

@@ -16,6 +16,7 @@ class BaseSource(BaseModel):
     ra: AstroPydanticQuantity[u.deg]
     dec: AstroPydanticQuantity[u.deg]
     flux: Optional[AstroPydanticQuantity[u.mJy]] = None
+    frequency: AstroPydanticQuantity[u.GHz] | None = None
 
 
 class CrossMatch(BaseModel):

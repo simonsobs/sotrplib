@@ -9,6 +9,7 @@ from pathlib import Path
 import astropy.units as u
 import numpy as np
 import structlog
+from astropy.coordinates import SkyCoord
 from astropy.units import Unit
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
@@ -72,6 +73,7 @@ class ProcessableMap(ABC):
 
     map_resolution: u.Quantity | None
 
+    box: tuple[SkyCoord, SkyCoord] | None = None
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
@@ -163,7 +165,7 @@ class ProcessableMap(ABC):
             return self.map_resolution
         else:
             for attribute in ["flux", "snr", "rho", "kappa"]:
-                if x := getattr(self, attribute, None):
+                if (x := getattr(self, attribute, None)) is not None:
                     self.map_resolution = u.Quantity(
                         abs(x.wcs.wcs.cdelt[0]), x.wcs.wcs.cunit[0]
                     )
@@ -171,11 +173,36 @@ class ProcessableMap(ABC):
 
         return self.map_resolution
 
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        """
+        if self.box is not None:
+            return self.box
+        else:
+            for attribute in ["flux", "snr", "rho", "kappa"]:
+                if (x := getattr(self, attribute, None)) is not None:
+                    shape = x.shape[-2:]
+                    wcs = x.wcs
+
+                    bottom_left = wcs.array_index_to_world(0, 0)
+                    top_right = wcs.array_index_to_world(shape[0], shape[1])
+
+                    self.box = (
+                        bottom_left,
+                        top_right,
+                    )
+
+                    break
+
+        return self.box
+
     @abstractmethod
     def finalize(self):
         """
-        Called after source injection to ensure that the snr, flux, and time maps
-        are available.
+        Called just before source injection to ensure that the snr, flux, and
+        time maps are available.
         """
         del self.rho
         del self.kappa
