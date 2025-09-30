@@ -17,6 +17,17 @@ from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 
 class PipelineRunner:
+
+    maps: list[ProcessableMap]
+    preprocessors: list[MapPreprocessor] | None
+    postprocessors: list[MapPostprocessor] | None
+    source_simulators: list[SourceSimulation] | None
+    forced_photometry: ForcedPhotometryProvider | None
+    source_subtractor: SourceSubtractor | None
+    blind_search: BlindSearchProvider | None
+    sifter: SiftingProvider | None
+    outputs: list[SourceOutput] | None
+
     def __init__(
         self,
         maps: list[ProcessableMap],
