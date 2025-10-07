@@ -202,10 +202,10 @@ def matched_filter_depth1_map(
     maskfile: str = None,
     beam_fwhm: float = None,
     beam1d: str = None,
-    shrink_holes: float = 0 * utils.arcmin,
+    shrink_holes: float = 20 * utils.arcmin,
     apod_edge: float = 10 * utils.arcmin,
     apod_holes: float = 5 * utils.arcmin,
-    noisemask_lim: float = 0.01,
+    noisemask_lim: float = None,
     highpass: bool = False,
     band_height: float = 0 * utils.degree,
     shift: float = 0,
@@ -236,12 +236,12 @@ def matched_filter_depth1_map(
         a mask file to apply to the observation
 
     beam_fwhm:float [None]
-        fwhm of the beam, in radian.
+        fwhm of the Gaussian beam, in radian. e.g. 2.2*utils.arcmin for f090
 
-    beam1d:str=None
+    beam1d:str [None]
         beam transform file, the first column is ell 0,1,2,3,... and the second column B(ell)
 
-    shrink_holes:float [0]
+    shrink_holes:float [20*utils.arcmin]
         hole size under which to ignore, radians
 
     apod_edge:float [10*utils.arcmin]
@@ -250,7 +250,7 @@ def matched_filter_depth1_map(
     apod_holes:float [5*utils.arcmin]
         apodize this far around holes, radians
 
-    noisemask_lim:float [0.01]
+    noisemask_lim:float [None]
         an upper limit to the noise, above which you mask. mJy/sr
 
     highpass:bool [False]
@@ -324,7 +324,7 @@ def matched_filter_depth1_map(
     # Apodize the edge by decreasing the significance in ivar
     noise_apod = enmap.apod_mask(hit, apod_edge)
     # Check if we have a noise model mask too
-    mask = hit
+    mask = 0
     if maskfile:
         mask |= enmap.read_map(maskfile, geometry=imap.geometry)
     # Optionally mask very bright regions
