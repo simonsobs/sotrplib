@@ -1,6 +1,7 @@
 """
 Tests running the pipeline under prefect with simulated data.
 """
+
 import json
 
 from prefect.testing.utilities import prefect_test_harness
@@ -14,19 +15,18 @@ from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import Scipy2DGaussianFitter
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 
-
 sample_setup = {
     "maps": [
         {
             "map_type": "simulated",
             "observation_start": "2025-01-01",
-            "observation_end": "2025-01-02"
+            "observation_end": "2025-01-02",
         },
         {
             "map_type": "simulated",
             "observation_start": "2025-01-02",
-            "observation_end": "2025-01-03"
-        }
+            "observation_end": "2025-01-03",
+        },
     ],
     "source_simulators": [
         {
@@ -36,33 +36,20 @@ sample_setup = {
                 "min_flux": "3.0 Jy",
                 "max_flux": "10.0 Jy",
                 "fwhm_uncertainty_frac": 0.0,
-                "fraction_return": 0.5
-            }
+                "fraction_return": 0.5,
+            },
         }
     ],
-    "preprocessors": [
-        {
-            "preprocessor_type": "kappa_rho"
-        }
-    ],
-    "source_subtractor": {
-            "subtractor_type": "photutils"
-    },
-    "blind_search": {
-            "search_type": "photutils"
-    },
-    "forced_photometry": {
-        "photometry_type": "scipy",
-        "reproject_thumbnails": "True"
-    },
-    "sifter": {
-        "sifter_type": "default"
-    },
+    "preprocessors": [{"preprocessor_type": "kappa_rho"}],
+    "source_subtractor": {"subtractor_type": "photutils"},
+    "blind_search": {"search_type": "photutils"},
+    "forced_photometry": {"photometry_type": "scipy", "reproject_thumbnails": "True"},
+    "sifter": {"sifter_type": "default"},
     "outputs": [
         {
             "output_type": "pickle",
         }
-    ]
+    ],
 }
 
 

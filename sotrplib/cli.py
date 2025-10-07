@@ -36,6 +36,6 @@ def main():
 
 def prefect_flow():
     from sotrplib.handlers.prefect import analyze_from_configuration
-    
+
     args = parse_args()
     analyze_from_configuration(args.config)

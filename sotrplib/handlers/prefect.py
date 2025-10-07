@@ -3,20 +3,22 @@ from pathlib import Path
 from prefect import flow, task
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.maps.postprocessor import MapPostprocessor
+from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
+from sotrplib.sims.sources.core import SourceSimulation
 from sotrplib.source_catalog.database import EmptyMockSourceCatalog, MockDatabase
 from sotrplib.sources.blind import EmptyBlindSearch
-from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider, MeasuredSource
+from sotrplib.sources.core import (
+    BlindSearchProvider,
+    ForcedPhotometryProvider,
+)
 from sotrplib.sources.force import EmptyForcedPhotometry
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
-from sotrplib.sims.sources.core import SourceSimulation
 
 
 class PrefectRunner:
-
     maps: list[ProcessableMap]
     preprocessors: list[MapPreprocessor] | None
     postprocessors: list[MapPostprocessor] | None
@@ -58,7 +60,9 @@ class PrefectRunner:
         return
 
     @task
-    def analyze_map(self, input_map: ProcessableMap) -> tuple[list, object, ProcessableMap]:
+    def analyze_map(
+        self, input_map: ProcessableMap
+    ) -> tuple[list, object, ProcessableMap]:
         task(input_map.build)()
 
         for preprocessor in self.preprocessors:
@@ -71,14 +75,18 @@ class PrefectRunner:
 
         crossmatch_catalog = []
         for c in self.source_catalogs:
-            crossmatch_catalog.extend(task(c.cat.get_sources_in_map)(input_map=input_map))
+            crossmatch_catalog.extend(
+                task(c.cat.get_sources_in_map)(input_map=input_map)
+            )
 
-        for_forced_photometry = (
-            task(self.forced_photometry_catalog.cat.get_sources_in_map)(input_map)
-        )
+        for_forced_photometry = task(
+            self.forced_photometry_catalog.cat.get_sources_in_map
+        )(input_map)
 
         for simulator in self.source_simulators:
-            input_map, additional_sources = task(simulator.simulate)(input_map=input_map)
+            input_map, additional_sources = task(simulator.simulate)(
+                input_map=input_map
+            )
             for_forced_photometry.extend(additional_sources)
 
         forced_photometry_candidates = task(self.forced_photometry.force)(
@@ -89,7 +97,9 @@ class PrefectRunner:
             sources=forced_photometry_candidates, input_map=input_map
         )
 
-        blind_sources, _ = task(self.blind_search.search)(input_map=source_subtracted_map)
+        blind_sources, _ = task(self.blind_search.search)(
+            input_map=source_subtracted_map
+        )
 
         self.sifter.catalog_sources = crossmatch_catalog
         sifter_result = task(self.sifter.sift)(
@@ -109,7 +119,9 @@ class PrefectRunner:
         return self.analyze_map.map(self.maps).result()
 
     @flow
-    def analyze_new_maps(self, map_file: Path | str) -> tuple[list, object, ProcessableMap]:
+    def analyze_new_maps(
+        self, map_file: Path | str
+    ) -> tuple[list, object, ProcessableMap]:
         from sotrplib.config.config import Settings
 
         input_data = Settings.from_file(map_file).to_basic()

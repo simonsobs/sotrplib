@@ -17,7 +17,6 @@ from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 
 class PipelineRunner:
-
     maps: list[ProcessableMap]
     preprocessors: list[MapPreprocessor] | None
     postprocessors: list[MapPostprocessor] | None
