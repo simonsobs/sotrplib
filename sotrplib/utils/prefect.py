@@ -21,7 +21,7 @@ def profile_task(func: callable) -> callable:
     Notes
     =====
 
-    Currently this writes the results to a permanent tempfile. This should 
+    Currently this writes the results to a permanent tempfile. This should
     probably be replaced with some configurable location.
 
     For some reason, the link doesn't open properly directly from the Prefect
