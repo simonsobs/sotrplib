@@ -8,7 +8,7 @@ from pathlib import Path
 from sotrplib.config.config import Settings
 
 
-def main():
+def parse_args() -> ArgumentParser:
     ap = ArgumentParser(
         prog="sotrp",
         usage="Use sotrplib to run a sample pipeline from a configuration file",
@@ -24,7 +24,18 @@ def main():
     )
 
     args = ap.parse_args()
-    config = Settings.from_file(args.config)
+    return args
 
+
+def main():
+    args = parse_args()
+    config = Settings.from_file(args.config)
     pipeline = config.to_basic()
     pipeline.run()
+
+
+def prefect_flow():
+    from sotrplib.handlers.prefect import analyze_from_configuration
+
+    args = parse_args()
+    analyze_from_configuration(args.config)
