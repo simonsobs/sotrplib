@@ -44,7 +44,41 @@ code in `sotrplib/config/config.py` and the relevant config files.
 An example of the pipeline after de-serializing the real data loading example is given in `sotrplib/docs/act.md`. Here the only 
 additional step is adding a distinct catalog for the forced photometry sources.
 
+### Running with prefect
 
+[prefect](https://docs.prefect.io/v3/get-started) is a workflow orchestrator that provides a conveneient web interface for monitoring and running the pipeline.
+Installing and invoking the pipeline using prefect follows the same basic pattern as above.
+
+```console
+uv sync --extra prefect
+source .venv/bin/activate
+sotrp-prefect -c [path to config file]
+```
+
+This will start a temporary prefect server, if you want a persistent server you can start one as described in the [prefect docs](https://docs.prefect.io/v3/get-started/quickstart#open-source).
+
+```console
+prefect server start --host [HOSTNAME, e.g., localhost] --port [PORT, e.g., 8899] --background
+```
+
+This will start a prefect server and provide a URL to the dashboard, in this case http://localhost:8484.
+`sotrp-prefect` can then be invoked either by manually specifying the `PREFECT_API_URL` as an environment variable, e.g.,
+
+```console
+PREFECT_API_URL=http://localhost:8484/api sotrp-prefect -c [path to config file]
+```
+
+or by using the prefect tool
+
+```console
+prefect config set PREFECT_API_URL=http://localhost:8484/api
+```
+
+The server can be stopped with
+
+```console
+prefect server stop
+```
 
 # Below is Deprecated
 
