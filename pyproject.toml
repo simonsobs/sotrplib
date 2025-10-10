@@ -35,7 +35,8 @@ dev = [
     "pre-commit",
 ]
 prefect = [
-    "prefect"
+    "prefect",
+    "pyinstrument",
 ]
 
 [project.scripts]
