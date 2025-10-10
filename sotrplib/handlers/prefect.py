@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from astropy.coordinates import SkyCoord
-from prefect import flow, task
+from prefect import flow, task, unmapped
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.postprocessor import MapPostprocessor
@@ -71,10 +71,6 @@ class PrefectRunner:
         for preprocessor in self.preprocessors:
             task(preprocessor.preprocess)(input_map=input_map)
 
-    def build_maps(self):
-        for input_map in self.maps:
-            self.build_map(input_map)
-
     @property
     def bbox(self):
         bbox = self.maps[0].bbox
@@ -92,62 +88,61 @@ class PrefectRunner:
     def simulate_sources(self) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         all_simulated_sources = []
+        bbox = self.bbox
         for simulator in self.source_simulators:
-            simulated_sources, catalog = task(simulator.generate)(box=self.bbox)
+            simulated_sources, catalog = task(simulator.generate)(box=bbox)
 
             all_simulated_sources.extend(simulated_sources)
             self.source_catalogs.append(catalog)
         return all_simulated_sources
 
     @task
-    def analyze_map(self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]):
-            task(input_map.finalize)()
+    def analyze_map(self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]) -> tuple[list, object, ProcessableMap]:
+        task(input_map.finalize)()
 
-            input_map = task(self.source_injector.inject)(
-                input_map=input_map, simulated_sources=simulated_sources
+        input_map = task(self.source_injector.inject)(
+            input_map=input_map, simulated_sources=simulated_sources
+        )
+
+        for postprocessor in self.postprocessors:
+            task(postprocessor.postprocess)(input_map=input_map)
+
+        forced_photometry_candidates = task(self.forced_photometry.force)(
+            input_map=input_map, catalogs=self.source_catalogs
+        )
+
+        source_subtracted_map = task(self.source_subtractor.subtract)(
+            sources=forced_photometry_candidates, input_map=input_map
+        )
+
+        blind_sources, _ = task(self.blind_search.search)(
+            input_map=source_subtracted_map
+        )
+
+        sifter_result = task(self.sifter.sift)(
+            sources=blind_sources,
+            catalogs=self.source_catalogs,
+            input_map=source_subtracted_map,
+        )
+
+        for output in self.outputs:
+            task(output.output)(
+                forced_photometry_candidates=forced_photometry_candidates,
+                sifter_result=sifter_result,
+                input_map=input_map,
             )
 
-            for postprocessor in self.postprocessors:
-                task(postprocessor.postprocess)(input_map=input_map)
-
-            forced_photometry_candidates = task(self.forced_photometry.force)(
-                input_map=input_map, catalogs=self.source_catalogs
-            )
-
-            source_subtracted_map = task(self.source_subtractor.subtract)(
-                sources=forced_photometry_candidates, input_map=input_map
-            )
-
-            blind_sources, _ = task(self.blind_search.search)(
-                input_map=source_subtracted_map
-            )
-
-            sifter_result = task(self.sifter.sift)(
-                sources=blind_sources,
-                catalogs=self.source_catalogs,
-                input_map=source_subtracted_map,
-            )
-
-            for output in self.outputs:
-                task(output.output)(
-                    forced_photometry_candidates=forced_photometry_candidates,
-                    sifter_result=sifter_result,
-                    input_map=input_map,
-                )
-
-    def analyze_maps(self, all_simulated_sources: list[SimulatedSource]):
-        for input_map in self.maps:
-            self.analyze_map(input_map, all_simulated_sources)
+        return forced_photometry_candidates, sifter_result, input_map
 
     @flow
-    def run(self):
-        self.build_maps()
+    def run(self) -> tuple[list[list], list[object], list[ProcessableMap]]:
+        self.build_map.map(self.maps).wait()
         all_simulated_sources = self.simulate_sources()
-        self.analyze_maps(all_simulated_sources)
+        return self.analyze_map.map(self.maps, unmapped(all_simulated_sources)).result()
 
 
 @flow
-def analyze_from_configuration(config: Path | str):
+def analyze_from_configuration(config: Path | str) -> tuple[list[list], list[object], list[ProcessableMap]]:
     from sotrplib.config.config import Settings
 
     pipeline = Settings.from_file(config).to_prefect()
