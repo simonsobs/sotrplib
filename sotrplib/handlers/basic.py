@@ -21,9 +21,11 @@ from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 class PipelineRunner:
     maps: list[ProcessableMap]
+    source_simulators: list[SimulatedSourceGenerator] | None
+    source_injector: SourceInjector | None
+    source_catalogs: list[SourceCatalog] | None
     preprocessors: list[MapPreprocessor] | None
     postprocessors: list[MapPostprocessor] | None
-    source_simulators: list[SourceSimulation] | None
     forced_photometry: ForcedPhotometryProvider | None
     source_subtractor: SourceSubtractor | None
     blind_search: BlindSearchProvider | None
