@@ -8,9 +8,12 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
-from sotrplib.sims.sim_source_generators import SimulatedSourceGenerator, SimulatedSource
-from sotrplib.source_catalog.core import SourceCatalog
+from sotrplib.sims.sim_source_generators import (
+    SimulatedSource,
+    SimulatedSourceGenerator,
+)
 from sotrplib.sims.source_injector import EmptySourceInjector, SourceInjector
+from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import (
     BlindSearchProvider,
