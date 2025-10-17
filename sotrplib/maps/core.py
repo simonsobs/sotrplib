@@ -228,6 +228,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         time_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
+        matched_filtered: bool = False,
+        flux_units: Unit = u.mJy,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
@@ -238,6 +240,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.box = box
         self.frequency = frequency
         self.array = array
+        self.matched_filtered = matched_filtered
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -281,7 +284,6 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
         return
 
-    ## TODO: need to filter before calculating snr and flux
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.intensity / np.sqrt(self.inverse_variance)
@@ -290,6 +292,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def get_flux(self):
         with np.errstate(divide="ignore"):
             flux = self.intensity
+        ## assume that if matched filtered, intensity is rho and ivar is kappa
+        if self.matched_filtered:
+            flux /= self.inverse_variance
         return flux
 
     def finalize(self):

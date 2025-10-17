@@ -1,0 +1,56 @@
+{
+    "maps": [
+        {
+            "map_type": "inverse_variance",
+            "intensity_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_map.fits",
+            "weights_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_ivar.fits",
+            "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_time.fits",
+            "frequency": "f090",
+            "band": "pa5",
+            "flux_units": "mJy",
+            "box": {"value":[[-50,300],[-30,320]],
+                    "unit": "deg"
+                }
+        }
+    ],
+    "forced_photometry_catalog":
+        {
+            "catalog_type": "mock_socat",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": "0.3 Jy"
+        },
+    "source_catalogs": [
+        {
+            "catalog_type": "mock_socat",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": "0.01 Jy"
+        }
+    ],
+    "preprocessors": [
+        {
+            "preprocessor_type": "matched_filter"
+        },
+        {
+            "preprocessor_type": "kappa_rho"
+        }
+    ],
+    "source_subtractor": {
+            "subtractor_type": "photutils"
+    },
+    "blind_search": {
+            "search_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy",
+        "reproject_thumbnails": "True"
+    },
+    "sifter": {
+        "sifter_type": "default"
+    },
+    "outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

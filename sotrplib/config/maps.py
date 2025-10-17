@@ -128,6 +128,7 @@ class InverseVarianceMapConfig(MapConfig):
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
+    flux_units: str = "mJy"
 
     def to_map(
         self, log: FilteringBoundLogger | None = None
@@ -141,6 +142,7 @@ class InverseVarianceMapConfig(MapConfig):
             box=self.box,
             frequency=self.frequency,
             array=self.array,
+            flux_units=u.Quantity(1, self.flux_units),
             log=log,
         )
 
