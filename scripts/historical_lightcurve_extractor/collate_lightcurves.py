@@ -101,11 +101,19 @@ def load_custom_hdf5(fname):
     import h5py
     from pixell import enmap
 
-    context = h5py.File(fname, "r")
+    try:
+        context = h5py.File(fname, "r")
+    except Exception as e:
+        print(e, fname)
+        return []
     thumbnails = []
     for key in context:
         thumb_dict = {}
-        thumb_dict["thumb"] = enmap.read_hdf(context[key])
+        try:
+            thumb_dict["thumb"] = enmap.read_hdf(context[key])
+        except Exception as e:
+            print(e, key, context[key])
+            continue
         for k in context[key].keys():
             if k == "wcs" or k == "data":
                 continue
@@ -125,19 +133,25 @@ def collate_thumbnail_files(files, out_file, split_sources=False, cleanup=True):
         thumbnails += load_custom_hdf5(f)
         len_objs = len(thumbnails) + old_i
         for i in range(len(thumbnails)):
-            t = thumbnails[i].pop("thumb")
-            if split_sources:
-                ## source name is SO-S Jxxxxx-xxxx so , just remove the SO-S part
-                source_name = thumbnails[i].get("name", "???").split(" ")[1]
-                output_file = f"{out_file.split('.hdf5')[0]}_{source_name}.hdf5"
-            else:
-                output_file = out_file
-            enmap.write_hdf(
-                output_file,
-                t,
-                address=str(old_i + i).zfill(len(str(len_objs))),
-                extra=thumbnails[i],
-            )
+            if "thumb" in thumbnails[i]:
+                t = thumbnails[i].pop("thumb")
+                if split_sources:
+                    ## source name is SO-S Jxxxxx-xxxx so , just remove the SO-S part
+                    source_name = thumbnails[i].get("name", "???").split(" ")[1]
+                    output_file = f"{out_file.split('.hdf5')[0]}_{source_name}.hdf5"
+                else:
+                    output_file = out_file
+
+                try:
+                    enmap.write_hdf(
+                        output_file,
+                        t,
+                        address=str(old_i + i).zfill(len(str(len_objs))),
+                        extra=thumbnails[i],
+                    )
+                except Exception as e:
+                    print(e, i, thumbnails[i], str(old_i + i).zfill(len(str(len_objs))))
+                    continue
         old_i = len_objs + 1
 
         if cleanup:
