@@ -83,6 +83,24 @@ def radec_to_str_name(
     return name
 
 
+def normalize_ra(ra_array):
+    """
+    Normalize RA array to either [0, 360) or [-180, 180).
+
+    Return normalized RA array and system used.
+    """
+
+    if np.any(ra_array < 0 * u.deg):
+        # Use [-180, 180)
+        ra_norm = ((ra_array + 180 * u.deg) % (360 * u.deg)) - 180 * u.deg
+        system = "−180–180"
+    else:
+        # Use [0, 360)
+        ra_norm = ra_array % (360 * u.deg)
+        system = "0–360"
+    return ra_norm, system
+
+
 def ctime_to_local_time(ctimes, tz_loc="America/Santiago"):
     from datetime import datetime, timezone
 

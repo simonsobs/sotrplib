@@ -326,7 +326,7 @@ def inject_sources(
         raise ValueError("Input map must be a ProcessableMap or enmap.ndmap object")
 
     mapres = abs(wcs.wcs.cdelt[0]) * u.deg
-    fwhm = get_fwhm(freq, arr=arr) * u.arcmin
+    fwhm = get_fwhm(freq, arr=arr)
     fwhm_pixels = (fwhm / mapres).value
 
     log.info("inject_sources.injecting_sources", n_sources=len(sources))
@@ -526,7 +526,7 @@ def inject_simulated_sources(
     catalog_sources += inject_random_sources(
         mapdata,
         sim_params,
-        fwhm_arcmin=get_fwhm(mapdata.frequency, arr=mapdata.array) * u.arcmin,
+        fwhm_arcmin=get_fwhm(mapdata.frequency, arr=mapdata.array),
         add_noise=False,
         log=log,
     )

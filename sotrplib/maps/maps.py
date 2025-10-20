@@ -82,7 +82,7 @@ def subtract_sources(
         src_model = make_model_source_map(
             input_map.flux,
             sources,
-            nominal_fwhm=get_fwhm(input_map.frequency) * u.arcmin,
+            nominal_fwhm=get_fwhm(input_map.frequency),
             verbose=verbose,
             cuts=cuts,
             log=log,
@@ -454,8 +454,8 @@ def make_model_source_map(
     )
 
     shape = (
-        int(5 * nominal_fwhm / map_res),
-        int(5 * nominal_fwhm / map_res),
+        int(5 * nominal_fwhm.to_value(u.rad) / map_res.to_value(u.rad)),
+        int(5 * nominal_fwhm.to_value(u.rad) / map_res.to_value(u.rad)),
     )
     log.info("make_model_source_map.make_model_image.start")
     model_map = make_model_image(

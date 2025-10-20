@@ -241,7 +241,7 @@ def sift(
     log = log.bind(func_name="sift")
     log.info("sift.start")
 
-    fwhm = get_fwhm(map_freq, arr=arr) * u.arcmin
+    fwhm = get_fwhm(map_freq, arr=arr)
 
     angle_coords = u.deg
 

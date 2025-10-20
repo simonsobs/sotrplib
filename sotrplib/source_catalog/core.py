@@ -7,12 +7,12 @@ from typing import Literal
 
 import numpy as np
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import Angle, SkyCoord
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
 
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
-from sotrplib.utils.utils import angular_separation
+from sotrplib.utils.utils import angular_separation, normalize_ra
 
 
 class SourceCatalog(ABC):
@@ -83,14 +83,33 @@ class RegisteredSourceCatalog(SourceCatalog):
     ) -> list[RegisteredSource]:
         if box is None:
             return self.sources
+        ## Get sky coord limits and whether ra is -180,180 or 0,360
+        ra_corners, _ = normalize_ra(Angle([box[0].ra, box[1].ra]))
 
-        left = box[0].ra
-        right = box[1].ra
-        bottom = box[0].dec
-        top = box[1].dec
+        ## Check for RA wrap-around
+        ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
+
+        ra_span = ra_max - ra_min
+        if ra_span > 180 * u.deg:
+            wrap_warning = True
+        else:
+            wrap_warning = False
+
+        ## If wrapped, shift RA system so box is continuous
+        if wrap_warning:
+            # shift RA so that region is continuous
+            shift = 180 * u.deg - ra_max
+            ra_corners = (ra_corners + shift + 360 * u.deg) % (360 * u.deg)
+            for s in self.sources:
+                s.ra = (s.ra + shift + 360 * u.deg) % (360 * u.deg)
+            ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
+        dec_min = np.min(Angle([box[0].dec, box[1].dec]))
+        dec_max = np.max(Angle([box[0].dec, box[1].dec]))
 
         return [
-            x for x in self.sources if (left < x.ra < right) and (bottom < x.dec < top)
+            x
+            for x in self.sources
+            if (ra_min < x.ra < ra_max) and (dec_min < x.dec < dec_max)
         ]
 
     def forced_photometry_sources(

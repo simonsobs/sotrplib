@@ -91,8 +91,9 @@ class MatchedFilter(MapPreprocessor):
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         rho, kappa = matched_filter_depth1_map(
-            imap=input_map.intensity,
-            ivarmap=input_map.inverse_variance,
+            imap=input_map.intensity / input_map.intensity_units.to(u.uK).value,
+            ivarmap=input_map.inverse_variance
+            * input_map.intensity_units.to(u.uK).value ** 2,
             band_center=get_frequency(input_map.frequency),
             infofile=self.infofile,
             maskfile=self.maskfile,
@@ -114,4 +115,8 @@ class MatchedFilter(MapPreprocessor):
         input_map.matched_filtered = True
         input_map.intensity = rho
         input_map.inverse_variance = kappa
+        input_map.snr = rho * kappa**-0.5
+        input_map.flux = rho / kappa
+        input_map.flux_units = u.mJy
+        input_map.intensity_units = u.mJy
         return input_map

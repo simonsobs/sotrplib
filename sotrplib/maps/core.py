@@ -229,11 +229,12 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         frequency: str | None = None,
         array: str | None = None,
         matched_filtered: bool = False,
-        flux_units: Unit = u.mJy,
+        intensity_units: Unit = u.K,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
         self.inverse_variance_filename = inverse_variance_filename
+        self.intensity_units = intensity_units
         self.time_filename = time_filename
         self.observation_start = start_time
         self.observation_end = end_time
@@ -258,7 +259,6 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             log.debug("intensity_ivar.intensity.read.nosel")
 
         # TODO: Set metadata from header e.g. frequency band.
-
         log = log.new(inverse_variance_filename=self.inverse_variance_filename)
         self.inverse_variance = enmap.read_map(
             str(self.inverse_variance_filename), box=box
@@ -272,8 +272,13 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(str(self.time_filename), box=box)
-            log.debug("intensity_ivar.time.read")
+            try:
+                time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
+                log.debug("intensity_ivar.time.read.sel")
+            except (IndexError, AttributeError):
+                # Somehow time map requires sel=0
+                time_map = enmap.read_map(str(self.time_filename), box=box)
+                log.debug("intensity_ivar.time.read.nosel")
         else:
             time_map = None
             log.debug("intensity_ivar.time.none")
@@ -362,8 +367,13 @@ class RhoAndKappaMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(str(self.time_filename), box=box)
-            log.debug("rho_kappa.time.read")
+            try:
+                time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
+                log.debug("rho_kappa.time.read.sel")
+            except (IndexError, AttributeError):
+                # Somehow time map requires sel=0
+                time_map = enmap.read_map(str(self.time_filename), box=box)
+                log.debug("rho_kappa.time.read.nosel")
         else:
             time_map = None
             log.debug("rho_kappa.time.none")

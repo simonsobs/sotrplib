@@ -189,6 +189,7 @@ class MockSourceCatalog:
                 ra=ra * u.deg,
                 dec=dec * u.deg,
                 source_id=str(i).zfill(len(str(len(mock_cat.data["raDeg"])))),
+                flux=mock_cat.data["fluxJy"][i] * u.Jy,
                 crossmatches=[
                     CrossMatch(
                         source_id=name,
@@ -230,6 +231,9 @@ class MockSourceCatalog:
                     matching_sources=matches,
                 )
                 pass
+
+    def get_sources_in_box(self, box: list[list[u.Quantity]]) -> list[RegisteredSource]:
+        return self.cat.get_sources_in_box(box=box)
 
 
 class SourceCatalogDatabase:

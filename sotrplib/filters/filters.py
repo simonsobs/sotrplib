@@ -290,7 +290,7 @@ def matched_filter_depth1_map(
 
     freq = band_center.to(u.Hz).value
     ## uK-> mJy/sr
-    fconv = utils.dplanck(freq) / 1e3
+    fconv = utils.dplanck(freq) * 1e3
 
     if beam1d:
         beam = np.loadtxt(beam1d).T[1]

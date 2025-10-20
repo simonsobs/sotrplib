@@ -7,7 +7,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.source_catalog.core import SourceCatalog
+from sotrplib.source_catalog.core import RegisteredSourceCatalog, SourceCatalog
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import (
     scipy_2d_gaussian_fit,
@@ -107,15 +107,17 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
     ) -> list[MeasuredSource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
-        fwhm = u.Quantity(
-            get_fwhm(freq=input_map.frequency, arr=input_map.array), "arcmin"
-        )
-
+        fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
         fit_sources = scipy_2d_gaussian_fit(
             input_map,
             source_catalog=list(
                 itertools.chain(
-                    *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
+                    *[
+                        RegisteredSourceCatalog(
+                            c.catalog_list
+                        ).forced_photometry_sources(box=input_map.bbox)
+                        for c in catalogs
+                    ]
                 )
             ),
             flux_lim_fit_centroid=self.flux_limit_centroid,
