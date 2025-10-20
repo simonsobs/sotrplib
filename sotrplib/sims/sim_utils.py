@@ -489,8 +489,10 @@ def make_2d_gaussian_model_param_table(
                 break
         if not cut:
             try:
-                fwhm_x = s.fwhm_ra
-                fwhm_y = s.fwhm_dec
+                fwhm_x = (
+                    np.sqrt(2) * s.fwhm_ra / np.cos(s.dec.to_value(u.rad))
+                )  ## account for the declination
+                fwhm_y = np.sqrt(2) * s.fwhm_dec
             except Exception:
                 fwhm_x = None
                 fwhm_y = None
@@ -507,7 +509,8 @@ def make_2d_gaussian_model_param_table(
             else:
                 theta = 0.0 * u.deg
 
-            omega_b = 1.02 * (np.pi / 4 / np.log(2)) * (fwhm_x * fwhm_y / map_res**2)
+            omega_b = (np.pi / 4 / np.log(2)) * (fwhm_x * fwhm_y / map_res**2)
+
             # Define the PSF model parameters
             model_params["x_0"].append(pix[1])
             model_params["y_0"].append(pix[0])
@@ -521,4 +524,5 @@ def make_2d_gaussian_model_param_table(
         log.debug(
             "make_2d_gaussian_model_param_table.complete", model_params=model_params
         )
+
     return QTable(model_params)

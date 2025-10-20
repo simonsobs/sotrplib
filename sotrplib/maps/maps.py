@@ -83,12 +83,12 @@ def subtract_sources(
             input_map.flux,
             sources,
             nominal_fwhm=get_fwhm(input_map.frequency),
+            matched_filtered=True,
             verbose=verbose,
             cuts=cuts,
             log=log,
         )
-
-    input_map.flux -= src_model
+    input_map.flux -= src_model / (input_map.flux_units.to(u.Jy))
     log.info("subtract_sources.source_flux_subtracted")
     ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
     input_map.snr[abs(src_model) > 1e-8] = 0.0
@@ -457,6 +457,7 @@ def make_model_source_map(
         int(5 * nominal_fwhm.to_value(u.rad) / map_res.to_value(u.rad)),
         int(5 * nominal_fwhm.to_value(u.rad) / map_res.to_value(u.rad)),
     )
+
     log.info("make_model_source_map.make_model_image.start")
     model_map = make_model_image(
         imap.shape,

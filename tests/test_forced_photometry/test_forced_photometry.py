@@ -34,7 +34,6 @@ def test_simple_forced_photometry(map_with_single_source):
 
 def test_empty_forced_photometry(map_with_single_source):
     input_map, sources = map_with_single_source
-
     forced_photometry = EmptyForcedPhotometry()
     results = forced_photometry.force(
         input_map=input_map, catalogs=[RegisteredSourceCatalog(sources)]
