@@ -4,6 +4,7 @@ them in the pre-specified order.
 """
 
 from astropy.coordinates import SkyCoord
+from matplotlib import pyplot as plt
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.postprocessor import MapPostprocessor
@@ -96,6 +97,15 @@ class PipelineRunner:
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
 
+            fig = plt.figure(figsize=(10, 5))
+            ax = plt.subplot(projection=input_map.flux.wcs)
+            im = ax.imshow(input_map.flux, vmin=-50, vmax=100)
+            ax.set_xlabel("RA")
+            ax.set_ylabel("Dec")
+            plt.colorbar(im, ax=ax, label="Flux (mJy)")
+            plt.savefig("flux_map.png")
+            plt.close(fig)
+
             forced_photometry_candidates = self.forced_photometry.force(
                 input_map=input_map, catalogs=self.source_catalogs
             )
@@ -103,6 +113,15 @@ class PipelineRunner:
             source_subtracted_map = self.source_subtractor.subtract(
                 sources=forced_photometry_candidates, input_map=input_map
             )
+
+            fig = plt.figure(figsize=(10, 5))
+            ax = plt.subplot(projection=input_map.flux.wcs)
+            im = ax.imshow(source_subtracted_map.flux, vmin=-15, vmax=30)
+            ax.set_xlabel("RA")
+            ax.set_ylabel("Dec")
+            plt.colorbar(im, ax=ax, label="Flux (mJy)")
+            plt.savefig("source_subtracted_map.png")
+            plt.close(fig)
 
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 

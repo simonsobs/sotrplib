@@ -93,11 +93,11 @@ def normalize_ra(ra_array):
     if np.any(ra_array < 0 * u.deg):
         # Use [-180, 180)
         ra_norm = ((ra_array + 180 * u.deg) % (360 * u.deg)) - 180 * u.deg
-        system = "−180–180"
+        system = "-180-180"
     else:
         # Use [0, 360)
         ra_norm = ra_array % (360 * u.deg)
-        system = "0–360"
+        system = "0-360"
     return ra_norm, system
 
 

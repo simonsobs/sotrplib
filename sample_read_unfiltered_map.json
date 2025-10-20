@@ -7,8 +7,8 @@
             "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_time.fits",
             "frequency": "f090",
             "band": "pa5",
-            "intensity_units": "uK",
-            "box": {"value":[[-50,300],[-30,320]],
+            "intensity_units": "K",
+            "box": {"value":[[-43,310],[-50,320]],
                     "unit": "deg"
                 }
         }
@@ -17,7 +17,7 @@
         {
             "catalog_type": "mock_socat",
             "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
-            "flux_lower_limit": "0.01 Jy"
+            "flux_lower_limit": "0.4 Jy"
         }
     ],
     "preprocessors": [

@@ -84,7 +84,17 @@ class RegisteredSourceCatalog(SourceCatalog):
         if box is None:
             return self.sources
         ## Get sky coord limits and whether ra is -180,180 or 0,360
-        ra_corners, _ = normalize_ra(Angle([box[0].ra, box[1].ra]))
+        ra_corners, box_ra_wrap = normalize_ra(Angle([box[0].ra, box[1].ra]))
+        source_ra_wrap = (
+            "-180-180" if any(s.ra < 0 * u.deg for s in self.sources) else "0-360"
+        )
+        source_ras = np.asarray([s.ra.to_value(u.deg) for s in self.sources])
+        if source_ra_wrap != box_ra_wrap:
+            ## shift source RAs to match box system
+            if box_ra_wrap == "0-360":
+                source_ras[source_ras < 0] += 360
+            else:
+                source_ras[source_ras > 180] -= 360
 
         ## Check for RA wrap-around
         ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
@@ -100,8 +110,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             # shift RA so that region is continuous
             shift = 180 * u.deg - ra_max
             ra_corners = (ra_corners + shift + 360 * u.deg) % (360 * u.deg)
-            for s in self.sources:
-                s.ra = (s.ra + shift + 360 * u.deg) % (360 * u.deg)
+            source_ras = (source_ras + shift + 360) % 360
             ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
         dec_min = np.min(Angle([box[0].dec, box[1].dec]))
         dec_max = np.max(Angle([box[0].dec, box[1].dec]))
@@ -109,7 +118,8 @@ class RegisteredSourceCatalog(SourceCatalog):
         return [
             x
             for x in self.sources
-            if (ra_min < x.ra < ra_max) and (dec_min < x.dec < dec_max)
+            if (ra_min < source_ras[self.sources.index(x)] * u.deg < ra_max)
+            and (dec_min < x.dec < dec_max)
         ]
 
     def forced_photometry_sources(

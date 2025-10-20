@@ -300,10 +300,9 @@ def matched_filter_depth1_map(
         bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
         uht = uharm.UHT(imap.shape, imap.wcs)
         beam = np.exp(-0.5 * uht.l**2 * bsigma**2)
-        beamis2d = True
+        beamis2d = beam.shape != (len(beam),)
     else:
         raise "Need one of beam1d or beam_fwhm"
-
     ## convert map in T_cmb to mJy/sr
     imap *= fconv
     ivarmap /= fconv**2
@@ -397,6 +396,7 @@ def matched_filter_depth1_map(
             beam2d = enmap.samewcs(
                 utils.interp(bmap.modlmap(), np.arange(len(beam)), beam), bmap
             )
+
         # Pixel window. We include it as part of the 2d beam, which is valid in the flat sky
         # approximation we use here.
         if pixwin in ["nn", "0"]:

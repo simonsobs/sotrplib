@@ -178,23 +178,20 @@ class ProcessableMap(ABC):
         """
         The bounding box of the map provided as sky coordinates.
         """
-        if self.box is not None:
-            return self.box
-        else:
-            for attribute in ["flux", "snr", "rho", "kappa"]:
-                if (x := getattr(self, attribute, None)) is not None:
-                    shape = x.shape[-2:]
-                    wcs = x.wcs
+        for attribute in ["flux", "snr", "rho", "kappa"]:
+            if (x := getattr(self, attribute, None)) is not None:
+                shape = x.shape[-2:]
+                wcs = x.wcs
 
-                    bottom_left = wcs.array_index_to_world(0, 0)
-                    top_right = wcs.array_index_to_world(shape[0], shape[1])
+                bottom_left = wcs.array_index_to_world(0, 0)
+                top_right = wcs.array_index_to_world(shape[0], shape[1])
 
-                    self.box = (
-                        bottom_left,
-                        top_right,
-                    )
+                self.box = (
+                    bottom_left,
+                    top_right,
+                )
 
-                    break
+                break
 
         return self.box
 
@@ -248,22 +245,26 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = self.log.bind(intensity_filename=self.intensity_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
 
-        try:
-            self.intensity = enmap.read_map(
-                str(self.intensity_filename), sel=0, box=box
-            )
-            log.debug("intensity_ivar.intensity.read.sel")
-        except (IndexError, AttributeError):
-            # Intensity map does not have Q, U
-            self.intensity = enmap.read_map(str(self.intensity_filename), box=box)
-            log.debug("intensity_ivar.intensity.read.nosel")
+        intensity_shape = enmap.read_fits_geometry(str(self.intensity_filename))[0]
+        self.intensity = enmap.read_map(
+            str(self.intensity_filename),
+            sel=0 if len(intensity_shape) > 2 else None,
+            box=box,
+        )
+        log.debug("intensity_ivar.intensity.read")
 
         # TODO: Set metadata from header e.g. frequency band.
         log = log.new(inverse_variance_filename=self.inverse_variance_filename)
+        inverse_variance_shape = enmap.read_fits_geometry(
+            str(self.inverse_variance_filename)
+        )[0]
         self.inverse_variance = enmap.read_map(
-            str(self.inverse_variance_filename), box=box
+            str(self.inverse_variance_filename),
+            sel=0 if len(inverse_variance_shape) > 2 else None,
+            box=box,
         )
         log.debug("intensity_ivar.ivar.read")
+
         self.map_resolution = u.Quantity(
             abs(self.inverse_variance.wcs.wcs.cdelt[0]),
             self.inverse_variance.wcs.wcs.cunit[0],
@@ -272,13 +273,11 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            try:
-                time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
-                log.debug("intensity_ivar.time.read.sel")
-            except (IndexError, AttributeError):
-                # Somehow time map requires sel=0
-                time_map = enmap.read_map(str(self.time_filename), box=box)
-                log.debug("intensity_ivar.time.read.nosel")
+            time_shape = enmap.read_fits_geometry(str(self.time_filename))[0]
+            time_map = enmap.read_map(
+                str(self.time_filename), sel=0 if len(time_shape) > 2 else None, box=box
+            )
+            log.debug("intensity_ivar.time.read")
         else:
             time_map = None
             log.debug("intensity_ivar.time.none")
