@@ -177,13 +177,12 @@ class DefaultSifter(SiftingProvider):
 
         map_freq = input_map.frequency
         arr = input_map.array
-        bbox = input_map.bbox
-        # box is [[dec_min, ra_min], [dec_max, ra_max]]
-        box = [[bbox[0].dec, bbox[1].ra], [bbox[1].dec, bbox[0].ra]]
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
             catalog_sources=list(
-                itertools.chain(*[c.get_sources_in_box(box=box) for c in catalogs])
+                itertools.chain(
+                    *[c.get_sources_in_box(box=input_map.bbox) for c in catalogs]
+                )
             ),
             input_map=input_map,
             radius1Jy=self.radius_1Jy,

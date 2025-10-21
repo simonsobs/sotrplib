@@ -143,7 +143,6 @@ def test_default_sifter(
 
     # Check we can sift them out!
     sifter = DefaultSifter()
-
     res = sifter.sift(
         sources=found_sources,
         input_map=new_map,

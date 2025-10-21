@@ -24,7 +24,7 @@ class SourceCatalog(ABC):
         return
 
     @abstractmethod
-    def sources_in_box(
+    def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
         """
@@ -78,7 +78,7 @@ class RegisteredSourceCatalog(SourceCatalog):
     def add_sources(self, sources: list[RegisteredSource]):
         self.sources.extend(sources)
 
-    def sources_in_box(
+    def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
         if box is None:
@@ -125,7 +125,7 @@ class RegisteredSourceCatalog(SourceCatalog):
     def forced_photometry_sources(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
-        return self.sources_in_box(box=box)
+        return self.get_sources_in_box(box=box)
 
     def source_by_id(self, id: int):
         return self.sources[id]

@@ -62,7 +62,7 @@ class SOCatWrapper:
     def source_from_id(self, source_id) -> RegisteredSource:
         return self._socat_source_to_registered(self.catalog.get_source(id=source_id))
 
-    def sources_in_box(self, box: list[SkyCoord] | None = None):
+    def get_sources_in_box(self, box: list[SkyCoord] | None = None):
         sources_in_map = self.catalog.get_box(
             ra_min=box[0][1].to(u.deg).value,
             ra_max=box[1][1].to(u.deg).value,
@@ -70,7 +70,9 @@ class SOCatWrapper:
             dec_max=box[1][0].to(u.deg).value,
         )
 
-        self.log.info("socat.sources_in_box", box=box, n_sources=len(sources_in_map))
+        self.log.info(
+            "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
+        )
 
         return [
             self._socat_source_to_registered(socat_source=x) for x in sources_in_map
@@ -79,7 +81,7 @@ class SOCatWrapper:
     def nearby_sources(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
     ) -> list[RegisteredSource]:
-        rough_cut = self.sources_in_box(
+        rough_cut = self.get_sources_in_box(
             box=[
                 SkyCoord(ra=ra - radius, dec=dec - radius),
                 SkyCoord(ra=ra + radius, dec=dec + radius),
@@ -154,13 +156,15 @@ class SOCatFITSCatalog(SourceCatalog):
         for source in sources:
             self.core.add_source(source=source)
 
-    def sources_in_box(
+    def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
-        return self.core.sources_in_box(box=box)
+        return self.core.get_sources_in_box(box=box)
 
     def forced_photometry_sources(self, box: list[SkyCoord] | None = None):
-        return [x for x in self.sources_in_box(box) if x.source_id in self.valid_fluxes]
+        return [
+            x for x in self.get_sources_in_box(box) if x.source_id in self.valid_fluxes
+        ]
 
     def source_by_id(self, id) -> RegisteredSource:
         return self.core.source_from_id(id=id)
@@ -176,7 +180,7 @@ class SOCatFITSCatalog(SourceCatalog):
         Get sources within radius of the catalog.
         """
 
-        close_sources = self.sources_in_box(
+        close_sources = self.get_sources_in_box(
             [
                 SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
                 SkyCoord(ra=ra + 2.0 * radius, dec=dec + 2.0 * radius),
