@@ -20,38 +20,40 @@ sample_setup = {
         {
             "map_type": "simulated",
             "observation_start": "2025-01-01",
-            "observation_end": "2025-01-02",
-        },
-        {
-            "map_type": "simulated",
-            "observation_start": "2025-01-02",
-            "observation_end": "2025-01-03",
-        },
+            "observation_end": "2025-01-02"
+        }
     ],
     "source_simulators": [
         {
-            "simulation_type": "random",
-            "parameters": {
-                "n_sources": 32,
-                "min_flux": "3.0 Jy",
-                "max_flux": "10.0 Jy",
-                "fwhm_uncertainty_frac": 0.0,
-                "fraction_return": 0.5,
-            },
+            "simulation_type": "fixed",
+            "number": 8,
+            "min_flux": "3.0 Jy",
+            "max_flux": "10.0 Jy",
+            "catalog_fraction": 0.5
         }
     ],
-    "preprocessors": [{"preprocessor_type": "kappa_rho"}],
-    "source_subtractor": {"subtractor_type": "photutils"},
-    "blind_search": {"search_type": "photutils"},
-    "forced_photometry": {"photometry_type": "scipy", "reproject_thumbnails": "True"},
-    "sifter": {"sifter_type": "default"},
+    "source_injector": {
+        "injector_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy"
+    },
+    "source_subtractor": {
+        "subtractor_type": "photutils"
+    },
+    "blind_search": {
+        "search_type": "photutils"
+    },
+    "sifter": {
+        "sifter_type": "simple"
+    },
     "outputs": [
         {
             "output_type": "pickle",
+            "directory": "."
         }
-    ],
+    ]
 }
-
 
 def test_basic_pipeline_scipy(
     tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
@@ -65,15 +67,15 @@ def test_basic_pipeline_scipy(
 
     runner = PrefectRunner(
         maps=maps,
-        forced_photometry_catalog=None,
         source_catalogs=[],
+        source_injector=None,
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
         forced_photometry=Scipy2DGaussianFitter(sources=sources),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
-        sifter=DefaultSifter(catalog_sources=sources),
+        sifter=DefaultSifter(),
         outputs=[PickleSerializer(directory=tmp_path)],
     )
 
@@ -102,6 +104,7 @@ def test_basic_pipeline_from_file(
 
 def _validate_pipeline_result(result, nmaps):
     assert len(result) == nmaps
+    print(result[0])
     candidates, sifter_result, output_map = result[0]
     assert all([isinstance(candidate, MeasuredSource) for candidate in candidates])
     assert isinstance(sifter_result, SifterResult)
