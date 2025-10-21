@@ -46,13 +46,14 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
     flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
     thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.25, "deg")
+    sources: list = []
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
     ) -> Scipy2DGaussianFitter:
         return Scipy2DGaussianFitter(
             # TODO: Support non-simulated sources
-            sources=[],
+            sources=self.sources,
             flux_limit_centroid=self.flux_limit_centroid,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,

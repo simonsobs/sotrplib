@@ -21,6 +21,16 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
     Just return empty lists
     """
 
+    sources: list[RegisteredSource]
+
+    def __init__(
+        self,
+        sources: List[RegisteredSource] = [],
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.sources = sources
+        self.log = log or get_logger()
+
     def force(
         self,
         input_map: ProcessableMap,
@@ -51,9 +61,12 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
         out_sources = []
-        for source in itertools.chain(
-            *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
-        ):
+        source_list = self.sources + list(
+            itertools.chain(
+                *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
+            )
+        )
+        for source in source_list:
             self.log.debug(
                 "SimpleForcedPhotometry.source",
                 ra=source.ra.to(u.deg),
@@ -108,18 +121,20 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     ) -> list[MeasuredSource]:
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
+        source_list = self.sources
+        list_from_catalogs = list(
+            itertools.chain(
+                *[
+                    RegisteredSourceCatalog(c.catalog_list).forced_photometry_sources(
+                        box=input_map.bbox
+                    )
+                    for c in catalogs
+                ]
+            )
+        )
         fit_sources = scipy_2d_gaussian_fit(
             input_map,
-            source_catalog=list(
-                itertools.chain(
-                    *[
-                        RegisteredSourceCatalog(
-                            c.catalog_list
-                        ).forced_photometry_sources(box=input_map.bbox)
-                        for c in catalogs
-                    ]
-                )
-            ),
+            source_list=source_list + list_from_catalogs,
             flux_lim_fit_centroid=self.flux_limit_centroid,
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,

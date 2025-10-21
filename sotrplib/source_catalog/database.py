@@ -141,7 +141,11 @@ class EmptyMockSourceCatalog:
         self.log.info("mock_empty_database.")
         self.catalog_list = []
 
-    def update_catalog(self, new_sources: list, match_radius=0.1):
+    def update_catalog(
+        self,
+        new_sources: list[RegisteredSource],
+        match_radius: u.Quantity = 0.1 * u.deg,
+    ):
         """Update the catalog with new sources."""
         for source in new_sources:
             matches = self.cat.get_nearby_source(
@@ -151,7 +155,11 @@ class EmptyMockSourceCatalog:
                 s = self.cat.add_source(
                     ra=source.ra, dec=source.dec, name=source.source_id
                 )
-                self.catalog_list.append(s)
+                self.catalog_list.append(
+                    RegisteredSource(
+                        ra=source.ra, dec=source.dec, source_id=source.source_id
+                    )
+                )
                 self.log.info(
                     "mock_act_database.update_catalog.new_source_added", source=s
                 )

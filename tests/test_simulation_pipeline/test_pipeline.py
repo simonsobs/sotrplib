@@ -30,7 +30,7 @@ def test_injected_sources_scipy(
     assert len(sources) > 0
 
     # See if we can recover them
-    forced_sources = scipy_2d_gaussian_fit(new_map, source_catalog=sources)
+    forced_sources = scipy_2d_gaussian_fit(new_map, source_list=sources)
 
     assert len(forced_sources) == len(sources)
 

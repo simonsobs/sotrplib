@@ -229,7 +229,7 @@ class Gaussian2DFitter:
 
 def scipy_2d_gaussian_fit(
     input_map: ProcessableMap,
-    source_catalog: list[RegisteredSource],
+    source_list: list[RegisteredSource],
     flux_lim_fit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
     fwhm: u.Quantity = u.Quantity(2.2, "arcmin"),
@@ -243,10 +243,10 @@ def scipy_2d_gaussian_fit(
     fit_method = "2d_gaussian"
     fit_sources = []
     for i in tqdm(
-        range(len(source_catalog)),
+        range(len(source_list)),
         desc="Cutting thumbnails and fitting sources w 2D Gaussian",
     ):
-        source = source_catalog[i]
+        source = source_list[i]
         source_name = source.source_id
         map_res = input_map.map_resolution
         pix = input_map.flux.sky2pix(
