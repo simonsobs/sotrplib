@@ -25,7 +25,7 @@ dependencies = [
     "astropydantic",
     "numpydantic",
     "mapcat",
-    "prefect",
+    "pyinstrument",
 ]
 
 [project.optional-dependencies]
@@ -36,13 +36,9 @@ dev = [
     "pytest-cov",
     "pre-commit",
 ]
-prefect = [
-    "prefect"
-]
 
 [project.scripts]
 "sotrp" = "sotrplib.cli:main"
-"sotrp-prefect" = "sotrplib.cli:prefect_flow"
 
 [tool.ruff.lint]
 extend-select = ["I"]

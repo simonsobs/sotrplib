@@ -30,12 +30,5 @@ def parse_args() -> ArgumentParser:
 def main():
     args = parse_args()
     config = Settings.from_file(args.config)
-    pipeline = config.to_basic()
+    pipeline = config.to_runner()
     pipeline.run()
-
-
-def prefect_flow():
-    from sotrplib.handlers.prefect import analyze_from_configuration
-
-    args = parse_args()
-    analyze_from_configuration(args.config)
