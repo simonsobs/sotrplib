@@ -12,8 +12,8 @@
     ],
     "source_catalogs": [
         {
-            "catalog_type": "mock_socat",
-            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "catalog_type": "fits",
+            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
             "flux_lower_limit": "0.1 Jy"
         }
     ],

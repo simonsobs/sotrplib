@@ -131,9 +131,10 @@ class SOCatFITSCatalog(SourceCatalog):
 
         # TODO: Remove this when it's part of SOCat
         self.valid_fluxes = set()
-
-        for index, row in enumerate(data.data):
+        for _, row in enumerate(data.data):
             flux = row["fluxJy"] * u.Jy
+            if flux < self.flux_lower_limit:
+                continue
             ra = (
                 row["raDeg"] if row["raDeg"] < 180.0 else row["raDeg"] - 360.0
             ) * u.deg
@@ -150,7 +151,7 @@ class SOCatFITSCatalog(SourceCatalog):
             if flux > self.flux_lower_limit:
                 self.valid_fluxes.add(name)
 
-        self.log.info("socat_fits.loaded", n_sources=index + 1)
+        self.log.info("socat_fits.loaded", n_sources=len(self.valid_fluxes))
 
     def add_sources(self, sources: list[RegisteredSource]):
         for source in sources:
