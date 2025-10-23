@@ -8,9 +8,7 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.source_catalog.database import (
-    EmptyMockSourceCatalog,
     MockDatabase,
-    MockSourceCatalog,
 )
 from sotrplib.source_catalog.socat import SOCatFITSCatalog
 
@@ -27,31 +25,17 @@ class SourceCatalogConfig(BaseModel, ABC):
 
 class EmptySourceCatalogConfig(SourceCatalogConfig):
     catalog_type: Literal["empty"] = "empty"
+    path: Path | None = None
 
-    def to_source_catalog(
-        self, log: FilteringBoundLogger | None = None
-    ) -> EmptyMockSourceCatalog:
-        return EmptyMockSourceCatalog(log=log)
-
-
-class MockSourceCatalogConfig(SourceCatalogConfig):
-    catalog_type: Literal["mock_socat"] = "mock_socat"
-    db_path: Path | None = None
-    flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
-
-    def to_source_catalog(
-        self, log: FilteringBoundLogger | None = None
-    ) -> MockSourceCatalog:
-        return MockSourceCatalog(
-            db_path=self.db_path,
-            flux_lower_limit=self.flux_lower_limit,
+    def to_source_catalog(self, log=None) -> SOCatFITSCatalog:
+        return SOCatFITSCatalog(
             log=log,
         )
 
 
 class SOCatFITSCatalogConfig(SourceCatalogConfig):
-    catalog_type: Literal["fits"] = "fits"
-    path: Path
+    catalog_type: Literal["socat", "fits"] = "fits"
+    path: Path | None = None
     hdu: int = 1
     flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
 
@@ -64,6 +48,4 @@ class SOCatFITSCatalogConfig(SourceCatalogConfig):
         )
 
 
-AllSourceCatalogConfigTypes = (
-    EmptySourceCatalogConfig | MockSourceCatalogConfig | SOCatFITSCatalogConfig
-)
+AllSourceCatalogConfigTypes = EmptySourceCatalogConfig | SOCatFITSCatalogConfig

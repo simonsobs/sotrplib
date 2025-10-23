@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from astropy import units as u
 
-from sotrplib.source_catalog.database import EmptyMockSourceCatalog
+from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     Scipy2DGaussianFitter,
@@ -79,9 +79,9 @@ def test_source_offset(map_with_single_source):
     new_sources = [x.model_copy() for x in sources]
     new_sources[0].ra += ra_offset
 
-    catalog = EmptyMockSourceCatalog()
-    catalog.update_catalog(new_sources=new_sources, match_radius=0.1 * u.deg)
-
+    catalog = SOCatFITSCatalog()
+    catalog.add_sources(sources=new_sources)
+    print(catalog.get_all_sources())
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
     assert len(results) == 1
     assert not results[0].fit_failed

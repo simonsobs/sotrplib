@@ -20,6 +20,11 @@ class MockDatabase:
         self.cat = mock.Client()
         self.log = log or structlog.get_logger()
         self.log.info("mock_database.initialized")
+        raise (
+            DeprecationWarning(
+                "MockSourceCatalog is deprecated, use SOCatWrapper instead."
+            )
+        )
 
     def add_source(self, ra: u.Quantity, dec: u.Quantity, name: str):
         self.cat.create(ra=ra.to(u.deg).value, dec=dec.to(u.deg).value, name=name)

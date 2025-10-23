@@ -77,6 +77,7 @@ class PipelineRunner:
             right = max(bbox[1].ra, map_bbox[1].ra)
             top = max(bbox[1].dec, map_bbox[1].dec)
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+            input_map.bbox = bbox
 
         all_simulated_sources = []
 
@@ -95,7 +96,9 @@ class PipelineRunner:
 
             for postprocessor in self.postprocessors:
                 postprocessor.postprocess(input_map=input_map)
-            """
+
+            from matplotlib import pyplot as plt
+
             fig = plt.figure(figsize=(10, 5))
             ax = plt.subplot(projection=input_map.flux.wcs)
             im = ax.imshow(input_map.flux, vmin=-50, vmax=100)
@@ -104,7 +107,6 @@ class PipelineRunner:
             plt.colorbar(im, ax=ax, label="Flux (mJy)")
             plt.savefig("flux_map.png")
             plt.close(fig)
-            """
 
             forced_photometry_candidates = self.forced_photometry.force(
                 input_map=input_map, catalogs=self.source_catalogs
@@ -113,7 +115,7 @@ class PipelineRunner:
             source_subtracted_map = self.source_subtractor.subtract(
                 sources=forced_photometry_candidates, input_map=input_map
             )
-            """
+
             fig = plt.figure(figsize=(10, 5))
             ax = plt.subplot(projection=input_map.flux.wcs)
             im = ax.imshow(source_subtracted_map.flux, vmin=-50, vmax=100)
@@ -122,7 +124,7 @@ class PipelineRunner:
             plt.colorbar(im, ax=ax, label="Flux (mJy)")
             plt.savefig("source_subtracted_map.png")
             plt.close(fig)
-            """
+
             blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
             sifter_result = self.sifter.sift(

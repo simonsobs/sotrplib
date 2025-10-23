@@ -15,6 +15,7 @@ from socat.client.core import ClientBase
 from socat.client.mock import Client as SOCatMockClient
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
 from sotrplib.utils.utils import angular_separation
 
@@ -62,14 +63,55 @@ class SOCatWrapper:
     def source_from_id(self, source_id) -> RegisteredSource:
         return self._socat_source_to_registered(self.catalog.get_source(id=source_id))
 
+    ## TODO: this doesn't work... maybe need source_catalog/core.py to handle boxes that cross RA=0
     def get_sources_in_box(self, box: list[SkyCoord] | None = None):
-        sources_in_map = self.catalog.get_box(
-            ra_min=box[0][1].to(u.deg).value,
-            ra_max=box[1][1].to(u.deg).value,
-            dec_min=box[0][0].to(u.deg).value,
-            dec_max=box[1][0].to(u.deg).value,
-        )
-
+        if box is None:
+            box = [
+                SkyCoord(ra=-180 * u.deg, dec=-90 * u.deg),
+                SkyCoord(ra=180 * u.deg, dec=90 * u.deg),
+            ]
+        if box[0].ra > box[1].ra and box[0].dec < box[1].dec:
+            ## 0 is lower left corner and 1 is upper right corner
+            ## ra increases to the left.
+            box = [box[1], box[0]]
+        if box[1].ra > 180 * u.deg and box[0].ra < 180 * u.deg:
+            ## socat expects -180,180 limits.
+            ## if we cross the 180 line, need to split into two boxes
+            self.log.info("socat.get_sources_in_box.splitting_box", box=box)
+            box1 = [
+                SkyCoord(ra=box[0].ra, dec=box[0].dec),
+                SkyCoord(ra=180 * u.deg, dec=box[1].dec),
+            ]
+            box2 = [
+                SkyCoord(ra=-180 * u.deg, dec=box[0].dec),
+                SkyCoord(ra=box[1].ra - 360 * u.deg, dec=box[1].dec),
+            ]
+            sources1 = self.get_sources_in_box(box=box1)
+            sources2 = self.get_sources_in_box(box=box2)
+            self.log.info(
+                "socat.get_sources_in_box.splitting_box",
+                box=box,
+                box1=box1,
+                box2=box2,
+                n_sources1=len(sources1),
+                n_sources2=len(sources2),
+            )
+            sources_in_map = sources1 + sources2
+        else:
+            ra_min = box[0].ra.to(u.deg).value
+            ra_min = ra_min if ra_min <= 180 else ra_min - 360
+            ra_max = box[1].ra.to(u.deg).value
+            ra_max = ra_max if ra_max <= 180 else ra_max - 360
+            dec_min = box[1].dec.to(u.deg).value
+            dec_max = box[0].dec.to(u.deg).value
+            box = [[ra_min, dec_max], [ra_max, dec_min]]
+            ## astropy SkyCoord uses 0 to 360 convention for RA, but SOCat uses -180 to 180
+            sources_in_map = self.catalog.get_box(
+                ra_min=ra_min,
+                ra_max=ra_max,
+                dec_min=dec_min,
+                dec_max=dec_max,
+            )
         self.log.info(
             "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
         )
@@ -113,7 +155,7 @@ class SOCatFITSCatalog(SourceCatalog):
 
     def __init__(
         self,
-        path: Path,
+        path: Path | None = None,
         hdu: int = 1,
         flux_lower_limit: u.Quantity = 0.01 * u.Jy,
         log: FilteringBoundLogger | None = None,
@@ -123,14 +165,17 @@ class SOCatFITSCatalog(SourceCatalog):
         self.hdu = hdu
         self.flux_lower_limit = flux_lower_limit
         self.core = SOCatWrapper(log=self.log)
-
+        self.valid_fluxes = set()
         self._read_fits_file()
 
     def _read_fits_file(self):
+        if self.path is None:
+            self.log.info("socat_fits.intialized_empty")
+            return
+
         data = fits.open(self.path)[self.hdu]
 
         # TODO: Remove this when it's part of SOCat
-        self.valid_fluxes = set()
         for _, row in enumerate(data.data):
             flux = row["fluxJy"] * u.Jy
             if flux < self.flux_lower_limit:
@@ -156,11 +201,46 @@ class SOCatFITSCatalog(SourceCatalog):
     def add_sources(self, sources: list[RegisteredSource]):
         for source in sources:
             self.core.add_source(source=source)
+            if source.flux >= self.flux_lower_limit:
+                self.valid_fluxes.add(source.source_id)
 
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
         return self.core.get_sources_in_box(box=box)
+
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        map_bounds = input_map.bbox()
+        self.log.info(
+            "socat_fits.get_sources_in_map",
+            map_bounds_deg=map_bounds.to(u.deg),
+        )
+        # if ra_min is greater than ra_max, we are crossing the 0 point
+        # so we need to split the box into two boxes.
+        # since pixell uses -180 to 180 convention, we need to go 0 to ra_min then ra_max to 0
+        if map_bounds[0].ra > map_bounds[1].ra:
+            box1 = [
+                SkyCoord(map_bounds[0].ra, 0 * u.rad),
+                SkyCoord(map_bounds[1].ra, map_bounds[0].dec),
+            ]
+            box2 = [
+                SkyCoord(map_bounds[0].ra, map_bounds[1].dec),
+                SkyCoord(map_bounds[1].ra, 0 * u.rad),
+            ]
+            sources1 = self.core.get_sources_in_box(box=box1)
+            sources2 = self.core.get_sources_in_box(box=box2)
+            return sources1 + sources2
+        else:
+            return self.core.get_sources_in_box(box=map_bounds)
+
+    def get_all_sources(self) -> list[RegisteredSource]:
+        sources = self.core.get_sources_in_box(
+            box=[
+                SkyCoord(-179.99 * u.deg, -89.99 * u.deg),
+                SkyCoord(179.99 * u.deg, 89.99 * u.deg),
+            ]
+        )
+        return sources
 
     def forced_photometry_sources(self, box: list[SkyCoord] | None = None):
         return [
