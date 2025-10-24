@@ -82,9 +82,6 @@ def test_source_offset(map_with_single_source):
     catalog = SOCatFITSCatalog()
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
-    print(new_sources)
-    print(input_map.bbox)
-    print(catalog.get_sources_in_box(box=input_map.bbox))
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
     assert len(results) == 1
     assert not results[0].fit_failed

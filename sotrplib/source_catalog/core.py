@@ -117,8 +117,8 @@ class RegisteredSourceCatalog(SourceCatalog):
 
         return [
             x
-            for x in self.sources
-            if (ra_min < source_ras[self.sources.index(x)] * u.deg < ra_max)
+            for idx, x in enumerate(self.sources)
+            if (ra_min < source_ras[idx] * u.deg < ra_max)
             and (dec_min < x.dec < dec_max)
         ]
 

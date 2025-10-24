@@ -170,7 +170,7 @@ class SOCatFITSCatalog(SourceCatalog):
 
     def _read_fits_file(self):
         if self.path is None:
-            self.log.info("socat_fits.intialized_empty")
+            self.log.info("socat_fits.initialized_empty")
             return
 
         data = fits.open(self.path)[self.hdu]
@@ -275,7 +275,6 @@ class SOCatFITSCatalog(SourceCatalog):
         )
         if len(ra_dec_array) == 0:
             return []
-        print(ra_dec_array)
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("deg").value, dec.to("deg").value]],
             pos2=ra_dec_array,
@@ -283,7 +282,6 @@ class SOCatFITSCatalog(SourceCatalog):
             mode=method,
             coords="radec",
         )
-        print(matches)
         sources = [close_sources[y] for _, y in matches]
         return [
             CrossMatch(
