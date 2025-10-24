@@ -260,31 +260,35 @@ class SOCatFITSCatalog(SourceCatalog):
         """
         Get sources within radius of the catalog.
         """
-
+        ra_min = ra - 2.0 * radius
+        ra_max = ra + 2.0 * radius
+        dec_min = dec - 2.0 * radius
+        dec_max = dec + 2.0 * radius
         close_sources = self.get_sources_in_box(
             [
-                SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
-                SkyCoord(ra=ra + 2.0 * radius, dec=dec + 2.0 * radius),
+                SkyCoord(ra=ra_min, dec=dec_max),
+                SkyCoord(ra=ra_max, dec=dec_min),
             ],
         )
-
         ra_dec_array = np.asarray(
             [(x.ra.to("deg").value, x.dec.to("deg").value) for x in close_sources]
         )
-
+        if len(ra_dec_array) == 0:
+            return []
+        print(ra_dec_array)
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("deg").value, dec.to("deg").value]],
             pos2=ra_dec_array,
-            rmax=radius.to("arcmin").value,
+            rmax=radius.to("deg").value,
             mode=method,
+            coords="radec",
         )
-
+        print(matches)
         sources = [close_sources[y] for _, y in matches]
-
         return [
             CrossMatch(
                 source_id=s.source_id,
-                probability=1.0 / len(sources),
+                probability=1.0 / len(sources),  ##TODO fix probability calculation
                 distance=angular_separation(s.ra, ra, s.dec, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
@@ -292,6 +296,8 @@ class SOCatFITSCatalog(SourceCatalog):
                 catalog_name=s.catalog_name,
                 catalog_idx=y,
                 alternate_names=s.alternate_names,
+                ra=s.ra,
+                dec=s.dec,
             )
-            for s, y in zip(sources, matches)
+            for y, s in enumerate(sources)
         ]
