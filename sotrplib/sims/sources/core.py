@@ -194,6 +194,7 @@ class RandomSourceSimulation(SourceSimulation):
             map_noise_Jy=0.0 * u.Jy,  # Disabled now
             fwhm_uncert_frac=self.parameters.fwhm_uncertainty_frac,
             log=log,
+            min_sep=10 * u.arcmin,
         )
 
         log = log.bind(n_sources=len(injected_sources))

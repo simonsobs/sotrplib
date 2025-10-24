@@ -77,7 +77,6 @@ class PipelineRunner:
             right = max(bbox[1].ra, map_bbox[1].ra)
             top = max(bbox[1].dec, map_bbox[1].dec)
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
-            input_map.bbox = bbox
 
         all_simulated_sources = []
 

@@ -102,9 +102,9 @@ class SOCatWrapper:
             ra_min = ra_min if ra_min <= 180 else ra_min - 360
             ra_max = box[1].ra.to(u.deg).value
             ra_max = ra_max if ra_max <= 180 else ra_max - 360
-            dec_min = box[1].dec.to(u.deg).value
-            dec_max = box[0].dec.to(u.deg).value
-            box = [[ra_min, dec_max], [ra_max, dec_min]]
+            dec_min = box[0].dec.to(u.deg).value
+            dec_max = box[1].dec.to(u.deg).value
+            box = [[ra_min, dec_min], [ra_max, dec_max]]
             ## astropy SkyCoord uses 0 to 360 convention for RA, but SOCat uses -180 to 180
             sources_in_map = self.catalog.get_box(
                 ra_min=ra_min,
@@ -236,8 +236,8 @@ class SOCatFITSCatalog(SourceCatalog):
     def get_all_sources(self) -> list[RegisteredSource]:
         sources = self.core.get_sources_in_box(
             box=[
-                SkyCoord(-179.99 * u.deg, -89.99 * u.deg),
-                SkyCoord(179.99 * u.deg, 89.99 * u.deg),
+                SkyCoord(-179.99 * u.deg, 89.99 * u.deg),
+                SkyCoord(179.99 * u.deg, -89.99 * u.deg),
             ]
         )
         return sources
@@ -266,8 +266,8 @@ class SOCatFITSCatalog(SourceCatalog):
         dec_max = dec + 2.0 * radius
         close_sources = self.get_sources_in_box(
             [
-                SkyCoord(ra=ra_min, dec=dec_max),
-                SkyCoord(ra=ra_max, dec=dec_min),
+                SkyCoord(ra=ra_min, dec=dec_min),
+                SkyCoord(ra=ra_max, dec=dec_max),
             ],
         )
         ra_dec_array = np.asarray(
