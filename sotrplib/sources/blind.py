@@ -23,7 +23,8 @@ class BlindSearchParameters(BaseModel):
     Parameters for blind source searching using photutils.
     """
 
-    sigma_threshold: float = 20.0
+    ## TODO : Get these into the json config
+    sigma_threshold: float = 5.0
     minimum_separation: list[AstroPydanticQuantity[u.arcmin]] = [
         AstroPydanticQuantity(u.Quantity(0.5, "arcmin"))
     ]

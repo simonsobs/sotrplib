@@ -14,7 +14,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.filters.filters import matched_filter_depth1_map
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.maps import clean_map, kappa_clean
+from sotrplib.maps.maps import clean_map, kappa_clean, shift_map_radec
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -91,9 +91,9 @@ class MatchedFilter(MapPreprocessor):
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         rho, kappa = matched_filter_depth1_map(
-            imap=input_map.intensity / input_map.intensity_units.to(u.uK).value,
+            imap=input_map.intensity / input_map.intensity_units.to(u.uK),
             ivarmap=input_map.inverse_variance
-            * input_map.intensity_units.to(u.uK).value ** 2,
+            * input_map.intensity_units.to(u.uK) ** 2,
             band_center=get_frequency(input_map.frequency),
             infofile=self.infofile,
             maskfile=self.maskfile,
@@ -120,3 +120,18 @@ class MatchedFilter(MapPreprocessor):
         input_map.flux_units = u.mJy
         input_map.intensity_units = u.mJy
         return input_map
+
+
+class MapShifter(MapPreprocessor):
+    def __init__(
+        self,
+        shift_ra: AstroPydanticQuantity[u.arcmin],
+        shift_dec: AstroPydanticQuantity[u.arcmin],
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.shift_ra = shift_ra
+        self.shift_dec = shift_dec
+        self.log = log
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        return shift_map_radec(input_map, self.shift_ra, self.shift_dec, log=self.log)

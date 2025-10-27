@@ -7,7 +7,12 @@ from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.preprocessor import KappaRhoCleaner, MapPreprocessor, MatchedFilter
+from sotrplib.maps.preprocessor import (
+    KappaRhoCleaner,
+    MapPreprocessor,
+    MapShifter,
+    MatchedFilter,
+)
 
 
 class PreprocessorConfig(BaseModel, ABC):
@@ -72,4 +77,17 @@ class MatchedFilterConfig(PreprocessorConfig):
         )
 
 
-AllPreprocessorConfigTypes = KappaRhoCleanerConfig | MatchedFilterConfig
+class MapShifterConfig(PreprocessorConfig):
+    preprocessor_type: Literal["map_shifter"] = "map_shifter"
+    shift_ra: AstroPydanticQuantity[u.arcmin]
+    shift_dec: AstroPydanticQuantity[u.arcmin]
+
+    def to_preprocessor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> MapPreprocessor:
+        return MapShifter(shift_ra=self.shift_ra, shift_dec=self.shift_dec, log=log)
+
+
+AllPreprocessorConfigTypes = (
+    KappaRhoCleanerConfig | MatchedFilterConfig | MapShifterConfig
+)

@@ -467,3 +467,54 @@ def make_model_source_map(
     )
     log.info("make_model_source_map.make_model_image.success")
     return model_map
+
+
+def shift_map_radec(
+    imap: ProcessableMap,
+    shift_ra: u.Quantity[u.arcmin],
+    shift_dec: u.Quantity[u.arcmin],
+    log: FilteringBoundLogger | None = None,
+) -> ProcessableMap:
+    """Shift the maps by a given amount in RA and Dec.
+
+    Args:
+        imap: Input ProcessableMap object to be shifted.
+        shift_ra: Shift in RA.
+        shift_dec: Shift in Dec.
+
+    Returns:
+        Shifted ProcessableMap.
+    """
+    # enmap.shift expects [y,x] offsets in pixels
+    log = log if log else structlog.get_logger()
+    for key in [
+        "intensity",
+        "inverse_variance",
+        "snr",
+        "flux",
+        "rho",
+        "kappa",
+        "time_map",
+    ]:
+        if hasattr(imap, key):
+            data = getattr(imap, key)
+            if data is not None:
+                map_resolution = u.Quantity(
+                    data.wcs.wcs.cdelt, data.wcs.wcs.cunit[0]
+                )  # [ra, dec]
+                shift_y = (shift_dec / map_resolution[1]).to_value(
+                    u.dimensionless_unscaled
+                )
+                shift_x = (shift_ra / map_resolution[0]).to_value(
+                    u.dimensionless_unscaled
+                )
+                data.wcs.wcs.crpix -= [shift_x, shift_y]
+                log.info(
+                    "shift_map_radec.shifting",
+                    shift_ra=shift_ra,
+                    shift_dec=shift_dec,
+                    shift_x=shift_x,
+                    shift_y=shift_y,
+                )
+                setattr(imap, key, data)
+    return imap
