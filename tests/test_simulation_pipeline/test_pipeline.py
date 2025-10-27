@@ -43,15 +43,15 @@ def test_basic_pipeline_scipy(
     """
 
     new_map, sources = map_with_sources
-
+    source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PipelineRunner(
         maps=[new_map, new_map],
-        source_catalogs=[],
+        source_catalogs=[source_cat],
         source_injector=None,
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
-        forced_photometry=Scipy2DGaussianFitter(sources=sources),
+        forced_photometry=Scipy2DGaussianFitter(),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),

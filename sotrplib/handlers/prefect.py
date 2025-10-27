@@ -8,7 +8,8 @@ from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sims.sources.core import SourceSimulation
-from sotrplib.source_catalog.database import EmptyMockSourceCatalog, MockDatabase
+from sotrplib.source_catalog.core import RegisteredSourceCatalog
+from sotrplib.source_catalog.socat import SOCatEmptyCatalog, SOCatFITSCatalog
 from sotrplib.sources.blind import EmptyBlindSearch
 from sotrplib.sources.core import (
     BlindSearchProvider,
@@ -32,8 +33,8 @@ class PrefectRunner:
     def __init__(
         self,
         maps: list[ProcessableMap],
-        forced_photometry_catalog: MockDatabase | None,
-        source_catalogs: list[MockDatabase] | None,
+        forced_photometry_catalog: SOCatFITSCatalog | None,
+        source_catalogs: list[SOCatFITSCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
         postprocessors: list[MapPostprocessor] | None,
         source_simulators: list[SourceSimulation] | None,
@@ -45,7 +46,7 @@ class PrefectRunner:
     ):
         self.maps = maps
         self.forced_photometry_catalog = (
-            forced_photometry_catalog or EmptyMockSourceCatalog()
+            forced_photometry_catalog or SOCatEmptyCatalog()
         )
         self.source_catalogs = source_catalogs or []
         self.preprocessors = preprocessors or []
@@ -73,24 +74,15 @@ class PrefectRunner:
         for postprocessor in self.postprocessors:
             input_map = task(postprocessor.postprocess)(input_map=input_map)
 
-        crossmatch_catalog = []
-        for c in self.source_catalogs:
-            crossmatch_catalog.extend(
-                task(c.cat.get_sources_in_map)(input_map=input_map)
-            )
-
-        for_forced_photometry = task(
-            self.forced_photometry_catalog.cat.get_sources_in_map
-        )(input_map)
-
         for simulator in self.source_simulators:
             input_map, additional_sources = task(simulator.simulate)(
                 input_map=input_map
             )
-            for_forced_photometry.extend(additional_sources)
+            sim_catalog = RegisteredSourceCatalog(sources=additional_sources)
+            self.source_catalogs.append(sim_catalog)
 
         forced_photometry_candidates = task(self.forced_photometry.force)(
-            input_map=input_map, sources=for_forced_photometry
+            input_map=input_map, catalogs=self.source_catalogs
         )
 
         source_subtracted_map = task(self.source_subtractor.subtract)(
@@ -101,9 +93,10 @@ class PrefectRunner:
             input_map=source_subtracted_map
         )
 
-        self.sifter.catalog_sources = crossmatch_catalog
         sifter_result = task(self.sifter.sift)(
-            sources=blind_sources, input_map=source_subtracted_map
+            sources=blind_sources,
+            input_map=source_subtracted_map,
+            catalogs=self.source_catalogs,
         )
 
         for output in self.outputs:

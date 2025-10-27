@@ -148,6 +148,102 @@ class SOCatWrapper:
         return filtered
 
 
+class SOCatEmptyCatalog(SourceCatalog):
+    """
+    An empty catalog, using SOCat under the hood.
+    """
+
+    def __init__(
+        self,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or structlog.get_logger()
+        self.core = SOCatWrapper(log=self.log)
+
+    def add_sources(self, sources: list[RegisteredSource]):
+        for source in sources:
+            self.core.add_source(source=source)
+
+    def get_sources_in_box(
+        self, box: list[SkyCoord] | None = None
+    ) -> list[RegisteredSource]:
+        return self.core.get_sources_in_box(box=box)
+
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        map_bounds = input_map.bbox()
+        self.log.info(
+            "socat_empty.get_sources_in_map",
+            map_bounds_deg=map_bounds.to(u.deg),
+        )
+        return self.core.get_sources_in_box(box=map_bounds)
+
+    def get_all_sources(self) -> list[RegisteredSource]:
+        return self.core.get_sources_in_box(
+            box=[
+                SkyCoord(-179.99 * u.deg, 89.99 * u.deg),
+                SkyCoord(179.99 * u.deg, -89.99 * u.deg),
+            ]
+        )
+
+    def forced_photometry_sources(self, box: list[SkyCoord] | None = None):
+        return [
+            x for x in self.get_sources_in_box(box) if x.source_id in self.valid_fluxes
+        ]
+
+    def source_by_id(self, id) -> RegisteredSource:
+        return self.core.source_from_id(id=id)
+
+    def crossmatch(
+        self,
+        ra: u.Quantity,
+        dec: u.Quantity,
+        radius: u.Quantity,
+        method: Literal["closest", "all"],
+    ) -> list[CrossMatch]:
+        """
+        Get sources within radius of the catalog.
+        """
+        ra_min = ra - 2.0 * radius
+        ra_max = ra + 2.0 * radius
+        dec_min = dec - 2.0 * radius
+        dec_max = dec + 2.0 * radius
+        close_sources = self.get_sources_in_box(
+            [
+                SkyCoord(ra=ra_min, dec=dec_min),
+                SkyCoord(ra=ra_max, dec=dec_max),
+            ],
+        )
+        ra_dec_array = np.asarray(
+            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in close_sources]
+        )
+        if len(ra_dec_array) == 0:
+            return []
+        matches = pixell_utils.crossmatch(
+            pos1=[[ra.to("deg").value, dec.to("deg").value]],
+            pos2=ra_dec_array,
+            rmax=radius.to("deg").value,
+            mode=method,
+            coords="radec",
+        )
+        sources = [close_sources[y] for _, y in matches]
+        return [
+            CrossMatch(
+                source_id=s.source_id,
+                probability=1.0 / len(sources),  ##TODO fix probability calculation
+                distance=angular_separation(s.ra, ra, s.dec, dec),
+                flux=s.flux,
+                err_flux=s.err_flux,
+                frequency=s.frequency,
+                catalog_name=s.catalog_name,
+                catalog_idx=y,
+                alternate_names=s.alternate_names,
+                ra=s.ra,
+                dec=s.dec,
+            )
+            for y, s in enumerate(sources)
+        ]
+
+
 class SOCatFITSCatalog(SourceCatalog):
     """
     A catalog, using SOCat under the hood, that reads a FITS file from disk.

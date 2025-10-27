@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from astropy import units as u
 
+from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
@@ -20,9 +21,7 @@ def test_simple_forced_photometry(map_with_single_source):
 
     results = forced_photometry.force(input_map=input_map, catalogs=[])
     assert results == []
-    source_cat = SOCatFITSCatalog()
-    source_cat.add_sources(sources=sources)
-    source_cat.valid_fluxes = [s.source_id for s in sources]
+    source_cat = RegisteredSourceCatalog(sources=sources)
     forced_photometry = SimpleForcedPhotometry(mode="nn")
     results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
 
@@ -69,9 +68,7 @@ def test_failed_fit(map_with_single_source):
     input_map, sources = map_with_single_source
     input_map.flux *= np.nan
     forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=True)
-    source_cat = SOCatFITSCatalog()
-    source_cat.add_sources(sources=sources)
-    source_cat.valid_fluxes = [s.source_id for s in sources]
+    source_cat = RegisteredSourceCatalog(sources=sources)
     results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
     assert len(results) == 1
     assert results[0].fit_failed
