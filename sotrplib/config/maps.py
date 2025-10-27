@@ -5,7 +5,7 @@ Map configuration
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Iterable, Literal
 
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
@@ -17,6 +17,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
     RhoAndKappaMap,
 )
+from sotrplib.maps.database import MapCatDatabaseReader
 from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
@@ -29,6 +30,16 @@ class MapConfig(BaseModel, ABC):
 
     @abstractmethod
     def to_map(self, log: FilteringBoundLogger | None = None) -> ProcessableMap:
+        return
+
+
+class MapGeneratorConfig(BaseModel, ABC):
+    map_generator_type: str
+
+    @abstractmethod
+    def to_generator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Iterable[ProcessableMap]:
         return
 
 
@@ -145,9 +156,24 @@ class InverseVarianceMapConfig(MapConfig):
         )
 
 
+class MapCatDatabaseConfig(MapConfig):
+    map_generator_type: Literal["mapcat_database"] = "mapcat_database"
+    number_to_read: int = 1
+
+    def to_generator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Iterable[ProcessableMap]:
+        return MapCatDatabaseReader(
+            number_to_read=self.number_to_read,
+            log=log,
+        )
+
+
 AllMapConfigTypes = (
     SimulatedMapConfig
     | SimulatedMapFromGeometryConfig
     | RhoKappaMapConfig
     | InverseVarianceMapConfig
 )
+
+AllMapGeneratorConfigTypes = MapCatDatabaseConfig | list[AllMapConfigTypes]
