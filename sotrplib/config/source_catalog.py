@@ -7,9 +7,7 @@ from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.source_catalog.database import (
-    MockDatabase,
-)
+from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.source_catalog.socat import SOCatFITSCatalog
 
 
@@ -19,7 +17,7 @@ class SourceCatalogConfig(BaseModel, ABC):
     @abstractmethod
     def to_source_catalog(
         self, log: FilteringBoundLogger | None = None
-    ) -> MockDatabase:
+    ) -> SourceCatalog:
         return
 
 
