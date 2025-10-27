@@ -24,6 +24,7 @@ dependencies = [
     "socat @ git+https://github.com/simonsobs/socat",
     "astropydantic",
     "numpydantic",
+    "mapcat",
 ]
 
 [project.optional-dependencies]
