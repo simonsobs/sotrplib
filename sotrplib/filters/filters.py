@@ -1,4 +1,5 @@
 import numpy as np
+from astropy import units as u
 from pixell import enmap, utils
 
 """
@@ -197,17 +198,17 @@ def highpass_ips2d(ips2d, lknee, alpha=-20):
 def matched_filter_depth1_map(
     imap: enmap,
     ivarmap: enmap,
-    freq_ghz: float,
-    infofile: str = None,
-    maskfile: str = None,
-    beam_fwhm: float = None,
-    beam1d: str = None,
-    shrink_holes: float = 20 * utils.arcmin,
-    apod_edge: float = 10 * utils.arcmin,
-    apod_holes: float = 5 * utils.arcmin,
-    noisemask_lim: float = None,
+    band_center: u.Quantity,
+    infofile: str | None = None,
+    maskfile: str | None = None,
+    beam_fwhm: u.Quantity | None = None,
+    beam1d: str | None = None,
+    shrink_holes: u.Quantity = 20 * u.arcmin,
+    apod_edge: u.Quantity = 10 * u.arcmin,
+    apod_holes: u.Quantity = 5 * u.arcmin,
+    noisemask_lim: float | None = None,
     highpass: bool = False,
-    band_height: float = 0 * utils.degree,
+    band_height: u.Quantity = 0 * u.degree,
     shift: float = 0,
     simple: bool = False,
     simple_lknee: float = 1000,
@@ -226,57 +227,57 @@ def matched_filter_depth1_map(
     ivarmap:enmap
         inverse variance map, 1./uK^2
 
-    freq_ghz:float
-        observing band, in GHz
+    band_center: u.Quantity
+        observing band center frequency
 
-    infofile:str [None]
+    infofile: str | None = None
         the .info file for the observation in case shifting is nonzero.
 
-    maskfile:str [None]
+    maskfile: str | None = None
         a mask file to apply to the observation
 
-    beam_fwhm:float [None]
+    beam_fwhm: u.Quantity | None = None
         fwhm of the Gaussian beam, in radian. e.g. 2.2*utils.arcmin for f090
 
-    beam1d:str [None]
+    beam1d: str | None = None
         beam transform file, the first column is ell 0,1,2,3,... and the second column B(ell)
 
-    shrink_holes:float [20*utils.arcmin]
+    shrink_holes: u.Quantity = 20 * utils.arcmin
         hole size under which to ignore, radians
 
-    apod_edge:float [10*utils.arcmin]
+    apod_edge: u.Quantity = 10 * utils.arcmin
         apodize this far from the map edge, radians
 
-    apod_holes:float [5*utils.arcmin]
+    apod_holes: u.Quantity = 5 * utils.arcmin
         apodize this far around holes, radians
 
-    noisemask_lim:float [None]
+    noisemask_lim: float | None = None
         an upper limit to the noise, above which you mask. mJy/sr
 
-    highpass:bool [False]
+    highpass: bool = False
         perform highpass filtering
 
-    band_height:float [0*utils.degree]
+    band_height: u.Quantity = 0 * utils.degree
         do filtering in dec bands of this height if >0, else one filtering for entire map, in radians.
 
-    shift:int [0]
+    shift: int = 0
         apply a shift matrix to the data according to the infofile. 0 means no shift
 
-    simple:bool [False]
+    simple: bool = False
         do a simple filtering using a noise model with lknee and alpha. If False it makes the noise model
         from the data itself
 
-    simple_lknee:float [1000]
+    simple_lknee: float = 1000
         simple filtering lknee, values vary significant among frequencies e.g. ACT full maps had lknee
         intensity values of 2100,3000,3800 for f090, f150, f220, respectively (See Naess 2025 2503.14451)
 
-    simple_alpha:float [-3.5]
+    simple_alpha: float = -3.5
         simple filtering alpha, values are usually around -3 and -4, depending on the experiment
 
-    lres = (70,100)
+    lres: tuple = (70,100)
         y,x block size to use when smoothing the noise spectrum
 
-    pixwin:str ['nn']
+    pixwin: str = "nn"
         apply pixel window function. This is included as part of the beam, which is valid in the flat sky
         posible values are nearest neighbor "nn" "0" bilinear "lin" "bilin" "1" or "none"
 
@@ -287,22 +288,21 @@ def matched_filter_depth1_map(
     """
     from pixell import analysis, bunch, enmap, uharm, utils
 
-    freq = freq_ghz * 1e9
+    freq = band_center.to(u.Hz).value
     ## uK-> mJy/sr
-    fconv = utils.dplanck(freq) / 1e3
+    fconv = utils.dplanck(freq) * 1e3
 
     if beam1d:
         beam = np.loadtxt(beam1d).T[1]
         beam /= np.max(beam)
         beamis2d = False
-    elif beam_fwhm:
-        bsigma = beam_fwhm * utils.fwhm
+    elif beam_fwhm is not None:
+        bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
         uht = uharm.UHT(imap.shape, imap.wcs)
         beam = np.exp(-0.5 * uht.l**2 * bsigma**2)
-        beamis2d = True
+        beamis2d = beam.shape != (len(beam),)
     else:
         raise "Need one of beam1d or beam_fwhm"
-
     ## convert map in T_cmb to mJy/sr
     imap *= fconv
     ivarmap /= fconv**2
@@ -320,9 +320,12 @@ def matched_filter_depth1_map(
     # depending on whether it's based on the extrnal mask or not
     hit = ivarmap > 0
     if shrink_holes > 0:
-        hit = enmap.shrink_mask(enmap.grow_mask(hit, shrink_holes), shrink_holes)
+        hit = enmap.shrink_mask(
+            enmap.grow_mask(hit, shrink_holes.to(u.radian).value),
+            shrink_holes.to(u.radian).value,
+        )
     # Apodize the edge by decreasing the significance in ivar
-    noise_apod = enmap.apod_mask(hit, apod_edge)
+    noise_apod = enmap.apod_mask(hit, apod_edge.to(u.radian).value)
     # Check if we have a noise model mask too
     mask = 0
     if maskfile:
@@ -330,12 +333,15 @@ def matched_filter_depth1_map(
     # Optionally mask very bright regions
     if noisemask_lim:
         bright = np.abs(imap.preflat[0] < noisemask_lim * fconv)
-        rmask = 5 * utils.arcmin
-        mask |= bright.distance_transform(rmax=rmask) < rmask
+        rmask = 5 * u.arcmin
+        mask |= (
+            bright.distance_transform(rmax=rmask.to(u.radian).value)
+            < rmask.to(u.radian).value
+        )
         del bright
     mask = np.asanyarray(mask)
     if mask.size > 0 and mask.ndim > 0:
-        noise_apod *= enmap.apod_mask(1 - mask, apod_holes)
+        noise_apod *= enmap.apod_mask(1 - mask, apod_holes.to(u.radian).value)
     del mask
     # Build the noise model
     iC = build_ips2d_udgrade(
@@ -355,8 +361,12 @@ def matched_filter_depth1_map(
     # Bands. At least band_height in height and with at least
     # 2*apod_edge of overlapping padding at top and bottom. Using narrow bands
     # make the flat sky approximation a good approximation
-    nband = utils.ceil(imap.extent()[0] / band_height) if band_height > 0 else 1
-    bedge = utils.ceil(apod_edge / imap.pixshape()[0]) * 2
+    nband = (
+        utils.ceil(imap.extent()[0] / band_height.to(u.radian).value)
+        if band_height > 0
+        else 1
+    )
+    bedge = utils.ceil(apod_edge.to(u.radian).value / imap.pixshape()[0]) * 2
     boverlap = bedge
     for _, r in enumerate(
         overlapping_range_iterator(ny, nband, boverlap, padding=bedge)
@@ -379,13 +389,14 @@ def matched_filter_depth1_map(
             biC.wcs = bmap.wcs.deepcopy()
         # 2d beam
         if beamis2d:
-            bsigma = beam_fwhm * utils.fwhm
+            bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
             uht = uharm.UHT(bmap.shape, bmap.wcs)
             beam2d = np.exp(-0.5 * uht.l**2 * bsigma**2)
         else:
             beam2d = enmap.samewcs(
                 utils.interp(bmap.modlmap(), np.arange(len(beam)), beam), bmap
             )
+
         # Pixel window. We include it as part of the 2d beam, which is valid in the flat sky
         # approximation we use here.
         if pixwin in ["nn", "0"]:
@@ -397,7 +408,7 @@ def matched_filter_depth1_map(
         else:
             raise ValueError("Invalid pixel window '%s'" % str(pixwin))
         # Set up apodization
-        filter_apod = enmap.apod_mask(bhit, apod_edge)
+        filter_apod = enmap.apod_mask(bhit, apod_edge.to(u.radian).value)
         bivar = bivar * filter_apod
         del filter_apod
         # Phew! Actually perform the filtering

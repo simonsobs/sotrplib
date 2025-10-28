@@ -178,23 +178,28 @@ class ProcessableMap(ABC):
         """
         The bounding box of the map provided as sky coordinates.
         """
-        if self.box is not None:
-            return self.box
-        else:
-            for attribute in ["flux", "snr", "rho", "kappa"]:
-                if (x := getattr(self, attribute, None)) is not None:
-                    shape = x.shape[-2:]
-                    wcs = x.wcs
+        ## TODO: do we want the bounding box returned to be the bbox of this specific map
+        ## or the box used to read in the map if it was provided?
+        ## need to check how box works when reading in the maps;
+        """
+        let's say you want to cut a box from -20 to 20 in ra, and -20 to 20 in dec but the map is only from -10, 20 in ra and -20, 10 in dec. 
+        The true bounding box of the cut map would only be (-10,-20),(20,10) but self.box would be (-20,-10),(20,20)
+        not sure if that's how box works when reading in maps or if it fills the empty space with nans or something... should check that
+        """
+        for attribute in ["flux", "snr", "rho", "kappa"]:
+            if (x := getattr(self, attribute, None)) is not None:
+                shape = x.shape[-2:]
+                wcs = x.wcs
 
-                    bottom_left = wcs.array_index_to_world(0, 0)
-                    top_right = wcs.array_index_to_world(shape[0], shape[1])
+                bottom_left = wcs.array_index_to_world(0, 0)
+                top_right = wcs.array_index_to_world(shape[0], shape[1])
 
-                    self.box = (
-                        bottom_left,
-                        top_right,
-                    )
+                self.box = (
+                    bottom_left,
+                    top_right,
+                )
 
-                    break
+                break
 
         return self.box
 
@@ -228,39 +233,46 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         time_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
+        matched_filtered: bool = False,
+        intensity_units: Unit = u.K,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
         self.inverse_variance_filename = inverse_variance_filename
+        self.intensity_units = intensity_units
         self.time_filename = time_filename
         self.observation_start = start_time
         self.observation_end = end_time
         self.box = box
         self.frequency = frequency
         self.array = array
+        self.matched_filtered = matched_filtered
         self.log = log or structlog.get_logger()
 
     def build(self):
         log = self.log.bind(intensity_filename=self.intensity_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
 
-        try:
-            self.intensity = enmap.read_map(
-                str(self.intensity_filename), sel=0, box=box
-            )
-            log.debug("intensity_ivar.intensity.read.sel")
-        except (IndexError, AttributeError):
-            # Intensity map does not have Q, U
-            self.intensity = enmap.read_map(str(self.intensity_filename), box=box)
-            log.debug("intensity_ivar.intensity.read.nosel")
+        intensity_shape = enmap.read_map_geometry(str(self.intensity_filename))[0]
+        self.intensity = enmap.read_map(
+            str(self.intensity_filename),
+            sel=0 if len(intensity_shape) > 2 else None,
+            box=box,
+        )
+        log.debug("intensity_ivar.intensity.read")
 
         # TODO: Set metadata from header e.g. frequency band.
-
         log = log.new(inverse_variance_filename=self.inverse_variance_filename)
+        inverse_variance_shape = enmap.read_map_geometry(
+            str(self.inverse_variance_filename)
+        )[0]
         self.inverse_variance = enmap.read_map(
-            str(self.inverse_variance_filename), box=box
+            str(self.inverse_variance_filename),
+            sel=0 if len(inverse_variance_shape) > 2 else None,
+            box=box,
         )
         log.debug("intensity_ivar.ivar.read")
+
         self.map_resolution = u.Quantity(
             abs(self.inverse_variance.wcs.wcs.cdelt[0]),
             self.inverse_variance.wcs.wcs.cunit[0],
@@ -269,7 +281,10 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(str(self.time_filename), box=box)
+            time_shape = enmap.read_map_geometry(str(self.time_filename))[0]
+            time_map = enmap.read_map(
+                str(self.time_filename), sel=0 if len(time_shape) > 2 else None, box=box
+            )
             log.debug("intensity_ivar.time.read")
         else:
             time_map = None
@@ -281,7 +296,6 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
         return
 
-    ## TODO: need to filter before calculating snr and flux
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.intensity / np.sqrt(self.inverse_variance)
@@ -290,6 +304,92 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def get_flux(self):
         with np.errstate(divide="ignore"):
             flux = self.intensity
+        ## assume that if matched filtered, intensity is rho and ivar is kappa
+        if self.matched_filtered:
+            flux /= self.inverse_variance
+        return flux
+
+    def finalize(self):
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
+        super().finalize()
+
+
+class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
+    """
+    Resulting rho/kappa maps after ingesting intensity and ivar maps and
+    matched filtering them. Could be Depth 1, could be monthly
+    or weekly co-adds. Or something else!
+
+    """
+
+    def __init__(
+        self,
+        rho: enmap.ndmap,
+        kappa: enmap.ndmap,
+        flux_units: u.Unit,
+        prefiltered_map: IntensityAndInverseVarianceMap,
+        keep_prefiltered: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.rho = rho
+        self.kappa = kappa
+        self.prefiltered_map = prefiltered_map
+        self.flux_units = flux_units
+        self.log = log or structlog.get_logger()
+        self.time_first = self.prefiltered_map.time_first
+        self.time_end = self.prefiltered_map.time_end
+        self.time_mean = self.prefiltered_map.time_mean
+        self.observation_start = self.prefiltered_map.observation_start
+        self.observation_end = self.prefiltered_map.observation_end
+        self.box = self.prefiltered_map.box
+        self.frequency = self.prefiltered_map.frequency
+        self.array = self.prefiltered_map.array
+
+        self.map_resolution = u.Quantity(
+            abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
+        )
+        if keep_prefiltered:
+            self.prefiltered_intensity = self.prefiltered_map.intensity
+            self.prefiltered_inverse_variance = self.prefiltered_map.inverse_variance
+            self.intensity_units = self.prefiltered_map.intensity_units
+        else:
+            self.prefiltered_map = None
+            self.prefiltered_intensity = None
+            self.prefiltered_inverse_variance = None
+            self.intensity_units = None
+
+    def build(self):
+        return
+
+    def add_time_offset(self, offset: timedelta):
+        """
+        Add a time offset to the time maps. Useful if you have a time map
+        that is relative to the start of the observation, and you want to
+        convert it to an absolute time map.
+
+        time maps are in unix time (seconds).
+
+        ACT time maps are stored in seconds since the start of the observation,
+        thus if you want absolute time you need to add the start time of the observation.
+        """
+        if self.time_first is not None:
+            self.time_first += offset.timestamp()
+        if self.time_end is not None:
+            self.time_end += offset.timestamp()
+        if self.time_mean is not None:
+            self.time_mean += offset.timestamp()
+
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.rho / np.sqrt(self.kappa)
+
+        return snr
+
+    def get_flux(self):
+        with np.errstate(divide="ignore"):
+            flux = self.rho / self.kappa
+
         return flux
 
     def finalize(self):
@@ -357,8 +457,13 @@ class RhoAndKappaMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_map = enmap.read_map(str(self.time_filename), box=box)
-            log.debug("rho_kappa.time.read")
+            try:
+                time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
+                log.debug("rho_kappa.time.read.sel")
+            except (IndexError, AttributeError):
+                # Somehow time map requires sel=0
+                time_map = enmap.read_map(str(self.time_filename), box=box)
+                log.debug("rho_kappa.time.read.nosel")
         else:
             time_map = None
             log.debug("rho_kappa.time.none")

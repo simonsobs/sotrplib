@@ -3,6 +3,7 @@ import pytest
 from astropy import units as u
 
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
+from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     Scipy2DGaussianFitter,
@@ -20,10 +21,9 @@ def test_simple_forced_photometry(map_with_single_source):
 
     results = forced_photometry.force(input_map=input_map, catalogs=[])
     assert results == []
-
-    results = forced_photometry.force(
-        input_map=input_map, catalogs=[RegisteredSourceCatalog(sources)]
-    )
+    source_cat = RegisteredSourceCatalog(sources=sources)
+    forced_photometry = SimpleForcedPhotometry(mode="nn")
+    results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
 
     assert len(results) == 1
     assert results[0].flux.to(u.Jy).value == pytest.approx(
@@ -33,12 +33,9 @@ def test_simple_forced_photometry(map_with_single_source):
 
 
 def test_empty_forced_photometry(map_with_single_source):
-    input_map, sources = map_with_single_source
-
+    input_map, _ = map_with_single_source
     forced_photometry = EmptyForcedPhotometry()
-    results = forced_photometry.force(
-        input_map=input_map, catalogs=[RegisteredSourceCatalog(sources)]
-    )
+    results = forced_photometry.force(input_map=input_map, catalogs=[])
 
     assert results == []
 
@@ -46,15 +43,16 @@ def test_empty_forced_photometry(map_with_single_source):
 def test_scipy_curve_fit(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = Scipy2DGaussianFitter(thumbnail_half_width=0.1 * u.deg)
-    results = forced_photometry.force(
-        input_map=input_map, catalogs=[RegisteredSourceCatalog(sources)]
-    )
+    source_cat = SOCatFITSCatalog()
+    source_cat.add_sources(sources=sources)
+    source_cat.valid_fluxes = [s.source_id for s in sources]
+    results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
     assert len(results) == 1
     ntries = 10
     if results[0].fit_failed:
         while results[0].fit_failed and ntries > 0:
             results = forced_photometry.force(
-                input_map=input_map, catalogs=[RegisteredSourceCatalog(sources)]
+                input_map=input_map, catalogs=[source_cat]
             )
             ntries -= 1
 
@@ -70,9 +68,8 @@ def test_failed_fit(map_with_single_source):
     input_map, sources = map_with_single_source
     input_map.flux *= np.nan
     forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=True)
-    results = forced_photometry.force(
-        input_map=input_map, catalogs=[RegisteredSourceCatalog(sources)]
-    )
+    source_cat = RegisteredSourceCatalog(sources=sources)
+    results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
     assert len(results) == 1
     assert results[0].fit_failed
 
@@ -85,8 +82,9 @@ def test_source_offset(map_with_single_source):
     new_sources = [x.model_copy() for x in sources]
     new_sources[0].ra += ra_offset
 
-    catalog = RegisteredSourceCatalog(sources=new_sources)
-
+    catalog = SOCatFITSCatalog()
+    catalog.add_sources(sources=new_sources)
+    catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
     assert len(results) == 1
     assert not results[0].fit_failed

@@ -1,3 +1,3 @@
-from . import database, query_tools, source_catalog
+from . import core, query_tools, socat, source_catalog
 
-__all__ = ["database", "query_tools", "source_catalog"]
+__all__ = ["core", "socat", "query_tools", "source_catalog"]

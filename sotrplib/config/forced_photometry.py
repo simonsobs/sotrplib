@@ -51,8 +51,6 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
         self, log: FilteringBoundLogger | None = None
     ) -> Scipy2DGaussianFitter:
         return Scipy2DGaussianFitter(
-            # TODO: Support non-simulated sources
-            sources=[],
             flux_limit_centroid=self.flux_limit_centroid,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
