@@ -63,11 +63,13 @@ class PipelineRunner:
         return
 
     def run(self):
-        for input_map in self.maps:
+        for map_idx, input_map in enumerate(self.maps):
             input_map.build()
 
             for preprocessor in self.preprocessors:
-                preprocessor.preprocess(input_map=input_map)
+                self.maps[map_idx] = preprocessor.preprocess(
+                    input_map=self.maps[map_idx]
+                )
 
         # Generate sources based upon maximal bounding box of all maps
         bbox = self.maps[0].bbox

@@ -103,7 +103,6 @@ class Settings(BaseSettings):
             "sifter": self.sifter.to_sifter(log=log),
             "outputs": [x.to_output(log=log) for x in self.outputs],
         }
-
         return contents
 
     def to_basic(self) -> PipelineRunner:

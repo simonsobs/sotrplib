@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterable, Literal
 
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
+from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
 from pydantic import BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
 
@@ -112,7 +112,7 @@ class RhoKappaMapConfig(MapConfig):
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
-    flux_units: str = "Jy"
+    flux_units: AstroPydanticUnit = u.Unit("Jy")
 
     def to_map(self, log: FilteringBoundLogger | None = None) -> RhoAndKappaMap:
         return RhoAndKappaMap(
@@ -124,7 +124,7 @@ class RhoKappaMapConfig(MapConfig):
             box=self.box,
             frequency=self.frequency,
             array=self.array,
-            flux_units=u.Quantity(1, self.flux_units),
+            flux_units=self.flux_units,
             log=log,
         )
 
@@ -139,6 +139,7 @@ class InverseVarianceMapConfig(MapConfig):
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
+    intensity_units: AstroPydanticUnit = u.Unit("K")
 
     def to_map(
         self, log: FilteringBoundLogger | None = None
@@ -152,6 +153,7 @@ class InverseVarianceMapConfig(MapConfig):
             box=self.box,
             frequency=self.frequency,
             array=self.array,
+            intensity_units=self.intensity_units,
             log=log,
         )
 

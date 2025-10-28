@@ -6,50 +6,86 @@ import astropy.units as u
 import pytest
 
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
-from sotrplib.source_catalog.database import MockDatabase
+from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.sources import RegisteredSource
 
 
 @pytest.fixture
 def dummy_socat_db():
-    return MockDatabase()
+    return SOCatFITSCatalog()
 
 
 def test_socat_mock_db(dummy_socat_db):
     db = dummy_socat_db
     assert db is not None
-    assert isinstance(db, MockDatabase)
+    assert isinstance(db, SOCatFITSCatalog)
 
     assert (
-        db.get_nearby_source(ra=10.0 * u.deg, dec=10.0 * u.deg, radius=0.1 * u.deg)
+        db.crossmatch(
+            ra=10.0 * u.deg, dec=10.0 * u.deg, radius=0.1 * u.deg, method="all"
+        )
         == []
     )
-
-    db.add_source(ra=10.0 * u.deg, dec=10.0 * u.deg, name="test_source_1")
-    nearby = db.get_nearby_source(ra=10.0 * u.deg, dec=10.0 * u.deg)
+    source1 = RegisteredSource(
+        source_id="test_source_1",
+        ra=10.0 * u.deg,
+        dec=10.0 * u.deg,
+        err_ra=0.0 * u.deg,
+        err_dec=0.0 * u.deg,
+        flux=10.0 * u.Jy,
+    )
+    db.add_sources(sources=[source1])
+    nearby = db.crossmatch(
+        ra=source1.ra, dec=source1.dec, radius=0.1 * u.deg, method="all"
+    )
     assert len(nearby) == 1
     near_source = nearby[0]
-    assert near_source.crossmatches[0].source_id == "test_source_1"
-    assert near_source.ra == 10.0 * u.deg
-    assert near_source.dec == 10.0 * u.deg
-    assert near_source.source_id == "0"
+    assert near_source.source_id == "test_source_1"
+    assert near_source.ra == source1.ra
+    assert near_source.dec == source1.dec
+    assert near_source.catalog_idx == 0
 
-    db.add_source(ra=12.0 * u.deg, dec=10.0 * u.deg, name="test_source_2")
-    nearby = db.get_nearby_source(ra=10.0 * u.deg, dec=10.0 * u.deg, radius=1.0 * u.deg)
+    source2 = RegisteredSource(
+        source_id="test_source_2",
+        ra=12.0 * u.deg,
+        dec=10.0 * u.deg,
+        err_ra=0.0 * u.deg,
+        err_dec=0.0 * u.deg,
+        flux=10.0 * u.Jy,
+    )
+    db.add_sources(sources=[source2])
+    nearby = db.crossmatch(
+        ra=source1.ra, dec=source1.dec, radius=0.1 * u.deg, method="all"
+    )
     assert len(nearby) == 1
     near_source = nearby[0]
-    assert near_source.crossmatches[0].source_id == "test_source_1"
-    assert near_source.ra == 10.0 * u.deg
-    assert near_source.dec == 10.0 * u.deg
-    assert near_source.source_id == "0"
+    assert near_source.source_id == "test_source_1"
+    assert near_source.ra == source1.ra
+    assert near_source.dec == source1.dec
+    assert near_source.catalog_idx == 0
 
-    nearby = db.get_nearby_source(ra=12.0 * u.deg, dec=10.0 * u.deg, radius=1.0 * u.deg)
+    nearby = db.crossmatch(
+        ra=source2.ra, dec=source2.dec, radius=0.1 * u.deg, method="closest"
+    )
     assert len(nearby) == 1
     near_source = nearby[0]
-    assert near_source.crossmatches[0].source_id == "test_source_2"
-    assert near_source.ra == 12.0 * u.deg
-    assert near_source.dec == 10.0 * u.deg
-    assert near_source.source_id == "1"
+    assert near_source.source_id == "test_source_2"
+    assert near_source.ra == source2.ra
+    assert near_source.dec == source2.dec
+    assert near_source.catalog_idx == 0
+
+    nearby = db.crossmatch(
+        ra=source2.ra, dec=source2.dec, radius=3 * u.deg, method="all"
+    )
+    assert len(nearby) == 2
+    assert nearby[0].source_id == "test_source_1"
+    assert nearby[0].ra == source1.ra
+    assert nearby[0].dec == source1.dec
+    assert nearby[0].catalog_idx == 0
+    assert nearby[1].source_id == "test_source_2"
+    assert nearby[1].ra == source2.ra
+    assert nearby[1].dec == source2.dec
+    assert nearby[1].catalog_idx == 1
 
 
 def test_simple_source_catalog():

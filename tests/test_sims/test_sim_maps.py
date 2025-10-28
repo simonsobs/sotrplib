@@ -157,21 +157,6 @@ def test_inject_sources_nan_mapval(sim_map_params, dummy_source, log=log):
     assert injected == []
 
 
-def test_inject_sources_from_db_empty(tmp_path, sim_map_params, log=log):
-    # Create a dummy SourceCatalogDatabase with no sources
-    class DummyDB:
-        def read_database(self):
-            return []
-
-    test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
-    mapdata = type("MapData", (), {})()
-    mapdata.time_mean = test_map
-    mapdata.frequency = "f090"
-    mapdata.array = "sim"
-    injected = sim_maps.inject_sources_from_db(mapdata, DummyDB(), log=log)
-    assert injected == []
-
-
 def test_inject_random_sources_no_sim_params(sim_map_params, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Should return empty list if sim_params is None or empty

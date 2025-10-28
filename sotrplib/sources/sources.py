@@ -20,6 +20,8 @@ class BaseSource(BaseModel):
 
 
 class CrossMatch(BaseModel):
+    ra: AstroPydanticQuantity[u.deg] | None = None
+    dec: AstroPydanticQuantity[u.deg] | None = None
     source_id: str
     probability: float | None = None
     distance: AstroPydanticQuantity[u.deg] | None = None
@@ -47,11 +49,13 @@ class RegisteredSource(BaseSource):
     ) = None
 
     crossmatches: list[CrossMatch] | None = None
-
+    catalog_name: str | None = None
+    alternate_names: list[str] | None = None
     extended: bool | None = None
     err_ra: AstroPydanticQuantity[u.deg] | None = None
     err_dec: AstroPydanticQuantity[u.deg] | None = None
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
+
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
     def add_crossmatch(self, crossmatch: CrossMatch):

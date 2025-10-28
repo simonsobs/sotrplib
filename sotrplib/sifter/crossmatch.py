@@ -15,7 +15,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.source_catalog.database import MockDatabase
+from sotrplib.source_catalog.socat import SOCatFITSCatalog
 
 from ..sources.sources import CrossMatch, MeasuredSource, RegisteredSource
 
@@ -80,7 +80,7 @@ def crossmatch_mask(
 
 def crossmatch_with_million_quasar_catalog(
     extracted_sources: list[MeasuredSource],
-    mq_catalog: MockDatabase | None = None,
+    mq_catalog: SOCatFITSCatalog | None = None,
     match_threshold: AstroPydanticQuantity[u.arcmin] = 0.5 * u.arcmin,
     log: FilteringBoundLogger | None = None,
 ):
@@ -241,7 +241,7 @@ def sift(
     log = log.bind(func_name="sift")
     log.info("sift.start")
 
-    fwhm = get_fwhm(map_freq, arr=arr) * u.arcmin
+    fwhm = get_fwhm(map_freq, arr=arr)
 
     angle_coords = u.deg
 

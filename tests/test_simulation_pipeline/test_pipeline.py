@@ -30,7 +30,7 @@ def test_injected_sources_scipy(
     assert len(sources) > 0
 
     # See if we can recover them
-    forced_sources = scipy_2d_gaussian_fit(new_map, source_catalog=sources)
+    forced_sources = scipy_2d_gaussian_fit(new_map, source_list=sources)
 
     assert len(forced_sources) == len(sources)
 
@@ -43,15 +43,15 @@ def test_basic_pipeline_scipy(
     """
 
     new_map, sources = map_with_sources
-
+    source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PipelineRunner(
         maps=[new_map, new_map],
-        source_catalogs=[],
+        source_catalogs=[source_cat],
         source_injector=None,
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
-        forced_photometry=Scipy2DGaussianFitter(sources=sources),
+        forced_photometry=Scipy2DGaussianFitter(),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),
@@ -143,7 +143,6 @@ def test_default_sifter(
 
     # Check we can sift them out!
     sifter = DefaultSifter()
-
     res = sifter.sift(
         sources=found_sources,
         input_map=new_map,

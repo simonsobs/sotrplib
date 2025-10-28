@@ -25,6 +25,7 @@ dependencies = [
     "astropydantic",
     "numpydantic",
     "mapcat",
+    "prefect",
 ]
 
 [project.optional-dependencies]

@@ -9,7 +9,6 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sims.sim_sources import SimTransient
-from sotrplib.source_catalog.database import SourceCatalogDatabase
 from sotrplib.sources.forced_photometry import (
     convert_catalog_to_registered_source_objects,
 )
@@ -326,7 +325,7 @@ def inject_sources(
         raise ValueError("Input map must be a ProcessableMap or enmap.ndmap object")
 
     mapres = abs(wcs.wcs.cdelt[0]) * u.deg
-    fwhm = get_fwhm(freq, arr=arr) * u.arcmin
+    fwhm = get_fwhm(freq, arr=arr)
     fwhm_pixels = (fwhm / mapres).value
 
     log.info("inject_sources.injecting_sources", n_sources=len(sources))
@@ -405,30 +404,6 @@ def inject_sources(
     return imap, injected_sources
 
 
-def inject_sources_from_db(
-    mapdata: ProcessableMap,
-    injected_source_db: SourceCatalogDatabase,
-    verbose=False,
-    log=None,
-):
-    log.bind(func_name="inject_sources_from_db")
-    ## inject static sources
-    if verbose:
-        log.info("inject_sources_from_db.start")
-    catalog_sources = injected_source_db.read_database()
-    mapdata, injected_sources = inject_sources(
-        mapdata,
-        catalog_sources,
-        mapdata.time_mean,
-        freq=mapdata.frequency,
-        arr=mapdata.array,
-        debug=verbose,
-        log=log,
-    )
-    log.info("inject_sources_from_db.end", injected_sources=injected_sources)
-    return injected_sources
-
-
 def inject_random_sources(
     mapdata,
     sim_params: dict,
@@ -473,7 +448,6 @@ def inject_random_sources(
 
 def inject_simulated_sources(
     mapdata: ProcessableMap,
-    injected_source_db: SourceCatalogDatabase = None,
     sim_params: dict = {},
     verbose: bool = False,
     inject_transients: bool = False,
@@ -498,7 +472,7 @@ def inject_simulated_sources(
     """
     log = log or get_logger()
     log = log.bind(func_name="inject_simulated_sources")
-    if not sim_params and not injected_source_db and not simulated_transient_database:
+    if not sim_params and not simulated_transient_database:
         log.info("inject_simulated_sources.skip")
         return [], []
 
@@ -513,20 +487,13 @@ def inject_simulated_sources(
     log = log.bind(use_map_geometry=use_map_geometry)
 
     catalog_sources = []
-    if injected_source_db:
-        catalog_sources = inject_sources_from_db(
-            mapdata,
-            injected_source_db,
-            log=log,
-        )
-    log = log.bind(injected_source_db=injected_source_db)
     log = log.bind(injected_sources=catalog_sources)
     log.info("inject_simulated_sources.injected_source_db")
 
     catalog_sources += inject_random_sources(
         mapdata,
         sim_params,
-        fwhm_arcmin=get_fwhm(mapdata.frequency, arr=mapdata.array) * u.arcmin,
+        fwhm_arcmin=get_fwhm(mapdata.frequency, arr=mapdata.array),
         add_noise=False,
         log=log,
     )
@@ -625,9 +592,5 @@ def inject_simulated_sources(
         n_injected_sources=len(catalog_sources),
         n_injected_transients=len(injected_sources),
     )
-    if isinstance(injected_source_db, SourceCatalogDatabase):
-        ## add the catalog sources to the injected_source_db
-        injected_source_db.add_sources(injected_sources)
-        injected_source_db.add_sources(catalog_sources)
-        log.info("inject_simulated_sources.update_injected_source_db")
+
     return catalog_sources, injected_sources
