@@ -13,7 +13,7 @@ from sotrplib.handlers.prefect import PrefectRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
-from .maps import AllMapConfigTypes
+from .maps import AllMapGeneratorConfigTypes
 from .outputs import AllOutputConfigTypes
 from .postprocessors import AllPostprocessorConfigTypes
 from .preprocessors import AllPreprocessorConfigTypes
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     observatory: Literal["SO", "ACT", "SPT"] = "SO"
     instrument: Literal["LAT", "ACTPol", "SPT3G", "SAT1", "SAT2", "SAT3"] = "LAT"
 
-    maps: list[AllMapConfigTypes] = []
+    maps: AllMapGeneratorConfigTypes = []
     "Input maps"
 
     source_simulators: list[AllSourceSimulationConfigTypes] = []

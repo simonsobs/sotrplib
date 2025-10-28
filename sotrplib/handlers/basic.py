@@ -3,6 +3,8 @@ A basic pipeline handler. Takes all the components and runs
 them in the pre-specified order.
 """
 
+from typing import Iterable
+
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
@@ -20,7 +22,7 @@ from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 
 class PipelineRunner:
-    maps: list[ProcessableMap]
+    maps: Iterable[ProcessableMap]
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
@@ -34,7 +36,7 @@ class PipelineRunner:
 
     def __init__(
         self,
-        maps: list[ProcessableMap],
+        maps: Iterable[ProcessableMap],
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
