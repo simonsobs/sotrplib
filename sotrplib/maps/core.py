@@ -253,7 +253,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = self.log.bind(intensity_filename=self.intensity_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
 
-        intensity_shape = enmap.read_geometry(str(self.intensity_filename))[0]
+        intensity_shape = enmap.read_map_geometry(str(self.intensity_filename))[0]
         self.intensity = enmap.read_map(
             str(self.intensity_filename),
             sel=0 if len(intensity_shape) > 2 else None,
@@ -263,7 +263,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
         # TODO: Set metadata from header e.g. frequency band.
         log = log.new(inverse_variance_filename=self.inverse_variance_filename)
-        inverse_variance_shape = enmap.read_geometry(
+        inverse_variance_shape = enmap.read_map_geometry(
             str(self.inverse_variance_filename)
         )[0]
         self.inverse_variance = enmap.read_map(
@@ -281,7 +281,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         log = log.new(time_filename=self.time_filename)
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
-            time_shape = enmap.read_geometry(str(self.time_filename))[0]
+            time_shape = enmap.read_map_geometry(str(self.time_filename))[0]
             time_map = enmap.read_map(
                 str(self.time_filename), sel=0 if len(time_shape) > 2 else None, box=box
             )
