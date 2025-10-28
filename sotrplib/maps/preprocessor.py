@@ -13,7 +13,10 @@ from astropydantic import AstroPydanticQuantity
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.filters.filters import matched_filter_depth1_map
-from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.core import (
+    MatchedFilteredIntensityAndInverseVarianceMap,
+    ProcessableMap,
+)
 from sotrplib.maps.maps import clean_map, kappa_clean, shift_map_radec
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
@@ -112,14 +115,9 @@ class MatchedFilter(MapPreprocessor):
             lres=self.lres,
             pixwin=self.pixwin,
         )
-        input_map.matched_filtered = True
-        input_map.intensity = rho
-        input_map.inverse_variance = kappa
-        input_map.snr = rho * kappa**-0.5
-        input_map.flux = rho / kappa
-        input_map.flux_units = u.mJy
-        input_map.intensity_units = u.mJy
-        return input_map
+        return MatchedFilteredIntensityAndInverseVarianceMap(
+            rho=rho, kappa=kappa, prefiltered_map=input_map, flux_units=u.mJy
+        )
 
 
 class MapShifter(MapPreprocessor):

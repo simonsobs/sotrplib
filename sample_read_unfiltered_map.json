@@ -8,7 +8,10 @@
             "frequency": "f090",
             "band": "pa5",
             "intensity_units": "K",
-            "box": {"value":[[-40,300],[-50,320]],
+            "box": {"value":[
+                        [-40,300],
+                        [-50,320]
+                    ],
                     "unit": "deg"
                 }
         }

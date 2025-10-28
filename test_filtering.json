@@ -8,15 +8,6 @@
             "frequency": "f090",
             "band": "pa5",
             "intensity_units": "uK"
-        },
-        {
-            "map_type": "inverse_variance",
-            "intensity_map_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/carlos/17581/depth1_1758162717_ws0_f090_map.fits",
-            "weights_map_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/carlos/17581/depth1_1758162717_ws0_f090_ivar.fits",
-            "time_map_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/carlos/17581/depth1_1758162717_ws0_f090_time.fits",
-            "frequency": "f090",
-            "band": "pa5",
-            "intensity_units": "uK"
         }
     ],
     "source_catalogs": [
@@ -27,11 +18,6 @@
         }
     ],
     "preprocessors": [
-        {
-            "preprocessor_type": "map_shifter",
-            "shift_ra": "-2.0 arcmin",
-            "shift_dec": "-1.32 arcmin"
-        },
         {
             "preprocessor_type": "matched_filter"
         },

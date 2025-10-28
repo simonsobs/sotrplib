@@ -307,6 +307,89 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         super().finalize()
 
 
+class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
+    """
+    Resulting rho/kappa maps after ingesting intensity and ivar maps and
+    matched filtering them. Could be Depth 1, could be monthly
+    or weekly co-adds. Or something else!
+
+    """
+
+    def __init__(
+        self,
+        rho: enmap.ndmap,
+        kappa: enmap.ndmap,
+        flux_units: u.Unit,
+        prefiltered_map: IntensityAndInverseVarianceMap,
+        keep_prefiltered: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.rho = rho
+        self.kappa = kappa
+        self.prefiltered_map = prefiltered_map
+        self.flux_units = flux_units
+        self.log = log or structlog.get_logger()
+        self.time_first = self.prefiltered_map.time_first
+        self.time_end = self.prefiltered_map.time_end
+        self.time_mean = self.prefiltered_map.time_mean
+        self.observation_start = self.prefiltered_map.observation_start
+        self.observation_end = self.prefiltered_map.observation_end
+        self.box = self.prefiltered_map.box
+        self.frequency = self.prefiltered_map.frequency
+        self.array = self.prefiltered_map.array
+
+        self.map_resolution = u.Quantity(
+            abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
+        )
+        if keep_prefiltered:
+            self.prefiltered_intensity = self.prefiltered_map.intensity
+            self.prefiltered_inverse_variance = self.prefiltered_map.inverse_variance
+            self.intensity_units = self.prefiltered_map.intensity_units
+        else:
+            self.prefiltered_map = None
+            self.prefiltered_intensity = None
+            self.prefiltered_inverse_variance = None
+            self.intensity_units = None
+
+    def build(self):
+        return
+
+    def add_time_offset(self, offset: timedelta):
+        """
+        Add a time offset to the time maps. Useful if you have a time map
+        that is relative to the start of the observation, and you want to
+        convert it to an absolute time map.
+
+        time maps are in unix time (seconds).
+
+        ACT time maps are stored in seconds since the start of the observation,
+        thus if you want absolute time you need to add the start time of the observation.
+        """
+        if self.time_first is not None:
+            self.time_first += offset.timestamp()
+        if self.time_end is not None:
+            self.time_end += offset.timestamp()
+        if self.time_mean is not None:
+            self.time_mean += offset.timestamp()
+
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.rho / np.sqrt(self.kappa)
+
+        return snr
+
+    def get_flux(self):
+        with np.errstate(divide="ignore"):
+            flux = self.rho / self.kappa
+
+        return flux
+
+    def finalize(self):
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
+        super().finalize()
+
+
 class RhoAndKappaMap(ProcessableMap):
     """
     A set of FITS maps read from disk. Could be Depth 1, could
