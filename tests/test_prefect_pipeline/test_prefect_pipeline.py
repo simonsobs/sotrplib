@@ -11,6 +11,7 @@ from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SifterResult
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.sims.sources.core import ProcessableMapWithSimulatedSources
+from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import Scipy2DGaussianFitter
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
@@ -64,7 +65,7 @@ def test_basic_pipeline_scipy(
 
     new_map, sources = map_with_sources
     maps = [new_map, new_map]
-
+    source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PrefectRunner(
         maps=maps,
         source_catalogs=[],
@@ -72,7 +73,7 @@ def test_basic_pipeline_scipy(
         preprocessors=None,
         postprocessors=None,
         source_simulators=None,
-        forced_photometry=Scipy2DGaussianFitter(sources=sources),
+        forced_photometry=Scipy2DGaussianFitter(),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),

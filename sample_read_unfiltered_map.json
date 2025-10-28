@@ -1,13 +1,19 @@
 {
     "maps": [
         {
-            "map_type": "filtered",
-            "rho_map_path": "./depth1_1538613353_pa5_f090_rho.fits",
-            "kappa_map_path": "./depth1_1538613353_pa5_f090_kappa.fits",
-            "time_map_path": "./15386/depth1_1538613353_pa5_f090_time.fits",
+            "map_type": "inverse_variance",
+            "intensity_map_path": "./depth1_1538613353_pa5_f090_map.fits",
+            "weights_map_path": "./15386/depth1_1538613353_pa5_f090_ivar.fits",
+            "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
             "frequency": "f090",
             "band": "pa5",
-            "flux_units": "mJy"
+            "intensity_units": "K",
+            "box": {"value":[
+                        [-40,300],
+                        [-50,320]
+                    ],
+                    "unit": "deg"
+                }
         }
     ],
     "source_catalogs": [
@@ -18,6 +24,9 @@
         }
     ],
     "preprocessors": [
+        {
+            "preprocessor_type": "matched_filter"
+        },
         {
             "preprocessor_type": "kappa_rho"
         }

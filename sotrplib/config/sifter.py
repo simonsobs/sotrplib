@@ -12,7 +12,6 @@ from sotrplib.sifter.core import (
     SiftingProvider,
     SimpleCatalogSifter,
 )
-from sotrplib.sources.sources import RegisteredSource
 
 
 class SifterConfig(BaseModel, ABC):
@@ -45,11 +44,9 @@ class SimpleCatalogSifterConfig(SifterConfig):
 
 class DefaultSifterConfig(SifterConfig):
     sifter_type: Literal["default"] = "default"
-    catalog_sources: list[RegisteredSource] | None = None
 
     def to_sifter(self, log: FilteringBoundLogger | None = None) -> SiftingProvider:
         return DefaultSifter(
-            catalog_sources=self.catalog_sources,
             log=log,
         )
 

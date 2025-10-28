@@ -17,7 +17,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.maps import edge_map
 from sotrplib.sims import sim_maps, sim_sources, sim_utils
-from sotrplib.source_catalog.database import SourceCatalogDatabase
+from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.sources import RegisteredSource
 
 
@@ -107,11 +107,9 @@ class DatabaseSourceSimulation(SourceSimulation):
     """
 
     log: FilteringBoundLogger
-    source_database: SourceCatalogDatabase
+    source_database: SourceCatalog
 
-    def __init__(
-        self, source_database: SourceCatalogDatabase, log: FilteringBoundLogger
-    ):
+    def __init__(self, source_database: SourceCatalog, log: FilteringBoundLogger):
         self.source_database = source_database
         self.log = log or structlog.get_logger()
 
@@ -122,7 +120,7 @@ class DatabaseSourceSimulation(SourceSimulation):
 
         new_flux_map, injected_sources = sim_maps.inject_sources(
             imap=input_map.flux.copy(),
-            sources=self.source_database.source_list,
+            sources=self.source_database,  ## TODO inject_sources can take map and catalog and do what forced_photometry does, etc.
             observation_time=input_map.time_mean,
             freq=input_map.frequency,
             arr=input_map.array,
@@ -194,6 +192,7 @@ class RandomSourceSimulation(SourceSimulation):
             map_noise_Jy=0.0 * u.Jy,  # Disabled now
             fwhm_uncert_frac=self.parameters.fwhm_uncertainty_frac,
             log=log,
+            min_sep=10 * u.arcmin,
         )
 
         log = log.bind(n_sources=len(injected_sources))

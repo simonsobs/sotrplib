@@ -177,12 +177,11 @@ class DefaultSifter(SiftingProvider):
 
         map_freq = input_map.frequency
         arr = input_map.array
-
         source_candidates, transient_candidates, noise_candidates = sift(
             extracted_sources=sources,
             catalog_sources=list(
                 itertools.chain(
-                    *[c.sources_in_box(box=input_map.bbox) for c in catalogs]
+                    *[c.get_sources_in_box(box=input_map.bbox) for c in catalogs]
                 )
             ),
             input_map=input_map,
