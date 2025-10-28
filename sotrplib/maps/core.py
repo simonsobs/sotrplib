@@ -178,6 +178,14 @@ class ProcessableMap(ABC):
         """
         The bounding box of the map provided as sky coordinates.
         """
+        ## TODO: do we want the bounding box returned to be the bbox of this specific map
+        ## or the box used to read in the map if it was provided?
+        ## need to check how box works when reading in the maps;
+        """
+        let's say you want to cut a box from -20 to 20 in ra, and -20 to 20 in dec but the map is only from -10, 20 in ra and -20, 10 in dec. 
+        The true bounding box of the cut map would only be (-10,-20),(20,10) but self.box would be (-20,-10),(20,20)
+        not sure if that's how box works when reading in maps or if it fills the empty space with nans or something... should check that
+        """
         for attribute in ["flux", "snr", "rho", "kappa"]:
             if (x := getattr(self, attribute, None)) is not None:
                 shape = x.shape[-2:]
