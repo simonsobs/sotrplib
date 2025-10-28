@@ -52,3 +52,6 @@ docs/_build/
 
 # Example output data
 *.pickle
+
+# test config files
+test_*.json

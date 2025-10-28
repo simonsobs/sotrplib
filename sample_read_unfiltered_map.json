@@ -2,9 +2,9 @@
     "maps": [
         {
             "map_type": "inverse_variance",
-            "intensity_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_map.fits",
-            "weights_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_ivar.fits",
-            "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_time.fits",
+            "intensity_map_path": "./depth1_1538613353_pa5_f090_map.fits",
+            "weights_map_path": "./15386/depth1_1538613353_pa5_f090_ivar.fits",
+            "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
             "frequency": "f090",
             "band": "pa5",
             "intensity_units": "K",
@@ -19,7 +19,7 @@
     "source_catalogs": [
         {
             "catalog_type": "socat",
-            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "path": "./PS_S19_f090_2pass_optimalCatalog.fits",
             "flux_lower_limit": "0.1 Jy"
         }
     ],
