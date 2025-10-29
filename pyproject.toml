@@ -36,6 +36,7 @@ dev = [
     "pytest-cov",
     "pre-commit",
 ]
+prefect = ["prefect"]
 
 [project.scripts]
 "sotrp" = "sotrplib.cli:main"
