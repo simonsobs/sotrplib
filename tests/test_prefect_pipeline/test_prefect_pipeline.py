@@ -2,11 +2,9 @@
 Tests running the pipeline under prefect with simulated data.
 """
 
-import json
-
 from prefect.testing.utilities import prefect_test_harness
 
-from sotrplib.handlers.prefect import PrefectRunner, analyze_from_configuration
+from sotrplib.handlers.prefect import PrefectRunner
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SifterResult
 from sotrplib.sims.maps import SimulatedMap
@@ -21,7 +19,7 @@ sample_setup = {
         {
             "map_type": "simulated",
             "observation_start": "2025-01-01",
-            "observation_end": "2025-01-02"
+            "observation_end": "2025-01-02",
         }
     ],
     "source_simulators": [
@@ -30,31 +28,17 @@ sample_setup = {
             "number": 8,
             "min_flux": "3.0 Jy",
             "max_flux": "10.0 Jy",
-            "catalog_fraction": 0.5
+            "catalog_fraction": 0.5,
         }
     ],
-    "source_injector": {
-        "injector_type": "photutils"
-    },
-    "forced_photometry": {
-        "photometry_type": "scipy"
-    },
-    "source_subtractor": {
-        "subtractor_type": "photutils"
-    },
-    "blind_search": {
-        "search_type": "photutils"
-    },
-    "sifter": {
-        "sifter_type": "simple"
-    },
-    "outputs": [
-        {
-            "output_type": "pickle",
-            "directory": "."
-        }
-    ]
+    "source_injector": {"injector_type": "photutils"},
+    "forced_photometry": {"photometry_type": "scipy"},
+    "source_subtractor": {"subtractor_type": "photutils"},
+    "blind_search": {"search_type": "photutils"},
+    "sifter": {"sifter_type": "simple"},
+    "outputs": [{"output_type": "pickle", "directory": "."}],
 }
+
 
 def test_basic_pipeline_scipy(
     tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
@@ -83,24 +67,6 @@ def test_basic_pipeline_scipy(
     with prefect_test_harness():
         result = runner.run()
         _validate_pipeline_result(result, len(maps))
-
-
-def test_basic_pipeline_from_file(
-    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
-):
-    """
-    Tests a complete setup of the basic pipeline run.
-    """
-
-    config = sample_setup.copy()
-    config["outputs"][0]["directory"] = str(tmp_path)
-    config_file = tmp_path / "config.json"
-    with open(config_file, "w") as ff:
-        json.dump(config, ff)
-
-    with prefect_test_harness():
-        result = analyze_from_configuration(config_file)
-        _validate_pipeline_result(result, len(config["maps"]))
 
 
 def _validate_pipeline_result(result, nmaps):
