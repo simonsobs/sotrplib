@@ -4,10 +4,36 @@ them in the pre-specified order.
 """
 
 import tempfile
+from typing import Any
+
+from typing_extensions import Self, TypeVar
 
 import pyinstrument
 
-from .base import BaseRunner, _unmapped
+from .base import BaseRunner
+
+
+T = TypeVar("T", infer_variance=True)
+
+
+class _unmapped(tuple[T]):
+    """
+    Wrapper for iterables. Copied from :code:`prefect.utilities.annotations` to avoid
+    hard dependency.
+
+    Indicates that this input should be sent as-is to all runs created during a mapping
+    operation instead of being split.
+    """
+
+    def __new__(cls, value: T) -> Self:
+        return super().__new__(cls, (value,))
+
+    @property
+    def value(self) -> T:
+        return self[0]
+
+    def __getitem__(self, _: object) -> Any:
+        return super().__getitem__(0)
 
 
 class DummyPrefectTask:
@@ -24,7 +50,9 @@ class DummyPrefectTask:
     def map(self, *args, **kwargs):
         """Map over inputs directly."""
         results = []
-        map_axes = [ii for ii in range(len(args)) if not isinstance(args[ii], _unmapped)]
+        map_axes = [
+            ii for ii in range(len(args)) if not isinstance(args[ii], _unmapped)
+        ]
         carry_args = [arg.value if isinstance(arg, _unmapped) else None for arg in args]
         for arg_set in zip(*[args[ii] for ii in map_axes]):
             for ii, arg in zip(map_axes, arg_set):
@@ -105,3 +133,7 @@ class PipelineRunner(BaseRunner):
     @property
     def flow(self):
         return lambda f: f
+
+    @property
+    def unmapped(self):
+        return _unmapped

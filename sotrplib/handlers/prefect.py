@@ -2,7 +2,7 @@ import tempfile
 from datetime import datetime
 
 import pyinstrument
-from prefect import artifacts, flow, task
+from prefect import artifacts, flow, task, unmapped
 
 from .base import BaseRunner
 
@@ -89,3 +89,7 @@ class PrefectRunner(BaseRunner):
     @property
     def flow(self):
         return flow
+
+    @property
+    def unmapped(self):
+        return unmapped

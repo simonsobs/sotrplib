@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Iterable
 
 from astropy.coordinates import SkyCoord
 
@@ -24,21 +24,8 @@ from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 __all__ = ["BaseRunner"]
 
 
-class _unmapped:
-    """
-    Wrapper for iterables. Copied from :code:`prefect.utilities.annotations` to avoid
-    hard dependency.
-
-    Indicates that this input should be sent as-is to all runs created during a mapping
-    operation instead of being split.
-    """
-
-    def __getitem__(self, _: object) -> Any:
-        return super().__getitem__(0)
-
-
 class BaseRunner:
-    maps: list[ProcessableMap]
+    maps: Iterable[ProcessableMap]
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
@@ -53,7 +40,7 @@ class BaseRunner:
 
     def __init__(
         self,
-        maps: list[ProcessableMap],
+        maps: Iterable[ProcessableMap],
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
@@ -91,11 +78,20 @@ class BaseRunner:
     def flow(self):
         raise NotImplementedError
 
-    def build_map(self, input_map: ProcessableMap):
+    @property
+    def unmapped(self):
+        raise NotImplementedError
+
+    def build_map(self, input_map: ProcessableMap) -> ProcessableMap:
         self.profilable_task(input_map.build)()
+        output_map = input_map
 
         for preprocessor in self.preprocessors:
-            self.profilable_task(preprocessor.preprocess)(input_map=input_map)
+            output_map = self.profilable_task(preprocessor.preprocess)(
+                input_map=output_map
+            )
+
+        return output_map
 
     @property
     def bbox(self):
@@ -170,10 +166,10 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
-        self.basic_task(self.build_map).map(self.maps).wait()
+        self.maps = self.basic_task(self.build_map).map(self.maps).result()
         all_simulated_sources = self.basic_task(self.simulate_sources)()
         return (
             self.basic_task(self.analyze_map)
-            .map(self.maps, _unmapped(all_simulated_sources))
+            .map(self.maps, self.unmapped(all_simulated_sources))
             .result()
         )
