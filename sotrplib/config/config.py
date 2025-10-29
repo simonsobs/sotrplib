@@ -10,7 +10,6 @@ from sotrplib.config.source_catalog import (
 )
 from sotrplib.handlers.base import BaseRunner
 from sotrplib.handlers.basic import PipelineRunner
-from sotrplib.handlers.prefect import PrefectRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
@@ -119,8 +118,11 @@ class Settings(BaseSettings):
             case "prefect":
                 return self.to_prefect()
 
-    def to_basic(self) -> PrefectRunner:
+    def to_basic(self) -> BaseRunner:
         return PipelineRunner(**self.to_dependencies(), profile=self.profile)
 
-    def to_prefect(self) -> PrefectRunner:
+    def to_prefect(self) -> BaseRunner:
+        # Import here to avoid hard dependency on Prefect for non-Prefect runners
+        from ..handlers.prefect import PrefectRunner
+
         return PrefectRunner(**self.to_dependencies(), profile=self.profile)

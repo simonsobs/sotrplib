@@ -1,5 +1,6 @@
+from typing import Any
+
 from astropy.coordinates import SkyCoord
-from prefect import unmapped
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.postprocessor import MapPostprocessor
@@ -19,6 +20,21 @@ from sotrplib.sources.core import (
 )
 from sotrplib.sources.force import EmptyForcedPhotometry
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
+
+__all__ = ["BaseRunner"]
+
+
+class _unmapped:
+    """
+    Wrapper for iterables. Copied from :code:`prefect.utilities.annotations` to avoid
+    hard dependency.
+
+    Indicates that this input should be sent as-is to all runs created during a mapping
+    operation instead of being split.
+    """
+
+    def __getitem__(self, _: object) -> Any:
+        return super().__getitem__(0)
 
 
 class BaseRunner:
@@ -99,13 +115,17 @@ class BaseRunner:
         all_simulated_sources = []
         bbox = self.bbox
         for simulator in self.source_simulators:
-            simulated_sources, catalog = self.profilable_task(simulator.generate)(box=bbox)
+            simulated_sources, catalog = self.profilable_task(simulator.generate)(
+                box=bbox
+            )
 
             all_simulated_sources.extend(simulated_sources)
             self.source_catalogs.append(catalog)
         return all_simulated_sources
 
-    def analyze_map(self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]) -> tuple[list, object, ProcessableMap]:
+    def analyze_map(
+        self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
+    ) -> tuple[list, object, ProcessableMap]:
         self.profilable_task(input_map.finalize)()
 
         input_map = self.profilable_task(self.source_injector.inject)(
@@ -115,9 +135,9 @@ class BaseRunner:
         for postprocessor in self.postprocessors:
             self.profilable_task(postprocessor.postprocess)(input_map=input_map)
 
-        forced_photometry_candidates = self.profilable_task(self.forced_photometry.force)(
-            input_map=input_map, catalogs=self.source_catalogs
-        )
+        forced_photometry_candidates = self.profilable_task(
+            self.forced_photometry.force
+        )(input_map=input_map, catalogs=self.source_catalogs)
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
             sources=forced_photometry_candidates, input_map=input_map
@@ -152,4 +172,8 @@ class BaseRunner:
         """
         self.basic_task(self.build_map).map(self.maps).wait()
         all_simulated_sources = self.basic_task(self.simulate_sources)()
-        return self.basic_task(self.analyze_map).map(self.maps, unmapped(all_simulated_sources)).result()
+        return (
+            self.basic_task(self.analyze_map)
+            .map(self.maps, _unmapped(all_simulated_sources))
+            .result()
+        )
