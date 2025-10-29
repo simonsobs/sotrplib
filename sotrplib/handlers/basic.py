@@ -6,12 +6,10 @@ them in the pre-specified order.
 import tempfile
 from typing import Any
 
+import pyinstrument
 from typing_extensions import Self, TypeVar
 
-import pyinstrument
-
 from .base import BaseRunner
-
 
 T = TypeVar("T", infer_variance=True)
 
