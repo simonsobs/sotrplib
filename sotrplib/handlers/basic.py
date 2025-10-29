@@ -3,124 +3,135 @@ A basic pipeline handler. Takes all the components and runs
 them in the pre-specified order.
 """
 
-from typing import Iterable
+import tempfile
+from typing import Any
 
-from astropy.coordinates import SkyCoord
+import pyinstrument
+from typing_extensions import Self, TypeVar
 
-from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.postprocessor import MapPostprocessor
-from sotrplib.maps.preprocessor import MapPreprocessor
-from sotrplib.outputs.core import SourceOutput
-from sotrplib.sifter.core import EmptySifter, SiftingProvider
-from sotrplib.sims.sim_source_generators import SimulatedSourceGenerator
-from sotrplib.sims.source_injector import EmptySourceInjector, SourceInjector
-from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.sources.blind import EmptyBlindSearch
-from sotrplib.sources.core import BlindSearchProvider, ForcedPhotometryProvider
-from sotrplib.sources.force import EmptyForcedPhotometry
-from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
+from .base import BaseRunner
+
+T = TypeVar("T", infer_variance=True)
 
 
-class PipelineRunner:
-    maps: Iterable[ProcessableMap]
-    source_simulators: list[SimulatedSourceGenerator] | None
-    source_injector: SourceInjector | None
-    source_catalogs: list[SourceCatalog] | None
-    preprocessors: list[MapPreprocessor] | None
-    postprocessors: list[MapPostprocessor] | None
-    forced_photometry: ForcedPhotometryProvider | None
-    source_subtractor: SourceSubtractor | None
-    blind_search: BlindSearchProvider | None
-    sifter: SiftingProvider | None
-    outputs: list[SourceOutput] | None
+class _unmapped(tuple[T]):
+    """
+    Wrapper for iterables. Copied from :code:`prefect.utilities.annotations` to avoid
+    hard dependency.
 
-    def __init__(
-        self,
-        maps: Iterable[ProcessableMap],
-        source_simulators: list[SimulatedSourceGenerator] | None,
-        source_injector: SourceInjector | None,
-        source_catalogs: list[SourceCatalog] | None,
-        preprocessors: list[MapPreprocessor] | None,
-        postprocessors: list[MapPostprocessor] | None,
-        forced_photometry: ForcedPhotometryProvider | None,
-        source_subtractor: SourceSubtractor | None,
-        blind_search: BlindSearchProvider | None,
-        sifter: SiftingProvider | None,
-        outputs: list[SourceOutput] | None,
-    ):
-        self.maps = maps
-        self.source_simulators = source_simulators or []
-        self.source_injector = source_injector or EmptySourceInjector()
-        self.source_catalogs = source_catalogs or []
-        self.preprocessors = preprocessors or []
-        self.postprocessors = postprocessors or []
-        self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
-        self.source_subtractor = source_subtractor or EmptySourceSubtractor()
-        self.blind_search = blind_search or EmptyBlindSearch()
-        self.sifter = sifter or EmptySifter()
-        self.outputs = outputs or []
+    Indicates that this input should be sent as-is to all runs created during a mapping
+    operation instead of being split.
+    """
 
-        return
+    def __new__(cls, value: T) -> Self:
+        return super().__new__(cls, (value,))
 
-    def run(self):
-        for map_idx, input_map in enumerate(self.maps):
-            input_map.build()
+    @property
+    def value(self) -> T:
+        return self[0]
 
-            for preprocessor in self.preprocessors:
-                self.maps[map_idx] = preprocessor.preprocess(
-                    input_map=self.maps[map_idx]
-                )
+    def __getitem__(self, _: object) -> Any:
+        return super().__getitem__(0)
 
-        # Generate sources based upon maximal bounding box of all maps
-        bbox = self.maps[0].bbox
 
-        for input_map in self.maps[1:]:
-            map_bbox = input_map.bbox
-            left = min(bbox[0].ra, map_bbox[0].ra)
-            bottom = min(bbox[0].dec, map_bbox[0].dec)
-            right = max(bbox[1].ra, map_bbox[1].ra)
-            top = max(bbox[1].dec, map_bbox[1].dec)
-            bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+class DummyPrefectTask:
+    """A dummy Prefect task that does nothing, for when profiling is disabled."""
 
-        all_simulated_sources = []
+    def __init__(self, func: callable, name: str | None = None):
+        self.func = func
+        self.__name__ = name or getattr(func, "__name__", "dummy_task")
 
-        for simulator in self.source_simulators:
-            simulated_sources, catalog = simulator.generate(box=bbox)
+    def __call__(self, *args, **kwargs):
+        """Execute the function directly."""
+        return self.func(*args, **kwargs)
 
-            all_simulated_sources.extend(simulated_sources)
-            self.source_catalogs.append(catalog)
+    def map(self, *args, **kwargs):
+        """Map over inputs directly."""
+        results = []
+        map_axes = [
+            ii for ii in range(len(args)) if not isinstance(args[ii], _unmapped)
+        ]
+        carry_args = [arg.value if isinstance(arg, _unmapped) else None for arg in args]
+        for arg_set in zip(*[args[ii] for ii in map_axes]):
+            for ii, arg in zip(map_axes, arg_set):
+                carry_args[ii] = arg
+            result = self.func(*carry_args, **kwargs)
+            results.append(result)
+        return DummyPrefectTaskResult(results)
 
-        for input_map in self.maps:
-            input_map.finalize()
 
-            input_map = self.source_injector.inject(
-                input_map=input_map, simulated_sources=all_simulated_sources
-            )
+class DummyPrefectTaskResult:
+    """A dummy Prefect task result that mimics Prefect task result interface."""
 
-            for postprocessor in self.postprocessors:
-                postprocessor.postprocess(input_map=input_map)
+    def __init__(self, results: list):
+        self.results = results
 
-            forced_photometry_candidates = self.forced_photometry.force(
-                input_map=input_map, catalogs=self.source_catalogs
-            )
+    def result(self):
+        """Return the results."""
+        return self.results
 
-            source_subtracted_map = self.source_subtractor.subtract(
-                sources=forced_photometry_candidates, input_map=input_map
-            )
+    def wait(self):
+        """No-op wait method for compatibility."""
+        pass
 
-            blind_sources, _ = self.blind_search.search(input_map=source_subtracted_map)
 
-            sifter_result = self.sifter.sift(
-                sources=blind_sources,
-                catalogs=self.source_catalogs,
-                input_map=source_subtracted_map,
-            )
+def dummy_task(func: callable, name: str | None = None) -> callable:
+    """A decorator to turn a function into a dummy Prefect task."""
+    return DummyPrefectTask(func, name=name)
 
-            for output in self.outputs:
-                output.output(
-                    forced_photometry_candidates=forced_photometry_candidates,
-                    sifter_result=sifter_result,
-                    input_map=input_map,
-                )
 
-        return
+def dummy_profile_task(func: callable) -> callable:
+    """
+    A decorator to add pyinstrument profiling to a function.
+
+    The profiling results will be saved to a temporary HTML file, and a link
+    to the file will be added as an artifact in the Prefect UI along with a
+    basic markdown summary.
+
+    Profiling is enabled by setting the environment variable
+
+    .. code-block:: shell
+
+        export sotrplib_profile=1
+
+    Notes
+    =====
+
+    Currently this writes the results to a permanent tempfile. This should
+    probably be replaced with some configurable location.
+
+    For some reason, the link doesn't open properly directly from the Prefect
+    UI, but copying the link and pasting it into a new browser tab works fine.
+    """
+
+    def wrapped(*args, **kwargs):
+        with pyinstrument.Profiler() as prof:
+            result = func(*args, **kwargs)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as f:
+            prof_path = f.name
+        prof.write_html(prof_path, timeline=True)
+        print(f"Profile results written to {prof_path}")
+        return result
+
+    return dummy_task(wrapped, name=func.__name__)
+
+
+class PipelineRunner(BaseRunner):
+    @property
+    def profilable_task(self):
+        if self.profile:
+            return dummy_profile_task
+        else:
+            return dummy_task
+
+    @property
+    def basic_task(self):
+        return dummy_task
+
+    @property
+    def flow(self):
+        return lambda f: f
+
+    @property
+    def unmapped(self):
+        return _unmapped

@@ -52,10 +52,13 @@ Installing and invoking the pipeline using prefect follows the same basic patter
 ```console
 uv sync --extra prefect
 source .venv/bin/activate
-sotrp-prefect -c [path to config file]
+export sotrp_runner=prefect
+sotrp -c [path to config file]
 ```
 
 This will start a temporary prefect server, if you want a persistent server you can start one as described in the [prefect docs](https://docs.prefect.io/v3/get-started/quickstart#open-source).
+
+The runner can also be specified via the configuration file or as a command-line argument.
 
 ```console
 prefect server start --host [HOSTNAME, e.g., localhost] --port [PORT, e.g., 8899] --background

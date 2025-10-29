@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sotrplib.config.source_catalog import (
     AllSourceCatalogConfigTypes,
 )
+from sotrplib.handlers.base import BaseRunner
 from sotrplib.handlers.basic import PipelineRunner
-from sotrplib.handlers.prefect import PrefectRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     outputs: list[AllOutputConfigTypes] = []
     "Source output settings"
 
+    runner: Literal["basic", "prefect"] = "basic"
+    "Runner to use for the pipeline: 'basic' or 'prefect'"
+
+    profile: bool = False
+    "Enable pyinstrument profiling"
+
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(env_prefix="sotrp_", extra="ignore")
 
@@ -105,8 +111,18 @@ class Settings(BaseSettings):
         }
         return contents
 
-    def to_basic(self) -> PipelineRunner:
-        return PipelineRunner(**self.to_dependencies())
+    def to_runner(self) -> BaseRunner:
+        match self.runner:
+            case "basic":
+                return self.to_basic()
+            case "prefect":
+                return self.to_prefect()
 
-    def to_prefect(self) -> PrefectRunner:
-        return PrefectRunner(**self.to_dependencies())
+    def to_basic(self) -> BaseRunner:
+        return PipelineRunner(**self.to_dependencies(), profile=self.profile)
+
+    def to_prefect(self) -> BaseRunner:
+        # Import here to avoid hard dependency on Prefect for non-Prefect runners
+        from ..handlers.prefect import PrefectRunner
+
+        return PrefectRunner(**self.to_dependencies(), profile=self.profile)
