@@ -88,19 +88,19 @@ class RegisteredSourceCatalog(SourceCatalog):
         source_ra_wrap = (
             "-180-180" if any(s.ra < 0 * u.deg for s in self.sources) else "0-360"
         )
-        source_ras = np.asarray([s.ra.to_value(u.deg) for s in self.sources])
+        source_ras = np.asarray([s.ra.to_value(u.deg) for s in self.sources]) * u.deg
         if source_ra_wrap != box_ra_wrap:
             ## shift source RAs to match box system
             if box_ra_wrap == "0-360":
-                source_ras[source_ras < 0] += 360
+                source_ras[source_ras < 0.0 * u.deg] += 360.0 * u.deg
             else:
-                source_ras[source_ras > 180] -= 360
+                source_ras[source_ras > 180.0 * u.deg] -= 360.0 * u.deg
 
         ## Check for RA wrap-around
         ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
 
         ra_span = ra_max - ra_min
-        if ra_span > 180 * u.deg:
+        if ra_span > 180.0 * u.deg:
             wrap_warning = True
         else:
             wrap_warning = False
@@ -108,9 +108,9 @@ class RegisteredSourceCatalog(SourceCatalog):
         ## If wrapped, shift RA system so box is continuous
         if wrap_warning:
             # shift RA so that region is continuous
-            shift = 180 * u.deg - ra_max
-            ra_corners = (ra_corners + shift + 360 * u.deg) % (360 * u.deg)
-            source_ras = (source_ras + shift + 360) % 360
+            shift = 180.0 * u.deg - ra_max
+            ra_corners = (ra_corners + shift + 360.0 * u.deg) % (360.0 * u.deg)
+            source_ras = (source_ras + shift + 360.0 * u.deg) % (360.0 * u.deg)
             ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
         dec_min = np.min(Angle([box[0].dec, box[1].dec]))
         dec_max = np.max(Angle([box[0].dec, box[1].dec]))
@@ -118,8 +118,7 @@ class RegisteredSourceCatalog(SourceCatalog):
         return [
             x
             for idx, x in enumerate(self.sources)
-            if (ra_min < source_ras[idx] * u.deg < ra_max)
-            and (dec_min < x.dec < dec_max)
+            if (ra_min < source_ras[idx] < ra_max) and (dec_min < x.dec < dec_max)
         ]
 
     def forced_photometry_sources(
@@ -154,7 +153,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             CrossMatch(
                 source_id=str(s.source_id),
                 probability=1.0 / len(sources),
-                distance=angular_separation(s.ra, ra, s.dec, dec),
+                distance=angular_separation(ra1=s.ra, dec1=s.dec, ra2=ra, dec2=dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
