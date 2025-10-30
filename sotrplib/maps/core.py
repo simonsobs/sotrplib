@@ -346,6 +346,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
                 if self.info_filename is not None
                 else None
             )
+        if offset is None:
+            self.log.warning("intensity_ivar.time_offset.none")
+            return
         self.observation_start = offset
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
@@ -442,6 +445,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
                 if self.info_filename is not None
                 else None
             )
+        if offset is None:
+            self.log.warning("matchedfiltered_intensity_ivar.time_offset.none")
+            return
         self.observation_start = offset
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
@@ -570,6 +576,9 @@ class RhoAndKappaMap(ProcessableMap):
                 if self.info_filename is not None
                 else None
             )
+        if offset is None:
+            self.log.warning("rho_kappa.time_offset.none")
+            return
         self.observation_start = offset
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
