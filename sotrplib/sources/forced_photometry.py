@@ -254,7 +254,6 @@ def scipy_2d_gaussian_fit(
         )
         size_pix = thumbnail_half_width / map_res
         t_start, t_mean, t_end = input_map.get_pixel_times(pix)
-
         ## setup default MeasuredSource
         forced_source = MeasuredSource(
             ra=source.ra,
