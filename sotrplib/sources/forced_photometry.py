@@ -253,23 +253,7 @@ def scipy_2d_gaussian_fit(
             [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
         )
         size_pix = thumbnail_half_width / map_res
-        ##TODO: check the correct x,y ordering here
-        x, y = int(pix[0]), int(pix[1])
-        t_start = (
-            input_map.time_first[y, x]
-            if input_map.time_first is not None
-            else input_map.observation_start_time
-        )
-        t_mean = (
-            input_map.time_mean[y, x]
-            if input_map.time_mean is not None
-            else input_map.observation_mean_time
-        )
-        t_end = (
-            input_map.time_end[y, x]
-            if input_map.time_end is not None
-            else input_map.observation_end_time
-        )
+        t_start, t_mean, t_end = input_map.get_pixel_times(pix)
 
         ## setup default MeasuredSource
         forced_source = MeasuredSource(

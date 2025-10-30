@@ -62,21 +62,7 @@ def get_source_observation_time(
             int(extracted_sources[f]["ypeak"]),
         )
         if isinstance(timemap, ProcessableMap):
-            t_start = (
-                timemap.time_first[y, x]
-                if timemap.time_first is not None
-                else timemap.observation_start_time
-            )
-            t_mean = (
-                timemap.time_mean[y, x]
-                if timemap.time_mean is not None
-                else timemap.observation_mean_time
-            )
-            t_end = (
-                timemap.time_end[y, x]
-                if timemap.time_end is not None
-                else timemap.observation_end_time
-            )
+            t_start, t_mean, t_end = timemap.get_pixel_times((y, x))
         else:
             t_mean = timemap[y, x]
             t_start = np.nan

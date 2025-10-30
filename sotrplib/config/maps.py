@@ -107,6 +107,7 @@ class RhoKappaMapConfig(MapConfig):
     rho_map_path: Path
     kappa_map_path: Path
     time_map_path: Path | None = None
+    info_path: Path | None = None
     frequency: str | None = "f090"
     array: str | None = "pa5"
     observation_start: datetime | None = None
@@ -121,6 +122,7 @@ class RhoKappaMapConfig(MapConfig):
             start_time=self.observation_start,
             end_time=self.observation_end,
             time_filename=self.time_map_path,
+            info_filename=self.info_path,
             box=self.box,
             frequency=self.frequency,
             array=self.array,
@@ -134,6 +136,7 @@ class InverseVarianceMapConfig(MapConfig):
     intensity_map_path: Path
     weights_map_path: Path
     time_map_path: Path | None = None
+    info_path: Path | None = None
     frequency: str | None = "f090"
     array: str | None = "pa5"
     observation_start: datetime | None = None
@@ -148,6 +151,7 @@ class InverseVarianceMapConfig(MapConfig):
             intensity_filename=self.intensity_map_path,
             inverse_variance_filename=self.weights_map_path,
             time_filename=self.time_map_path,
+            info_filename=self.info_path,
             start_time=self.observation_start,
             end_time=self.observation_end,
             box=self.box,

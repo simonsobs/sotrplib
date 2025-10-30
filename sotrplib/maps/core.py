@@ -3,7 +3,7 @@ Core map objects.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import astropy.units as u
@@ -204,6 +204,30 @@ class ProcessableMap(ABC):
         return self.box
 
     @abstractmethod
+    def get_pixel_times(self, pix: tuple[int, int]):
+        """
+        Given a pixel in the map, return the observation start, mean and end time of that pixel.
+        """
+        x, y = int(pix[0]), int(pix[1])
+
+        t_start = (
+            self.time_first[x, y]
+            if self.time_first is not None
+            else self.observation_start_time
+        )
+        t_mean = (
+            self.time_mean[x, y]
+            if self.time_mean is not None
+            else self.observation_mean_time
+        )
+        t_end = (
+            self.time_end[x, y]
+            if self.time_end is not None
+            else self.observation_end_time
+        )
+        return t_start, t_mean, t_end
+
+    @abstractmethod
     def finalize(self):
         """
         Called just before source injection to ensure that the snr, flux, and
@@ -231,6 +255,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         end_time: datetime,
         box: AstroPydanticQuantity[u.deg] | None = None,
         time_filename: Path | None = None,
+        info_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
         matched_filtered: bool = False,
@@ -241,6 +266,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.inverse_variance_filename = inverse_variance_filename
         self.intensity_units = intensity_units
         self.time_filename = time_filename
+        self.info_filename = info_filename
         self.observation_start = start_time
         self.observation_end = end_time
         self.box = box
@@ -290,11 +316,41 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             time_map = None
             log.debug("intensity_ivar.time.none")
 
+        ##TODO : what to do here?
         self.time_first = time_map
         self.time_end = time_map
         self.time_mean = time_map
 
+        self.add_time_offset(self.observation_start)
+
         return
+
+    def add_time_offset(self, offset: timedelta):
+        """
+        Add a time offset to the time maps. Useful if you have a time map
+        that is relative to the start of the observation, and you want to
+        convert it to an absolute time map.
+
+        time maps are in unix time (seconds).
+
+        ACT time maps are stored in seconds since the start of the observation,
+        thus if you want absolute time you need to add the start time of the observation.
+        """
+        if offset is None:
+            from pixell.bunch import read as bunch_read
+
+            offset = (
+                datetime.fromtimestamp(
+                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
+                )
+                if self.info_filename is not None
+                else None
+            )
+        self.observation_start = offset
+        ## TODO: time_first, mean, end are same so this changes all.
+        ## this should be changed when we do something smarter.
+        if self.time_first is not None:
+            self.time_first[self.time_first > 0] += offset.timestamp()
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -308,6 +364,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         if self.matched_filtered:
             flux /= self.inverse_variance
         return flux
+
+    def get_pixel_times(self, pix: tuple[int, int]):
+        return super().get_pixel_times(pix)
 
     def finalize(self):
         self.snr = self.get_snr()
@@ -373,12 +432,21 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         ACT time maps are stored in seconds since the start of the observation,
         thus if you want absolute time you need to add the start time of the observation.
         """
+        if offset is None:
+            from pixell.bunch import read as bunch_read
+
+            offset = (
+                datetime.fromtimestamp(
+                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
+                )
+                if self.info_filename is not None
+                else None
+            )
+        self.observation_start = offset
+        ## TODO: time_first, mean, end are same so this changes all.
+        ## this should be changed when we do something smarter.
         if self.time_first is not None:
-            self.time_first += offset.timestamp()
-        if self.time_end is not None:
-            self.time_end += offset.timestamp()
-        if self.time_mean is not None:
-            self.time_mean += offset.timestamp()
+            self.time_first[self.time_first > 0] += offset.timestamp()
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -391,6 +459,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             flux = self.rho / self.kappa
 
         return flux
+
+    def get_pixel_times(self, pix: tuple[int, int]):
+        return super().get_pixel_times(pix)
 
     def finalize(self):
         self.snr = self.get_snr()
@@ -414,6 +485,7 @@ class RhoAndKappaMap(ProcessableMap):
         end_time: datetime,
         box: AstroPydanticQuantity[u.deg] | None = None,
         time_filename: Path | None = None,
+        info_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
         flux_units: Unit = u.Jy,
@@ -422,6 +494,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.rho_filename = rho_filename
         self.kappa_filename = kappa_filename
         self.time_filename = time_filename
+        self.info_filename = info_filename
         self.observation_start = start_time
         self.observation_end = end_time
         self.box = box
@@ -472,9 +545,11 @@ class RhoAndKappaMap(ProcessableMap):
         self.time_end = time_map
         self.time_mean = time_map
 
+        self.add_time_offset()
+
         return
 
-    def add_time_offset(self, offset: timedelta):
+    def add_time_offset(self, offset: timedelta | None = None):
         """
         Add a time offset to the time maps. Useful if you have a time map
         that is relative to the start of the observation, and you want to
@@ -485,12 +560,24 @@ class RhoAndKappaMap(ProcessableMap):
         ACT time maps are stored in seconds since the start of the observation,
         thus if you want absolute time you need to add the start time of the observation.
         """
+        if offset is None:
+            from pixell.bunch import read as bunch_read
+
+            offset = (
+                datetime.fromtimestamp(
+                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
+                )
+                if self.info_filename is not None
+                else None
+            )
+        self.observation_start = offset
+        ## TODO: time_first, mean, end are same so this changes all.
+        ## this should be changed when we do something smarter.
         if self.time_first is not None:
-            self.time_first += offset.timestamp()
-        if self.time_end is not None:
-            self.time_end += offset.timestamp()
-        if self.time_mean is not None:
-            self.time_mean += offset.timestamp()
+            self.time_first[self.time_first > 0] += offset.timestamp()
+
+    def get_pixel_times(self, pix: tuple[int, int]):
+        return super().get_pixel_times(pix)
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
