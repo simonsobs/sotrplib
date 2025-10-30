@@ -186,7 +186,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                     CrossMatch(
                         source_id=f"sim-{base + i:07d}",
                         catalog_name="simulated",
-                        distance=0.0 * u.deg,
+                        angular_separation=0.0 * u.deg,
                     )
                 ],
             )

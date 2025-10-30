@@ -154,7 +154,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             CrossMatch(
                 source_id=str(s.source_id),
                 probability=1.0 / len(sources),
-                distance=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,

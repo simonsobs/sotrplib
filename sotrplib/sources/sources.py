@@ -3,7 +3,7 @@ from typing import Literal, Optional
 import numpy as np
 import structlog
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
+from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
 from pixell import reproject
 from pydantic import BaseModel, PrivateAttr
@@ -22,9 +22,10 @@ class BaseSource(BaseModel):
 class CrossMatch(BaseModel):
     ra: AstroPydanticQuantity[u.deg] | None = None
     dec: AstroPydanticQuantity[u.deg] | None = None
+    observation_time: AstroPydanticTime | None = None
     source_id: str
     probability: float | None = None
-    distance: AstroPydanticQuantity[u.deg] | None = None
+    angular_separation: AstroPydanticQuantity[u.deg] | None = None
     flux: AstroPydanticQuantity[u.mJy] | None = None
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
@@ -55,6 +56,10 @@ class RegisteredSource(BaseSource):
     err_ra: AstroPydanticQuantity[u.deg] | None = None
     err_dec: AstroPydanticQuantity[u.deg] | None = None
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
+
+    observation_start_time: AstroPydanticTime | None = None
+    observation_mean_time: AstroPydanticTime | None = None
+    observation_end_time: AstroPydanticTime | None = None
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
@@ -110,6 +115,10 @@ class MeasuredSource(RegisteredSource):
     thumbnail: NDArray | None = None
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
     thumbnail_unit: AstroPydanticUnit | None = None
+
+    observation_start_time: AstroPydanticTime | None = None
+    observation_mean_time: AstroPydanticTime | None = None
+    observation_end_time: AstroPydanticTime | None = None
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 

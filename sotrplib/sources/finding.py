@@ -53,28 +53,38 @@ def get_source_observation_time(
     from output of extract_sources, use xpeak and ypeak to
     get the observed time given the map `timemap`.
     """
+    if timemap is None:
+        return extracted_sources
 
     for f in extracted_sources:
-        if timemap is None:
-            extracted_sources[f]["time"] = np.nan
-            continue
-
         x, y = (
             int(extracted_sources[f]["xpeak"]),
             int(extracted_sources[f]["ypeak"]),
         )
         if isinstance(timemap, ProcessableMap):
-            t_start = timemap.time_first[y, x]
-            t_mean = timemap.time_mean[y, x]
-            t_end = timemap.time_end[y, x]
+            t_start = (
+                timemap.time_first[y, x]
+                if timemap.time_first is not None
+                else timemap.observation_start_time
+            )
+            t_mean = (
+                timemap.time_mean[y, x]
+                if timemap.time_mean is not None
+                else timemap.observation_mean_time
+            )
+            t_end = (
+                timemap.time_end[y, x]
+                if timemap.time_end is not None
+                else timemap.observation_end_time
+            )
         else:
             t_mean = timemap[y, x]
             t_start = np.nan
             t_end = np.nan
         # Set the extracted source times, backwards compatibility
-        extracted_sources[f]["time"] = t_mean
-        extracted_sources[f]["time_start"] = t_start
-        extracted_sources[f]["time_end"] = t_end
+        extracted_sources[f]["observation_mean_time"] = t_mean
+        extracted_sources[f]["observation_start_time"] = t_start
+        extracted_sources[f]["observation_end_time"] = t_end
 
     return extracted_sources
 
