@@ -116,10 +116,6 @@ class MeasuredSource(RegisteredSource):
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
     thumbnail_unit: AstroPydanticUnit | None = None
 
-    observation_start_time: AstroPydanticTime | None = None
-    observation_mean_time: AstroPydanticTime | None = None
-    observation_end_time: AstroPydanticTime | None = None
-
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
     def extract_thumbnail(
