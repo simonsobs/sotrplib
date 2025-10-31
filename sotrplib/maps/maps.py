@@ -12,7 +12,8 @@ from pixell import enmap
 from pixell.utils import arcmin, degree
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import MeasuredSource, ProcessableMap
+from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.sources import MeasuredSource
 
 from ..sims.sim_utils import make_2d_gaussian_model_param_table
 

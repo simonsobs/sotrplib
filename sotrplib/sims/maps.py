@@ -127,6 +127,9 @@ class SimulatedMap(ProcessableMap):
 
         return
 
+    def get_pixel_times(self, pix):
+        return super().get_pixel_times(pix)
+
     def finalize(self):
         super().finalize()
 
@@ -235,6 +238,9 @@ class SimulatedMapFromGeometry(ProcessableMap):
         log.debug("simulated_map.build.complete")
 
         return
+
+    def get_pixel_times(self, pix):
+        return super().get_pixel_times(pix)
 
     def finalize(self):
         super().finalize()
