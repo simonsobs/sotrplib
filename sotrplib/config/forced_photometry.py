@@ -45,7 +45,7 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
     photometry_type: Literal["scipy"] = "scipy"
     flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
-    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.25, "deg")
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
