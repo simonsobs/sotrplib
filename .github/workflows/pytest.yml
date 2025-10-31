@@ -25,8 +25,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Sync uv
-        run: uv pip install pixell; uv pip install ".[dev,prefect]"
+        run: uv pip install pixell; uv pip install -e ".[dev,prefect]"
 
       - name: Run tests
-        run: pytest --cov=sotrplib
+        run: pytest --cov
         
