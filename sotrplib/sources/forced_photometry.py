@@ -253,9 +253,15 @@ def scipy_2d_gaussian_fit(
             [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
         )
         size_pix = thumbnail_half_width / map_res
+        t_start, t_mean, t_end = input_map.get_pixel_times(pix)
         ## setup default MeasuredSource
         forced_source = MeasuredSource(
-            ra=source.ra, dec=source.dec, source_id=source.source_id, flux=source.flux
+            ra=source.ra,
+            dec=source.dec,
+            source_id=source.source_id,
+            observation_start_time=t_start,
+            observation_mean_time=t_mean,
+            observation_end_time=t_end,
         )
         forced_source.fit_method = fit_method
         ## set default fit to empty parameters and fit_failed.

@@ -51,7 +51,7 @@ class SOCatWrapper:
                 CrossMatch(
                     source_id=socat_source.name,
                     probability=1.0,
-                    distance=0.0 * u.deg,
+                    angular_separation=0.0 * u.deg,
                     # TBD read this from SOCat
                     frequency=90.0 * u.GHz,
                     catalog_name="mock",
@@ -230,7 +230,7 @@ class SOCatEmptyCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                distance=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
@@ -383,7 +383,7 @@ class SOCatFITSCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                distance=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,

@@ -57,7 +57,7 @@ def test_update_crossmatch(dummy_source):
         dec=dummy_source.dec,
         source_id="crossmatch_name_1",
         probability=None,
-        distance=0.0 * u.arcsec,
+        angular_separation=0.0 * u.arcsec,
         flux=1.0 * u.Jy,
         frequency=93.1 * u.GHz,
     )
@@ -66,7 +66,7 @@ def test_update_crossmatch(dummy_source):
         dec=dummy_source.dec + 1.0 * u.arcsec,
         source_id="crossmatch_name_2",
         probability=None,
-        distance=(2**-0.5) * u.arcsec,
+        angular_separation=(2**-0.5) * u.arcsec,
         flux=2.0 * u.Jy,
         frequency=103.5 * u.GHz,
     )
