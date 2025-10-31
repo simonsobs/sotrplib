@@ -99,7 +99,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         self,
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
-        thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
+        thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         log: FilteringBoundLogger | None = None,
     ):
         self.flux_limit_centroid = flux_limit_centroid

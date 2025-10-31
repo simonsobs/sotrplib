@@ -230,7 +230,7 @@ class SOCatEmptyCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
@@ -383,7 +383,7 @@ class SOCatFITSCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
