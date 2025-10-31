@@ -133,7 +133,7 @@ class SOCatWrapper:
         filtered = [
             self._socat_source_to_registered(socat_source=x)
             for x in rough_cut
-            if angular_separation(x.ra, ra, x.dec, dec) <= radius
+            if angular_separation(ra1=x.ra, ra2=ra, dec1=x.dec, dec2=dec) <= radius
         ]
 
         self.log.info(
@@ -230,7 +230,7 @@ class SOCatEmptyCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(ra1=s.ra, ra2=ra, dec1=s.dec, dec2=dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
@@ -383,7 +383,7 @@ class SOCatFITSCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(ra1=s.ra, ra2=ra, dec1=s.dec, dec2=dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
