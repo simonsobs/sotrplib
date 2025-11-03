@@ -1,8 +1,8 @@
 {
-    "maps":  {
-        "map_generator_type": "mapcat_database",
-        "number_to_read": 1
-    },
+    "maps": {
+            "map_generator_type": "mapcat_database",
+            "number_to_read": 1
+        },
     "source_catalogs": [
         {
             "catalog_type": "fits",
