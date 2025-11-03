@@ -34,7 +34,6 @@ class MapCatDatabaseReader:
         from sqlmodel import select
 
         query = select(DepthOneMapTable).limit(self.number_to_read)
-
         maps = []
 
         with mapcat_settings.session() as session:
