@@ -2,6 +2,8 @@
 Read maps from the map tracking database.
 """
 
+from datetime import datetime, timezone
+
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -48,9 +50,13 @@ class MapCatDatabaseReader:
                         / result.ivar_path,
                         time_filename=mapcat_settings.depth_one_parent
                         / result.time_path,
-                        start_time=result.start_time,
-                        end_time=result.stop_time,
-                        frequency=result.frequency,
+                        start_time=datetime.fromtimestamp(
+                            result.start_time, tz=timezone.utc
+                        ),
+                        end_time=datetime.fromtimestamp(
+                            result.stop_time, tz=timezone.utc
+                        ),
+                        frequency="f" + result.frequency,
                         array=result.tube_slot,
                         log=self.log,
                     )
