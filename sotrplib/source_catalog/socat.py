@@ -65,6 +65,7 @@ class SOCatWrapper:
 
     ## TODO: this doesn't work... maybe need source_catalog/core.py to handle boxes that cross RA=0
     def get_sources_in_box(self, box: list[SkyCoord] | None = None):
+        self.log.info("socat.get_sources_in_box.initial_box", box=box)
         if box is None:
             box = [
                 SkyCoord(ra=-180 * u.deg, dec=-90 * u.deg),
@@ -97,6 +98,7 @@ class SOCatWrapper:
                 n_sources2=len(sources2),
             )
             sources_in_map = sources1 + sources2
+            return sources_in_map
         else:
             ra_min = box[0].ra.to(u.deg).value
             ra_min = ra_min if ra_min <= 180 else ra_min - 360
@@ -112,13 +114,13 @@ class SOCatWrapper:
                 dec_min=dec_min,
                 dec_max=dec_max,
             )
-        self.log.info(
-            "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
-        )
+            self.log.info(
+                "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
+            )
 
-        return [
-            self._socat_source_to_registered(socat_source=x) for x in sources_in_map
-        ]
+            return [
+                self._socat_source_to_registered(socat_source=x) for x in sources_in_map
+            ]
 
     def nearby_sources(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
