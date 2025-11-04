@@ -56,9 +56,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
         out_sources = []
         source_list = list(
-            itertools.chain(
-                *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
-            )
+            itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
         for source in source_list:
             self.log.debug(
@@ -113,9 +111,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         # TODO: refactor get_fwhm as part of the ProcessableMap
         fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
         source_list = list(
-            itertools.chain(
-                *[c.forced_photometry_sources(box=input_map.bbox) for c in catalogs]
-            )
+            itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
         fit_sources = scipy_2d_gaussian_fit(
             input_map,

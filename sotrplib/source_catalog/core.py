@@ -11,6 +11,7 @@ from astropy.coordinates import Angle, SkyCoord
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
 from sotrplib.utils.utils import angular_separation, normalize_ra
 
@@ -34,7 +35,7 @@ class SourceCatalog(ABC):
 
     @abstractmethod
     def forced_photometry_sources(
-        self, box: list[SkyCoord] | None = None
+        self, mask_map: ProcessableMap | None = None
     ) -> list[RegisteredSource]:
         """
         Get the list of sources to be used for forced photometry
@@ -78,6 +79,24 @@ class RegisteredSourceCatalog(SourceCatalog):
     def add_sources(self, sources: list[RegisteredSource]):
         self.sources.extend(sources)
 
+    def get_sources_in_map(
+        self, input_map: ProcessableMap | None = None
+    ) -> list[RegisteredSource]:
+        if len(self.sources) == 0:
+            return []
+        coords = SkyCoord(
+            ra=[s.ra for s in self.sources], dec=[s.dec for s in self.sources]
+        )
+        y, x = input_map.flux.wcs.world_to_pixel(coords)
+        nx, ny = input_map.flux.shape
+        x, y = np.round(x).astype(int), np.round(y).astype(int)
+        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+        result = np.zeros_like(x, dtype=bool)
+        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
+            bool
+        )
+        return [self.sources[i] for i, valid in enumerate(result) if valid]
+
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
@@ -86,15 +105,15 @@ class RegisteredSourceCatalog(SourceCatalog):
         ## Get sky coord limits and whether ra is -180,180 or 0,360
         ra_corners, box_ra_wrap = normalize_ra(Angle([box[0].ra, box[1].ra]))
         source_ra_wrap = (
-            "-180-180" if any(s.ra < 0 * u.deg for s in self.sources) else "0-360"
+            "-180-180" if any(s.ra < 0.0 * u.deg for s in self.sources) else "0-360"
         )
         source_ras = np.asarray([s.ra.to_value(u.deg) for s in self.sources])
         if source_ra_wrap != box_ra_wrap:
             ## shift source RAs to match box system
             if box_ra_wrap == "0-360":
-                source_ras[source_ras < 0] += 360
+                source_ras[source_ras < 0.0] += 360.0
             else:
-                source_ras[source_ras > 180] -= 360
+                source_ras[source_ras > 180.0] -= 360.0
 
         ## Check for RA wrap-around
         ra_min, ra_max = np.min(Angle(ra_corners)), np.max(Angle(ra_corners))
@@ -123,9 +142,9 @@ class RegisteredSourceCatalog(SourceCatalog):
         ]
 
     def forced_photometry_sources(
-        self, box: list[SkyCoord] | None = None
+        self, mask_map: ProcessableMap | None = None
     ) -> list[RegisteredSource]:
-        return self.get_sources_in_box(box=box)
+        return self.get_sources_in_map(mask_map)
 
     def source_by_id(self, id: int):
         return self.sources[id]
