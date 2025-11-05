@@ -162,7 +162,7 @@ class InverseVarianceMapConfig(MapConfig):
         )
 
 
-class MapCatDatabaseConfig(MapConfig):
+class MapCatDatabaseConfig(MapGeneratorConfig):
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
     number_to_read: int = 1
 

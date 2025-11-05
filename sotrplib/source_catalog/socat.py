@@ -63,55 +63,50 @@ class SOCatWrapper:
     def source_from_id(self, source_id) -> RegisteredSource:
         return self._socat_source_to_registered(self.catalog.get_source(id=source_id))
 
+    def get_sources_in_map(self, mask_map: ProcessableMap) -> list[RegisteredSource]:
+        """
+        Get the sources that fall within the region observed by the input map.
+        Can be a weights map or a boolean mask map.
+        """
+        all_sources = self.get_sources_in_box()
+        if len(all_sources) == 0:
+            return []
+        coords = SkyCoord(
+            ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
+        )
+        y, x = mask_map.flux.wcs.world_to_pixel(coords)
+        nx, ny = mask_map.flux.shape
+        x, y = np.round(x).astype(int), np.round(y).astype(int)
+        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+        result = np.zeros_like(x, dtype=bool)
+        result[inside] = np.nan_to_num(mask_map.flux[x[inside], y[inside]]).astype(bool)
+        return [all_sources[i] for i, valid in enumerate(result) if valid]
+
     ## TODO: this doesn't work... maybe need source_catalog/core.py to handle boxes that cross RA=0
     def get_sources_in_box(self, box: list[SkyCoord] | None = None):
+        self.log.info("socat.get_sources_in_box.initial_box", box=box)
         if box is None:
             box = [
-                SkyCoord(ra=-180 * u.deg, dec=-90 * u.deg),
-                SkyCoord(ra=180 * u.deg, dec=90 * u.deg),
+                SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
             ]
         if box[0].ra > box[1].ra and box[0].dec < box[1].dec:
             ## 0 is lower left corner and 1 is upper right corner
             ## ra increases to the left.
             box = [box[1], box[0]]
-        if box[1].ra > 180 * u.deg and box[0].ra < 180 * u.deg:
-            ## socat expects -180,180 limits.
-            ## if we cross the 180 line, need to split into two boxes
-            self.log.info("socat.get_sources_in_box.splitting_box", box=box)
-            box1 = [
-                SkyCoord(ra=box[0].ra, dec=box[0].dec),
-                SkyCoord(ra=180 * u.deg, dec=box[1].dec),
-            ]
-            box2 = [
-                SkyCoord(ra=-180 * u.deg, dec=box[0].dec),
-                SkyCoord(ra=box[1].ra - 360 * u.deg, dec=box[1].dec),
-            ]
-            sources1 = self.get_sources_in_box(box=box1)
-            sources2 = self.get_sources_in_box(box=box2)
-            self.log.info(
-                "socat.get_sources_in_box.splitting_box",
-                box=box,
-                box1=box1,
-                box2=box2,
-                n_sources1=len(sources1),
-                n_sources2=len(sources2),
-            )
-            sources_in_map = sources1 + sources2
-        else:
-            ra_min = box[0].ra.to(u.deg).value
-            ra_min = ra_min if ra_min <= 180 else ra_min - 360
-            ra_max = box[1].ra.to(u.deg).value
-            ra_max = ra_max if ra_max <= 180 else ra_max - 360
-            dec_min = np.min([box[0].dec.to(u.deg).value, box[1].dec.to(u.deg).value])
-            dec_max = np.max([box[0].dec.to(u.deg).value, box[1].dec.to(u.deg).value])
-            box = [[ra_min, dec_min], [ra_max, dec_max]]
-            ## astropy SkyCoord uses 0 to 360 convention for RA, but SOCat uses -180 to 180
-            sources_in_map = self.catalog.get_box(
-                ra_min=ra_min,
-                ra_max=ra_max,
-                dec_min=dec_min,
-                dec_max=dec_max,
-            )
+
+        ra_min = box[0].ra.to(u.deg).value
+        ra_max = box[1].ra.to(u.deg).value
+        dec_min = np.min([box[0].dec.to(u.deg).value, box[1].dec.to(u.deg).value])
+        dec_max = np.max([box[0].dec.to(u.deg).value, box[1].dec.to(u.deg).value])
+        box = [[ra_min, dec_min], [ra_max, dec_max]]
+        ## astropy SkyCoord uses 0 to 360 convention for RA, but SOCat uses -180 to 180
+        sources_in_map = self.catalog.get_box(
+            ra_min=ra_min,
+            ra_max=ra_max,
+            dec_min=dec_min,
+            dec_max=dec_max,
+        )
         self.log.info(
             "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
         )
@@ -170,24 +165,16 @@ class SOCatEmptyCatalog(SourceCatalog):
         return self.core.get_sources_in_box(box=box)
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        map_bounds = input_map.bbox()
-        self.log.info(
-            "socat_empty.get_sources_in_map",
-            map_bounds_deg=map_bounds.to(u.deg),
-        )
-        return self.core.get_sources_in_box(box=map_bounds)
+        return self.core.get_sources_in_map(mask_map=input_map)
 
     def get_all_sources(self) -> list[RegisteredSource]:
-        return self.core.get_sources_in_box(
-            box=[
-                SkyCoord(-179.99 * u.deg, 89.99 * u.deg),
-                SkyCoord(179.99 * u.deg, -89.99 * u.deg),
-            ]
-        )
+        return self.core.get_sources_in_box(box=None)
 
-    def forced_photometry_sources(self, box: list[SkyCoord] | None = None):
+    def forced_photometry_sources(self, mask_map: ProcessableMap):
         return [
-            x for x in self.get_sources_in_box(box) if x.source_id in self.valid_fluxes
+            x
+            for x in self.get_sources_in_map(mask_map)
+            if x.source_id in self.valid_fluxes
         ]
 
     def source_by_id(self, id) -> RegisteredSource:
@@ -230,7 +217,7 @@ class SOCatEmptyCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
@@ -276,9 +263,7 @@ class SOCatFITSCatalog(SourceCatalog):
             flux = row["fluxJy"] * u.Jy
             if flux < self.flux_lower_limit:
                 continue
-            ra = (
-                row["raDeg"] if row["raDeg"] < 180.0 else row["raDeg"] - 360.0
-            ) * u.deg
+            ra = (row["raDeg"] if row["raDeg"] > 0.0 else row["raDeg"] + 360.0) * u.deg
             dec = row["decDeg"] * u.deg
             name = row["name"]
 
@@ -306,41 +291,17 @@ class SOCatFITSCatalog(SourceCatalog):
         return self.core.get_sources_in_box(box=box)
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        map_bounds = input_map.bbox()
-        self.log.info(
-            "socat_fits.get_sources_in_map",
-            map_bounds_deg=map_bounds.to(u.deg),
-        )
-        # if ra_min is greater than ra_max, we are crossing the 0 point
-        # so we need to split the box into two boxes.
-        # since pixell uses -180 to 180 convention, we need to go 0 to ra_min then ra_max to 0
-        if map_bounds[0].ra > map_bounds[1].ra:
-            box1 = [
-                SkyCoord(map_bounds[0].ra, 0 * u.rad),
-                SkyCoord(map_bounds[1].ra, map_bounds[0].dec),
-            ]
-            box2 = [
-                SkyCoord(map_bounds[0].ra, map_bounds[1].dec),
-                SkyCoord(map_bounds[1].ra, 0 * u.rad),
-            ]
-            sources1 = self.core.get_sources_in_box(box=box1)
-            sources2 = self.core.get_sources_in_box(box=box2)
-            return sources1 + sources2
-        else:
-            return self.core.get_sources_in_box(box=map_bounds)
+        return self.core.get_sources_in_map(mask_map=input_map)
 
     def get_all_sources(self) -> list[RegisteredSource]:
-        sources = self.core.get_sources_in_box(
-            box=[
-                SkyCoord(-179.99 * u.deg, 89.99 * u.deg),
-                SkyCoord(179.99 * u.deg, -89.99 * u.deg),
-            ]
-        )
+        sources = self.core.get_sources_in_box(box=None)
         return sources
 
-    def forced_photometry_sources(self, box: list[SkyCoord] | None = None):
+    def forced_photometry_sources(self, mask_map: ProcessableMap):
         return [
-            x for x in self.get_sources_in_box(box) if x.source_id in self.valid_fluxes
+            x
+            for x in self.get_sources_in_map(mask_map)
+            if x.source_id in self.valid_fluxes
         ]
 
     def source_by_id(self, id) -> RegisteredSource:
@@ -383,7 +344,7 @@ class SOCatFITSCatalog(SourceCatalog):
             CrossMatch(
                 source_id=s.source_id,
                 probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, ra, s.dec, dec),
+                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,

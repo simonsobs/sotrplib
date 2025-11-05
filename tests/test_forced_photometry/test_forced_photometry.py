@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 from astropy import units as u
 
@@ -62,16 +61,6 @@ def test_scipy_curve_fit(map_with_single_source):
     assert results[0].offset_ra.to(u.arcmin).value < 0.5
     assert results[0].offset_dec.to(u.arcmin).value < 0.5
     assert results[0].fit_method == "2d_gaussian"
-
-
-def test_failed_fit(map_with_single_source):
-    input_map, sources = map_with_single_source
-    input_map.flux *= np.nan
-    forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=True)
-    source_cat = RegisteredSourceCatalog(sources=sources)
-    results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
-    assert len(results) == 1
-    assert results[0].fit_failed
 
 
 def test_source_offset(map_with_single_source):

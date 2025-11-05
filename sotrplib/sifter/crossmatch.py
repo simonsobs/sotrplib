@@ -306,7 +306,6 @@ def sift(
                     mq_catalog_match[source].source_id, mq_catalog_match[source].pvalue
                 )
             )
-
         log.debug(
             "sift.candidate_info",
             source_name=source_string_name,
