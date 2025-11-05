@@ -1,13 +1,13 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 1
+            "number_to_read": 2
         },
     "source_catalogs": [
         {
             "catalog_type": "fits",
             "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
-            "flux_lower_limit": "0.03 Jy"
+            "flux_lower_limit": "0.01 Jy"
         }
     ],
     "preprocessors": [
@@ -26,7 +26,8 @@
     },
     "forced_photometry": {
         "photometry_type": "scipy",
-        "reproject_thumbnails": "True"
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy"
     },
     "sifter": {
         "sifter_type": "default"
