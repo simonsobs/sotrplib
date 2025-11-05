@@ -4,6 +4,7 @@ Read maps from the map tracking database.
 
 from datetime import datetime, timezone
 
+from astropy import units as u
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -56,6 +57,7 @@ class MapCatDatabaseReader:
                         end_time=datetime.fromtimestamp(
                             result.stop_time, tz=timezone.utc
                         ),
+                        intensity_units=u.uK,
                         frequency="f" + result.frequency,
                         array=result.tube_slot,
                         log=self.log,
