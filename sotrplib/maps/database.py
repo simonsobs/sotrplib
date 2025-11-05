@@ -2,9 +2,6 @@
 Read maps from the map tracking database.
 """
 
-from datetime import datetime, timezone
-
-from astropy import units as u
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -37,6 +34,7 @@ class MapCatDatabaseReader:
         from sqlmodel import select
 
         query = select(DepthOneMapTable).limit(self.number_to_read)
+
         maps = []
 
         with mapcat_settings.session() as session:
@@ -51,14 +49,9 @@ class MapCatDatabaseReader:
                         / result.ivar_path,
                         time_filename=mapcat_settings.depth_one_parent
                         / result.time_path,
-                        start_time=datetime.fromtimestamp(
-                            result.start_time, tz=timezone.utc
-                        ),
-                        end_time=datetime.fromtimestamp(
-                            result.stop_time, tz=timezone.utc
-                        ),
-                        intensity_units=u.uK,
-                        frequency="f" + result.frequency,
+                        start_time=result.start_time,
+                        end_time=result.stop_time,
+                        frequency=result.frequency,
                         array=result.tube_slot,
                         log=self.log,
                     )

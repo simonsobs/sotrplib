@@ -8,9 +8,8 @@ version = "0.0.1a1"
 requires-python = ">=3.11"
 dependencies = [
     "pixell",
-    "numpy==1.26.4",
+    "numpy",
     "astropy",
-    "h5py",
     "pandas",
     "scipy",
     "astroquery",
@@ -22,7 +21,7 @@ dependencies = [
     "photutils",
     "structlog",
     "scikit-image",
-    "socat @ git+https://github.com/simonsobs/socat@skycoordfix",
+    "socat @ git+https://github.com/simonsobs/socat",
     "astropydantic",
     "numpydantic",
     "mapcat",

@@ -276,6 +276,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def build(self):
         log = self.log.bind(intensity_filename=self.intensity_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
+
         intensity_shape = enmap.read_map_geometry(str(self.intensity_filename))[0]
         self.intensity = enmap.read_map(
             str(self.intensity_filename),

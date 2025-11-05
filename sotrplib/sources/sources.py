@@ -121,7 +121,7 @@ class MeasuredSource(RegisteredSource):
     def extract_thumbnail(
         self,
         input_map: ProcessableMap,
-        thumb_width: u.Quantity = 0.1 * u.deg,
+        thumb_width: u.Quantity = 0.25 * u.deg,
         reproject_thumb=False,
     ):
         """

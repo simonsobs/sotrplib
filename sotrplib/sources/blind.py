@@ -67,6 +67,4 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
             log=self.log,
         )
-        for source in extracted_sources:
-            source.extract_thumbnail(input_map, reproject_thumb=True)
         return extracted_sources, []

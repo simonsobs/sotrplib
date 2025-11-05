@@ -95,8 +95,6 @@ class BaseRunner:
 
     @property
     def bbox(self):
-        if not self.maps:
-            return None
         bbox = self.maps[0].bbox
 
         for input_map in self.maps[1:]:
