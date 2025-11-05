@@ -1,0 +1,41 @@
+{
+    "maps": {
+            "map_generator_type": "mapcat_database",
+            "number_to_read": 2
+        },
+    "source_catalogs": [
+        {
+            "catalog_type": "fits",
+            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": "0.01 Jy"
+        }
+    ],
+    "preprocessors": [
+        {
+            "preprocessor_type": "matched_filter"
+        },
+        {
+            "preprocessor_type": "kappa_rho"
+        }
+    ],
+    "source_subtractor": {
+            "subtractor_type": "photutils"
+    },
+    "blind_search": {
+            "search_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy",
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy"
+    },
+    "sifter": {
+        "sifter_type": "default"
+    },
+    "outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

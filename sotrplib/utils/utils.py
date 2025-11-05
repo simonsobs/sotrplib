@@ -487,7 +487,7 @@ def consolidate_cols(dirs, colnames):
     return cols
 
 
-def ra_pos(ra):
+def ra_pos(ra: u.Quantity[u.deg]):
     """converts ra to 0<ra<360
 
     Args:
@@ -497,12 +497,12 @@ def ra_pos(ra):
         ra converted to 0<ra<360
     """
 
-    ra[ra < 0] += 360.0
+    ra[ra < 0.0 * u.deg] += 360.0 * u.deg
 
     return ra
 
 
-def ra_neg(ra):
+def ra_neg(ra: u.Quantity[u.deg]):
     """converts ra to -180<ra<180
 
     Args:
@@ -512,28 +512,33 @@ def ra_neg(ra):
         ra converted to -180<ra<180
     """
 
-    ra[ra > 180] -= 360.0
+    ra[ra > 180.0 * u.deg] -= 360.0 * u.deg
 
     return ra
 
 
-def angular_separation(ra1, dec1, ra2, dec2):
+def angular_separation(
+    ra1: u.Quantity[u.deg],
+    dec1: u.Quantity[u.deg],
+    ra2: u.Quantity[u.deg],
+    dec2: u.Quantity[u.deg],
+):
     """calculates angular separation between two points on the sky
 
     Args:
-        ra1: ra of first point [deg]
-        dec1: dec of first point [deg]
-        ra2: ra of second point [deg]
-        dec2: dec of second point [deg]
+        ra1: ra of first point [angle]
+        dec1: dec of first point [angle]
+        ra2: ra of second point [angle]
+        dec2: dec of second point [angle]
 
     Returns:
-        angular separation between two points on the sky in degrees
+        angular separation between two points on the sky
     """
 
     # convert to SkyCoord
-    c1 = SkyCoord(ra1, dec1, unit=(u.deg, u.deg), frame="icrs")
-    c2 = SkyCoord(ra2, dec2, unit=(u.deg, u.deg), frame="icrs")
-    sep = c1.separation(c2).to(u.deg)
+    c1 = SkyCoord(ra_pos(ra1), dec1, frame="icrs")
+    c2 = SkyCoord(ra_pos(ra2), dec2, frame="icrs")
+    sep = c1.separation(c2)
 
     return sep
 
