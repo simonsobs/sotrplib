@@ -44,7 +44,6 @@ class SOCatWrapper:
         )
 
     def _socat_source_to_registered(self, socat_source) -> RegisteredSource:
-        # print(socat_source.ra, socat_source.dec, socat_source.flux)
         return RegisteredSource(
             ra=socat_source.ra * u.deg,
             dec=socat_source.dec * u.deg,
@@ -272,13 +271,12 @@ class SOCatFITSCatalog(SourceCatalog):
             dec = row["decDeg"] * u.deg
             name = row["name"]
             # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
-            s = self.core.catalog.create(
+            self.core.catalog.create(
                 ra=ra.to_value(u.deg),
                 dec=dec.to_value(u.deg),
                 flux=flux.to_value(u.Jy),
                 name=name,
             )
-            print(s)
 
             if flux > self.flux_lower_limit:
                 self.valid_fluxes.add(name)
