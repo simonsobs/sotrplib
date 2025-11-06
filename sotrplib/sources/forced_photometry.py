@@ -181,6 +181,9 @@ class Gaussian2DFitter:
                 offset_err,
             ) = perr
             x_size, y_size = self.data.shape
+            ## get the actual center of the map
+            x_size -= 0.5
+            y_size -= 0.5
             dec_offset = (y_size / 2 - y0) * self.map_resolution
             ## if the thumbnail is reprojected or just cut out of the map
             ## determines the sign of the RA offset given the declination.
@@ -191,7 +194,6 @@ class Gaussian2DFitter:
                 * np.cos(self.thumbnail_center[1].to(u.rad).value)
                 * self.map_resolution
             )
-
             if ra_offset > 180.0 * u.deg:
                 ra_offset -= 360.0 * u.deg
             elif ra_offset < -180.0 * u.deg:

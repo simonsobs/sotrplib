@@ -147,6 +147,7 @@ class MeasuredSource(RegisteredSource):
                     ],
                 ],
             )
+
         self.thumbnail_res = input_map.map_resolution
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)

@@ -6,6 +6,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.pointing import (
     EmptyPointingOffset,
+    LinearMeanPointingOffset,
     LinearMedianPointingOffset,
     MapPointingOffset,
 )
@@ -43,6 +44,25 @@ class LinearMedianRADecResidualConfig(PointingResidualConfig):
         )
 
 
+class LinearMeanRADecResidualConfig(PointingResidualConfig):
+    pointing_residual_type: Literal["linear_mean"] = "linear_mean"
+    min_snr: float = 5.0
+    min_sources: int = 5
+    sigma_clip_level: float = 3.0
+
+    def to_residuals(
+        self, log: FilteringBoundLogger | None = None
+    ) -> MapPointingOffset:
+        return LinearMeanPointingOffset(
+            min_snr=self.min_snr,
+            min_num=self.min_sources,
+            sigma_clip_level=self.sigma_clip_level,
+            log=log,
+        )
+
+
 AllPointingResidualConfigTypes = (
-    EmptyPointingResidualConfig | LinearMedianRADecResidualConfig
+    EmptyPointingResidualConfig
+    | LinearMedianRADecResidualConfig
+    | LinearMeanRADecResidualConfig
 )
