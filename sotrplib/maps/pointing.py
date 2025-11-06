@@ -65,7 +65,7 @@ class LinearPointingOffset(MapPointingOffset):
         pointing_sources: list[RegisteredSource] | None = None,
     ) -> AstroPydanticQuantity[u.deg]:
         log = self.log or structlog.get_logger()
-        log.bind(
+        log = log.bind(
             func="pointing.calculate_mean_offsets",
             min_snr=self.min_snr,
             min_num=self.min_num,

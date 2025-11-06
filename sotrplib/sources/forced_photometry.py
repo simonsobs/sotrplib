@@ -332,7 +332,7 @@ def scipy_2d_gaussian_fit(
         forced_source.err_flux = fit.amplitude_err
         forced_source.snr = (
             (fit.amplitude / fit.amplitude_err).value
-            if (fit.amplitude_err is not None) & (fit.amplitude is not None)
+            if (fit.amplitude_err is not None) and (fit.amplitude is not None)
             else None
         )
         forced_source.offset_ra = fit.ra_offset
