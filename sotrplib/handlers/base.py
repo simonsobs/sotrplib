@@ -3,6 +3,7 @@ from typing import Iterable
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
@@ -30,6 +31,7 @@ class BaseRunner:
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
     preprocessors: list[MapPreprocessor] | None
+    pointing_residual: MapPointingOffset | None
     postprocessors: list[MapPostprocessor] | None
     forced_photometry: ForcedPhotometryProvider | None
     source_subtractor: SourceSubtractor | None
@@ -45,6 +47,7 @@ class BaseRunner:
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
+        pointing_residual: MapPointingOffset | None,
         postprocessors: list[MapPostprocessor] | None,
         forced_photometry: ForcedPhotometryProvider | None,
         source_subtractor: SourceSubtractor | None,
@@ -58,6 +61,7 @@ class BaseRunner:
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
         self.preprocessors = preprocessors or []
+        self.pointing_residual = pointing_residual or EmptyPointingOffset()
         self.postprocessors = postprocessors or []
         self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
@@ -136,6 +140,11 @@ class BaseRunner:
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
         )(input_map=input_map, catalogs=self.source_catalogs)
+
+        pointing_residuals = self.profilable_task(self.pointing_residual.get_offset)(
+            pointing_sources=forced_photometry_candidates
+        )
+        input_map = self.pointing_residual.apply_offset(input_map)
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
             sources=forced_photometry_candidates, input_map=input_map

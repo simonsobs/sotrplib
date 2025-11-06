@@ -393,9 +393,9 @@ def sift(
 
     log.info(
         "sift.initial_candidates",
-        transient_candidates=transient_candidates,
-        noise_candidates=noise_candidates,
-        source_candidates=source_candidates,
+        transient_candidates=len(transient_candidates),
+        noise_candidates=len(noise_candidates),
+        source_candidates=len(source_candidates),
     )
 
     transient_candidates, new_noise_candidates = recalculate_local_snr(
@@ -406,7 +406,7 @@ def sift(
         snr_cut=cuts["snr"][0],
     )
     if new_noise_candidates:
-        log = log.bind(updated_noise_candidates=new_noise_candidates)
+        log = log.bind(updated_noise_candidates=len(new_noise_candidates))
         log.info("sift.recalc_snr")
     noise_candidates.extend(new_noise_candidates)
 
