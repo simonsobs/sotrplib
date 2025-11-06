@@ -260,6 +260,7 @@ def scipy_2d_gaussian_fit(
         forced_source = MeasuredSource(
             ra=source.ra,
             dec=source.dec,
+            flux=source.flux,
             source_id=source.source_id,
             observation_start_time=t_start,
             observation_mean_time=t_mean,
@@ -318,7 +319,7 @@ def scipy_2d_gaussian_fit(
             fwhm_guess=fwhm,
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
-            else False,
+            else False,  ## TODO: is this what we want??
             log=log,
         )
 
