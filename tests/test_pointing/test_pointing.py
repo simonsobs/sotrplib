@@ -1,6 +1,6 @@
 from astropy import units as u
 
-from sotrplib.maps.pointing import LinearMeanPointingOffset, LinearMedianPointingOffset
+from sotrplib.maps.pointing import LinearPointingOffset
 from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.force import (
     Scipy2DGaussianFitter,
@@ -25,7 +25,9 @@ def test_median_residual_notenough_sources(map_with_single_source):
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
-    pointing_residual_generator = LinearMedianPointingOffset(min_num=5, min_snr=5)
+    pointing_residual_generator = LinearPointingOffset(
+        min_num=5, min_snr=5, avg_method="median"
+    )
     pointing_residuals = pointing_residual_generator.get_offset(
         pointing_sources=results
     )
@@ -52,7 +54,9 @@ def test_median_residual(map_with_sources):
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
-    pointing_residual_generator = LinearMedianPointingOffset(min_num=5, min_snr=5)
+    pointing_residual_generator = LinearPointingOffset(
+        min_num=5, min_snr=5, avg_method="median"
+    )
     pointing_residuals = pointing_residual_generator.get_offset(
         pointing_sources=results
     )
@@ -80,7 +84,9 @@ def test_mean_residual(map_with_sources):
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
-    pointing_residual_generator = LinearMeanPointingOffset(min_num=5, min_snr=5)
+    pointing_residual_generator = LinearPointingOffset(
+        min_num=5, min_snr=5, avg_method="mean"
+    )
     pointing_residuals = pointing_residual_generator.get_offset(
         pointing_sources=results
     )
