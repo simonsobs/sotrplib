@@ -49,6 +49,7 @@ def test_basic_pipeline_scipy(
         source_catalogs=[source_cat],
         source_injector=None,
         preprocessors=None,
+        pointing_residual=None,
         postprocessors=None,
         source_simulators=None,
         forced_photometry=Scipy2DGaussianFitter(),
