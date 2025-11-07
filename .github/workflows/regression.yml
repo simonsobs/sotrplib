@@ -39,7 +39,7 @@ jobs:
       - name: Run tests
         run: |
           cd tests/regression
-          uv run python validate_results.py
+          python validate_results.py
           cd -
       
       - name: Upload regression results
