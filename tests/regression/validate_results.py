@@ -65,8 +65,12 @@ def main():
 
     found = [candidate for candidate in photometry if not candidate.fit_failed]
 
-    dec_offsets = np.array([candidate.fit_params["dec_offset"].value for candidate in found])
-    ra_offsets = np.array([candidate.fit_params["ra_offset"].value for candidate in found])
+    dec_offsets = np.array(
+        [candidate.fit_params["dec_offset"].value for candidate in found]
+    )
+    ra_offsets = np.array(
+        [candidate.fit_params["ra_offset"].value for candidate in found]
+    )
     offsets = np.array([calculate_separation(candidate) for candidate in found])
 
     plt.ecdf(np.abs(dec_offsets), label="Dec")
@@ -99,6 +103,7 @@ def main():
         json.dump(summary, handle, indent=4)
 
     import IPython
+
     IPython.embed()
 
 
