@@ -1,0 +1,50 @@
+name: Run regression tests
+
+# Trigger the workflow on pushes and pull requests to the main branch, and on a daily schedule
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  runtest:
+    env:
+      UV_SYSTEM_PYTHON: 1
+      FC: gfortran
+      CXX: g++
+      CC: gcc
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync uv
+        run: uv pip install pixell; uv pip install -e ".[dev,prefect]"
+
+      - name: Run tests
+        run: cd tests/regression && uv python validate_results.py && cd -
+      
+      - name: Upload regression results
+        uses: actions/upload-artifact@v3
+        with:
+          name: regression-results
+          path: |
+            tests/regression/summary.json
+            tests/regression/offset_ecdf.png
+            tests/regression/profile.html
+        

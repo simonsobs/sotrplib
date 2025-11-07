@@ -1,0 +1,49 @@
+{
+    "maps": [
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-01",
+            "observation_end": "2025-01-02",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        }
+    ],
+    "source_simulators": [
+        {
+            "simulation_type": "fixed",
+            "number": 4096,
+            "min_flux": "0.001 Jy",
+            "max_flux": "1.0 Jy",
+            "catalog_fraction": 0.5
+        }
+    ],
+    "source_injector": {
+        "injector_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy"
+    },
+    "source_subtractor": {
+        "subtractor_type": "photutils"
+    },
+    "blind_search": {
+        "search_type": "photutils"
+    },
+    "sifter": {
+        "sifter_type": "simple"
+    },
+    "outputs": [
+        {
+            "output_type": "cutout",
+            "directory": "."
+        },
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}
