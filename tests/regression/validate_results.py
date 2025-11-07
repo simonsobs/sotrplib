@@ -58,7 +58,7 @@ def main():
     pipeline = config.to_runner()
     with pyinstrument.Profiler() as profiler:
         results = pipeline.run()
-    profiler.write_html("profile.html", timeline=True)
+    profiler.write_html("profile.html")
     print(profiler.output_text(unicode=True, color=True))
     result = results[0]
     photometry, sifter_result, _ = result
@@ -101,10 +101,6 @@ def main():
     )
     with open("summary.json", "w") as handle:
         json.dump(summary, handle, indent=4)
-
-    import IPython
-
-    IPython.embed()
 
 
 if __name__ == "__main__":
