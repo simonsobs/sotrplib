@@ -145,21 +145,25 @@ class BaseRunner:
         )
 
         ## TODO: store these somewhere
-        pointing_residuals = self.profilable_task(self.pointing_residual.get_offset)(
+        _ = self.profilable_task(self.pointing_residual.get_offset)(
             pointing_sources=pointing_sources
         )
-        input_map = self.pointing_residual.apply_offset(input_map)
 
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
-        )(input_map=input_map, catalogs=self.source_catalogs)
+        )(
+            input_map=input_map,
+            catalogs=self.source_catalogs,
+            pointing_residuals=self.pointing_residual,
+        )
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
             sources=forced_photometry_candidates, input_map=input_map
         )
 
         blind_sources, _ = self.profilable_task(self.blind_search.search)(
-            input_map=source_subtracted_map
+            input_map=source_subtracted_map,
+            pointing_residuals=self.pointing_residual,
         )
 
         sifter_result = self.profilable_task(self.sifter.sift)(

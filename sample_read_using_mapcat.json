@@ -10,6 +10,17 @@
             "flux_lower_limit": "0.01 Jy"
         }
     ],
+    "pointing_provider": {
+        "photometry_type": "scipy_pointing",
+        "thumbnail_half_width": "0.2 deg",
+        "min_flux": "0.2 Jy",
+        "reproject_thumbnails": "True"
+    },
+    "pointing_residual": {
+        "pointing_residual_type": "linear_mean",
+        "min_snr": 5.0,
+        "min_sources": 5
+    },
     "preprocessors": [
         {
             "preprocessor_type": "matched_filter"
