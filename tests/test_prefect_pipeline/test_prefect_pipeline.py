@@ -55,6 +55,7 @@ def test_basic_pipeline_scipy(
         source_catalogs=[],
         source_injector=None,
         preprocessors=None,
+        pointing_provider=None,
         pointing_residual=None,
         postprocessors=None,
         source_simulators=None,

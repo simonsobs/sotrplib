@@ -32,7 +32,7 @@ class MapPointingOffset(ABC):
         return
 
     @abstractmethod
-    def apply_offset_to_map(self, input_map: ProcessableMap) -> ProcessableMap:
+    def apply_offset_to_map(self, pos: SkyCoord) -> SkyCoord:
         return
 
 
@@ -42,8 +42,11 @@ class EmptyPointingOffset(MapPointingOffset):
     ) -> AstroPydanticQuantity[u.deg]:
         return (0.0 * u.deg, 0.0 * u.deg)
 
-    def apply_offset(self, input_map: ProcessableMap) -> ProcessableMap:
+    def apply_offset_to_map(self, input_map: ProcessableMap) -> ProcessableMap:
         return input_map
+
+    def apply_offset_at_position(self, pos: SkyCoord) -> ProcessableMap:
+        return pos
 
 
 class LinearPointingOffset(MapPointingOffset):
