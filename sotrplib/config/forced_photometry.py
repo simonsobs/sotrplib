@@ -67,7 +67,7 @@ class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
-    ) -> Scipy2DGaussianFitter:
+    ) -> Scipy2DGaussianPointingFitter:
         return Scipy2DGaussianPointingFitter(
             min_flux=self.min_flux,
             reproject_thumbnails=self.reproject_thumbnails,
