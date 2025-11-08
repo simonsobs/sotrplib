@@ -28,11 +28,11 @@ class MapPointingOffset(ABC):
         return
 
     @abstractmethod
-    def apply_offset_at_position(self, input_map: ProcessableMap) -> ProcessableMap:
+    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
         return
 
     @abstractmethod
-    def apply_offset_to_map(self, pos: SkyCoord) -> SkyCoord:
+    def apply_offset_to_map(self, input_map: ProcessableMap) -> ProcessableMap:
         return
 
 
