@@ -13,25 +13,40 @@ from astropy.stats import sigma_clipped_stats
 from astropydantic import AstroPydanticQuantity
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import RegisteredSource
 
 
 class MapPointingOffset(ABC):
+    """
+    Base class for map pointing offsets.
+    Allow for calculation of offsets from sources, and application of
+    the inverse offsets to recover true positions.
+    """
+
     pointing_sources: list[RegisteredSource] | None = None
 
     @abstractmethod
     def get_offset(
         self, pointing_sources: list[RegisteredSource] | None = None
     ) -> AstroPydanticQuantity[u.deg]:
+        """Calculate the pointing offset based on the provided sources."""
         return
 
     @abstractmethod
     def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
-        return
+        """
+        Apply inverse offsets to one or more SkyCoord positions.
 
-    @abstractmethod
-    def apply_offset_to_map(self, input_map: ProcessableMap) -> ProcessableMap:
+        Parameters
+        ----------
+        pos : SkyCoord
+            Input coordinate(s) to which the offsets will be removed.
+
+        Returns
+        -------
+        SkyCoord
+            New coordinates with the offsets removed.
+        """
         return
 
 
@@ -41,10 +56,7 @@ class EmptyPointingOffset(MapPointingOffset):
     ) -> AstroPydanticQuantity[u.deg]:
         return (0.0 * u.deg, 0.0 * u.deg)
 
-    def apply_offset_to_map(self, input_map: ProcessableMap) -> ProcessableMap:
-        return input_map
-
-    def apply_offset_at_position(self, pos: SkyCoord) -> ProcessableMap:
+    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
         return pos
 
 
@@ -157,63 +169,8 @@ class ConstantPointingOffset(MapPointingOffset):
         return (self.ra_offset, self.dec_offset)
 
     def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
-        """
-        Apply stored RA/Dec offsets to one or more SkyCoord positions.
-
-        Offsets are assumed small (flat-sky approximation).
-        RA offsets are
-        corrected for cos(dec).
-
-        Parameters
-        ----------
-        pos : SkyCoord
-            Input coordinate(s) to which the offsets will be applied.
-
-        Returns
-        -------
-        SkyCoord
-            New coordinates with the offsets applied.
-        """
-        # Return new SkyCoord
         return SkyCoord(
             ra=pos.ra - self.ra_offset,
             dec=pos.dec - self.dec_offset,
             frame=pos.frame,
         )
-
-    def apply_offset_to_map(self, input_map: ProcessableMap) -> ProcessableMap:
-        """
-        Shift the maps by a given amount in RA and Dec.
-        """
-        log = self.log if self.log else structlog.get_logger()
-        for key in [
-            "intensity",
-            "inverse_variance",
-            "snr",
-            "flux",
-            "rho",
-            "kappa",
-            "time_map",
-        ]:
-            if hasattr(input_map, key):
-                data = getattr(input_map, key)
-                if data is not None:
-                    map_resolution = u.Quantity(
-                        data.wcs.wcs.cdelt, data.wcs.wcs.cunit[0]
-                    )  # [ra, dec]
-                    shift_y = (self.dec_offset / map_resolution[1]).to_value(
-                        u.dimensionless_unscaled
-                    )
-                    shift_x = (self.ra_offset / map_resolution[0]).to_value(
-                        u.dimensionless_unscaled
-                    )
-                    data.wcs.wcs.crpix -= [shift_x, shift_y]
-                    log.info(
-                        "ConstantPointingOffset.map_offset.shifting",
-                        shift_ra=self.ra_offset,
-                        shift_dec=self.dec_offset,
-                        shift_x=shift_x,
-                        shift_y=shift_y,
-                    )
-                    setattr(input_map, key, data)
-        return input_map
