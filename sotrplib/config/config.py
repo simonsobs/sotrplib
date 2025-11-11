@@ -15,6 +15,10 @@ from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
 from .maps import AllMapGeneratorConfigTypes
 from .outputs import AllOutputConfigTypes
+from .pointing_residual import (
+    AllPointingResidualConfigTypes,
+    EmptyPointingResidualConfig,
+)
 from .postprocessors import AllPostprocessorConfigTypes
 from .preprocessors import AllPreprocessorConfigTypes
 from .sifter import AllSifterConfigTypes, EmptySifterConfig
@@ -50,6 +54,16 @@ class Settings(BaseSettings):
 
     postprocessors: list[AllPostprocessorConfigTypes] = []
     "Map post-processors"
+
+    pointing_provider: AllForcedPhotometryConfigTypes = Field(
+        default_factory=EmptyPhotometryConfig
+    )
+    "Pointing provider settings"
+
+    pointing_residual: AllPointingResidualConfigTypes = Field(
+        default_factory=EmptyPointingResidualConfig
+    )
+    "Pointing residual settings"
 
     forced_photometry: AllForcedPhotometryConfigTypes = Field(
         default_factory=EmptyPhotometryConfig
@@ -102,6 +116,8 @@ class Settings(BaseSettings):
                 x.to_source_catalog(log=log) for x in self.source_catalogs
             ],
             "preprocessors": [x.to_preprocessor(log=log) for x in self.preprocessors],
+            "pointing_provider": self.pointing_provider.to_forced_photometry(log=log),
+            "pointing_residual": self.pointing_residual.to_residuals(log=log),
             "postprocessors": [
                 x.to_postprocessor(log=log) for x in self.postprocessors
             ],

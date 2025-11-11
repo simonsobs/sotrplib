@@ -10,6 +10,7 @@ from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     ForcedPhotometryProvider,
     Scipy2DGaussianFitter,
+    Scipy2DGaussianPointingFitter,
     SimpleForcedPhotometry,
 )
 
@@ -58,6 +59,26 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
         )
 
 
+class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
+    photometry_type: Literal["scipy_pointing"] = "scipy_pointing"
+    min_flux: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
+    reproject_thumbnails: bool = False
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+
+    def to_forced_photometry(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Scipy2DGaussianPointingFitter:
+        return Scipy2DGaussianPointingFitter(
+            min_flux=self.min_flux,
+            reproject_thumbnails=self.reproject_thumbnails,
+            thumbnail_half_width=self.thumbnail_half_width,
+            log=log,
+        )
+
+
 AllForcedPhotometryConfigTypes = (
-    EmptyPhotometryConfig | ScipyGaussianFitterConfig | SimpleForcedPhotometryConfig
+    EmptyPhotometryConfig
+    | ScipyGaussianFitterConfig
+    | SimpleForcedPhotometryConfig
+    | Scipy2DGaussianPointingConfig
 )
