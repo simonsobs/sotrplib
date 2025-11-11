@@ -10,7 +10,6 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.preprocessor import (
     KappaRhoCleaner,
     MapPreprocessor,
-    MapShifter,
     MatchedFilter,
 )
 
@@ -77,17 +76,4 @@ class MatchedFilterConfig(PreprocessorConfig):
         )
 
 
-class MapShifterConfig(PreprocessorConfig):
-    preprocessor_type: Literal["map_shifter"] = "map_shifter"
-    shift_ra: AstroPydanticQuantity[u.arcmin]
-    shift_dec: AstroPydanticQuantity[u.arcmin]
-
-    def to_preprocessor(
-        self, log: FilteringBoundLogger | None = None
-    ) -> MapPreprocessor:
-        return MapShifter(shift_ra=self.shift_ra, shift_dec=self.shift_dec, log=log)
-
-
-AllPreprocessorConfigTypes = (
-    KappaRhoCleanerConfig | MatchedFilterConfig | MapShifterConfig
-)
+AllPreprocessorConfigTypes = KappaRhoCleanerConfig | MatchedFilterConfig

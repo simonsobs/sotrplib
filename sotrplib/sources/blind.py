@@ -1,4 +1,5 @@
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.pointing import MapPointingOffset
 from sotrplib.sources.core import BlindSearchProvider
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.sources import MeasuredSource
@@ -13,7 +15,9 @@ from sotrplib.sources.sources import MeasuredSource
 
 class EmptyBlindSearch(BlindSearchProvider):
     def search(
-        self, input_map: ProcessableMap
+        self,
+        input_map: ProcessableMap,
+        pointing_residuals: MapPointingOffset | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         return [], []
 
@@ -46,6 +50,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
     def search(
         self,
         input_map: ProcessableMap,
+        pointing_residuals: MapPointingOffset | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         if not input_map.finalized:
             raise ValueError(
@@ -65,8 +70,16 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             nsigma=self.parameters.sigma_threshold,
             minrad=self.parameters.minimum_separation,
             sigma_thresh_for_minrad=self.parameters.sigma_threshold_for_minimum_separation,
+            pixel_mask=self.pixel_mask,
             log=self.log,
         )
         for source in extracted_sources:
+            ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
             source.extract_thumbnail(input_map, reproject_thumb=True)
+            if pointing_residuals:
+                source_pos = pointing_residuals.apply_offset_at_position(
+                    SkyCoord(ra=source.ra, dec=source.dec)
+                )
+                source.ra = source_pos.ra
+                source.dec = source_pos.dec
         return extracted_sources, []

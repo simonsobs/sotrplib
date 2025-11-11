@@ -39,6 +39,7 @@ class SOCatWrapper:
         self.catalog.create(
             ra=source.ra.to_value(u.deg),
             dec=source.dec.to_value(u.deg),
+            flux=source.flux.to_value(u.Jy) if source.flux is not None else None,
             name=source.source_id,
         )
 
@@ -46,6 +47,9 @@ class SOCatWrapper:
         return RegisteredSource(
             ra=socat_source.ra * u.deg,
             dec=socat_source.dec * u.deg,
+            flux=socat_source.flux * u.Jy
+            if hasattr(socat_source, "flux") and (socat_source.flux is not None)
+            else None,
             source_id=socat_source.name,
             crossmatches=[
                 CrossMatch(
@@ -266,11 +270,11 @@ class SOCatFITSCatalog(SourceCatalog):
             ra = (row["raDeg"] if row["raDeg"] > 0.0 else row["raDeg"] + 360.0) * u.deg
             dec = row["decDeg"] * u.deg
             name = row["name"]
-
             # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
             self.core.catalog.create(
                 ra=ra.to_value(u.deg),
                 dec=dec.to_value(u.deg),
+                flux=flux.to_value(u.Jy),
                 name=name,
             )
 

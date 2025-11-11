@@ -17,7 +17,7 @@ from sotrplib.maps.core import (
     MatchedFilteredIntensityAndInverseVarianceMap,
     ProcessableMap,
 )
-from sotrplib.maps.maps import clean_map, kappa_clean, shift_map_radec
+from sotrplib.maps.maps import clean_map, kappa_clean
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -118,18 +118,3 @@ class MatchedFilter(MapPreprocessor):
         return MatchedFilteredIntensityAndInverseVarianceMap(
             rho=rho, kappa=kappa, prefiltered_map=input_map, flux_units=u.mJy
         )
-
-
-class MapShifter(MapPreprocessor):
-    def __init__(
-        self,
-        shift_ra: AstroPydanticQuantity[u.arcmin],
-        shift_dec: AstroPydanticQuantity[u.arcmin],
-        log: FilteringBoundLogger | None = None,
-    ):
-        self.shift_ra = shift_ra
-        self.shift_dec = shift_dec
-        self.log = log
-
-    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        return shift_map_radec(input_map, self.shift_ra, self.shift_dec, log=self.log)

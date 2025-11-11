@@ -1,7 +1,10 @@
+import math
+
 import numpy as np
 import structlog
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
+from astropy.coordinates import SkyCoord
+from astropydantic import AstroPydanticQuantity
 from numpy.typing import ArrayLike
 from pixell import enmap, reproject
 from pydantic import BaseModel
@@ -11,6 +14,7 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.pointing import MapPointingOffset
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,
@@ -71,38 +75,40 @@ class Gaussian2DFitter:
 
     def __init__(
         self,
-        flux_thumb: enmap.ndmap,
-        map_resolution: AstroPydanticQuantity[u.arcmin],
-        flux_map_units: AstroPydanticUnit,
+        source: MeasuredSource,
         fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
         force_center: bool = False,
-        thumbnail_center: tuple[
-            AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]
-        ] = (u.Quantity(0.0, "deg"), u.Quantity(0.0, "deg")),
+        reprojected: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
         self.log = self.log.bind(func_name="Gaussian2DFitter")
-        self.data = flux_thumb
-        self.map_resolution = map_resolution
+        self.source = source
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
-        self.thumbnail_center = thumbnail_center
-        self.map_flux_units = flux_map_units
+        self.reprojected = reprojected
 
     def initialize_model(self):
-        ny, nx = self.data.shape
-        x = np.arange(nx)
-        y = np.arange(ny)
+        ny, nx = self.source.thumbnail.shape
+
+        # Define coordinate system centered at the image middle (i.e. the thumbnail center)
+        x = np.arange(nx) - (nx - 1) / 2
+        y = np.arange(ny) - (ny - 1) / 2
         X, Y = np.meshgrid(x, y)
+
         xy = (X.ravel(), Y.ravel())
+
         self.xy = xy
         # Initial guess for parameters
-        amplitude_guess = self.data.max()
-        x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
+        amplitude_guess = self.source.thumbnail.max()
+        y0_guess, x0_guess = np.unravel_index(
+            np.argmax(self.source.thumbnail), self.source.thumbnail.shape
+        )
+        x0_guess -= (nx - 1) / 2
+        y0_guess -= (ny - 1) / 2
         sigma_guess = (
             self.fwhm_guess.to(u.arcmin).value
-            / self.map_resolution.to(u.arcmin).value
+            / self.source.thumbnail_res.to(u.arcmin).value
             / 2.355
         )  # Rough width estimate, in pixels
         theta_guess = 0
@@ -152,7 +158,7 @@ class Gaussian2DFitter:
             popt, pcov = curve_fit(
                 self.model,
                 self.xy,
-                self.data.ravel(),
+                self.source.thumbnail.ravel(),
                 p0=self.initial_guess,
             )
         except RuntimeError:
@@ -161,8 +167,8 @@ class Gaussian2DFitter:
             self.fit_params.failure_reason = "curve_fit_runtime_error"
             return self.fit_params
 
-        self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt)
         perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
+        self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt, perr=perr)
         # Extract parameters and uncertainties
         if self.force_center:
             amplitude, sigma_x, sigma_y, theta, offset = popt
@@ -180,34 +186,32 @@ class Gaussian2DFitter:
                 theta_err,
                 offset_err,
             ) = perr
-            x_size, y_size = self.data.shape
-            dec_offset = (y_size / 2 - y0) * self.map_resolution
+            dec_offset = -1 * y0 * self.source.thumbnail_res
             ## if the thumbnail is reprojected or just cut out of the map
-            ## determines the sign of the RA offset given the declination.
-            x_sign = -1 if self.thumbnail_center[1] >= 0 * u.deg else 1
-            ra_offset = (
-                x_sign
-                * (x_size / 2 - x0)
-                * np.cos(self.thumbnail_center[1].to(u.rad).value)
-                * self.map_resolution
-            )
-
+            ## determines the sign of the RA offset and the declination
+            ## correction.
+            x_sign = 1 if self.reprojected else -1
+            ra_offset = x_sign * x0 * self.source.thumbnail_res
+            if not self.reprojected:
+                ra_offset *= math.cos(self.source.dec.to(u.rad).value)
             if ra_offset > 180.0 * u.deg:
                 ra_offset -= 360.0 * u.deg
             elif ra_offset < -180.0 * u.deg:
                 ra_offset += 360.0 * u.deg
 
-            ra_err = x0_err * self.map_resolution
-            dec_err = y0_err * self.map_resolution
+            ra_err = x0_err * self.source.thumbnail_res
+            dec_err = y0_err * self.source.thumbnail_res
 
-        fwhm_x = 2.355 * sigma_x * self.map_resolution
-        fwhm_y = 2.355 * sigma_y * self.map_resolution
-        fwhm_x_err = 2.355 * sigma_x_err * self.map_resolution
-        fwhm_y_err = 2.355 * sigma_y_err * self.map_resolution
+        fwhm_x = 2.355 * sigma_x * self.source.thumbnail_res
+        fwhm_y = 2.355 * sigma_y * self.source.thumbnail_res
+        fwhm_x_err = 2.355 * sigma_x_err * self.source.thumbnail_res
+        fwhm_y_err = 2.355 * sigma_y_err * self.source.thumbnail_res
         ## effectively set offset to zero
-        amplitude = AstroPydanticQuantity(amplitude + offset, self.map_flux_units)
+        amplitude = AstroPydanticQuantity(
+            amplitude + offset, self.source.thumbnail_unit
+        )
         amplitude_err = AstroPydanticQuantity(
-            np.sqrt(amplitude_err**2 + offset_err**2), self.map_flux_units
+            np.sqrt(amplitude_err**2 + offset_err**2), self.source.thumbnail_unit
         )
 
         self.fit_params = GaussianFitParameters(
@@ -234,6 +238,7 @@ def scipy_2d_gaussian_fit(
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
     fwhm: u.Quantity = u.Quantity(2.2, "arcmin"),
     reproject_thumb: bool = False,
+    pointing_residuals: MapPointingOffset | None = None,
     log: FilteringBoundLogger | None = None,
 ) -> list[MeasuredSource]:
     """ """
@@ -247,6 +252,17 @@ def scipy_2d_gaussian_fit(
         desc="Cutting thumbnails and fitting sources w 2D Gaussian",
     ):
         source = source_list[i]
+
+        ## apply pointing residuals to source position
+        source_pos = SkyCoord(ra=source.ra, dec=source.dec)
+        source_pos = (
+            pointing_residuals.apply_offset_at_position(source_pos)
+            if pointing_residuals
+            else source_pos
+        )
+        source.ra = source_pos.ra
+        source.dec = source_pos.dec
+
         source_name = source.source_id
         map_res = input_map.map_resolution
         pix = input_map.flux.sky2pix(
@@ -258,11 +274,13 @@ def scipy_2d_gaussian_fit(
         forced_source = MeasuredSource(
             ra=source.ra,
             dec=source.dec,
+            flux=source.flux,
             source_id=source.source_id,
             observation_start_time=t_start,
             observation_mean_time=t_mean,
             observation_end_time=t_end,
         )
+
         forced_source.fit_method = fit_method
         ## set default fit to empty parameters and fit_failed.
         ## once the fit is successfully completed, this will be updated.
@@ -307,16 +325,11 @@ def scipy_2d_gaussian_fit(
             continue
 
         fitter = Gaussian2DFitter(
-            forced_source.thumbnail,
-            forced_source.thumbnail_res,
-            forced_source.thumbnail_unit,
-            thumbnail_center=(0 * u.deg, 0 * u.deg)
-            if reproject_thumb
-            else (source.ra, source.dec),
-            fwhm_guess=fwhm,
+            forced_source,
+            reprojected=reproject_thumb,
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
-            else False,
+            else False,  ## TODO: is this what we want??
             log=log,
         )
 
@@ -328,6 +341,12 @@ def scipy_2d_gaussian_fit(
         forced_source.fit_failure_reason = fit.failure_reason
         forced_source.flux = fit.amplitude
         forced_source.err_flux = fit.amplitude_err
+        forced_source.snr = (
+            (fit.amplitude / fit.amplitude_err).value
+            if (fit.amplitude_err is not None) and (fit.amplitude is not None)
+            else None
+        )
+
         forced_source.offset_ra = fit.ra_offset
         forced_source.offset_dec = fit.dec_offset
         forced_source.fwhm_ra = fit.fwhm_ra

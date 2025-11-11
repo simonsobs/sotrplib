@@ -147,6 +147,12 @@ class MeasuredSource(RegisteredSource):
                     ],
                 ],
             )
+
         self.thumbnail_res = input_map.map_resolution
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)
+
+    def __repr__(self):
+        # Use vars(self) to get all attributes except thumbnail
+        attrs = {k: v for k, v in vars(self).items() if k != "thumbnail"}
+        return f"{self.__class__.__name__}({attrs})"
