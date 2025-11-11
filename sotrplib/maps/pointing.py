@@ -112,14 +112,13 @@ class ConstantPointingOffset(MapPointingOffset):
             return (self.ra_offset, self.dec_offset)
 
         # Compute median offsets where snr>min_snr
-        ra_off_list = [
-            ra.to_value(u.arcmin) for ra, s in zip(ra_offsets, snr) if s >= self.min_snr
-        ]
-        dec_off_list = [
-            dec.to_value(u.arcmin)
-            for dec, s in zip(dec_offsets, snr)
-            if s >= self.min_snr
-        ]
+        ra_off_list = u.Quantity(
+            [ra for ra, s in zip(ra_offsets, snr) if s >= self.min_snr]
+        )
+
+        dec_off_list = u.Quantity(
+            [dec for dec, s in zip(dec_offsets, snr) if s >= self.min_snr]
+        )
 
         if len(ra_off_list) < self.min_num or len(dec_off_list) < self.min_num:
             log.warn(
@@ -139,16 +138,11 @@ class ConstantPointingOffset(MapPointingOffset):
             sigma=self.sigma_clip_level,
         )
 
-        if self.avg_method == "median":
-            self.ra_offset = median_ra * u.arcmin
-            self.dec_offset = median_dec * u.arcmin
+        self.ra_offset = median_ra if self.avg_method == "median" else mean_ra
+        self.dec_offset = median_dec if self.avg_method == "median" else mean_dec
 
-        else:
-            self.ra_offset = mean_ra * u.arcmin
-            self.dec_offset = mean_dec * u.arcmin
-
-        self.ra_offset_rms = std_ra * u.arcmin
-        self.dec_offset_rms = std_dec * u.arcmin
+        self.ra_offset_rms = std_ra
+        self.dec_offset_rms = std_dec
 
         log.info(
             "pointing.ConstantPointingOffset.offsets",
