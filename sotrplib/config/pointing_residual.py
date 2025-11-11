@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.pointing import (
+    ConstantPointingOffset,
     EmptyPointingOffset,
-    LinearPointingOffset,
     MapPointingOffset,
 )
 
@@ -30,21 +30,8 @@ class EmptyPointingResidualConfig(PointingResidualConfig):
         return EmptyPointingOffset()
 
 
-class LinearMedianRADecResidualConfig(PointingResidualConfig):
-    pointing_residual_type: Literal["linear_median"] = "linear_median"
-    min_snr: float = 5.0
-    min_sources: int = 5
-
-    def to_residuals(
-        self, log: FilteringBoundLogger | None = None
-    ) -> MapPointingOffset:
-        return LinearPointingOffset(
-            min_snr=self.min_snr, min_num=self.min_sources, avg_method="median", log=log
-        )
-
-
-class LinearMeanRADecResidualConfig(PointingResidualConfig):
-    pointing_residual_type: Literal["linear_mean"] = "linear_mean"
+class ConstantResidualConfig(PointingResidualConfig):
+    pointing_residual_type: Literal["mean", "median"] = "mean"
     min_snr: float = 5.0
     min_sources: int = 5
     sigma_clip_level: float = 3.0
@@ -52,7 +39,7 @@ class LinearMeanRADecResidualConfig(PointingResidualConfig):
     def to_residuals(
         self, log: FilteringBoundLogger | None = None
     ) -> MapPointingOffset:
-        return LinearPointingOffset(
+        return ConstantPointingOffset(
             min_snr=self.min_snr,
             min_num=self.min_sources,
             avg_method="mean",
@@ -61,8 +48,4 @@ class LinearMeanRADecResidualConfig(PointingResidualConfig):
         )
 
 
-AllPointingResidualConfigTypes = (
-    EmptyPointingResidualConfig
-    | LinearMedianRADecResidualConfig
-    | LinearMeanRADecResidualConfig
-)
+AllPointingResidualConfigTypes = EmptyPointingResidualConfig | ConstantResidualConfig

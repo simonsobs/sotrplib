@@ -48,7 +48,7 @@ class EmptyPointingOffset(MapPointingOffset):
         return pos
 
 
-class LinearPointingOffset(MapPointingOffset):
+class ConstantPointingOffset(MapPointingOffset):
     def __init__(
         self,
         min_snr: float = 5.0,
@@ -86,7 +86,7 @@ class LinearPointingOffset(MapPointingOffset):
             & (src.offset_dec is not None)
         ]
         if len(snr) == 0:
-            log.warn("pointing.LinearPointingOffsets.no_valid_sources")
+            log.warn("pointing.ConstantPointingOffset.no_valid_sources")
             self.ra_offset = 0.0 * u.deg
             self.dec_offset = 0.0 * u.deg
             return (self.ra_offset, self.dec_offset)
@@ -106,7 +106,7 @@ class LinearPointingOffset(MapPointingOffset):
             & (src.offset_dec is not None)
         ]
         if len(ra_offsets) == 0 or len(dec_offsets) == 0:
-            log.warn("pointing.LinearPointingOffsets.no_valid_offsets")
+            log.warn("pointing.ConstantPointingOffset.no_valid_offsets")
             self.ra_offset = 0.0 * u.deg
             self.dec_offset = 0.0 * u.deg
             return (self.ra_offset, self.dec_offset)
@@ -123,7 +123,7 @@ class LinearPointingOffset(MapPointingOffset):
 
         if len(ra_off_list) < self.min_num or len(dec_off_list) < self.min_num:
             log.warn(
-                "pointing.LinearPointingOffsets.not_enough_sources_above_snr",
+                "pointing.ConstantPointingOffset.not_enough_sources_above_snr",
                 n_valid_sources=len(ra_off_list),
             )
             self.ra_offset = 0.0 * u.deg
@@ -151,7 +151,7 @@ class LinearPointingOffset(MapPointingOffset):
         self.dec_offset_rms = std_dec * u.arcmin
 
         log.info(
-            "pointing.LinearPointingOffsets.offsets",
+            "pointing.ConstantPointingOffset.offsets",
             num_sources=len(ra_off_list),
             min_snr=self.min_snr,
             ra_offset=self.ra_offset,
@@ -215,7 +215,7 @@ class LinearPointingOffset(MapPointingOffset):
                     )
                     data.wcs.wcs.crpix -= [shift_x, shift_y]
                     log.info(
-                        "LinearPointingOffsets.map_offset.shifting",
+                        "ConstantPointingOffset.map_offset.shifting",
                         shift_ra=self.ra_offset,
                         shift_dec=self.dec_offset,
                         shift_x=shift_x,
