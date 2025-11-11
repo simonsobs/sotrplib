@@ -80,7 +80,7 @@ class PickleSerializer(SourceOutput):
     ):
         filename = (
             self.directory
-            / f"{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.pickle"
+            / f"{input_map.map_id}_{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.pickle"
         )
         with filename.open("wb") as handle:
             pickle.dump(

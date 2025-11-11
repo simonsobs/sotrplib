@@ -70,12 +70,14 @@ class ProcessableMap(ABC):
     "Rough 'middle' time of the observation"
 
     flux_units: Unit
-
     map_resolution: u.Quantity | None
 
     box: tuple[SkyCoord, SkyCoord] | None = None
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
+
+    _map_id: str | None = None
+    "An identifier for the map, e.g. filename or coadd type"
 
     @abstractmethod
     def build(self):
@@ -202,6 +204,18 @@ class ProcessableMap(ABC):
                 break
 
         return self.box
+
+    @property
+    def map_id(self) -> str:
+        """
+        An identifier for the map, e.g. filename or coadd type
+        """
+        id = (
+            self._map_id
+            if self._map_id
+            else f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
+        )
+        return id
 
     @abstractmethod
     def get_pixel_times(self, pix: tuple[int, int]):
