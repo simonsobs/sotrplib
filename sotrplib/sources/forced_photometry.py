@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import structlog
 from astropy import units as u
@@ -76,9 +78,7 @@ class Gaussian2DFitter:
         source: MeasuredSource,
         fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
         force_center: bool = False,
-        thumbnail_center: tuple[
-            AstroPydanticQuantity[u.deg], AstroPydanticQuantity[u.deg]
-        ] = (u.Quantity(0.0, "deg"), u.Quantity(0.0, "deg")),
+        reprojected: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -86,7 +86,7 @@ class Gaussian2DFitter:
         self.source = source
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
-        self.thumbnail_center = thumbnail_center
+        self.reprojected = reprojected
 
     def initialize_model(self):
         ny, nx = self.source.thumbnail.shape
@@ -188,11 +188,12 @@ class Gaussian2DFitter:
             ) = perr
             dec_offset = -1 * y0 * self.source.thumbnail_res
             ## if the thumbnail is reprojected or just cut out of the map
-            ## determines the sign of the RA offset given the declination.
-            x_sign = 1 if self.thumbnail_center[1] >= 0 * u.deg else -1
-            ra_offset = (
-                x_sign * x0 * np.cos(self.thumbnail_center[1].to(u.rad).value)
-            ) * self.source.thumbnail_res
+            ## determines the sign of the RA offset and the declination
+            ## correction.
+            x_sign = 1 if self.reprojected else -1
+            ra_offset = x_sign * x0 * self.source.thumbnail_res
+            if not self.reprojected:
+                ra_offset *= math.cos(self.source.dec.to(u.rad).value)
             if ra_offset > 180.0 * u.deg:
                 ra_offset -= 360.0 * u.deg
             elif ra_offset < -180.0 * u.deg:
@@ -325,10 +326,7 @@ def scipy_2d_gaussian_fit(
 
         fitter = Gaussian2DFitter(
             forced_source,
-            thumbnail_center=(0 * u.deg, 0 * u.deg)
-            if reproject_thumb
-            else (source.ra, source.dec),
-            fwhm_guess=fwhm,
+            reprojected=reproject_thumb,
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
             else False,  ## TODO: is this what we want??

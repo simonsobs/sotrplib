@@ -3,7 +3,6 @@ Dependencies for map pointing calculations. Sets MapPointingOffset object.
 These operations happen after forced photometry and before source subtraction.
 """
 
-import math
 from abc import ABC, abstractmethod
 from typing import Literal
 
@@ -183,7 +182,7 @@ class LinearPointingOffset(MapPointingOffset):
         """
         # Return new SkyCoord
         return SkyCoord(
-            ra=pos.ra - self.ra_offset * math.cos(pos.dec.to_value(u.rad)),
+            ra=pos.ra - self.ra_offset,
             dec=pos.dec - self.dec_offset,
             frame=pos.frame,
         )
