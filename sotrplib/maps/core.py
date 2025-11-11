@@ -209,13 +209,13 @@ class ProcessableMap(ABC):
     def map_id(self) -> str:
         """
         An identifier for the map, e.g. filename or coadd type
+        Defaults to {frequency}_{array}_{observationstart_timestamp}
         """
-        id = (
+        return (
             self._map_id
             if self._map_id
             else f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
-        return id
 
     @abstractmethod
     def get_pixel_times(self, pix: tuple[int, int]):
