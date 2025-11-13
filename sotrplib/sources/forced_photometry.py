@@ -20,6 +20,7 @@ from sotrplib.sources.sources import (
     MeasuredSource,
     RegisteredSource,
 )
+from sotrplib.utils.utils import get_frequency
 
 
 class GaussianFitParameters(BaseModel):
@@ -279,6 +280,9 @@ def scipy_2d_gaussian_fit(
             observation_start_time=t_start,
             observation_mean_time=t_mean,
             observation_end_time=t_end,
+            instrument=input_map.instrument,
+            array=input_map.array,
+            frequency=get_frequency(input_map.frequency),
         )
 
         forced_source.fit_method = fit_method

@@ -106,6 +106,8 @@ class MeasuredSource(RegisteredSource):
 
     measurement_type: Literal["forced", "blind"] = "forced"
     frequency: AstroPydanticQuantity[u.GHz] | None = None
+    instrument: str | None = None
+    array: str | None = None
 
     fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
     fit_params: dict | None = None
