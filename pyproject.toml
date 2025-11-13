@@ -22,7 +22,7 @@ dependencies = [
     "photutils",
     "structlog",
     "scikit-image",
-    "socat",
+    "socat @ git+https://github.com/simonsobs/socat",
     "astropydantic",
     "numpydantic",
     "mapcat",
