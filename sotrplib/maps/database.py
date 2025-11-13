@@ -22,9 +22,13 @@ class MapCatDatabaseReader:
     log: FilteringBoundLogger
 
     def __init__(
-        self, number_to_read: int = 1, log: FilteringBoundLogger | None = None
+        self,
+        number_to_read: int = 1,
+        instrument: str | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
+        self.instrument = instrument
         self.log = log or get_logger()
 
     def map_list(self):
@@ -60,6 +64,7 @@ class MapCatDatabaseReader:
                         intensity_units=u.uK,
                         frequency="f" + result.frequency,
                         array=result.tube_slot,
+                        instrument=self.instrument,
                         log=self.log,
                     )
                 )

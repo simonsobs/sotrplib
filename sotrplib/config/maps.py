@@ -110,6 +110,7 @@ class RhoKappaMapConfig(MapConfig):
     info_path: Path | None = None
     frequency: str | None = "f090"
     array: str | None = "pa5"
+    instrument: str | None = None
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
@@ -126,6 +127,7 @@ class RhoKappaMapConfig(MapConfig):
             box=self.box,
             frequency=self.frequency,
             array=self.array,
+            instrument=self.instrument,
             flux_units=self.flux_units,
             log=log,
         )
@@ -139,6 +141,7 @@ class InverseVarianceMapConfig(MapConfig):
     info_path: Path | None = None
     frequency: str | None = "f090"
     array: str | None = "pa5"
+    instrument: str | None = None
     observation_start: datetime | None = None
     observation_end: datetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
@@ -157,6 +160,7 @@ class InverseVarianceMapConfig(MapConfig):
             box=self.box,
             frequency=self.frequency,
             array=self.array,
+            instrument=self.instrument,
             intensity_units=self.intensity_units,
             log=log,
         )
@@ -164,6 +168,7 @@ class InverseVarianceMapConfig(MapConfig):
 
 class MapCatDatabaseConfig(MapGeneratorConfig):
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
+    instrument: str | None = None
     number_to_read: int = 1
 
     def to_generator(
@@ -171,6 +176,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     ) -> Iterable[ProcessableMap]:
         return MapCatDatabaseReader(
             number_to_read=self.number_to_read,
+            instrument=self.instrument,
             log=log,
         )
 
