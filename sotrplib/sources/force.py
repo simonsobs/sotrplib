@@ -78,6 +78,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
                 fit_method="nearest_neighbor" if self.mode == "nn" else "spline",
                 instrument=input_map.instrument,
                 array=input_map.array,
+                frequency=input_map.frequency,
             )
             out_source.flux = flux * input_map.flux_units
             out_source.err_flux = flux / snr * input_map.flux_units

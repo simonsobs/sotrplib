@@ -57,8 +57,6 @@ class ProcessableMap(ABC):
 
     frequency: str
     "The frequency band of the map, e.g. f090"
-    instrument: str
-    "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
     array: str
     "The array/wafer that was used"
 
@@ -73,6 +71,9 @@ class ProcessableMap(ABC):
 
     flux_units: Unit
     map_resolution: u.Quantity | None
+
+    instrument: str | None = None
+    "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
     box: tuple[SkyCoord, SkyCoord] | None = None
     __rho: ndmap | None = None
