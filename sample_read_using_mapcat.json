@@ -1,7 +1,8 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 2
+            "number_to_read": 2,
+            "instrument": "SOLAT"
         },
     "source_catalogs": [
         {

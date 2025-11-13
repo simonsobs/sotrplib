@@ -72,6 +72,9 @@ class ProcessableMap(ABC):
     flux_units: Unit
     map_resolution: u.Quantity | None
 
+    instrument: str | None = None
+    "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
+
     box: tuple[SkyCoord, SkyCoord] | None = None
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
@@ -270,6 +273,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         info_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
+        instrument: str | None = None,
         matched_filtered: bool = False,
         intensity_units: Unit = u.K,
         log: FilteringBoundLogger | None = None,
@@ -284,6 +288,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.box = box
         self.frequency = frequency
         self.array = array
+        self.instrument = instrument
         self.matched_filtered = matched_filtered
         self.log = log or structlog.get_logger()
 
@@ -418,6 +423,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.box = self.prefiltered_map.box
         self.frequency = self.prefiltered_map.frequency
         self.array = self.prefiltered_map.array
+        self.instrument = self.prefiltered_map.instrument
 
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
@@ -505,6 +511,7 @@ class RhoAndKappaMap(ProcessableMap):
         info_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
+        instrument: str | None = None,
         flux_units: Unit = u.Jy,
         log: FilteringBoundLogger | None = None,
     ):
@@ -517,6 +524,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.box = box
         self.frequency = frequency
         self.array = array
+        self.instrument = instrument
         self.flux_units = flux_units
         self.log = log or structlog.get_logger()
 

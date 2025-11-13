@@ -36,6 +36,7 @@ class SimulatedMap(ProcessableMap):
         observation_end: datetime,
         frequency: str | None = None,
         array: str | None = None,
+        instrument: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
         box: ArrayLike | None = None,
         include_half_pixel_offset: bool = False,
@@ -67,6 +68,7 @@ class SimulatedMap(ProcessableMap):
         self.include_half_pixel_offset = include_half_pixel_offset
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
+        self.instrument = instrument
 
         self.observation_length = observation_end - observation_start
         self.observation_time = observation_start + 0.5 * self.observation_length

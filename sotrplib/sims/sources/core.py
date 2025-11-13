@@ -48,6 +48,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
 
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
+        self.instrument = original_map.instrument
         self.array = original_map.array
         self.finalized = original_map.finalized
         self.map_resolution = original_map.map_resolution
