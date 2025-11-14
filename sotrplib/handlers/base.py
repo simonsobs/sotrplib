@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Iterable
 
 from astropy.coordinates import SkyCoord
@@ -115,13 +116,28 @@ class BaseRunner:
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
         return bbox
 
+    @property
+    def observation_time_range(self):
+        if not self.maps:
+            return (None, None)
+
+        start_time = datetime.max.replace(tzinfo=timezone.utc)
+        end_time = datetime.min.replace(tzinfo=timezone.utc)
+        for input_map in self.maps:
+            start_time = min([input_map.observation_start, start_time])
+            end_time = max([input_map.observation_end, end_time])
+
+        return (start_time, end_time)
+
     def simulate_sources(self) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         all_simulated_sources = []
         bbox = self.bbox
+        time_range = self.observation_time_range
         for simulator in self.source_simulators:
             simulated_sources, catalog = self.profilable_task(simulator.generate)(
-                box=bbox
+                box=bbox,
+                time_range=time_range,
             )
 
             all_simulated_sources.extend(simulated_sources)

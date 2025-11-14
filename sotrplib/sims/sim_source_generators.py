@@ -13,6 +13,11 @@ from astropy.coordinates import SkyCoord
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
+from sotrplib.sims.sim_utils import (
+    generate_random_positions,
+    generate_random_positions_in_map,
+)
 from sotrplib.source_catalog.core import (
     CrossMatch,
     RegisteredSource,
@@ -29,10 +34,15 @@ from .sim_sources import (
 
 class SimulatedSourceGenerator(ABC):
     def generate(
-        self, box: tuple[SkyCoord] | None = None
+        self,
+        input_map: ProcessableMap | None = None,
+        box: tuple[SkyCoord] | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
     ) -> tuple[list[SimulatedSource], SourceCatalog]:
         """
-        Generate the simulated sources, optionally within a box on the sky.
+        Generate the simulated sources, optionally within a map or a box on the sky.
+        If input_map is provided, box is to be ignored and inject only within the map area.
+        If time_range is provided, it specifies the time range for the simulation.
         Returns both the list of the core 'sources' for use in the source
         simulator, as well as a source catlaog that contains at least some of
         the sources (some may be hidden for testing blind searches)
@@ -59,7 +69,12 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         self.catalog_fraction = catalog_fraction
         self.log = log or get_logger()
 
-    def generate(self, box: tuple[SkyCoord] | None = None):
+    def generate(
+        self,
+        input_map: ProcessableMap | None = None,
+        box: tuple[SkyCoord] | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+    ):
         if box is None:
             box = [
                 SkyCoord(ra=0.01 * u.deg, dec=-89.99 * u.deg),
@@ -116,8 +131,8 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
     def __init__(
         self,
-        flare_earliest_time: datetime,
-        flare_latest_time: datetime,
+        flare_earliest_time: datetime | None,
+        flare_latest_time: datetime | None,
         flare_width_shortest: timedelta,
         flare_width_longest: timedelta,
         peak_amplitude_minimum: u.Quantity,
@@ -136,14 +151,44 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         self.catalog_fraction = catalog_fraction
         self.log = log or get_logger()
 
-    def generate(self, box: tuple[SkyCoord] | None = None):
-        if box is None:
+    def generate(
+        self,
+        input_map: ProcessableMap | None = None,
+        box: tuple[SkyCoord] | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+    ):
+        if box is None and input_map is None:
             box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
-        log = self.log.bind(box=box)
+        if input_map is not None:
+            if self.flare_earliest_time is None or self.flare_latest_time is None:
+                self.flare_earliest_time = input_map.observation_start
+                self.flare_latest_time = input_map.observation_end
+            else:
+                self.flare_earliest_time = self.flare_earliest_time
+                self.flare_latest_time = self.flare_latest_time
+        else:
+            self.flare_earliest_time = (
+                time_range[0] if time_range is not None else self.flare_earliest_time
+            )
+            self.flare_latest_time = (
+                time_range[1] if time_range is not None else self.flare_latest_time
+            )
+
+        if self.flare_earliest_time is None or self.flare_latest_time is None:
+            log = self.log.error(
+                "GaussianTransientSourceGenerator.generate.timerange_invalid",
+                flare_earliest_time=self.flare_earliest_time,
+                flare_latest_time=self.flare_latest_time,
+            )
+        log = self.log.bind(
+            n=self.number,
+            box=box,
+            time_range=[self.flare_earliest_time, self.flare_latest_time],
+        )
 
         base = random.randint(0, 100000)
 
@@ -163,14 +208,19 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             random_second = random.randrange(int_delta)
             return min_td + timedelta(seconds=random_second)
 
+        if input_map is not None:
+            positions = generate_random_positions_in_map(self.number, input_map)
+        else:
+            positions = generate_random_positions(
+                self.number,
+                ra_lims=(box[0].ra, box[1].ra),
+                dec_lims=(box[0].dec, box[1].dec),
+            )
+
         sources = [
             RegisteredSource(
-                ra=random.uniform(box[0].ra.to_value("deg"), box[1].ra.to_value("deg"))
-                * u.deg,
-                dec=random.uniform(
-                    box[0].dec.to_value("deg"), box[1].dec.to_value("deg")
-                )
-                * u.deg,
+                ra=positions[i][1],
+                dec=positions[i][0],
                 frequency=90.0 * u.GHz,
                 flux=random.uniform(
                     self.peak_amplitude_minimum.to_value("Jy"),
@@ -190,11 +240,11 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                     )
                 ],
             )
-            for i in range(self.number)
+            for i in range(len(positions))
         ]
 
         catalog = RegisteredSourceCatalog(
-            sources=sources[: int(self.number * self.catalog_fraction)]
+            sources=sources[: int(len(sources) * self.catalog_fraction)]
         )
         simulated_sources = [
             GaussianTransientSimulatedSource(
@@ -212,6 +262,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
 
         log = log.bind(
             n_simulated_sources=len(simulated_sources),
+            injected_in="map" if input_map is not None else "box",
             earliest_flare=min(simulated_sources, key=lambda x: x.peak_time).peak_time,
             latest_flare=max(simulated_sources, key=lambda x: x.peak_time).peak_time,
         )

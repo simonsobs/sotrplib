@@ -2,6 +2,8 @@
 Tests the map I/O
 """
 
+from datetime import datetime, timedelta, timezone
+
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
 
@@ -15,6 +17,8 @@ def test_basic_pipeline_rhokappa(tmp_path, ones_map_set):
         rho_map_path=paths["rho"],
         kappa_map_path=paths["kappa"],
         time_map_path=paths["time"],
+        observation_start=datetime.now(tz=timezone.utc),
+        observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
     ).to_map()
     runner = PipelineRunner(
         maps=[input_map],
@@ -44,6 +48,8 @@ def test_basic_pipeline_ivar(tmp_path, ones_map_set):
         intensity_map_path=paths["map"],
         weights_map_path=paths["ivar"],
         time_map_path=paths["time"],
+        observation_start=datetime.now(tz=timezone.utc),
+        observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
     ).to_map()
     runner = PipelineRunner(
         maps=[input_map],

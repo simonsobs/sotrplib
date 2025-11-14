@@ -45,12 +45,15 @@ class FixedSourceGeneratorConfig(SourceSimulationConfig):
 
 class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
     simulation_type: Literal["gaussian_transient"] = "gaussian_transient"
-    flare_earliest_time: datetime
-    flare_latest_time: datetime
+
     flare_width_shortest: timedelta
     flare_width_longest: timedelta
     peak_amplitude_minimum: AstroPydanticQuantity[u.Jy]
     peak_amplitude_maximum: AstroPydanticQuantity[u.Jy]
+
+    flare_earliest_time: datetime | None = None
+    flare_latest_time: datetime | None = None
+
     number: int
     catalog_fraction: float = 1.0
 
