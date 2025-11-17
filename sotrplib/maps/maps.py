@@ -371,7 +371,7 @@ def flat_field_using_pixell(
     except Exception as e:
         log.error(f"flat_field_using_pixell.failed: {e}")
 
-    return
+    return mapdata
 
 
 def flat_field_using_photutils(
