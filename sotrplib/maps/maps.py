@@ -212,7 +212,8 @@ def edge_map(imap: enmap.ndmap):
     from scipy.ndimage import binary_fill_holes
 
     edge = enmap.enmap(imap, imap.wcs)  # Create map geometry
-    edge[np.abs(edge) > 0] = 1  # Convert to binary
+    edge[(np.abs(edge) > 0) & (np.isfinite(edge))] = 1  # Convert to binary
+    edge[(np.abs(edge) == 0) | (~np.isfinite(edge))] = 0
     edge = binary_fill_holes(edge)  # Fill holes
 
     return enmap.enmap(edge.astype("ubyte"), imap.wcs)
@@ -343,6 +344,7 @@ def widefield_geometry(
 def flat_field_using_pixell(
     mapdata,
     tilegrid=1.0,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Use the tiles module to do map tiling using scan strategy.
@@ -350,6 +352,8 @@ def flat_field_using_pixell(
     """
     from .tiles import get_medrat, get_tmap_tiles
 
+    log = log if log else structlog.get_logger()
+    log = log.bind(func_name="flat_field_using_pixell")
     try:
         med_ratio = get_medrat(
             mapdata.snr,
@@ -365,10 +369,7 @@ def flat_field_using_pixell(
         mapdata.snr *= med_ratio
         mapdata.flatfielded = True
     except Exception as e:
-        print(
-            e,
-            " Cannot flatfield at this time... need to update medrat algorithm for coadds",
-        )
+        log.error(f"flat_field_using_pixell.failed: {e}")
 
     return
 
@@ -408,7 +409,7 @@ def flat_field_using_photutils(
     except Exception as e:
         log.error(f"flat_field_using_photutils.failed: {e}")
 
-    return
+    return mapdata
 
 
 def make_model_source_map(
