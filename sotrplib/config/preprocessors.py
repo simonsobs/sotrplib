@@ -11,7 +11,6 @@ from sotrplib.maps.preprocessor import (
     KappaRhoCleaner,
     MapPreprocessor,
     MatchedFilter,
-    PhotutilsFlatFielder,
 )
 
 
@@ -34,19 +33,6 @@ class KappaRhoCleanerConfig(PreprocessorConfig):
         self, log: FilteringBoundLogger | None = None
     ) -> KappaRhoCleaner:
         return KappaRhoCleaner(cut_on=self.cut_on, fraction=self.fraction)
-
-
-class FlatfieldConfig(PreprocessorConfig):
-    preprocessor_type: Literal["flatfield"] = "flatfield"
-    sigma_val: float = 5.0
-    tile_size: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(1.0 * u.deg)
-
-    def to_preprocessor(
-        self, log: FilteringBoundLogger | None = None
-    ) -> MapPreprocessor:
-        return PhotutilsFlatFielder(
-            sigma_val=self.sigma_val, tile_size=self.tile_size, log=log
-        )
 
 
 class MatchedFilterConfig(PreprocessorConfig):
@@ -90,6 +76,4 @@ class MatchedFilterConfig(PreprocessorConfig):
         )
 
 
-AllPreprocessorConfigTypes = (
-    KappaRhoCleanerConfig | MatchedFilterConfig | FlatfieldConfig
-)
+AllPreprocessorConfigTypes = KappaRhoCleanerConfig | MatchedFilterConfig

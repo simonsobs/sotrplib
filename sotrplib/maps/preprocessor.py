@@ -8,10 +8,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 
-import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
-from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.filters.filters import matched_filter_depth1_map
@@ -19,7 +17,7 @@ from sotrplib.maps.core import (
     MatchedFilteredIntensityAndInverseVarianceMap,
     ProcessableMap,
 )
-from sotrplib.maps.maps import clean_map, flat_field_using_photutils, kappa_clean
+from sotrplib.maps.maps import clean_map, kappa_clean
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -55,32 +53,6 @@ class KappaRhoCleaner(MapPreprocessor):
         )
 
         return input_map
-
-
-class PhotutilsFlatFielder(MapPreprocessor):
-    tile_size: AstroPydanticQuantity = AstroPydanticQuantity(1.0 * u.deg)
-    sigma_val: float = 5.0
-
-    def __init__(
-        self,
-        sigma_val: float = 5.0,
-        tile_size: u.Quantity = 1.0 * u.deg,
-        mask: ndmap | None = None,
-        log: FilteringBoundLogger | None = None,
-    ):
-        self.sigma_val = sigma_val
-        self.tile_size = tile_size
-        self.mask = mask
-        self.log = log or structlog.get_logger()
-
-    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        return flat_field_using_photutils(
-            mapdata=input_map,
-            tilegrid=self.tile_size,
-            mask=self.mask,
-            sigmaclip=self.sigma_val,
-            log=self.log,
-        )
 
 
 class MatchedFilter(MapPreprocessor):

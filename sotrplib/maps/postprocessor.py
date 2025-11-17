@@ -7,10 +7,14 @@ the snr and flux arrays already exist.
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+import structlog
 from astropy import units as u
+from astropydantic import AstroPydanticQuantity
 from pixell import enmap
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.maps import flat_field_using_photutils
 from sotrplib.maps.masks import mask_dustgal, mask_edge
 
 
@@ -74,15 +78,27 @@ class PixellFlatfield(MapPostprocessor):
         return
 
 
-class PhotutilsFlatField(MapPostprocessor):
-    tile_grid: float
-    sigma_clip: float
+class PhotutilsFlatFielder(MapPostprocessor):
+    tile_size: AstroPydanticQuantity = AstroPydanticQuantity(1.0 * u.deg)
+    sigma_val: float = 5.0
 
-    def __init__(self, tile_grid: float = 1.0, sigma_clip: float = 5.0):
-        self.tile_grid = tile_grid
-        self.sigma_clip = sigma_clip
+    def __init__(
+        self,
+        sigma_val: float = 5.0,
+        tile_size: u.Quantity = 1.0 * u.deg,
+        mask: enmap.ndmap | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.sigma_val = sigma_val
+        self.tile_size = tile_size
+        self.mask = mask
+        self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        # TODO Implement photutils flat-fielding
-        raise NotImplementedError
-        return
+        return flat_field_using_photutils(
+            mapdata=input_map,
+            tilegrid=self.tile_size,
+            mask=self.mask,
+            sigmaclip=self.sigma_val,
+            log=self.log,
+        )
