@@ -54,6 +54,7 @@ def mask_edge(imap: enmap.ndmap, pix_num: int):
     del edge
     mask = enmap.zeros(imap.shape, imap.wcs)
     mask[np.where(dmap > pix_num)] = 1
+
     return mask
 
 
