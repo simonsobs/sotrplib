@@ -43,6 +43,7 @@ def generate_random_positions(
     imap: enmap.ndmap = None,
     ra_lims: AstroPydanticQuantity[u.deg] | None = None,
     dec_lims: AstroPydanticQuantity[u.deg] | None = None,
+    edge_buffer: AstroPydanticQuantity[u.deg] = 5 * u.arcmin,
     log: FilteringBoundLogger | None = None,
 ):
     """
@@ -64,8 +65,8 @@ def generate_random_positions(
             shape, wcs = imap.shape, imap.wcs
             dec_min, dec_max = enmap.box(shape, wcs)[:, 0] * u.rad
             ra_min, ra_max = enmap.box(shape, wcs)[:, 1] * u.rad
-            ra_lims = (ra_min, ra_max)
-            dec_lims = (dec_min, dec_max)
+            ra_lims = (ra_min + edge_buffer, ra_max - edge_buffer)
+            dec_lims = (dec_min + edge_buffer, dec_max - edge_buffer)
         else:
             raise ValueError(
                 "Either ra_lims and dec_lims must be provided, or imap must be supplied."

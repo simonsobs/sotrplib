@@ -35,7 +35,7 @@ class GalaxyMaskConfig(PostprocessorConfig):
 
 class EdgeMaskConfig(PostprocessorConfig):
     postprocessor_type: Literal["edge_mask"] = "edge_mask"
-    edge_width: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(0.5 * u.deg)
+    edge_width: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(10 * u.arcmin)
 
     def to_postprocessor(
         self, log: FilteringBoundLogger | None = None

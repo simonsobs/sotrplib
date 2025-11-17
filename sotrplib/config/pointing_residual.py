@@ -8,6 +8,7 @@ from sotrplib.maps.pointing import (
     ConstantPointingOffset,
     EmptyPointingOffset,
     MapPointingOffset,
+    PolynomialPointingOffset,
 )
 
 
@@ -48,4 +49,25 @@ class ConstantResidualConfig(PointingResidualConfig):
         )
 
 
-AllPointingResidualConfigTypes = EmptyPointingResidualConfig | ConstantResidualConfig
+class PolynomialResidualConfig(PointingResidualConfig):
+    pointing_residual_type: Literal["polynomial"] = "polynomial"
+    min_snr: float = 5.0
+    min_sources: int = 5
+    sigma_clip_level: float = 3.0
+    polynomial_order: int = 3
+
+    def to_residuals(
+        self, log: FilteringBoundLogger | None = None
+    ) -> MapPointingOffset:
+        return PolynomialPointingOffset(
+            min_snr=self.min_snr,
+            min_num=self.min_sources,
+            sigma_clip_level=self.sigma_clip_level,
+            poly_order=self.polynomial_order,
+            log=log,
+        )
+
+
+AllPointingResidualConfigTypes = (
+    EmptyPointingResidualConfig | ConstantResidualConfig | PolynomialResidualConfig
+)

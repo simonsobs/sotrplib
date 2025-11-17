@@ -146,7 +146,6 @@ class BaseRunner:
             input_map=input_map, catalogs=self.source_catalogs
         )
 
-        ## TODO: store these somewhere
         _ = self.profilable_task(self.pointing_residual.get_offset)(
             pointing_sources=pointing_sources
         )
