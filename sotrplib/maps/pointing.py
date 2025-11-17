@@ -11,7 +11,6 @@ import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clip, sigma_clipped_stats
-from astropydantic import AstroPydanticQuantity
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.sources import RegisteredSource
@@ -50,9 +49,7 @@ class MapPointingOffset(ABC):
 
 
 class EmptyPointingOffset(MapPointingOffset):
-    def get_offset(
-        self, pointing_sources: list[RegisteredSource] | None = None
-    ) -> AstroPydanticQuantity[u.deg]:
+    def get_offset(self, pointing_sources: list[RegisteredSource] | None = None):
         return
 
     def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
@@ -81,7 +78,7 @@ class ConstantPointingOffset(MapPointingOffset):
     def get_offset(
         self,
         pointing_sources: list[RegisteredSource] | None = None,
-    ) -> AstroPydanticQuantity[u.deg]:
+    ):
         log = self.log or structlog.get_logger()
         log = log.bind(
             func="pointing.calculate_mean_offsets",
