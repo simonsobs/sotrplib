@@ -138,7 +138,9 @@ class BaseRunner:
         )
 
         for postprocessor in self.postprocessors:
-            self.profilable_task(postprocessor.postprocess)(input_map=input_map)
+            input_map = self.profilable_task(postprocessor.postprocess)(
+                input_map=input_map
+            )
 
         pointing_sources = self.profilable_task(self.pointing_provider.force)(
             input_map=input_map, catalogs=self.source_catalogs

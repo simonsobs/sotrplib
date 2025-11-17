@@ -212,7 +212,8 @@ def edge_map(imap: enmap.ndmap):
     from scipy.ndimage import binary_fill_holes
 
     edge = enmap.enmap(imap, imap.wcs)  # Create map geometry
-    edge[np.abs(edge) > 0] = 1  # Convert to binary
+    edge[(np.abs(edge) > 0) & (np.isfinite(edge))] = 1  # Convert to binary
+    edge[(np.abs(edge) == 0) | (~np.isfinite(edge))] = 0
     edge = binary_fill_holes(edge)  # Fill holes
 
     return enmap.enmap(edge.astype("ubyte"), imap.wcs)
@@ -408,7 +409,7 @@ def flat_field_using_photutils(
     except Exception as e:
         log.error(f"flat_field_using_photutils.failed: {e}")
 
-    return
+    return mapdata
 
 
 def make_model_source_map(
