@@ -37,17 +37,16 @@ class SOCatWrapper:
 
     def add_source(self, source: RegisteredSource):
         self.catalog.create(
-            ra=source.ra.to_value(u.deg),
-            dec=source.dec.to_value(u.deg),
-            flux=source.flux.to_value(u.Jy) if source.flux is not None else None,
+            position=SkyCoord(source.ra, source.dec),
+            flux=source.flux if source.flux is not None else None,
             name=source.source_id,
         )
 
     def _socat_source_to_registered(self, socat_source) -> RegisteredSource:
         return RegisteredSource(
-            ra=socat_source.ra * u.deg,
-            dec=socat_source.dec * u.deg,
-            flux=socat_source.flux * u.Jy
+            ra=socat_source.position.ra,
+            dec=socat_source.position.dec,
+            flux=socat_source.flux
             if hasattr(socat_source, "flux") and (socat_source.flux is not None)
             else None,
             source_id=socat_source.name,
@@ -86,7 +85,7 @@ class SOCatWrapper:
         result[inside] = np.nan_to_num(mask_map.flux[x[inside], y[inside]]).astype(bool)
         return [all_sources[i] for i, valid in enumerate(result) if valid]
 
-    ## TODO: this doesn't work... maybe need source_catalog/core.py to handle boxes that cross RA=0
+    ## TODO: need to update for boxes which need to be broken in two.
     def get_sources_in_box(self, box: list[SkyCoord] | None = None):
         self.log.info("socat.get_sources_in_box.initial_box", box=box)
         if box is None:
@@ -99,17 +98,9 @@ class SOCatWrapper:
             ## ra increases to the left.
             box = [box[1], box[0]]
 
-        ra_min = box[0].ra.to(u.deg).value
-        ra_max = box[1].ra.to(u.deg).value
-        dec_min = np.min([box[0].dec.to(u.deg).value, box[1].dec.to(u.deg).value])
-        dec_max = np.max([box[0].dec.to(u.deg).value, box[1].dec.to(u.deg).value])
-        box = [[ra_min, dec_min], [ra_max, dec_max]]
-        ## astropy SkyCoord uses 0 to 360 convention for RA, but SOCat uses -180 to 180
         sources_in_map = self.catalog.get_box(
-            ra_min=ra_min,
-            ra_max=ra_max,
-            dec_min=dec_min,
-            dec_max=dec_max,
+            lower_left=box[0],
+            upper_right=box[1],
         )
         self.log.info(
             "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
@@ -130,9 +121,7 @@ class SOCatWrapper:
         )
 
         filtered = [
-            self._socat_source_to_registered(socat_source=x)
-            for x in rough_cut
-            if angular_separation(x.ra, ra, x.dec, dec) <= radius
+            x for x in rough_cut if angular_separation(x.ra, ra, x.dec, dec) <= radius
         ]
 
         self.log.info(
@@ -272,9 +261,8 @@ class SOCatFITSCatalog(SourceCatalog):
             name = row["name"]
             # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
             self.core.catalog.create(
-                ra=ra.to_value(u.deg),
-                dec=dec.to_value(u.deg),
-                flux=flux.to_value(u.Jy),
+                position=SkyCoord(ra=ra, dec=dec),
+                flux=flux,
                 name=name,
             )
 
