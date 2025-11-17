@@ -204,7 +204,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         for i in range(self.poly_order + 1):
             for j in range(self.poly_order + 1 - i):
                 terms.append((x**i) * (y**j))
-        return np.vstack(terms).T  # shape (N, M)
+        return np.vstack(terms).T
 
     def get_offset(
         self,
@@ -300,6 +300,8 @@ class PolynomialPointingOffset(MapPointingOffset):
             num_sources=len(ras),
             poly_order=self.poly_order,
             max_snr_weight=self.max_snr_weight,
+            coeffs_ra=coeffs_ra,
+            coeffs_dec=coeffs_dec,
         )
 
         return
