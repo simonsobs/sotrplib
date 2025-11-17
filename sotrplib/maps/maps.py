@@ -343,6 +343,7 @@ def widefield_geometry(
 def flat_field_using_pixell(
     mapdata,
     tilegrid=1.0,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Use the tiles module to do map tiling using scan strategy.
@@ -350,6 +351,8 @@ def flat_field_using_pixell(
     """
     from .tiles import get_medrat, get_tmap_tiles
 
+    log = log if log else structlog.get_logger()
+    log = log.bind(func_name="flat_field_using_pixell")
     try:
         med_ratio = get_medrat(
             mapdata.snr,
@@ -365,10 +368,7 @@ def flat_field_using_pixell(
         mapdata.snr *= med_ratio
         mapdata.flatfielded = True
     except Exception as e:
-        print(
-            e,
-            " Cannot flatfield at this time... need to update medrat algorithm for coadds",
-        )
+        log.error(f"flat_field_using_pixell.failed: {e}")
 
     return
 

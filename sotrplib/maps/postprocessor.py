@@ -14,7 +14,7 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.maps import flat_field_using_photutils
+from sotrplib.maps.maps import flat_field_using_photutils, flat_field_using_pixell
 from sotrplib.maps.masks import mask_dustgal, mask_edge
 
 
@@ -66,16 +66,28 @@ class EdgeMask(MapPostprocessor):
         return input_map
 
 
-class PixellFlatfield(MapPostprocessor):
-    tile_grid: float
+class PixellFlatFielder(MapPostprocessor):
+    tile_size: AstroPydanticQuantity = AstroPydanticQuantity(1.0 * u.deg)
+    sigma_val: float = 5.0
 
-    def __init__(self, tile_grid: float = 0.5):
-        self.tile_grid = tile_grid
+    def __init__(
+        self,
+        sigma_val: float = 5.0,
+        tile_size: u.Quantity = 1.0 * u.deg,
+        mask: enmap.ndmap | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.sigma_val = sigma_val
+        self.tile_size = tile_size
+        self.mask = mask
+        self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        # TODO Implement pixell flat-fielding
-        raise NotImplementedError
-        return
+        return flat_field_using_pixell(
+            mapdata=input_map,
+            tilegrid=self.tile_size.to_value(u.deg),
+            log=self.log,
+        )
 
 
 class PhotutilsFlatFielder(MapPostprocessor):
