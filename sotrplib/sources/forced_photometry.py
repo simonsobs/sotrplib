@@ -261,6 +261,7 @@ def scipy_2d_gaussian_fit(
             if pointing_residuals
             else source_pos
         )
+
         source.ra = source_pos.ra
         source.dec = source_pos.dec
 
@@ -307,6 +308,12 @@ def scipy_2d_gaussian_fit(
             forced_source.fit_params = fit.model_dump()
             fit_sources.append(forced_source)
             continue
+
+        forced_source.extract_thumbnail(
+            input_map,
+            thumb_width=thumbnail_half_width,
+            reproject_thumb=reproject_thumb,
+        )
 
         try:
             forced_source.extract_thumbnail(
