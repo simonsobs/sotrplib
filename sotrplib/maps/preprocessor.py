@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 
+import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
 from structlog.types import FilteringBoundLogger
@@ -18,6 +19,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
 )
 from sotrplib.maps.maps import clean_map, kappa_clean
+from sotrplib.maps.masks import mask_edge
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -118,3 +120,41 @@ class MatchedFilter(MapPreprocessor):
         return MatchedFilteredIntensityAndInverseVarianceMap(
             rho=rho, kappa=kappa, prefiltered_map=input_map, flux_units=u.mJy
         )
+
+
+class EdgeMask(MapPreprocessor):
+    edge_width: AstroPydanticQuantity = AstroPydanticQuantity(10.0 * u.arcmin)
+    mask_on: Literal["rho", "kappa", "flux", "snr"] = "kappa"
+
+    def __init__(
+        self,
+        edge_width: u.Quantity = u.Quantity(10.0, "arcmin"),
+        mask_on: str = "kappa",
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.edge_width = edge_width
+        self.mask_on = mask_on
+        self.log = log or structlog.get_logger()
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        self.log = self.log.bind(func="EdgeMask.preprocess")
+        number_of_pixels = int(
+            self.edge_width.to_value(u.arcmin)
+            / input_map.map_resolution.to_value(u.arcmin)
+        )
+        self.log = self.log.bind(number_of_pixels=number_of_pixels)
+        mask_map = (
+            getattr(input_map, self.mask_on)
+            if hasattr(input_map, self.mask_on)
+            else None
+        )
+        if mask_map is None:
+            self.log.error(f"EdgeMask.preprocess.get_mask_map.no_{self.mask_on}")
+            return input_map
+
+        edge_mask = mask_edge(imap=mask_map, pix_num=number_of_pixels)
+        input_map.mask = edge_mask
+
+        self.log.info("EdgeMask.preprocess completed")
+
+        return input_map
