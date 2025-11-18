@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
@@ -7,8 +6,8 @@ from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.source_catalog.socat import SOCatFITSCatalog
+from sotrplib.source_catalog.core import RegisteredSourceCatalog, SourceCatalog
+from sotrplib.source_catalog.socat import SOCat
 
 
 class SourceCatalogConfig(BaseModel, ABC):
@@ -23,27 +22,21 @@ class SourceCatalogConfig(BaseModel, ABC):
 
 class EmptySourceCatalogConfig(SourceCatalogConfig):
     catalog_type: Literal["empty"] = "empty"
-    path: Path | None = None
 
-    def to_source_catalog(self, log=None) -> SOCatFITSCatalog:
-        return SOCatFITSCatalog(
-            log=log,
-        )
+    def to_source_catalog(
+        self, log: FilteringBoundLogger | None = None
+    ) -> RegisteredSourceCatalog:
+        return RegisteredSourceCatalog(sources=[])
 
 
-class SOCatFITSCatalogConfig(SourceCatalogConfig):
-    catalog_type: Literal["socat", "fits"] = "fits"
-    path: Path | None = None
-    hdu: int = 1
+class SOCatConfig(SourceCatalogConfig):
     flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
 
-    def to_source_catalog(self, log=None) -> SOCatFITSCatalog:
-        return SOCatFITSCatalog(
-            path=self.path,
-            hdu=self.hdu,
+    def to_source_catalog(self, log=None) -> SOCat:
+        return SOCat(
             flux_lower_limit=self.flux_lower_limit,
             log=log,
         )
 
 
-AllSourceCatalogConfigTypes = EmptySourceCatalogConfig | SOCatFITSCatalogConfig
+AllSourceCatalogConfigTypes = SOCatConfig
