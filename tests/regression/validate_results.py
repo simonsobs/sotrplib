@@ -84,10 +84,6 @@ def main():
         for candidate in found
     ]
 
-    import IPython
-
-    IPython.embed()
-
     dec_offsets = np.array(
         [candidate.fit_params["dec_offset"].value for candidate in found]
     )
