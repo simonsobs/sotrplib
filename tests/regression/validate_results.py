@@ -64,6 +64,29 @@ def main():
     photometry, sifter_result, _ = result
 
     found = [candidate for candidate in photometry if not candidate.fit_failed]
+    # some forced photometry candidates don't have offsets
+    # because they weren't found in the blind search?
+    found = [
+        candidate
+        for candidate in found
+        if candidate.fit_params["dec_offset"] is not None
+    ]
+
+    # simulated catalogs have a random number added to the id
+    # assume this corresponds to the first element
+    cat = pipeline.source_catalogs[0]
+    simulation_base = int(cat.sources[0].source_id.split("-")[1])
+    flux_ratios = [
+        candidate.flux
+        / cat.source_by_id(
+            int(candidate.source_id.split("-")[1]) - simulation_base
+        ).flux
+        for candidate in found
+    ]
+
+    import IPython
+
+    IPython.embed()
 
     dec_offsets = np.array(
         [candidate.fit_params["dec_offset"].value for candidate in found]
@@ -73,6 +96,9 @@ def main():
     )
     offsets = np.array([calculate_separation(candidate) for candidate in found])
 
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 4))
+
+    plt.sca(axes[0])
     plt.ecdf(np.abs(dec_offsets), label="Dec")
     plt.ecdf(np.abs(ra_offsets), label="RA")
     plt.ecdf(np.abs(offsets), label="Total")
@@ -80,8 +106,15 @@ def main():
     plt.xlabel("Offset [deg]")
     plt.ylabel("Cumulative Fraction")
     plt.legend(loc="lower right")
+
+    plt.sca(axes[1])
+    plt.ecdf(flux_ratios, label="Flux Ratio")
+    plt.xscale("log")
+    plt.xlabel("Measured / True Flux")
+
+    plt.tight_layout()
     plt.savefig("offset_ecdf.png")
-    plt.close()
+    plt.close(fig)
 
     summary = dict(
         duration=profiler.last_session.duration,
