@@ -11,7 +11,7 @@
             "instrument": "ACTPol",
             "intensity_units": "K",
             "box": {"value":[
-                        [-40,300],
+                        [-30,300],
                         [-50,320]
                     ],
                     "unit": "deg"
@@ -33,7 +33,7 @@
         "peak_amplitude_maximum": "2.0 Jy",
         "flare_width_shortest": "01:00:00",
         "flare_width_longest": "12:00:00",
-        "catalog_fraction": 1.0
+        "catalog_fraction": 0.5
     }
     ],
     "source_injector":{
@@ -45,7 +45,13 @@
         },
         {
             "preprocessor_type": "kappa_rho"
+        },
+        {
+            "preprocessor_type": "edge_mask",
+            "mask_on": "kappa",
+            "edge_width": "10.0 arcmin"
         }
+
     ],
     "source_subtractor": {
             "subtractor_type": "photutils"

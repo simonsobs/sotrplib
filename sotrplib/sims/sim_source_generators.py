@@ -75,11 +75,20 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         box: tuple[SkyCoord] | None = None,
         time_range: tuple[datetime | None, datetime | None] | None = None,
     ):
-        if box is None:
+        if box is None and input_map is None:
             box = [
-                SkyCoord(ra=0.01 * u.deg, dec=-89.99 * u.deg),
+                SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
+
+        if input_map is not None:
+            positions = generate_random_positions_in_map(self.number, input_map.flux)
+        else:
+            positions = generate_random_positions(
+                self.number,
+                ra_lims=(box[0].ra, box[1].ra),
+                dec_lims=(box[0].dec, box[1].dec),
+            )
 
         log = self.log.bind(box=box)
 
@@ -93,12 +102,8 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 
         sources = [
             RegisteredSource(
-                ra=random.uniform(box[0].ra.to_value("deg"), box[1].ra.to_value("deg"))
-                * u.deg,
-                dec=random.uniform(
-                    box[0].dec.to_value("deg"), box[1].dec.to_value("deg")
-                )
-                * u.deg,
+                ra=positions[i][1],
+                dec=positions[i][0],
                 frequency=90.0 * u.GHz,
                 flux=random.uniform(
                     self.min_flux.to_value("Jy"), self.max_flux.to_value("Jy")
@@ -209,7 +214,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             return min_td + timedelta(seconds=random_second)
 
         if input_map is not None:
-            positions = generate_random_positions_in_map(self.number, input_map)
+            positions = generate_random_positions_in_map(self.number, input_map.flux)
         else:
             positions = generate_random_positions(
                 self.number,
