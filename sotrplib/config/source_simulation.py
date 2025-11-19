@@ -50,11 +50,9 @@ class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
     flare_width_longest: timedelta
     peak_amplitude_minimum: AstroPydanticQuantity[u.Jy]
     peak_amplitude_maximum: AstroPydanticQuantity[u.Jy]
-
+    number: int
     flare_earliest_time: datetime | None = None
     flare_latest_time: datetime | None = None
-
-    number: int
     catalog_fraction: float = 1.0
 
     def to_simulator(

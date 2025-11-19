@@ -124,8 +124,8 @@ class BaseRunner:
         start_time = datetime.max.replace(tzinfo=timezone.utc)
         end_time = datetime.min.replace(tzinfo=timezone.utc)
         for input_map in self.maps:
-            start_time = min([input_map.observation_start, start_time])
-            end_time = max([input_map.observation_end, end_time])
+            start_time = min(input_map.observation_start, start_time)
+            end_time = max(input_map.observation_end, end_time)
 
         return (start_time, end_time)
 
