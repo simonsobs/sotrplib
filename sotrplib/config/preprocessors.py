@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.preprocessor import (
+    EdgeMask,
     KappaRhoCleaner,
     MapPreprocessor,
     MatchedFilter,
@@ -76,4 +77,17 @@ class MatchedFilterConfig(PreprocessorConfig):
         )
 
 
-AllPreprocessorConfigTypes = KappaRhoCleanerConfig | MatchedFilterConfig
+class EdgeMaskConfig(PreprocessorConfig):
+    preprocessor_type: Literal["edge_mask"] = "edge_mask"
+    edge_width: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(10 * u.arcmin)
+    mask_on: Literal["rho", "kappa", "flux", "snr"] = "kappa"
+
+    def to_preprocessor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> MapPreprocessor:
+        return EdgeMask(edge_width=self.edge_width, mask_on=self.mask_on, log=log)
+
+
+AllPreprocessorConfigTypes = (
+    KappaRhoCleanerConfig | MatchedFilterConfig | EdgeMaskConfig
+)

@@ -51,6 +51,8 @@ class ProcessableMap(ABC):
     "The mean time at which each pixel was observed"
     hits: ndmap
     "A hits map stating the number of times each pixel was observed"
+    mask: ndmap | None = None
+    "A mask map indicating valid pixels as 1 and invalid pixels as 0"
 
     finalized: bool = False
     "Whether finalize has been called and ancillary maps can no longer be updated"
@@ -247,6 +249,8 @@ class ProcessableMap(ABC):
         """
         Called just before source injection to ensure that the snr, flux, and
         time maps are available.
+
+        apply mask if present.
         """
         del self.rho
         del self.kappa
@@ -275,6 +279,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         array: str | None = None,
         instrument: str | None = None,
         matched_filtered: bool = False,
+        mask: ndmap | None = None,
         intensity_units: Unit = u.K,
         log: FilteringBoundLogger | None = None,
     ):
@@ -290,6 +295,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.array = array
         self.instrument = instrument
         self.matched_filtered = matched_filtered
+        self.mask = mask
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -336,7 +342,6 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.time_first = time_map
         self.time_end = time_map
         self.time_mean = time_map
-
         self.add_time_offset(self.observation_start)
 
         return
@@ -390,6 +395,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        if self.mask is not None:
+            self.snr *= self.mask
+            self.flux *= self.mask
         super().finalize()
 
 
@@ -423,6 +431,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.box = self.prefiltered_map.box
         self.frequency = self.prefiltered_map.frequency
         self.array = self.prefiltered_map.array
+        self.mask = self.prefiltered_map.mask
         self.instrument = self.prefiltered_map.instrument
 
         self.map_resolution = u.Quantity(
@@ -489,6 +498,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        if self.mask is not None:
+            self.snr *= self.mask
+            self.flux *= self.mask
         super().finalize()
 
 
@@ -513,6 +525,7 @@ class RhoAndKappaMap(ProcessableMap):
         array: str | None = None,
         instrument: str | None = None,
         flux_units: Unit = u.Jy,
+        mask: ndmap | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -526,6 +539,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.array = array
         self.instrument = instrument
         self.flux_units = flux_units
+        self.mask = mask
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -622,6 +636,9 @@ class RhoAndKappaMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        if self.mask is not None:
+            self.snr *= self.mask
+            self.flux *= self.mask
         super().finalize()
 
 
