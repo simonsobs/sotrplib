@@ -149,7 +149,9 @@ class EdgeMask(MapPreprocessor):
             else None
         )
         if mask_map is None:
-            self.log.error(f"EdgeMask.preprocess.get_mask_map.no_{self.mask_on}")
+            self.log.error(
+                "EdgeMask.preprocess.get_mask_map.no_attribute", mask_on=self.mask_on
+            )
             return input_map
 
         edge_mask = mask_edge(imap=mask_map, pix_num=number_of_pixels)
