@@ -76,6 +76,80 @@ class GaussianTransientSimulatedSource(SimulatedSource):
         return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
 
 
+class PowerLawTransientSimulatedSource(SimulatedSource):
+    def __init__(
+        self,
+        position: SkyCoord,
+        peak_time: datetime,
+        peak_amplitude: u.Quantity,
+        alpha_rise: float,
+        alpha_decay: float,
+        smoothness: float = 1.0,
+        t_ref: timedelta = timedelta(days=1),
+    ):
+        """
+        Initialize a power-law transient simulated source.
+
+        Parameters:
+            - position: Sky position of the source
+            - peak_time: Time of maximum flux
+            - peak_amplitude: Maximum flux of transient
+            - alpha_rise: Early-time (rising) power-law index (>0)
+            - alpha_decay: Late-time (decaying) power-law index (<0)
+            - smoothness: Smoothness parameter (s). Controls how sharp (large s) or how rounded (small s) peak is.
+            - t_ref: Reference timescale (default 1 day)
+        """
+        self._position = position
+        self.peak_time = peak_time
+        self.peak_amplitude = peak_amplitude
+        self.alpha_rise = alpha_rise
+        self.alpha_decay = alpha_decay
+        self.smoothness = smoothness
+        self.t_ref = t_ref
+
+        # Calculate derived parameters
+        # Find tau at peak: tau_peak = (alpha_rise / |alpha_decay|)^(1/(s*(alpha_rise + |alpha_decay|)))
+        s = self.smoothness
+        abs_slpha_decay = abs(alpha_decay)
+        tau_peak = (alpha_rise / abs_slpha_decay) ** (
+            1.0 / (s * (alpha_rise + abs_slpha_decay))
+        )
+
+        # Calculate onset time: t_0 = t_peak - tau_peak * t_ref
+        self.onset_time = peak_time - timedelta(
+            seconds=tau_peak * t_ref.total_seconds()
+        )
+
+        # Calculate S0 from peak amplitude
+        # F_peak = S0 * [tau_peak^(s*alpha_rise) + tau_peak^(s*alpha_decay)]^(-1/s)
+        term1 = tau_peak ** (s * alpha_rise)
+        term2 = tau_peak ** (s * alpha_decay)
+        self.S0 = peak_amplitude * (term1 + term2) ** (1.0 / s)
+
+        return
+
+    def position(self, time: datetime) -> SkyCoord:
+        return self._position
+
+    def flux(self, time: datetime) -> u.Quantity:
+        # Return zero flux before onset time
+        if time < self.onset_time:
+            return 0.0 * self.peak_amplitude.unit
+
+        # Calculate tau = (t - t0) / t_ref
+        delta_time = time - self.onset_time
+        tau = delta_time.total_seconds() / self.t_ref.total_seconds()
+
+        # Compute the smoothly broken power law
+        # S(t) = S0 * [tau^(s*alpha_rise) + tau^(s*alpha_decay)]^(-1/s)
+        s = self.smoothness
+        term1 = tau ** (s * self.alpha_rise)
+        term2 = tau ** (s * self.alpha_decay)
+
+        flux = self.S0 * (term1 + term2) ** (-1.0 / s)
+        return flux
+
+
 class SimTransient:
     pass
 
