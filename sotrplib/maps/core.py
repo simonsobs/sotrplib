@@ -343,6 +343,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.time_end = time_map
         self.time_mean = time_map
         self.add_time_offset(self.observation_start)
+        self.observation_length = self.observation_end - self.observation_start
 
         return
 
@@ -375,6 +376,10 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
             self.time_first[self.time_first > 0] += offset.timestamp()
+        if self.observation_end is None:
+            self.observation_end = datetime.fromtimestamp(
+                float(np.amax(self.time_end)), tz=timezone.utc
+            )
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -428,6 +433,10 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.time_mean = self.prefiltered_map.time_mean
         self.observation_start = self.prefiltered_map.observation_start
         self.observation_end = self.prefiltered_map.observation_end
+        self.observation_length = (
+            self.prefiltered_map.observation_end
+            - self.prefiltered_map.observation_start
+        )
         self.box = self.prefiltered_map.box
         self.frequency = self.prefiltered_map.frequency
         self.array = self.prefiltered_map.array
@@ -479,6 +488,10 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
             self.time_first[self.time_first > 0] += offset.timestamp()
+        if self.observation_end is None:
+            self.observation_end = datetime.fromtimestamp(
+                float(np.amax(self.time_end)), tz=timezone.utc
+            )
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -584,8 +597,8 @@ class RhoAndKappaMap(ProcessableMap):
         self.time_end = time_map
         self.time_mean = time_map
 
-        self.add_time_offset()
-
+        self.add_time_offset(self.observation_start)
+        self.observation_length = self.observation_end - self.observation_start
         return
 
     def add_time_offset(self, offset: timedelta | None = None):
@@ -617,6 +630,10 @@ class RhoAndKappaMap(ProcessableMap):
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
             self.time_first[self.time_first > 0] += offset.timestamp()
+        if self.observation_end is None:
+            self.observation_end = datetime.fromtimestamp(
+                float(np.amax(self.time_end)), tz=timezone.utc
+            )
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
