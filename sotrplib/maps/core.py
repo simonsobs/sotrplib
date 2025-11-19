@@ -51,7 +51,7 @@ class ProcessableMap(ABC):
     "The mean time at which each pixel was observed"
     hits: ndmap
     "A hits map stating the number of times each pixel was observed"
-    mask: ndmap
+    mask: ndmap | None = None
     "A mask map indicating valid pixels as 1 and invalid pixels as 0"
 
     finalized: bool = False
