@@ -169,12 +169,17 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             ]
 
         if input_map is not None:
-            if self.flare_earliest_time is None or self.flare_latest_time is None:
-                self.flare_earliest_time = input_map.observation_start
-                self.flare_latest_time = input_map.observation_end
-            else:
-                self.flare_earliest_time = self.flare_earliest_time
-                self.flare_latest_time = self.flare_latest_time
+            self.flare_earliest_time = (
+                input_map.observation_start
+                if self.flare_earliest_time is None
+                else self.flare_earliest_time
+            )
+            self.flare_latest_time = (
+                input_map.observation_end
+                if self.flare_latest_time is None
+                else self.flare_latest_time
+            )
+
         else:
             self.flare_earliest_time = (
                 time_range[0] if time_range is not None else self.flare_earliest_time
@@ -189,6 +194,10 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                 flare_earliest_time=self.flare_earliest_time,
                 flare_latest_time=self.flare_latest_time,
             )
+            raise ValueError(
+                f"Invalid time range: flare_earliest_time={self.flare_earliest_time}, flare_latest_time={self.flare_latest_time}"
+            )
+
         log = self.log.bind(
             n=self.number,
             box=box,
