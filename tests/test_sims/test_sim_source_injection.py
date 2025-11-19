@@ -138,21 +138,8 @@ def test_source_injection_into_map():
 
     base_map.build()
 
-    # Grab the geometry -- TODO actually have this as a property
-    # of maps...
-    sp = base_map.simulation_parameters
-    left = sp.center_ra - sp.width_ra
-    right = sp.center_ra + sp.width_ra
-    bottom = sp.center_dec - sp.width_dec
-    top = sp.center_dec + sp.width_dec
-
-    box = [
-        SkyCoord(ra=left, dec=bottom),
-        SkyCoord(ra=right, dec=top),
-    ]
-
     injector = source_injector.PhotutilsSourceInjector()
-    sources, catalog = generator.generate(box=box)
+    sources, catalog = generator.generate(input_map=base_map)
     new_map = injector.inject(input_map=base_map, simulated_sources=sources)
     new_map.finalize()
 

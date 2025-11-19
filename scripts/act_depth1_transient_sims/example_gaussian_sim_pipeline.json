@@ -1,0 +1,76 @@
+{
+    "maps": [
+        {
+            "map_type": "inverse_variance",
+            "intensity_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_map.fits",
+            "weights_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_ivar.fits",
+            "time_map_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_time.fits",
+            "info_path": "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/15386/depth1_1538613353_pa5_f090_info.hdf",
+            "frequency": "f090",
+            "band": "pa5",
+            "instrument": "ACTPol",
+            "intensity_units": "K",
+            "box": {"value":[
+                        [-30,300],
+                        [-50,320]
+                    ],
+                    "unit": "deg"
+                }
+        }
+    ],
+    "source_catalogs": [
+        {
+            "catalog_type": "socat",
+            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": "0.05 Jy"
+        }
+    ],
+    "source_simulators": [
+        {
+        "generator_type": "gaussian_transient",
+        "number": 20,
+        "peak_amplitude_minimum": ".2 Jy",
+        "peak_amplitude_maximum": "2.0 Jy",
+        "flare_width_shortest": "01:00:00",
+        "flare_width_longest": "12:00:00",
+        "catalog_fraction": 0.5
+    }
+    ],
+    "source_injector":{
+            "injector_type":"photutils"
+    },
+    "preprocessors": [
+        {
+            "preprocessor_type": "matched_filter"
+        },
+        {
+            "preprocessor_type": "kappa_rho"
+        },
+        {
+            "preprocessor_type": "edge_mask",
+            "mask_on": "kappa",
+            "edge_width": "10.0 arcmin"
+        }
+
+    ],
+    "source_subtractor": {
+            "subtractor_type": "photutils"
+    },
+    "blind_search": {
+            "search_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy",
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy"
+    },
+    "sifter": {
+        "sifter_type": "default"
+    },
+    "outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

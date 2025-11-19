@@ -6,7 +6,9 @@ together (since 1997).
 import math
 import random
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 
+import numpy as np
 from astropy import units as u
 from astropy.table import Table
 from photutils.psf import GaussianPSF
@@ -71,26 +73,39 @@ class PhotutilsSourceInjector(SourceInjector):
         # First, filter the sources for those that lie on top of a pixel with
         # a valid 'hit'.
         def source_to_array_index(source: SimulatedSource):
-            return input_map.hits.wcs.world_to_array_index(
-                source.position(time=input_map.observation_time)
+            return input_map.flux.wcs.world_to_array_index(
+                source.position(
+                    time=input_map.time_mean
+                )  ## TODO: if fast evolving, mean time isnt good enough
             )
 
         def source_in_map(source: SimulatedSource):
             pixel = source_to_array_index(source=source)
 
             try:
-                return bool(input_map.hits[pixel])
+                return np.any(np.nan_to_num(input_map.flux[pixel]).astype(bool))
             except IndexError:
                 return False
 
         valid_sources = list(filter(source_in_map, simulated_sources))
-
+        observed_times = [
+            datetime.fromtimestamp(
+                float(input_map.time_mean[source_to_array_index(x)]), tz=timezone.utc
+            )
+            for x in valid_sources
+        ]
         log = log.bind(num_valid_sources=len(valid_sources))
 
         shape = input_map.flux.shape
         model = GaussianPSF()
 
-        gauss_fwhm_pixels = self.gauss_fwhm / input_map.map_resolution
+        ## TODO: need to get flux at times for each pixel the source is in.
+        ## if it's moving, would add to multiple pixels at different times.
+        ## if flaring need to calculate flux at integrated time.
+
+        gauss_fwhm_pixels = self.gauss_fwhm.to_value(
+            u.arcmin
+        ) / input_map.map_resolution.to_value(u.arcmin)
         min_fwhm = (1.0 - self.fwhm_uncertainty_fraction) * gauss_fwhm_pixels
         max_fwhm = (1.0 + self.fwhm_uncertainty_fraction) * gauss_fwhm_pixels
         theta_min = self.gauss_theta_min.to_value(u.deg)
@@ -103,7 +118,10 @@ class PhotutilsSourceInjector(SourceInjector):
         table_data = {
             "x_0": [source_to_array_index(x)[1] for x in valid_sources],
             "y_0": [source_to_array_index(x)[0] for x in valid_sources],
-            "flux": [x.flux(time=input_map.observation_time) for x in valid_sources],
+            "flux": [
+                x.flux(time=observed_times[i]).to_value(input_map.flux_units)
+                for i, x in enumerate(valid_sources)
+            ],
             "x_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
             "y_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
             "theta": [random.uniform(theta_min, theta_max) for _ in valid_sources],
