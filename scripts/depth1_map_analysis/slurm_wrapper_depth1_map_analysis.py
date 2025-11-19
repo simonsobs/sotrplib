@@ -8,7 +8,7 @@ from tqdm import tqdm
 USER = getuser()
 
 P = ap.ArgumentParser(
-    description="Testing functionality of a depth1 source finding.",
+    description="Run sotrp on depth1 map in slurm job. Search maps in directory and make a .json config file for each observation.",
     formatter_class=ap.ArgumentDefaultsHelpFormatter,
 )
 
@@ -39,15 +39,8 @@ P.add_argument(
 P.add_argument(
     "--data-dir",
     action="store",
-    default="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/",
+    default="/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/",
     help="Data directory, where the depth1 maps live.",
-)
-
-P.add_argument(
-    "--simulated-transient-database",
-    help="Path to transient event database, generated using the sims module.",
-    action="store",
-    default="/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/act_depth1_transient_sim_db.db",
 )
 
 P.add_argument(
@@ -57,11 +50,19 @@ P.add_argument(
 )
 
 P.add_argument(
+    "--pointing-flux-threshold",
+    action="store",
+    default="0.3 Jy",
+    type=str,
+    help="Flux threshold for pointing sources, json compatible quantity.",
+)
+
+P.add_argument(
     "--flux-threshold",
     action="store",
-    default=0.03,
-    type=float,
-    help="Flux threshold for source extraction, in Jy. Default: 0.03",
+    default="10 mJy",
+    type=str,
+    help="Flux threshold for source extraction, json compatible quantity.",
 )
 
 P.add_argument(
@@ -79,17 +80,10 @@ P.add_argument(
 )
 
 P.add_argument(
-    "--script-name",
-    action="store",
-    default="trp_pipeline.py",
-    help="Filename of the analysis script.",
-)
-
-P.add_argument(
     "--out-dir",
     action="store",
     default="",
-    help="Output directory for source json files. If empty, will create directory in scratch_dir.",
+    help="Output directory for output files. If empty, will create directory in scratch_dir.",
 )
 
 P.add_argument(
@@ -114,31 +108,24 @@ P.add_argument(
 )
 
 P.add_argument(
-    "--plot-thumbnails",
+    "--save-thumbnails",
     action="store_true",
-    default=False,
-    help="Plot thumbnail maps around the transient sources. ",
+    default=True,
+    help="Save thumbnail maps around the transient sources. ",
 )
 
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default=0.5,
-    type=float,
-    help="Thumbnail radius (half-width of square map), in deg. ",
-)
-P.add_argument(
-    "--coadd-n-days",
-    action="store",
-    default=0,
-    type=int,
-    help="Number of days to coadd maps over.",
+    default="0.2 deg",
+    type=str,
+    help="Thumbnail radius (half-width of square map), json compatible quantity.",
 )
 
 P.add_argument(
     "--ncores",
     action="store",
-    default=12,
+    default=4,
     type=int,
     help="Number of cores to request for each slurm job. ",
 )
@@ -146,7 +133,8 @@ P.add_argument(
 P.add_argument(
     "--nserial",
     action="store",
-    default=12,
+    default=4,
+    type=int,
     help="Number of serial sets of `ncores` scripts to run per job. ",
 )
 
@@ -177,8 +165,103 @@ module load soconda/3.11/v0.6.3
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
 cd {script_dir}
 
+source .venv/bin/activate
+
 """
     return slurm_header
+
+
+def generate_config_json(
+    mapfile,
+    pointing_flux_threshold="0.3 Jy",
+    flux_low_limit="0.01 Jy",
+    thumbnail_half_width="0.2 deg",
+    min_snr=5.0,
+    min_pointing_sources=10,
+    poly_order=3,
+    output_dir="./",
+):
+    ivar_map_file = mapfile.replace("_map.fits", "_ivar.fits")
+    time_map_file = mapfile.replace("_map.fits", "_time.fits")
+    info_file = mapfile.replace("_map.fits", "_info.hdf")
+    freq = mapfile.split("_")[-2]
+    arr = mapfile.split("_")[-3]
+    config_text = f"""{{
+    "maps": [
+        {{
+            "map_type": "inverse_variance",
+            "intensity_map_path": "{mapfile}",
+            "weights_map_path": "{ivar_map_file}",
+            "time_map_path": "{time_map_file}",
+            "info_path": "{info_file}",
+            "frequency": "{freq}",
+            "arr": "{arr}",
+            "intensity_units": "uK"
+        }}
+    ],
+    "source_catalogs": [
+        {{
+            "catalog_type": "fits",
+            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "flux_lower_limit": "{flux_low_limit}"
+        }}
+    ],
+    "pointing_provider": {{
+        "photometry_type": "scipy_pointing",
+        "thumbnail_half_width": "{thumbnail_half_width}",
+        "min_flux": "{pointing_flux_threshold}",
+        "reproject_thumbnails": "True"
+    }},
+    "pointing_residual": {{
+        "pointing_residual_type": "polynomial",
+        "min_snr": {min_snr},
+        "min_sources": {min_pointing_sources},
+        "sigma_clip_level": 3.0,
+        "polynomial_order": {poly_order}
+    }},
+    "preprocessors": [
+        {{
+            "preprocessor_type": "matched_filter"
+        }},
+        {{
+            "preprocessor_type": "kappa_rho"
+        }},
+        {{
+            "postprocessor_type": "edge_mask",
+            "mask_on": "inverse_variance",
+            "edge_width": "10.0 arcmin"
+        }}
+    ],
+    "postprocessors": [
+       {{
+            "postprocessor_type": "flatfield",
+            "sigma_val": 5.0,
+            "tile_size": "1.0 deg"
+        }}
+    ],
+    "source_subtractor": {{
+            "subtractor_type": "photutils"
+    }},
+    "blind_search": {{
+            "search_type": "photutils"
+    }},
+    "forced_photometry": {{
+        "photometry_type": "scipy",
+        "reproject_thumbnails": "True",
+         "flux_limit_centroid": "0.1 Jy"
+    }},
+    "sifter": {{
+        "sifter_type": "default"
+    }},
+    "outputs": [
+        {{
+            "output_type": "pickle",
+            "directory": "{output_dir}"
+        }}
+    ]
+}}
+"""
+    return config_text
 
 
 nserial = args.ncores * args.nserial
@@ -208,7 +291,7 @@ if not args.out_dir:
     letters = string.ascii_lowercase
     random_string = "".join(random.choice(letters) for i in range(6))
 
-    args.out_dir = user_scratch + f"tmp_sourcedir_{random_string}/"
+    args.out_dir = user_scratch + f"tmp_sotrpdir_{random_string}/"
     print("Creating temp output directory: ", args.out_dir)
 
 ## set slurm output dir to live in the temp directory
@@ -235,16 +318,20 @@ nmaps = 0
 for mapfile in args.maps:
     obsid = mapfile.split("/")[-1].split("_")[1]
     dateid = mapfile.split("/")[-2]
-    slurm_text += (
-        f"srun --overlap python {args.script_name} --maps {mapfile} "
-        f"--output-dir {args.out_dir} -s {args.snr_threshold}"
-        f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
-        f" --flux-threshold {args.flux_threshold}"
-        f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
-        f"{' --inject-transients' if args.sim_transients else ''}"
-        f" --coadd-n-days {args.coadd_n_days}"
-        f" &\n sleep 1 \n"
-    )
+    mapname = mapfile.split("/")[-1].replace(".fits", "")
+    config_file = args.slurm_script_dir + f"{mapname}_config.json"
+    with open(config_file, "w") as f:
+        f.write(
+            generate_config_json(
+                mapfile,
+                pointing_flux_threshold=args.pointing_flux_threshold,
+                flux_low_limit=args.flux_threshold,
+                thumbnail_half_width=args.thumbnail_radius,
+                min_snr=args.snr_threshold,
+                output_dir=args.out_dir,
+            )
+        )
+    slurm_text += f"srun --overlap sotrp -c {config_file}  &\n sleep 1 \n"
     nmaps += 1
     if nmaps % args.ncores == 0 and nmaps > 0:
         slurm_text += "wait\n"
@@ -267,34 +354,44 @@ for mapfile in args.maps:
 for i in tqdm(range(len(datelist))):
     date = datelist[i].split("/")[-1]
     for band in args.bands:
-        globstr = args.data_dir + date + f"/depth1*{band}*_rho.fits"
-        slurm_text += (
-            f"srun --overlap python {args.script_name} --maps {globstr} "
-            f"--output-dir {args.out_dir} -s {args.snr_threshold}"
-            f"{' --plot-thumbnails' if args.plot_thumbnails else ''}"
-            f" --flux-threshold {args.flux_threshold}"
-            f" --coadd-n-days {args.coadd_n_days}"
-            f" {f'--simulated-transient-database {args.simulated_transient_database}' if args.sim_transients else ''}"
-            f"{' --inject-transients' if args.sim_transients else ''}"
-            f" &\n sleep 1 \n"
-        )
-        if i % args.ncores == 0 and i > 0:
-            slurm_text += "wait\n"
-
-        if i % nserial == 0 and i > 0:
-            with open(
-                "%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w"
-            ) as f:
-                f.write(slurm_text)
-                f.write("wait")
-            n += 1
-            slurm_text = generate_slurm_header(
-                str(n).zfill(4),
-                args.group_name,
-                str(args.ncores),
-                args.script_dir if args.script_dir else os.getcwd(),
-                args.slurm_out_dir,
+        globstr = args.data_dir + date + f"/depth1*{band}*_map.fits"
+        mapfiles = sorted(glob(globstr))
+        for mapfile in sorted(mapfiles):
+            mapname = mapfile.split("/")[-1].replace(".fits", "")
+            config_file = args.slurm_script_dir + f"{mapname}_config.json"
+            with open(config_file, "w") as f:
+                f.write(
+                    generate_config_json(
+                        mapfile,
+                        pointing_flux_threshold=args.pointing_flux_threshold,
+                        flux_low_limit=args.flux_threshold,
+                        thumbnail_half_width=args.thumbnail_radius,
+                        min_snr=args.snr_threshold,
+                        output_dir=args.out_dir,
+                    )
+                )
+            slurm_text += (
+                f"srun --overlap sotrp -c {config_file} > {args.out_dir}{mapname}_sotrp.log "
+                f" &\n sleep 1 \n"
             )
+            nmaps += 1
+            if nmaps % args.ncores == 0 and nmaps > 0:
+                slurm_text += "wait\n"
+            if nmaps % nserial == 0 and nmaps > 0:
+                with open(
+                    "%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w"
+                ) as f:
+                    f.write(slurm_text)
+                    f.write("wait")
+                n += 1
+                slurm_text = generate_slurm_header(
+                    str(n).zfill(4),
+                    args.group_name,
+                    str(args.ncores),
+                    args.script_dir if args.script_dir else os.getcwd(),
+                    args.slurm_out_dir,
+                )
+
 
 with open("%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w") as f:
     f.write(slurm_text)
@@ -304,7 +401,7 @@ print("#" * 50)
 print("Slurm scripts saved to :", args.slurm_script_dir)
 print("Slurm output saved to :", args.slurm_out_dir)
 
-print("Photometry files saved to :", args.out_dir)
+print("Output files saved to :", args.out_dir)
 
 print(
     "To run the slurm jobs, point slurm_submitter.py to the slurm script location stated above."
