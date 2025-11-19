@@ -129,7 +129,7 @@ class EdgeMask(MapPreprocessor):
     def __init__(
         self,
         edge_width: u.Quantity = u.Quantity(10.0, "arcmin"),
-        mask_on: str = "kappa",
+        mask_on: Literal["rho", "kappa", "flux", "snr"] = "kappa",
         log: FilteringBoundLogger | None = None,
     ):
         self.edge_width = edge_width
