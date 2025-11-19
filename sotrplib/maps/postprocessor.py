@@ -15,7 +15,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.maps import flat_field_using_photutils, flat_field_using_pixell
-from sotrplib.maps.masks import mask_dustgal, mask_edge
+from sotrplib.maps.masks import mask_dustgal
 
 
 class MapPostprocessor(ABC):
@@ -45,31 +45,6 @@ class GalaxyMask(MapPostprocessor):
         input_map.flux *= galaxy_mask
         input_map.snr *= galaxy_mask
 
-        return input_map
-
-
-class EdgeMask(MapPostprocessor):
-    edge_width: AstroPydanticQuantity = AstroPydanticQuantity(10.0 * u.arcmin)
-
-    def __init__(
-        self,
-        edge_width: u.Quantity = u.Quantity(10.0, "arcmin"),
-        log: FilteringBoundLogger | None = None,
-    ):
-        self.edge_width = edge_width
-        self.log = log or structlog.get_logger()
-
-    def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        self.log = self.log.bind(func="EdgeMask.postprocess")
-        number_of_pixels = int(
-            self.edge_width.to_value(u.arcmin)
-            / input_map.map_resolution.to_value(u.arcmin)
-        )
-        self.log = self.log.bind(number_of_pixels=number_of_pixels)
-        edge_mask = mask_edge(imap=input_map.flux, pix_num=number_of_pixels)
-        input_map.flux *= edge_mask
-        input_map.snr *= edge_mask
-        self.log.info("EdgeMask.postprocess completed")
         return input_map
 
 

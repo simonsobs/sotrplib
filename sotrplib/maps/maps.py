@@ -97,16 +97,6 @@ def subtract_sources(
     return src_model
 
 
-## TODO: I think this bug has been fixed in pixell. need to confirm
-def enmap_map_union(map1, map2):
-    ## from enmap since enmap.zeros causes it to fail.
-    oshape, owcs = enmap.union_geometry([map1.geometry, map2.geometry])
-    omap = enmap.zeros(map1.shape[:-2] + oshape[-2:], owcs, map1.dtype)
-    omap.insert(map1)
-    omap.insert(map2, op=lambda a, b: a + b)
-    return omap
-
-
 def kappa_clean(
     kappa: np.ndarray,
     rho: np.ndarray,
@@ -212,9 +202,10 @@ def edge_map(imap: enmap.ndmap):
     from scipy.ndimage import binary_fill_holes
 
     edge = enmap.enmap(imap, imap.wcs)  # Create map geometry
-    edge[(np.abs(edge) > 0) & (np.isfinite(edge))] = 1  # Convert to binary
     edge[(np.abs(edge) == 0) | (~np.isfinite(edge))] = 0
-    edge = binary_fill_holes(edge)  # Fill holes
+    edge[(np.abs(edge) > 0) & (np.isfinite(edge))] = 1  # Convert to binary
+
+    edge = binary_fill_holes(edge)  # Fill holes for single missing pixels
 
     return enmap.enmap(edge.astype("ubyte"), imap.wcs)
 
