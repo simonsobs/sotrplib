@@ -195,7 +195,7 @@ def generate_config_json(
             "time_map_path": "{time_map_file}",
             "info_path": "{info_file}",
             "frequency": "{freq}",
-            "arr": "{arr}",
+            "array": "{arr}",
             "intensity_units": "uK"
         }}
     ],
