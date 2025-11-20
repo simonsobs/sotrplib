@@ -193,7 +193,9 @@ def get_sso_ephems_at_time(
     log.info(
         "solar_system.get_sso_ephems_at_time.ephemerides_computed",
         n_objects=len(sso_ephems),
-        time=time.isoformat(),
+        time=time.isoformat()
+        if isinstance(time, datetime)
+        else [t.isoformat() for t in time],
     )
 
     return sso_ephems
