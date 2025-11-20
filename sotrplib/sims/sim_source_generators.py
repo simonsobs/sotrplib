@@ -219,3 +219,13 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         log.info("source_simulation.gaussian.complete")
 
         return simulated_sources, catalog
+
+
+class SOCatSourceGenerator(SimulatedSourceGenerator):
+    """
+    A source generator that uses an existing source catalog in SOCat format.
+    We then generate simulated sources based on that catalog, so it can be
+    matched against the same catalog.
+    """
+
+    pass
