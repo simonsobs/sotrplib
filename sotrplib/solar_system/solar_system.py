@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,9 @@ from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
 from skyfield.data import mpc
 from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
+
+from sotrplib.maps.core import ProcessableMap
+from sotrplib.sources.sources import RegisteredSource
 
 
 def create_observer(
@@ -106,7 +109,7 @@ def generate_mpc_orbital_database(
     ## get mpc file designations and compare to our bright sso names
     mpc_file_des = set(minor_planets.designation.values)
     new_db = []
-    for name in tqdm(bright_sso_names):
+    for name in tqdm(bright_sso_names, desc="Generating MPC orbital database"):
         des = normalize_asteroid_name(name)
         # Skip if designation is not in the MPC table
         if des not in mpc_file_des:
@@ -181,7 +184,7 @@ def get_sso_ephems_at_time(
     ## then combine to get the SSO position as seen by the observer.
     ## see https://rhodesmill.org/skyfield/kepler-orbits.html
     sso_ephems = {}
-    for sso in tqdm(orbital_df.iloc):
+    for sso in tqdm(orbital_df.iloc, desc="Computing SSO ephemerides"):
         designation = sso["designation"]
         sso_pos = sun + mpc.mpcorb_orbit(sso, ts, GM_SUN)
         ra, dec, distance = observer_topo.at(skyfield_time).observe(sso_pos).radec()
@@ -199,5 +202,73 @@ def get_sso_ephems_at_time(
         if isinstance(time, datetime)
         else [t.isoformat() for t in time],
     )
+
+    return sso_ephems
+
+
+def get_sso_in_map(
+    input_map: ProcessableMap,
+    orbital_df: pd.DataFrame,
+    observer: wgs84.latlon,
+    interp_factor: int = 10,
+    log: FilteringBoundLogger | None = None,
+) -> list[RegisteredSource]:
+    """Get solar system objects that fall within the provided map.
+
+    Parameters
+    ----------
+    input_map : ProcessableMap
+        Map to check for solar system objects.
+    orbital_df : pd.DataFrame
+        DataFrame containing orbital parameters of solar system objects.
+    observer : wgs84.latlon
+        Observer location for ephemeris calculations.
+    cross_match_radius : u.Quantity[u.arcmin], optional
+        Radius for cross-matching objects with the map, by default 5 * u.arcmin
+    log : FilteringBoundLogger, optional
+        Logger for logging information, by default None.
+
+    Returns
+    -------
+    sso_ephems : dict
+        Dictionary mapping object designations to their ephemerides .
+    """
+    time_range = [
+        np.amin(input_map.time_first[input_map.time_first > 0]),
+        np.nanmean(input_map.time_mean[input_map.time_first > 0]),
+        np.nanmax(input_map.time_end),
+    ]
+    x = np.arange(len(time_range))
+    x_new = np.linspace(0, len(time_range) - 1, int(interp_factor * len(time_range)))
+    interp_time_range = np.interp(x_new, x, time_range)
+
+    sso_ephems = get_sso_ephems_at_time(
+        orbital_df,
+        time=[datetime.fromtimestamp(t, tz=timezone.utc) for t in interp_time_range],
+        observer=observer,
+        log=log,
+    )
+    sso_not_in_map = []
+    for sso in sso_ephems:
+        sso_coords = sso_ephems[sso]["pos"]
+        y, x = input_map.flux.wcs.world_to_pixel(sso_coords)
+        nx, ny = input_map.flux.shape
+        x, y = np.round(x).astype(int), np.round(y).astype(int)
+        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+        result = np.zeros_like(x, dtype=bool)
+        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
+            bool
+        )
+        if not np.any(result):
+            sso_not_in_map.append(sso)
+        sso_ephems[sso]["pos"] = sso_coords[result]
+        sso_ephems[sso]["distance"] = sso_ephems[sso]["distance"][result]
+        sso_ephems[sso]["time"] = [
+            datetime.fromtimestamp(t, tz=timezone.utc)
+            for t in interp_time_range[result]
+        ]
+
+    for sso in sso_not_in_map:
+        del sso_ephems[sso]
 
     return sso_ephems
