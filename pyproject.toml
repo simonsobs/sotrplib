@@ -23,6 +23,7 @@ dependencies = [
     "structlog",
     "scikit-image",
     "socat @ git+https://github.com/simonsobs/socat",
+    "skyfield",
     "astropydantic",
     "numpydantic",
     "mapcat",
