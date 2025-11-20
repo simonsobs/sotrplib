@@ -5,15 +5,17 @@ import numpy as np
 import pandas as pd
 import structlog
 from astropy import units as u
-from astropy.coordinates import SkyCoord
 from skyfield.api import load, wgs84
 from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
 from skyfield.data import mpc
+from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 
 def create_observer(
-    lat: u.Quantity[u.deg], lon: u.Quantity[u.deg], elev: u.Quantity[u.m]
+    lat: u.Quantity[u.deg] = -22.96098 * u.deg,
+    lon: u.Quantity[u.deg] = -67.7876 * u.deg,
+    elev: u.Quantity[u.m] = 5180 * u.m,
 ) -> wgs84.latlon:
     """Create a Skyfield observer for the Simons Observatory LAT site."""
     return wgs84.latlon(
@@ -60,7 +62,7 @@ def generate_mpc_orbital_database(
     asteroid_flux_estimates_file: str = "solar_system_objects.txt",
     output: str = "mpc_orbital_params_bright_asteroids.csv",
     flux_min: u.Quantity[u.mJy] = 10 * u.mJy,
-    log: structlog.FilterBoundLogger | None = None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     MPC orb catalog from https://www.minorplanetcenter.net/iau/MPCORB.html
@@ -139,33 +141,34 @@ def load_mpc_orbital_database(
 
 def get_sso_ephems_at_time(
     orbital_df: pd.DataFrame,
-    time: datetime,
+    time: datetime | list[datetime],
     observer: wgs84.latlon,
-    log: structlog.FilterBoundLogger | None = None,
-) -> dict[str, SkyCoord]:
+    log: FilteringBoundLogger | None = None,
+) -> dict:
     """Get ephemerides for solar system objects in the provided dataframe at the specified times.
 
     Parameters
     ----------
     df : pd.DataFrame
         DataFrame containing orbital parameters of solar system objects.
-    time : datetime
+    time : datetime | list[datetime]
         Time at which to compute the ephemerides. Should be timezone-aware.
     observer : wgs84.latlon
         Observer location for ephemeris calculations.
-    log : structlog.FilterBoundLogger, optional
+    log : FilteringBoundLogger, optional
         Logger for logging information, by default None.
 
     Returns
     -------
     dict[str, np.ndarray]
         Dictionary mapping object designations to their ephemerides (Skyfield position objects).
+        These have ra, dec and distance.
     """
     log = log or structlog.get_logger()
     log = log.bind(function="solar_system.get_sso_ephems_at_time")
 
     ts = load.timescale()
-    skyfield_time = ts.from_datetime(time)
+    skyfield_time = ts.from_datetimes(time if isinstance(time, list) else [time])
 
     eph = load("de440s.bsp")
     sun = eph["sun"]
@@ -180,7 +183,12 @@ def get_sso_ephems_at_time(
     for sso in tqdm(orbital_df.iloc):
         designation = sso["designation"]
         sso_pos = sun + mpc.mpcorb_orbit(sso, ts, GM_SUN)
-        sso_ephems[designation] = observer.at(skyfield_time).observe(sso_pos).radec()
+        ra, dec, distance = observer_topo.at(skyfield_time).observe(sso_pos).radec()
+
+        sso_ephems[designation] = {}
+        sso_ephems[designation]["ra"] = ra
+        sso_ephems[designation]["dec"] = dec
+        sso_ephems[designation]["distance"] = distance
 
     log.info(
         "solar_system.get_sso_ephems_at_time.ephemerides_computed",
