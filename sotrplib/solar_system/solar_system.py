@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import structlog
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from skyfield.api import load, wgs84
 from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
 from skyfield.data import mpc
@@ -186,9 +187,10 @@ def get_sso_ephems_at_time(
         ra, dec, distance = observer_topo.at(skyfield_time).observe(sso_pos).radec()
 
         sso_ephems[designation] = {}
-        sso_ephems[designation]["ra"] = ra
-        sso_ephems[designation]["dec"] = dec
-        sso_ephems[designation]["distance"] = distance
+        sso_ephems[designation]["pos"] = SkyCoord(
+            ra=ra.degrees * u.deg, dec=dec.degrees * u.deg
+        )
+        sso_ephems[designation]["distance"] = distance.km * u.km
 
     log.info(
         "solar_system.get_sso_ephems_at_time.ephemerides_computed",

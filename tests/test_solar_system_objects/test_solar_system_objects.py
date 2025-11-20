@@ -18,8 +18,8 @@ def test_get_sso_ephems_at_time_single(orbital_params):
     # Check results
     assert "(1) Ceres" in sso_ephems
     assert "(2) Pallas" in sso_ephems
-    assert "ra" in sso_ephems["(1) Ceres"]
-    assert "dec" in sso_ephems["(1) Ceres"]
+    assert "pos" in sso_ephems["(1) Ceres"]
+    assert len(sso_ephems["(1) Ceres"]["pos"]) == 1
 
 
 def test_get_sso_ephems_at_time_multiple(orbital_params):
@@ -38,5 +38,5 @@ def test_get_sso_ephems_at_time_multiple(orbital_params):
     # Check results
     assert "(1) Ceres" in sso_ephems
     assert "(2) Pallas" in sso_ephems
-    assert "ra" in sso_ephems["(1) Ceres"]
-    assert "dec" in sso_ephems["(1) Ceres"]
+    assert "pos" in sso_ephems["(1) Ceres"]
+    assert len(sso_ephems["(1) Ceres"]["pos"]) == 2
