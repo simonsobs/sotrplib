@@ -2,17 +2,14 @@
 Use a 'mock' database using SOCat
 """
 
-from pathlib import Path
 from typing import Literal
 
 import numpy as np
 import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.io import fits
 from pixell import utils as pixell_utils
-from socat.client.core import ClientBase
-from socat.client.mock import Client as SOCatMockClient
+from socat.client.settings import SOCatClientSettings
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -23,16 +20,10 @@ from .core import SourceCatalog
 
 
 class SOCatWrapper:
-    """
-    Helper that wraps SOCat and converts its internal functions
-    into those reading and producing RegisteredSource objects.
-    """
-
-    def __init__(
-        self, log: FilteringBoundLogger | None = None, catalog: ClientBase | None = None
-    ):
-        self.catalog = catalog or SOCatMockClient()
+    def __init__(self, log: FilteringBoundLogger | None = None):
         self.log = log or structlog.get_logger()
+        self.settings = SOCatClientSettings()
+        self.catalog = self.settings.client
         self.log.info("socat.initialized")
 
     def add_source(self, source: RegisteredSource):
@@ -66,24 +57,30 @@ class SOCatWrapper:
     def source_from_id(self, source_id) -> RegisteredSource:
         return self._socat_source_to_registered(self.catalog.get_source(id=source_id))
 
-    def get_sources_in_map(self, mask_map: ProcessableMap) -> list[RegisteredSource]:
+    def filter_source_list_to_within_map(
+        self, mask_map: ProcessableMap, sources: list[RegisteredSource]
+    ) -> list[RegisteredSource]:
         """
-        Get the sources that fall within the region observed by the input map.
-        Can be a weights map or a boolean mask map.
+        Given a list of sources, filter to only those within the input map.
         """
-        all_sources = self.get_sources_in_box()
-        if len(all_sources) == 0:
+        if len(sources) == 0:
             return []
-        coords = SkyCoord(
-            ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
-        )
+        coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
         y, x = mask_map.flux.wcs.world_to_pixel(coords)
         nx, ny = mask_map.flux.shape
         x, y = np.round(x).astype(int), np.round(y).astype(int)
         inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
         result = np.zeros_like(x, dtype=bool)
         result[inside] = np.nan_to_num(mask_map.flux[x[inside], y[inside]]).astype(bool)
-        return [all_sources[i] for i, valid in enumerate(result) if valid]
+        return [sources[i] for i, valid in enumerate(result) if valid]
+
+    def get_forced_photometry_sources(
+        self, minimum_flux: u.Quantity
+    ) -> list[RegisteredSource]:
+        return [
+            self._socat_source_to_registered(x)
+            for x in self.catalog.forced_photometry_sources(min_flux=minimum_flux)
+        ]
 
     ## TODO: need to update for boxes which need to be broken in two.
     def get_sources_in_box(self, box: list[SkyCoord] | None = None):
@@ -136,17 +133,19 @@ class SOCatWrapper:
         return filtered
 
 
-class SOCatEmptyCatalog(SourceCatalog):
+class SOCat(SourceCatalog):
     """
     An empty catalog, using SOCat under the hood.
     """
 
     def __init__(
         self,
+        flux_lower_limit: u.Quantity = 0.03 * u.Jy,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or structlog.get_logger()
         self.core = SOCatWrapper(log=self.log)
+        self.flux_lower_limit = flux_lower_limit
 
     def add_sources(self, sources: list[RegisteredSource]):
         for source in sources:
@@ -164,137 +163,13 @@ class SOCatEmptyCatalog(SourceCatalog):
         return self.core.get_sources_in_box(box=None)
 
     def forced_photometry_sources(self, mask_map: ProcessableMap):
-        return [
-            x
-            for x in self.get_sources_in_map(mask_map)
-            if x.source_id in self.valid_fluxes
-        ]
-
-    def source_by_id(self, id) -> RegisteredSource:
-        return self.core.source_from_id(id=id)
-
-    def crossmatch(
-        self,
-        ra: u.Quantity,
-        dec: u.Quantity,
-        radius: u.Quantity,
-        method: Literal["closest", "all"],
-    ) -> list[CrossMatch]:
-        """
-        Get sources within radius of the catalog.
-        """
-        ra_min = ra - 2.0 * radius
-        ra_max = ra + 2.0 * radius
-        dec_min = dec - 2.0 * radius
-        dec_max = dec + 2.0 * radius
-        close_sources = self.get_sources_in_box(
-            [
-                SkyCoord(ra=ra_min, dec=dec_min),
-                SkyCoord(ra=ra_max, dec=dec_max),
-            ],
+        base_source_list = self.core.get_forced_photometry_sources(
+            minimum_flux=self.flux_lower_limit
         )
-        ra_dec_array = np.asarray(
-            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in close_sources]
+        return self.core.filter_source_list_to_within_map(
+            mask_map=mask_map,
+            sources=base_source_list,
         )
-        if len(ra_dec_array) == 0:
-            return []
-        matches = pixell_utils.crossmatch(
-            pos1=[[ra.to("deg").value, dec.to("deg").value]],
-            pos2=ra_dec_array,
-            rmax=radius.to("deg").value,
-            mode=method,
-            coords="radec",
-        )
-        sources = [close_sources[y] for _, y in matches]
-        return [
-            CrossMatch(
-                source_id=s.source_id,
-                probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
-                flux=s.flux,
-                err_flux=s.err_flux,
-                frequency=s.frequency,
-                catalog_name=s.catalog_name,
-                catalog_idx=y,
-                alternate_names=s.alternate_names,
-                ra=s.ra,
-                dec=s.dec,
-            )
-            for y, s in enumerate(sources)
-        ]
-
-
-class SOCatFITSCatalog(SourceCatalog):
-    """
-    A catalog, using SOCat under the hood, that reads a FITS file from disk.
-    """
-
-    def __init__(
-        self,
-        path: Path | None = None,
-        hdu: int = 1,
-        flux_lower_limit: u.Quantity = 0.01 * u.Jy,
-        log: FilteringBoundLogger | None = None,
-    ):
-        self.log = log or structlog.get_logger()
-        self.path = path
-        self.hdu = hdu
-        self.flux_lower_limit = flux_lower_limit
-        self.core = SOCatWrapper(log=self.log)
-        self.valid_fluxes = set()
-        self._read_fits_file()
-
-    def _read_fits_file(self):
-        if self.path is None:
-            self.log.info("socat_fits.initialized_empty")
-            return
-
-        data = fits.open(self.path)[self.hdu]
-
-        # TODO: Remove this when it's part of SOCat
-        for _, row in enumerate(data.data):
-            flux = row["fluxJy"] * u.Jy
-            if flux < self.flux_lower_limit:
-                continue
-            ra = (row["raDeg"] if row["raDeg"] > 0.0 else row["raDeg"] + 360.0) * u.deg
-            dec = row["decDeg"] * u.deg
-            name = row["name"]
-            # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
-            self.core.catalog.create(
-                position=SkyCoord(ra=ra, dec=dec),
-                flux=flux,
-                name=name,
-            )
-
-            if flux > self.flux_lower_limit:
-                self.valid_fluxes.add(name)
-
-        self.log.info("socat_fits.loaded", n_sources=len(self.valid_fluxes))
-
-    def add_sources(self, sources: list[RegisteredSource]):
-        for source in sources:
-            self.core.add_source(source=source)
-            if source.flux >= self.flux_lower_limit:
-                self.valid_fluxes.add(source.source_id)
-
-    def get_sources_in_box(
-        self, box: list[SkyCoord] | None = None
-    ) -> list[RegisteredSource]:
-        return self.core.get_sources_in_box(box=box)
-
-    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        return self.core.get_sources_in_map(mask_map=input_map)
-
-    def get_all_sources(self) -> list[RegisteredSource]:
-        sources = self.core.get_sources_in_box(box=None)
-        return sources
-
-    def forced_photometry_sources(self, mask_map: ProcessableMap):
-        return [
-            x
-            for x in self.get_sources_in_map(mask_map)
-            if x.source_id in self.valid_fluxes
-        ]
 
     def source_by_id(self, id) -> RegisteredSource:
         return self.core.source_from_id(id=id)
