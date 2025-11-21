@@ -206,6 +206,12 @@ def generate_config_json(
             "flux_lower_limit": "{flux_low_limit}"
         }}
     ],
+    "sso_catalogs": [
+        {{
+            "catalog_type": "sso",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+        }}
+    ],
     "pointing_provider": {{
         "photometry_type": "scipy_pointing",
         "thumbnail_half_width": "{thumbnail_half_width}",

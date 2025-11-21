@@ -53,6 +53,7 @@ def test_basic_pipeline_scipy(
     runner = PrefectRunner(
         maps=maps,
         source_catalogs=[],
+        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,
