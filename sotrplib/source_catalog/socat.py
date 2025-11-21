@@ -17,7 +17,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
-from sotrplib.utils.utils import angular_separation
+from sotrplib.utils.utils import angular_separation, radec_to_str_name
 
 from .core import SourceCatalog
 
@@ -259,6 +259,132 @@ class SOCatFITSCatalog(SourceCatalog):
             ra = (row["raDeg"] if row["raDeg"] > 0.0 else row["raDeg"] + 360.0) * u.deg
             dec = row["decDeg"] * u.deg
             name = row["name"]
+            # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
+            self.core.catalog.create(
+                position=SkyCoord(ra=ra, dec=dec),
+                flux=flux,
+                name=name,
+            )
+
+            if flux > self.flux_lower_limit:
+                self.valid_fluxes.add(name)
+
+        self.log.info("socat_fits.loaded", n_sources=len(self.valid_fluxes))
+
+    def add_sources(self, sources: list[RegisteredSource]):
+        for source in sources:
+            self.core.add_source(source=source)
+            if source.flux >= self.flux_lower_limit:
+                self.valid_fluxes.add(source.source_id)
+
+    def get_sources_in_box(
+        self, box: list[SkyCoord] | None = None
+    ) -> list[RegisteredSource]:
+        return self.core.get_sources_in_box(box=box)
+
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        return self.core.get_sources_in_map(mask_map=input_map)
+
+    def get_all_sources(self) -> list[RegisteredSource]:
+        sources = self.core.get_sources_in_box(box=None)
+        return sources
+
+    def forced_photometry_sources(self, mask_map: ProcessableMap):
+        return [
+            x
+            for x in self.get_sources_in_map(mask_map)
+            if x.source_id in self.valid_fluxes
+        ]
+
+    def source_by_id(self, id) -> RegisteredSource:
+        return self.core.source_from_id(id=id)
+
+    def crossmatch(
+        self,
+        ra: u.Quantity,
+        dec: u.Quantity,
+        radius: u.Quantity,
+        method: Literal["closest", "all"],
+    ) -> list[CrossMatch]:
+        """
+        Get sources within radius of the catalog.
+        """
+        ra_min = ra - 2.0 * radius
+        ra_max = ra + 2.0 * radius
+        dec_min = dec - 2.0 * radius
+        dec_max = dec + 2.0 * radius
+        close_sources = self.get_sources_in_box(
+            [
+                SkyCoord(ra=ra_min, dec=dec_min),
+                SkyCoord(ra=ra_max, dec=dec_max),
+            ],
+        )
+        ra_dec_array = np.asarray(
+            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in close_sources]
+        )
+        if len(ra_dec_array) == 0:
+            return []
+        matches = pixell_utils.crossmatch(
+            pos1=[[ra.to("deg").value, dec.to("deg").value]],
+            pos2=ra_dec_array,
+            rmax=radius.to("deg").value,
+            mode=method,
+            coords="radec",
+        )
+        sources = [close_sources[y] for _, y in matches]
+        return [
+            CrossMatch(
+                source_id=s.source_id,
+                probability=1.0 / len(sources),  ##TODO fix probability calculation
+                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
+                flux=s.flux,
+                err_flux=s.err_flux,
+                frequency=s.frequency,
+                catalog_name=s.catalog_name,
+                catalog_idx=y,
+                alternate_names=s.alternate_names,
+                ra=s.ra,
+                dec=s.dec,
+            )
+            for y, s in enumerate(sources)
+        ]
+
+
+class SOCatWebskyFITSCatalog(SourceCatalog):
+    """
+    A catalog, using SOCat under the hood, that reads a websky FITS file from disk.
+    """
+
+    def __init__(
+        self,
+        path: Path | None = None,
+        hdu: int = 1,
+        flux_lower_limit: u.Quantity = 0.01 * u.Jy,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or structlog.get_logger()
+        self.path = path
+        self.hdu = hdu
+        self.flux_lower_limit = flux_lower_limit
+        self.core = SOCatWrapper(log=self.log)
+        self.valid_fluxes = set()
+        self._read_fits_file()
+
+    def _read_fits_file(self):
+        if self.path is None:
+            self.log.info("socat_fits.initialized_empty")
+            return
+
+        data = fits.open(self.path)[self.hdu]
+
+        # TODO: Remove this when it's part of SOCat
+        for _, row in enumerate(data.data):
+            flux = row[0] * u.Jy
+            if flux < self.flux_lower_limit:
+                continue
+            ra = (row[1] if row[1] > 0.0 else row[1] + 360.0) * u.deg
+            dec = row[2] * u.deg
+            name = radec_to_str_name(ra.to_value(u.deg), dec.to_value(u.deg))
             # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
             self.core.catalog.create(
                 position=SkyCoord(ra=ra, dec=dec),
