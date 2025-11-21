@@ -142,8 +142,8 @@ P.add_argument(
     "--bands",
     action="store",
     nargs="+",
-    default=["f090", "f150", "f220"],
-    help="Bands to analyze, default is f090,f150,f220 but can also includ f030 or f040. ",
+    default=["f090", "f150", "f220", "f280"],
+    help="Bands to analyze, default is f090,f150,f220,f280. ",
 )
 
 args = P.parse_args()
