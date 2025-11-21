@@ -31,6 +31,7 @@ class BaseRunner:
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
+    sso_catalogs: list[SourceCatalog] | None
     preprocessors: list[MapPreprocessor] | None
     pointing_provider: ForcedPhotometryProvider | None
     pointing_residual: MapPointingOffset | None
@@ -48,6 +49,7 @@ class BaseRunner:
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
+        sso_catalogs: list[SourceCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
         pointing_provider: ForcedPhotometryProvider | None,
         pointing_residual: MapPointingOffset | None,
@@ -63,6 +65,7 @@ class BaseRunner:
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
+        self.sso_catalogs = sso_catalogs or []
         self.preprocessors = preprocessors or []
         self.pointing_provider = pointing_provider or EmptyForcedPhotometry()
         self.pointing_residual = pointing_residual or EmptyPointingOffset()
@@ -166,6 +169,14 @@ class BaseRunner:
             pointing_sources=pointing_sources
         )
 
+        sso_sources = []
+        for sso_catalog in self.sso_catalogs:
+            sso_sources.extend(
+                self.profilable_task(sso_catalog.get_sources_in_map)(
+                    input_map=input_map
+                )
+            )
+
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
         )(
@@ -185,7 +196,7 @@ class BaseRunner:
 
         sifter_result = self.profilable_task(self.sifter.sift)(
             sources=blind_sources,
-            catalogs=self.source_catalogs,
+            catalogs=self.source_catalogs + self.sso_catalogs,
             input_map=source_subtracted_map,
         )
 

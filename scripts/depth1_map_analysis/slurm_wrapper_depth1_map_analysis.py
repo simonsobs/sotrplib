@@ -142,8 +142,8 @@ P.add_argument(
     "--bands",
     action="store",
     nargs="+",
-    default=["f090", "f150", "f220"],
-    help="Bands to analyze, default is f090,f150,f220 but can also includ f030 or f040. ",
+    default=["f090", "f150", "f220", "f280"],
+    help="Bands to analyze, default is f090,f150,f220,f280. ",
 )
 
 args = P.parse_args()
@@ -204,6 +204,12 @@ def generate_config_json(
             "catalog_type": "fits",
             "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
             "flux_lower_limit": "{flux_low_limit}"
+        }}
+    ],
+    "sso_catalogs": [
+        {{
+            "catalog_type": "sso",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
         }}
     ],
     "pointing_provider": {{
