@@ -257,7 +257,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         For information on the flare parameters, see the `GaussianTransientSourceGenerator` class.
         """
 
-        if self.fraction_fixed + fraction_gaussian > 1.0:
+        if (fraction_fixed + fraction_gaussian) > 1.0:
             raise ValueError(
                 "Incompatible fractions for fixed and gaussian sources in SOCat generation"
             )
@@ -274,15 +274,21 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
     def generate(self, box: tuple[SkyCoord] | None = None):
         socat_client_settings = SOCatClientSettings()
-        socat_client = socat_client_settings.client()
+        socat_client = socat_client_settings.client
+
+        if box is None:
+            box = [
+                SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
+                SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
+            ]
 
         sources = socat_client.get_box(lower_left=box[0], upper_right=box[1])
         random.shuffle(sources)
 
         number_of_sources = len(sources)
 
-        number_of_fixed = int(number_of_sources) * self.fraction_fixed
-        number_of_flares = int(number_of_sources) * self.fraction_guassian
+        number_of_fixed = int(number_of_sources * self.fraction_fixed)
+        number_of_flares = int(number_of_sources * self.fraction_guassian)
 
         all_sources = [
             RegisteredSource(
@@ -290,11 +296,20 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                 dec=source.position.dec,
                 frequency=90.0 * u.GHz,
                 flux=source.flux if source.flux is not None else u.Quantity(0.0, "Jy"),
-                source_id=source.id,
+                source_id=str(source.id),
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
+                crossmatches=[
+                    CrossMatch(
+                        ra=source.position.ra,
+                        dec=source.position.dec,
+                        source_id=str(source.id),
+                        catalog_name="socat",
+                        alternate_names=[source.name] if source.name else [],
+                    )
+                ],
             )
             for source in sources[: number_of_fixed + number_of_flares]
         ]
