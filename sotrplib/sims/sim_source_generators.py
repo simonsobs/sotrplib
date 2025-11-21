@@ -6,10 +6,11 @@ the random generation of those sources.
 
 import random
 from abc import ABC
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from pydantic import AwareDatetime
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -37,7 +38,7 @@ class SimulatedSourceGenerator(ABC):
         self,
         input_map: ProcessableMap | None = None,
         box: tuple[SkyCoord] | None = None,
-        time_range: tuple[datetime | None, datetime | None] | None = None,
+        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ) -> tuple[list[SimulatedSource], SourceCatalog]:
         """
         Generate the simulated sources, optionally within a map or a box on the sky.
@@ -73,7 +74,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         self,
         input_map: ProcessableMap | None = None,
         box: tuple[SkyCoord] | None = None,
-        time_range: tuple[datetime | None, datetime | None] | None = None,
+        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ):
         if box is None and input_map is None:
             box = [
@@ -136,8 +137,8 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
     def __init__(
         self,
-        flare_earliest_time: datetime | None,
-        flare_latest_time: datetime | None,
+        flare_earliest_time: AwareDatetime | None,
+        flare_latest_time: AwareDatetime | None,
         flare_width_shortest: timedelta,
         flare_width_longest: timedelta,
         peak_amplitude_minimum: u.Quantity,
@@ -160,7 +161,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         self,
         input_map: ProcessableMap | None = None,
         box: tuple[SkyCoord] | None = None,
-        time_range: tuple[datetime | None, datetime | None] | None = None,
+        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ):
         if box is None and input_map is None:
             box = [

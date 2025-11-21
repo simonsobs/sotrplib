@@ -14,6 +14,7 @@ from astropy.units import Unit
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pixell.enmap import ndmap
+from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
 
@@ -64,11 +65,11 @@ class ProcessableMap(ABC):
 
     observation_length: timedelta
     "Total length of the observation"
-    observation_start: datetime
+    observation_start: AwareDatetime
     "Start time of the observation"
-    observation_end: datetime
+    observation_end: AwareDatetime
     "End time of the observation"
-    observation_time: datetime
+    observation_time: AwareDatetime
     "Rough 'middle' time of the observation"
 
     flux_units: Unit
@@ -270,8 +271,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self,
         intensity_filename: Path,
         inverse_variance_filename: Path,
-        start_time: datetime,
-        end_time: datetime,
+        start_time: AwareDatetime,
+        end_time: AwareDatetime,
         box: AstroPydanticQuantity[u.deg] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
@@ -529,8 +530,8 @@ class RhoAndKappaMap(ProcessableMap):
         self,
         rho_filename: Path,
         kappa_filename: Path,
-        start_time: datetime,
-        end_time: datetime,
+        start_time: AwareDatetime,
+        end_time: AwareDatetime,
         box: AstroPydanticQuantity[u.deg] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
@@ -679,8 +680,8 @@ class CoaddedMap(ProcessableMap):
         time_mean: ndmap | None = None,
         time_end: ndmap | None = None,
         map_depth: ndmap | None = None,
-        start_time: datetime | None = None,
-        end_time: datetime | None = None,
+        start_time: AwareDatetime | None = None,
+        end_time: AwareDatetime | None = None,
         input_map_times: list[float] | None = None,
         frequency: str | None = None,
         array: str | None = None,

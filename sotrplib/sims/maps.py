@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 import astropy.units as u
@@ -8,7 +7,7 @@ from astropy.units import Quantity
 from astropydantic import AstroPydanticQuantity
 from numpy.typing import ArrayLike
 from pixell import enmap
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -32,8 +31,8 @@ class SimulationParameters(BaseModel):
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
-        observation_start: datetime,
-        observation_end: datetime,
+        observation_start: AwareDatetime,
+        observation_end: AwareDatetime,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
@@ -141,8 +140,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
         self,
         resolution: Quantity,
         geometry_source_map: Path,
-        start_time: datetime | None,
-        end_time: datetime | None,
+        start_time: AwareDatetime | None,
+        end_time: AwareDatetime | None,
         time_map_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,

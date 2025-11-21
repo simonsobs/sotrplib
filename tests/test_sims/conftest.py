@@ -131,8 +131,9 @@ def dummy_map(sim_map_params, ones_map_set):
         rho_filename=ones_map_set["rho"],
         kappa_filename=ones_map_set["kappa"],
         time_filename=ones_map_set["time"],
-        start_time=datetime.datetime.now() - 1 * datetime.timedelta(days=1),
-        end_time=datetime.datetime.now(),
+        start_time=datetime.datetime.now(tz=datetime.UTC)
+        - 1 * datetime.timedelta(days=1),
+        end_time=datetime.datetime.now(tz=datetime.UTC),
     )
     DummyMap.build()
     DummyMap.add_time_offset(DummyMap.observation_start)

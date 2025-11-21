@@ -2,8 +2,8 @@
     "maps": [
         {
             "map_type": "simulated",
-            "observation_start": "2025-01-01",
-            "observation_end": "2025-01-02",
+            "observation_start": "2025-01-01T00:00:00Z",
+            "observation_end": "2025-01-02T00:00:00Z",
             "simulation_parameters": {
                 "center_ra": "90.0 deg",
                 "center_dec": "0.0 deg",
