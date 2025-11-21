@@ -1,0 +1,146 @@
+{
+    "maps": [
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-01",
+            "observation_end": "2025-01-02",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-02",
+            "observation_end": "2025-01-03",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-03",
+            "observation_end": "2025-01-04",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-04",
+            "observation_end": "2025-01-05",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-05",
+            "observation_end": "2025-01-06",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-06",
+            "observation_end": "2025-01-07",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-07",
+            "observation_end": "2025-01-08",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-08",
+            "observation_end": "2025-01-09",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-09",
+            "observation_end": "2025-01-10",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-10",
+            "observation_end": "2025-01-11",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        }
+    ],
+    "source_simulators": [
+        {
+            "simulation_type": "socat",
+            "fraction_fixed": 0.9,
+            "fraction_gaussian": 0.1,
+            "flare_earliest_time": "2025-01-01",
+            "flare_latest_time": "2025-01-04",
+            "flare_width_shortest": "01:00:00",
+            "flare_width_longest": "12:00:00"
+        }
+    ],
+    "source_injector": {
+        "injector_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy"
+    },
+    "source_subtractor": {
+        "subtractor_type": "photutils"
+    },
+    "blind_search": {
+        "search_type": "photutils"
+    },
+    "sifter": {
+        "sifter_type": "simple"
+    },
+    "outputs": [
+        {
+            "output_type": "lightserve",
+            "hostname": "http://localhost:8001/"
+        }
+    ]
+}

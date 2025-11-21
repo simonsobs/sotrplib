@@ -56,31 +56,61 @@ class LightServeOutput(SourceOutput):
         total_uploads = 0
 
         for source in forced_photometry_candidates + sifter_result.source_candidates:
-            response = client.put(
-                "/api/v1/observations/",
-                json={
-                    "flux_measurement": FluxMeasurement(
-                        band_name=source.frequency,
-                        source_id=source.crossmatches[0].source_id,
-                        time=source.observation_mean_time,
-                        ra=source.ra.to_value("deg"),
-                        dec=source.dec.to_value("deg"),
-                        ra_uncertainty=source.err_ra.to_value("deg"),
-                        dec_uncertainty=source.err_dec.to_value("deg"),
-                        i_flux=source.flux.to_value("mJy"),
-                        i_uncertainty=source.flux_uncertainty.to_value("mJy"),
-                        extra={
-                            "map_id": input_map.map_id,
-                        },
-                    ).model_dump_json(),
-                    "cutout": Cutout(
-                        data=source.cutout_data.data.tolist(),
-                        time=source.observation_mean_time,
-                        units=input_map.flux_units.to_string(),
-                        band_name=source.frequency,
-                        flux_id=None,
-                    ).model_dump_json(),
+            if not source.crossmatches:
+                self.log.warning(
+                    "lightserve.output.skipping_source_no_crossmatch",
+                    ra=source.ra.to_value("deg"),
+                    dec=source.dec.to_value("deg"),
+                )
+                continue
+
+            fm = FluxMeasurement(
+                band_name="f090",
+                source_id=(
+                    source.crossmatches[0].source_id if source.crossmatches else -1
+                ),
+                time=source.observation_mean_time.to_datetime().strftime(
+                    "%Y-%m-%dT%H:%M:%S.%fZ"
+                ),
+                ra=source.ra.to_value("deg"),
+                dec=source.dec.to_value("deg"),
+                ra_uncertainty=(
+                    source.err_ra.to_value("deg") if source.err_ra is not None else 0.0
+                ),
+                dec_uncertainty=(
+                    source.err_dec.to_value("deg")
+                    if source.err_dec is not None
+                    else 0.0
+                ),
+                i_flux=source.flux.to_value("mJy") if source.flux is not None else 0.0,
+                i_uncertainty=(
+                    source.err_flux.to_value("mJy")
+                    if source.err_flux is not None
+                    else 0.0
+                ),
+                extra={
+                    "map_id": input_map.map_id,
                 },
+            ).model_dump_json()
+
+            cut = (
+                Cutout(
+                    data=source.thumbnail.tolist(),
+                    time=source.observation_mean_time.to_datetime().strftime(
+                        "%Y-%m-%dT%H:%M:%S.%fZ"
+                    ),
+                    units=input_map.flux_units.to_string(),
+                    band_name="f090",
+                    flux_id=None,
+                ).model_dump_json()
+                if source.thumbnail is not None
+                else "null"
+            )
+
+            response = client.put(
+                "/observations/",
+                content="{" + f'"flux_measurement":{fm},"cutout":{cut}' + "}",
+                headers={"Content-Type": "application/json"},
             )
 
             if not response.is_success:
@@ -90,6 +120,12 @@ class LightServeOutput(SourceOutput):
                     response_text=response.text,
                 )
             else:
+                self.log.info(
+                    "lightserve.output.success",
+                    crossmatches=source.crossmatches,
+                    ra=source.ra.to_value("deg"),
+                    dec=source.dec.to_value("deg"),
+                )
                 successful_uploads += 1
 
             total_uploads += 1

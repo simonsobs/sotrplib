@@ -316,9 +316,16 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
         fixed_sources = all_sources[:number_of_fixed]
 
+        fixed_sources = [
+            FixedSimulatedSource(
+                position=SkyCoord(ra=source.ra, dec=source.dec), flux=source.flux
+            )
+            for source in all_sources[:number_of_fixed]
+        ]
+
         flare_sources = [
             GaussianTransientSimulatedSource(
-                position=source.position,
+                position=SkyCoord(source.position),
                 peak_time=random_datetime(
                     self.flare_earliest_time, self.flare_latest_time
                 ),

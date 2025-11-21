@@ -8,10 +8,10 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.outputs.core import (
     CutoutImageOutput,
     JSONSerializer,
-    LightServeOutput,
     PickleSerializer,
     SourceOutput,
 )
+from sotrplib.outputs.lightserve import LightServeOutput
 
 
 class OutputConfig(BaseModel, ABC):
