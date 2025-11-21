@@ -238,6 +238,7 @@ def convert_outstruct_to_measured_source_objects(
         k = 2.0 * np.sqrt(2.0 * np.log(2.0))  # ≈ 2.354820045
         ms.fwhm_ra = k * sigma_ra
         ms.fwhm_dec = k * sigma_dec
+
         outlist.append(ms)
 
     return outlist
