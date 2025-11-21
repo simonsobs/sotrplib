@@ -8,6 +8,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.outputs.core import (
     CutoutImageOutput,
     JSONSerializer,
+    LightServeOutput,
     PickleSerializer,
     SourceOutput,
 )
@@ -45,4 +46,24 @@ class CutoutImageOutputConfig(OutputConfig):
         return CutoutImageOutput(directory=self.directory)
 
 
-AllOutputConfigTypes = PickleOutputConfig | JSONOutputConfig | CutoutImageOutputConfig
+class LightServeOutputConfig(OutputConfig):
+    output_type: Literal["lightserve"] = "lightserve"
+    hostname: str
+    token_tag: str | None = None
+    identity_server: str | None = None
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> SourceOutput:
+        return LightServeOutput(
+            hostname=self.hostname,
+            token_tag=self.token_tag,
+            identity_server=self.identity_server,
+            log=log,
+        )
+
+
+AllOutputConfigTypes = (
+    PickleOutputConfig
+    | JSONOutputConfig
+    | CutoutImageOutputConfig
+    | LightServeOutputConfig
+)
