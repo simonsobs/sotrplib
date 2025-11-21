@@ -148,6 +148,15 @@ def get_sso_ephems_at_time(
     time: datetime | list[datetime],
     observer: wgs84.latlon,
     log: FilteringBoundLogger | None = None,
+    planets: list[str] = [
+        "Mercury",
+        "Venus",
+        "Mars",
+        "Jupiter",
+        "Saturn",
+        "Uranus",
+        "Neptune",
+    ],
 ) -> dict:
     """Get ephemerides for solar system objects in the provided dataframe at the specified times.
 
@@ -161,6 +170,8 @@ def get_sso_ephems_at_time(
         Observer location for ephemeris calculations.
     log : FilteringBoundLogger, optional
         Logger for logging information, by default None.
+    planets: list[str] = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"]
+        List of planet names to include in the ephemerides.
 
     Returns
     -------
@@ -194,6 +205,13 @@ def get_sso_ephems_at_time(
             ra=ra.degrees * u.deg, dec=dec.degrees * u.deg
         )
         sso_ephems[designation]["distance"] = distance.km * u.km
+
+    for p in planets:
+        planet_eph = eph[f"{p} Barycenter"]
+        ra, dec, distance = observer_topo.at(skyfield_time).observe(planet_eph).radec()
+        sso_ephems[p] = {}
+        sso_ephems[p]["pos"] = SkyCoord(ra=ra.degrees * u.deg, dec=dec.degrees * u.deg)
+        sso_ephems[p]["distance"] = distance.km * u.km
 
     log.info(
         "solar_system.get_sso_ephems_at_time.ephemerides_computed",
