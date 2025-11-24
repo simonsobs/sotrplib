@@ -14,31 +14,6 @@ from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import Scipy2DGaussianFitter
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 
-sample_setup = {
-    "maps": [
-        {
-            "map_type": "simulated",
-            "observation_start": "2025-01-01",
-            "observation_end": "2025-01-02",
-        }
-    ],
-    "source_simulators": [
-        {
-            "simulation_type": "fixed",
-            "number": 8,
-            "min_flux": "3.0 Jy",
-            "max_flux": "10.0 Jy",
-            "catalog_fraction": 0.5,
-        }
-    ],
-    "source_injector": {"injector_type": "photutils"},
-    "forced_photometry": {"photometry_type": "scipy"},
-    "source_subtractor": {"subtractor_type": "photutils"},
-    "blind_search": {"search_type": "photutils"},
-    "sifter": {"sifter_type": "simple"},
-    "outputs": [{"output_type": "pickle", "directory": "."}],
-}
-
 
 def test_basic_pipeline_scipy(
     tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
