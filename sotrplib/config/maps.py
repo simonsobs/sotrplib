@@ -3,13 +3,12 @@ Map configuration
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Literal
 
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
@@ -45,8 +44,8 @@ class MapGeneratorConfig(BaseModel, ABC):
 
 class SimulatedMapConfig(MapConfig):
     map_type: Literal["simulated"] = "simulated"
-    observation_start: datetime
-    observation_end: datetime
+    observation_start: AwareDatetime
+    observation_end: AwareDatetime
     frequency: str = "f090"
     array: str = "pa5"
     simulation_parameters: SimulationParameters = Field(
@@ -68,8 +67,8 @@ class SimulatedMapFromGeometryConfig(MapConfig):
     map_type: Literal["simulated_geometry"] = "simulated_geometry"
     resolution: AstroPydanticQuantity[u.arcmin]
     geometry_source_map: Path
-    observation_start: datetime | None
-    observation_end: datetime | None
+    observation_start: AwareDatetime | None
+    observation_end: AwareDatetime | None
     time_map_filename: Path | None
     frequency: str = "f090"
     array: str = "pa5"
@@ -111,8 +110,8 @@ class RhoKappaMapConfig(MapConfig):
     frequency: str | None = "f090"
     array: str | None = "pa5"
     instrument: str | None = None
-    observation_start: datetime | None = None
-    observation_end: datetime | None = None
+    observation_start: AwareDatetime | None = None
+    observation_end: AwareDatetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
     flux_units: AstroPydanticUnit = u.Unit("Jy")
 
@@ -142,8 +141,8 @@ class InverseVarianceMapConfig(MapConfig):
     frequency: str | None = "f090"
     array: str | None = "pa5"
     instrument: str | None = None
-    observation_start: datetime | None = None
-    observation_end: datetime | None = None
+    observation_start: AwareDatetime | None = None
+    observation_end: AwareDatetime | None = None
     box: AstroPydanticQuantity[u.deg] | None = None
     intensity_units: AstroPydanticUnit = u.Unit("K")
 
