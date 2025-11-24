@@ -27,8 +27,9 @@ map_sim_params = SimulationParameters(
 def empty_map():
     map = SimulatedMap(
         simulation_parameters=map_sim_params,
-        observation_start=datetime.datetime.now(),
-        observation_end=datetime.datetime.now() + datetime.timedelta(hours=8),
+        observation_start=datetime.datetime.now(tz=datetime.UTC),
+        observation_end=datetime.datetime.now(tz=datetime.UTC)
+        + datetime.timedelta(hours=8),
     )
 
     map.build()
