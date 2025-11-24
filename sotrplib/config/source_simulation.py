@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Literal
 
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sims.sim_source_generators import (
@@ -51,8 +51,8 @@ class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
     peak_amplitude_minimum: AstroPydanticQuantity[u.Jy]
     peak_amplitude_maximum: AstroPydanticQuantity[u.Jy]
     number: int
-    flare_earliest_time: datetime | None = None
-    flare_latest_time: datetime | None = None
+    flare_earliest_time: AwareDatetime | None = None
+    flare_latest_time: AwareDatetime | None = None
     catalog_fraction: float = 1.0
 
     def to_simulator(
