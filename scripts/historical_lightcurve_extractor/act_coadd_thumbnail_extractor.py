@@ -140,7 +140,10 @@ for fi in range(nfile):
                 "freq": freq,
                 "maptype": "rho",
                 "Id": f"{source_name}_{map_name.split('_AA')[0]}_{freq}_rho",
-                **{col: additional_info[col][i] for col in args.additional_columns},
+                **{
+                    col: additional_info[col][inside][i]
+                    for col in args.additional_columns
+                },
             }
         )
         thumbnail_maps.append(kappa_thumb)
@@ -153,11 +156,14 @@ for fi in range(nfile):
                 "freq": freq,
                 "maptype": "kappa",
                 "Id": f"{source_name}_{map_name.split('_AA')[0]}_{freq}_kappa",
-                **{col: additional_info[col][i] for col in args.additional_columns},
+                **{
+                    col: additional_info[col][inside][i]
+                    for col in args.additional_columns
+                },
             }
         )
 
-        for i in range(len(thumbnail_maps)):
+        for tm in range(len(thumbnail_maps)):
             enmap.write_hdf(
                 args.odir
                 + "/"
@@ -165,7 +171,7 @@ for fi in range(nfile):
                 + "_"
                 + map_name
                 + "_thumbnail.hdf5",
-                thumbnail_maps[i],
-                address=thumbnail_map_info[i]["Id"],
-                extra=thumbnail_map_info[i],
+                thumbnail_maps[tm],
+                address=thumbnail_map_info[tm]["Id"],
+                extra=thumbnail_map_info[tm],
             )
