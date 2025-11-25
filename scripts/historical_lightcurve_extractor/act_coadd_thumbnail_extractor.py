@@ -12,7 +12,11 @@ from sotrplib.maps.maps import get_thumbnail
 from sotrplib.utils.utils import get_frequency, get_fwhm, radec_to_str_name
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--ps-csv", default=None, help="Point source catalog CSV file.")
+parser.add_argument(
+    "--ps-csv",
+    default=None,
+    help="Point source catalog CSV file. Must have ra, dec columns.",
+)
 parser.add_argument(
     "--additional-columns",
     default=[],
@@ -20,13 +24,11 @@ parser.add_argument(
     nargs="+",
     help="Additional columns to read from the ps-csv.",
 )
-parser.add_argument("--odir", default="./")
-parser.add_argument("--scratch-dir", default="./tmp/")
+parser.add_argument("--odir", default="./", help="Output directory for thumbnails.")
 parser.add_argument(
     "--coadd-dir",
     default="/scratch/gpfs/SIMONSOBS/users/amfoster/act/ACT_coadd_maps/",
 )
-
 parser.add_argument(
     "--thumbnail-radius",
     action="store",
@@ -34,9 +36,6 @@ parser.add_argument(
     default=0.2,
     help="Thumbnail width, in deg.",
 )
-parser.add_argument("-T", "--tol", type=float, default=1e-4)
-parser.add_argument("-S", "--fitlim", type=float, default=0)
-
 args = parser.parse_args()
 
 
