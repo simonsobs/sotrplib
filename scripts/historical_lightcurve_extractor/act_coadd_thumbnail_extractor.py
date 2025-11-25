@@ -1,8 +1,6 @@
 import argparse
 import os
-import sys
 from glob import glob
-from pathlib import Path
 
 import numpy as np
 from pixell import enmap
@@ -41,9 +39,6 @@ parser.add_argument("-S", "--fitlim", type=float, default=0)
 
 args = parser.parse_args()
 
-
-sotrp_root = Path(__file__).resolve().parents[2]
-sys.path.append(str(sotrp_root))
 
 # Get our input map files
 mapfiles = sorted(glob(args.coadd_dir + "*map.fits"))
