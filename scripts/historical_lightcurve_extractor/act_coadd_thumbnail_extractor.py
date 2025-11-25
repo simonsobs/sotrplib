@@ -34,7 +34,7 @@ parser.add_argument(
     action="store",
     type=float,
     default=0.2,
-    help="Thumbnail width, in deg.",
+    help="Thumbnail half-width, in deg.",
 )
 args = parser.parse_args()
 
