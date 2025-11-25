@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from pixell import enmap
 from pixell import utils as pixell_utils
+from tqdm import tqdm
 
 from sotrplib.filters.filters import matched_filter_depth1_map
 from sotrplib.maps.maps import get_thumbnail
@@ -27,9 +28,7 @@ parser.add_argument(
     "--coadd-dir",
     default="/scratch/gpfs/SIMONSOBS/users/amfoster/act/ACT_coadd_maps/",
 )
-parser.add_argument(
-    "--save-thumbnails", action="store_true", help="Cut out and save thumbnails."
-)
+
 parser.add_argument(
     "--thumbnail-radius",
     action="store",
@@ -37,8 +36,6 @@ parser.add_argument(
     default=0.2,
     help="Thumbnail width, in deg.",
 )
-parser.add_argument("-o", "--output-thumbnail-fname", default="tmp_thumbnails.hdf5")
-
 parser.add_argument("-T", "--tol", type=float, default=1e-4)
 parser.add_argument("-S", "--fitlim", type=float, default=0)
 
@@ -72,81 +69,103 @@ if args.ps_csv is not None:
         additional_info[col] = ps_df[col].values
 
 
-thumbnail_maps = []
-thumbnail_map_info = []
 for fi in range(nfile):
     mapfile = mapfiles[fi]
     ivarfile = "_ivar.fits".join(mapfile.split("_map.fits"))
-    name = os.path.basename(mapfile).split("_map.fits")[0]
-    freq = name.split("_")[-1]
+    map_name = os.path.basename(mapfile).split("_map.fits")[0]
+    freq = map_name.split("_")[-1]
 
     # Check if any sources are inside our geometry
     shape, wcs = enmap.read_map_geometry(mapfile)
     pixs = enmap.sky2pix(shape, wcs, poss)
     inside = np.where(np.all((pixs.T >= 0) & (pixs.T < shape[-2:]), -1))[0]
     if len(inside) == 0:
-        print("No sources in %s, skipping." % name)
+        print("No sources in %s, skipping." % map_name)
         continue
 
-    print("Processing %s with %4d srcs" % (name, len(inside)))
+    print("Processing %s with %4d srcs" % (map_name, len(inside)))
 
     ra = np.asarray(ps_ra)[inside]
     dec = np.asarray(ps_dec)[inside]
 
-    rho_thumbs = []
-    kappa_thumbs = []
-    m = enmap.read_map(mapfile, sel=0)
-    ivar = enmap.read_map(ivarfile, sel=0)
-    for i in range(len(ra)):
-        m_thumb = get_thumbnail(m, ra[i], dec[i], 2 * args.thumbnail_radius)
-        ivar_thumb = get_thumbnail(ivar, ra[i], dec[i], 2 * args.thumbnail_radius)
+    for i in tqdm(range(len(ra))):
+        thumbnail_maps = []
+        thumbnail_map_info = []
+        box = (
+            np.array(
+                [
+                    [
+                        dec[i] - 2 * args.thumbnail_radius,
+                        ra[i] - 2 * args.thumbnail_radius,
+                    ],
+                    [
+                        dec[i] + 2 * args.thumbnail_radius,
+                        ra[i] + 2 * args.thumbnail_radius,
+                    ],
+                ]
+            )
+            * pixell_utils.degree
+        )
+
+        m = enmap.read_map(mapfile, sel=0, box=box) * 1e-6  # convert to uK
+        ivar = enmap.read_map(ivarfile, sel=0, box=box) * 1e12  # convert to uK^-2
+
+        if np.all(ivar == 0) or np.isnan(ivar).all():
+            print(f"Source at RA: {ra[i]}, DEC: {dec[i]} has no coverage, skipping.")
+            continue
+
         r, k = matched_filter_depth1_map(
-            m_thumb,
-            ivar_thumb,
+            m,
+            ivar,
             band_center=get_frequency(freq),
             beam_fwhm=get_fwhm(freq),
         )
-        rho_thumbs.append(get_thumbnail(r, ra[i], dec[i], args.thumbnail_radius))
-        kappa_thumbs.append(get_thumbnail(k, ra[i], dec[i], args.thumbnail_radius))
 
-    del m, ivar
+        ## get smaller thumb to remove edge effects.
+        ## thumb centered on 0,0 after get_thumbnail
+        rho_thumb = get_thumbnail(r, ra[i], dec[i], args.thumbnail_radius)
+        kappa_thumb = get_thumbnail(k, ra[i], dec[i], args.thumbnail_radius)
 
-    for i in range(len(ra)):
+        del r, k
         source_name = radec_to_str_name(ra[i], dec[i])
         ## save rho and kappa thumbnails with metadata specifying which one
-        if args.save_thumbnails:
-            thumbnail_maps.append(rho_thumbs[i])
-            thumbnail_map_info.append(
-                {
-                    "ra": ra[i],
-                    "dec": dec[i],
-                    "name": source_name,
-                    "arr": name.split("_AA")[0],
-                    "freq": freq,
-                    "maptype": "rho",
-                    "Id": f"{source_name}_{name.split('_AA')[0]}_{freq}_rho",
-                    **{col: additional_info[col][i] for col in args.additional_columns},
-                }
-            )
-            thumbnail_maps.append(kappa_thumbs[i])
-            thumbnail_map_info.append(
-                {
-                    "ra": ra[i],
-                    "dec": dec[i],
-                    "name": source_name,
-                    "arr": name.split("_AA")[0],
-                    "freq": freq,
-                    "maptype": "kappa",
-                    "Id": f"{source_name}_{name.split('_AA')[0]}_{freq}_kappa",
-                    **{col: additional_info[col][i] for col in args.additional_columns},
-                }
-            )
 
-if args.save_thumbnails:
-    for i in range(len(thumbnail_maps)):
-        enmap.write_hdf(
-            args.odir + "/" + args.output_thumbnail_fname,
-            thumbnail_maps[i],
-            address=thumbnail_map_info[i]["Id"],
-            extra=thumbnail_map_info[i],
+        thumbnail_maps.append(rho_thumb)
+        thumbnail_map_info.append(
+            {
+                "ra": ra[i],
+                "dec": dec[i],
+                "name": source_name,
+                "arr": map_name.split("_AA")[0],
+                "freq": freq,
+                "maptype": "rho",
+                "Id": f"{source_name}_{map_name.split('_AA')[0]}_{freq}_rho",
+                **{col: additional_info[col][i] for col in args.additional_columns},
+            }
         )
+        thumbnail_maps.append(kappa_thumb)
+        thumbnail_map_info.append(
+            {
+                "ra": ra[i],
+                "dec": dec[i],
+                "name": source_name,
+                "arr": map_name.split("_AA")[0],
+                "freq": freq,
+                "maptype": "kappa",
+                "Id": f"{source_name}_{map_name.split('_AA')[0]}_{freq}_kappa",
+                **{col: additional_info[col][i] for col in args.additional_columns},
+            }
+        )
+
+        for i in range(len(thumbnail_maps)):
+            enmap.write_hdf(
+                args.odir
+                + "/"
+                + source_name.split(" ")[-1]
+                + "_"
+                + map_name
+                + "_thumbnail.hdf5",
+                thumbnail_maps[i],
+                address=thumbnail_map_info[i]["Id"],
+                extra=thumbnail_map_info[i],
+            )
