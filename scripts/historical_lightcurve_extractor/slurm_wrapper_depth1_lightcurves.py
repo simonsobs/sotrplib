@@ -143,6 +143,14 @@ def get_soconda_module():
     return SOCONDA_MODULE
 
 
+def get_timestamp(event_time):
+    try:
+        ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+    except ValueError:
+        ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S").timestamp()
+    return ts
+
+
 def generate_slurm_header(
     jobname, groupname, cpu_per_task, run_dir, slurm_out_dir, soconda_version
 ):
@@ -239,12 +247,7 @@ for i in tqdm(range(len(datelist))):
         mid_unix_date = date + "50000"
         for j in range(len(event_times)):
             if (
-                abs(
-                    datetime.datetime.strptime(
-                        event_times[j], "%Y-%m-%d %H:%M:%S.%f"
-                    ).timestamp()
-                    - float(mid_unix_date)
-                )
+                abs(get_timestamp(event_times[j]) - float(mid_unix_date))
                 < args.time_window * 86400
             ):
                 ras_in_daterange.append(args.ra[j])
