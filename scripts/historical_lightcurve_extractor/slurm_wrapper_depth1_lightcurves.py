@@ -18,7 +18,7 @@ P.add_argument(
     action="store",
     default=[],
     nargs="+",
-    help="Observations to analyze, i.e. 1573251992.1573261318.ar5 ... not implemented yet... ",
+    help="Observations to analyze, globs the data directory for these obsids. If none given, uses all obsids in data-dir.",
 )
 
 P.add_argument(
@@ -36,7 +36,7 @@ P.add_argument(
     "--ps-csv",
     action="store",
     default=None,
-    help="Path to the point source CSV file containing columns ra,dec which are in decimal degrees.",
+    help="Path to the point source CSV file containing columns ra,dec which are in decimal degrees. if utc_time column is present, will use that to select observations within time-window days of the event. Required to be in UTC time format YYYY-MM-DD HH:MM:SS[.ffffff]",
 )
 
 P.add_argument(
@@ -173,6 +173,9 @@ cd {run_dir}
 
 
 nserial = args.ncores * args.nserial
+
+if args.ra and args.dec and args.ps_csv:
+    raise ValueError("Cannot provide both ra/dec and ps_csv. Choose one.")
 
 datelist = []
 if len(args.obsids) == 0:

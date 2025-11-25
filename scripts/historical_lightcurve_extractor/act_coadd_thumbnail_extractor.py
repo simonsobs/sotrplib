@@ -17,6 +17,11 @@ Can run this script to extract thumbnails of matched-filtered coadd maps around 
 CSV must have 'ra' and 'dec' columns in degrees.
 Additional columns of the CSV can be stored as metadata in the output HDF5 files by using the --additional-columns flag.
 
+
+DR 6 coadd maps can be found in /scratch/gpfs/ACT/data/act_dr6/dr6.02/maps/published/
+but I am using dr4dr6 coadd where possible from lambda.
+https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/act_dr6.02_maps_info.html
+
 """
 
 parser = argparse.ArgumentParser()
@@ -26,6 +31,11 @@ parser.add_argument(
     help="Point source catalog CSV file. Must have ra, dec columns.",
 )
 parser.add_argument(
+    "--coadd-dir",
+    default="/scratch/gpfs/SIMONSOBS/users/amfoster/act/ACT_coadd_maps/",
+    help="Directory containing coadd map files.",
+)
+parser.add_argument(
     "--additional-columns",
     default=[],
     type=str,
@@ -33,11 +43,7 @@ parser.add_argument(
     help="Additional columns to read from the ps-csv.",
 )
 parser.add_argument("--odir", default="./", help="Output directory for thumbnails.")
-parser.add_argument(
-    "--coadd-dir",
-    default="/scratch/gpfs/SIMONSOBS/users/amfoster/act/ACT_coadd_maps/",
-    help="Directory containing coadd map files.",
-)
+
 parser.add_argument(
     "--thumbnail-radius",
     action="store",
@@ -165,12 +171,7 @@ for fi in range(nfile):
 
         for tm in range(len(thumbnail_maps)):
             enmap.write_hdf(
-                args.odir
-                + "/"
-                + source_name.split(" ")[-1]
-                + "_"
-                + map_name
-                + "_thumbnail.hdf5",
+                f"{args.odir}/{source_name.split(' ')[-1]}_{map_name}_thumbnail.hdf5",
                 thumbnail_maps[tm],
                 address=thumbnail_map_info[tm]["Id"],
                 extra=thumbnail_map_info[tm],
