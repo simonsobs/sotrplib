@@ -1,4 +1,5 @@
 import argparse as ap
+import datetime
 import os
 from getpass import getuser
 from glob import glob
@@ -17,7 +18,7 @@ P.add_argument(
     action="store",
     default=[],
     nargs="+",
-    help="Observations to analyze, i.e. 1573251992.1573261318.ar5 ... not implemented yet... ",
+    help="Observations to analyze, globs the data directory for these obsids. If none given, uses all obsids in data-dir.",
 )
 
 P.add_argument(
@@ -25,7 +26,7 @@ P.add_argument(
     action="store",
     default=5.0,
     type=float,
-    help="Time around conjunction in which to return data, days.",
+    help="Time around conjunction in which to return data, days. If utc_time in ps_csv this is +- around that time. If obsids given, this is ignored.",
 )
 P.add_argument("--ra", nargs="+", default=[], help="Source RA (deg).")
 
@@ -35,7 +36,7 @@ P.add_argument(
     "--ps-csv",
     action="store",
     default=None,
-    help="Path to the point source CSV file containing columns ra,dec which are in decimal degrees.",
+    help="Path to the point source CSV file containing columns ra,dec which are in decimal degrees. if utc_time column is present, will use that to select observations within time-window days of the event. Required to be in UTC time format YYYY-MM-DD HH:MM:SS[.ffffff]",
 )
 
 P.add_argument(
@@ -142,6 +143,14 @@ def get_soconda_module():
     return SOCONDA_MODULE
 
 
+def get_timestamp(event_time):
+    try:
+        ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+    except ValueError:
+        ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S").timestamp()
+    return ts
+
+
 def generate_slurm_header(
     jobname, groupname, cpu_per_task, run_dir, slurm_out_dir, soconda_version
 ):
@@ -164,6 +173,9 @@ cd {run_dir}
 
 
 nserial = args.ncores * args.nserial
+
+if args.ra and args.dec and args.ps_csv:
+    raise ValueError("Cannot provide both ra/dec and ps_csv. Choose one.")
 
 datelist = []
 if len(args.obsids) == 0:
@@ -215,13 +227,15 @@ slurm_text = generate_slurm_header(
     args.slurm_out_dir,
     args.soconda_version,
 )
-
+event_times = []
 if args.ps_csv is not None:
     import pandas as pd
 
     ps_df = pd.read_csv(args.ps_csv).rename(columns=str.lower)
     args.ra += [str(r) for r in ps_df["ra"].values]
     args.dec += [str(d) for d in ps_df["dec"].values]
+    if "utc_time" in ps_df.columns:
+        event_times += [str(t) for t in ps_df["utc_time"].values]
     print(f"Loaded {len(ps_df['ra'].values)} sources from {args.ps_csv}")
 
 for i in tqdm(range(len(datelist))):
@@ -229,7 +243,24 @@ for i in tqdm(range(len(datelist))):
     globstr = args.data_dir + date + "/depth1*rho.fits"
     lc_outfile = date + "_tmp_lightcurve.txt"
     thumb_outfile = date + "_tmp_thumbnail.hdf5"
-    slurm_text += f"""srun --overlap python {args.script_name} --ra {" ".join(args.ra)} --dec {" ".join(args.dec)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} -o {lc_outfile} --output-thumbnail-fname {thumb_outfile} --thumbnail-radius {args.thumbnail_radius}{" --save-thumbnails" if args.save_thumbnails else ""} &\n sleep 1 \n"""
+    ras_in_daterange = []
+    decs_in_daterange = []
+    if event_times:
+        # date is first 5 digits of unix time
+        mid_unix_date = date + "50000"
+        for j in range(len(event_times)):
+            if (
+                abs(get_timestamp(event_times[j]) - float(mid_unix_date))
+                < args.time_window * 86400
+            ):
+                ras_in_daterange.append(args.ra[j])
+                decs_in_daterange.append(args.dec[j])
+    else:
+        ras_in_daterange = args.ra
+        decs_in_daterange = args.dec
+    if len(ras_in_daterange) == 0:
+        continue
+    slurm_text += f"""srun --overlap python {args.script_name} --ra {" ".join(ras_in_daterange)} --dec {" ".join(decs_in_daterange)} --rho-maps {globstr} --odir {args.out_dir} --scratch-dir {user_scratch} -o {lc_outfile} --output-thumbnail-fname {thumb_outfile} --thumbnail-radius {args.thumbnail_radius}{" --save-thumbnails" if args.save_thumbnails else ""} &\n sleep 1 \n"""
 
     if i % args.ncores == 0 and i > 0:
         slurm_text += "wait\n"
