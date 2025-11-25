@@ -3,6 +3,7 @@ import os
 from glob import glob
 
 import numpy as np
+import pandas as pd
 from pixell import enmap
 from pixell import utils as pixell_utils
 from tqdm import tqdm
@@ -21,7 +22,7 @@ Additional columns of the CSV can be stored as metadata in the output HDF5 files
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--ps-csv",
-    default=None,
+    required=True,
     help="Point source catalog CSV file. Must have ra, dec columns.",
 )
 parser.add_argument(
@@ -53,22 +54,20 @@ print(mapfiles)
 nfile = len(mapfiles)
 
 
-## read in ps-csv if provided
+## read in ps-csv
 additional_info = {}
-if args.ps_csv is not None:
-    import pandas as pd
-
-    ps_df = pd.read_csv(args.ps_csv)
-    ps_ra = ps_df["ra"].values
-    ps_dec = ps_df["dec"].values
-    poss = np.array(
-        [
-            [d * pixell_utils.degree for d in ps_dec],
-            [r * pixell_utils.degree for r in ps_ra],
-        ]
-    )
-    for col in args.additional_columns:
-        additional_info[col] = ps_df[col].values
+ps_df = pd.read_csv(args.ps_csv)
+ps_ra = ps_df["ra"].values
+ps_dec = ps_df["dec"].values
+poss = np.array(
+    [
+        [d * pixell_utils.degree for d in ps_dec],
+        [r * pixell_utils.degree for r in ps_ra],
+    ]
+)
+## read in additional columns
+for col in args.additional_columns:
+    additional_info[col] = ps_df[col].values
 
 
 for fi in range(nfile):
@@ -93,6 +92,7 @@ for fi in range(nfile):
     for i in tqdm(range(len(ra))):
         thumbnail_maps = []
         thumbnail_map_info = []
+        ## make box 2x radius to allow better noise estimation
         box = (
             np.array(
                 [
@@ -124,14 +124,12 @@ for fi in range(nfile):
         )
 
         ## get smaller thumb to remove edge effects.
-        ## thumb centered on 0,0 after get_thumbnail
         rho_thumb = get_thumbnail(r, ra[i], dec[i], args.thumbnail_radius)
         kappa_thumb = get_thumbnail(k, ra[i], dec[i], args.thumbnail_radius)
 
-        del r, k
+        del r, k, m, ivar
         source_name = radec_to_str_name(ra[i], dec[i])
         ## save rho and kappa thumbnails with metadata specifying which one
-
         thumbnail_maps.append(rho_thumb)
         thumbnail_map_info.append(
             {
