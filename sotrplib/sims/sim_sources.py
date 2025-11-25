@@ -1,20 +1,21 @@
 import math
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
+from pydantic import AwareDatetime
 
 
 class SimulatedSource(ABC):
     @abstractmethod
-    def position(self, time: datetime) -> SkyCoord:
+    def position(self, time: AwareDatetime) -> SkyCoord:
         return
 
     @abstractmethod
-    def flux(self, time: datetime) -> u.Quantity:
+    def flux(self, time: AwareDatetime) -> u.Quantity:
         return
 
 
@@ -40,7 +41,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
     def __init__(
         self,
         position: SkyCoord,
-        peak_time: datetime,
+        peak_time: AwareDatetime,
         flare_width: timedelta,
         peak_amplitude: u.Quantity = 0.0 * u.Jy,
     ):
@@ -62,10 +63,10 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: datetime) -> SkyCoord:
+    def position(self, time: AwareDatetime) -> SkyCoord:
         return self._position
 
-    def flux(self, time: datetime) -> u.Quantity:
+    def flux(self, time: AwareDatetime) -> u.Quantity:
         delta_time = time - self.peak_time
 
         sigma = self.flare_width / (2.0 * math.sqrt(2.0 * math.log(2.0)))

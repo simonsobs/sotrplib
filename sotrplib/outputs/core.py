@@ -120,7 +120,7 @@ class CutoutImageOutput(SourceOutput):
             filename = self.directory / f"forced_photometry_{source.source_id}.png"
             plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 
-        for source in (
+        for ii, source in enumerate(
             sifter_result.source_candidates + sifter_result.transient_candidates
         ):
             cutout = source.thumbnail
@@ -128,7 +128,12 @@ class CutoutImageOutput(SourceOutput):
             if cutout is None:
                 continue
 
-            filename = self.directory / f"blind_search_{source.source_id}.png"
+            if source.crossmatches:
+                id = source.crossmatches[0].source_id
+                filename = self.directory / f"blind_search_matched_{id}.png"
+            else:
+                filename = self.directory / f"blind_search_{ii}.png"
+
             plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 
         return
