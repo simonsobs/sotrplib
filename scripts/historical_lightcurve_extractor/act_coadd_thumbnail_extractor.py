@@ -11,6 +11,13 @@ from sotrplib.filters.filters import matched_filter_depth1_map
 from sotrplib.maps.maps import get_thumbnail
 from sotrplib.utils.utils import get_frequency, get_fwhm, radec_to_str_name
 
+"""
+Can run this script to extract thumbnails of matched-filtered coadd maps around point sources listed in a CSV file.
+CSV must have 'ra' and 'dec' columns in degrees.
+Additional columns of the CSV can be stored as metadata in the output HDF5 files by using the --additional-columns flag.
+
+"""
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--ps-csv",
@@ -28,6 +35,7 @@ parser.add_argument("--odir", default="./", help="Output directory for thumbnail
 parser.add_argument(
     "--coadd-dir",
     default="/scratch/gpfs/SIMONSOBS/users/amfoster/act/ACT_coadd_maps/",
+    help="Directory containing coadd map files.",
 )
 parser.add_argument(
     "--thumbnail-radius",
