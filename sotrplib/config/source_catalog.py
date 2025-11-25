@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.source_catalog.socat import SOCatFITSCatalog, SOCatWebskyFITSCatalog
+from sotrplib.source_catalog.socat import SOCatFITSCatalog, SOCatWebskyCatalog
 
 
 class SourceCatalogConfig(BaseModel, ABC):
@@ -46,14 +46,14 @@ class SOCatFITSCatalogConfig(SourceCatalogConfig):
         )
 
 
-class SOCatFITSWebskyCatalogConfig(SourceCatalogConfig):
+class SOCatWebskyCatalogConfig(SourceCatalogConfig):
     catalog_type: Literal["websky"] = "websky"
     path: Path | None = None
     hdu: int = 1
     flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
 
-    def to_source_catalog(self, log=None) -> SOCatWebskyFITSCatalog:
-        return SOCatWebskyFITSCatalog(
+    def to_source_catalog(self, log=None) -> SOCatWebskyCatalog:
+        return SOCatWebskyCatalog(
             path=self.path,
             hdu=self.hdu,
             flux_lower_limit=self.flux_lower_limit,
@@ -62,5 +62,5 @@ class SOCatFITSWebskyCatalogConfig(SourceCatalogConfig):
 
 
 AllSourceCatalogConfigTypes = (
-    EmptySourceCatalogConfig | SOCatFITSCatalogConfig | SOCatFITSWebskyCatalogConfig
+    EmptySourceCatalogConfig | SOCatFITSCatalogConfig | SOCatWebskyCatalogConfig
 )
