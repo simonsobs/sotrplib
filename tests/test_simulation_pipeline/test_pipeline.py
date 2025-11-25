@@ -47,6 +47,7 @@ def test_basic_pipeline_scipy(
     runner = PipelineRunner(
         maps=[new_map, new_map],
         source_catalogs=[source_cat],
+        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,
