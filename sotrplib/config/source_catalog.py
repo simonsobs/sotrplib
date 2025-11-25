@@ -47,7 +47,7 @@ class SOCatFITSCatalogConfig(SourceCatalogConfig):
 
 
 class SOCatFITSWebskyCatalogConfig(SourceCatalogConfig):
-    catalog_type: Literal["websky_fits"] = "websky_fits"
+    catalog_type: Literal["websky"] = "websky"
     path: Path | None = None
     hdu: int = 1
     flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy

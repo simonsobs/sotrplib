@@ -368,7 +368,41 @@ class SOCatWebskyFITSCatalog(SourceCatalog):
         self.flux_lower_limit = flux_lower_limit
         self.core = SOCatWrapper(log=self.log)
         self.valid_fluxes = set()
-        self._read_fits_file()
+        if ".csv" in str(self.path):
+            self._read_csv_file()
+        elif ".fits" in str(self.path):
+            self._read_fits_file()
+        else:
+            self.log.error("socat_websky.unsupported_file_format", path=self.path)
+
+    def _read_csv_file(self):
+        import pandas as pd
+
+        if self.path is None:
+            self.log.info("socat_csv.initialized_empty")
+            return
+
+        data = pd.read_csv(self.path)
+        data.columns = data.columns.str.strip().str.lstrip("# #").str.strip()
+        for _, row in data.iterrows():
+            flux = row["flux(Jy)"] * u.Jy
+            if flux < self.flux_lower_limit:
+                continue
+            ra = (
+                row["RA(deg)"] if row["RA(deg)"] > 0.0 else row["RA(deg)"] + 360.0
+            ) * u.deg
+            dec = row["dec(deg)"] * u.deg
+            name = radec_to_str_name(ra.to_value(u.deg), dec.to_value(u.deg))
+            self.core.catalog.create(
+                position=SkyCoord(ra=ra, dec=dec),
+                flux=flux,
+                name=name,
+            )
+
+            if flux > self.flux_lower_limit:
+                self.valid_fluxes.add(name)
+
+        self.log.info("socat_csv.loaded", n_sources=len(self.valid_fluxes))
 
     def _read_fits_file(self):
         if self.path is None:
@@ -379,11 +413,13 @@ class SOCatWebskyFITSCatalog(SourceCatalog):
 
         # TODO: Remove this when it's part of SOCat
         for _, row in enumerate(data.data):
+            print(row)
             flux = row[0] * u.Jy
             if flux < self.flux_lower_limit:
                 continue
-            ra = (row[1] if row[1] > 0.0 else row[1] + 360.0) * u.deg
-            dec = row[2] * u.deg
+            ra = (row[1] if row[1] > 0.0 else row[1] + 2 * np.pi) * u.rad
+            dec = row[2]
+            print(ra, dec)
             name = radec_to_str_name(ra.to_value(u.deg), dec.to_value(u.deg))
             # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
             self.core.catalog.create(
