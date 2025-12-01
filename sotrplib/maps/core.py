@@ -665,47 +665,32 @@ Need to update this to use individual time maps and calcaulte the time_start, ti
 """
 
 
-class CoaddedMap(ProcessableMap):
-    """
-    A set of FITS maps read from disk suitable for coadding.
-
-    res in radian
-    """
+class CoaddedRhoKappaMap(ProcessableMap):
+    """ """
 
     def __init__(
         self,
-        source_maps: list[ProcessableMap],
-        log: FilteringBoundLogger | None = None,
-        time_start: ndmap | None = None,
-        time_mean: ndmap | None = None,
-        time_end: ndmap | None = None,
+        input_maps: list[ProcessableMap],
         map_depth: ndmap | None = None,
-        start_time: AwareDatetime | None = None,
-        end_time: AwareDatetime | None = None,
-        input_map_times: list[float] | None = None,
-        frequency: str | None = None,
-        array: str | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
-        self.source_maps = source_maps
-        self.log = log or structlog.get_logger()
-        self.initialized = False
-
-        self.time_start = time_start
-        self.time_mean = time_mean
-        self.time_end = time_end
+        self.input_maps = input_maps
         self.map_depth = map_depth
-        self.observation_start = start_time
-        self.observation_end = end_time
-        self.input_map_times = input_map_times or []
-        self.frequency = frequency
-        self.array = array
+
+        self.input_map_times: list[float] = []
+        self.time_end = None
+        self.time_first = None
+        self.time_mean = None
+        self.observation_start = None
+        self.observation_end = None
+
+        self.log = log or structlog.get_logger()
 
     def build(self):
-        base_map = self.source_maps[0]
+        base_map = self.input_maps[0]
         base_map.build()
-        base_map.finalize()
         self.log.info(
-            "coaddedmap.base_map.built",
+            "coaddedrhokappamap.base_map.built",
             map_start_time=base_map.observation_start,
             map_end_time=base_map.observation_end,
             map_frequency=base_map.frequency,
@@ -720,22 +705,24 @@ class CoaddedMap(ProcessableMap):
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
         self.initialized = True
-        self.log.info("coaddedmap.coadd.initialized")
+        self.log.info("coaddedrhokappamap.coadd.initialized")
 
-        if len(self.source_maps) == 1:
-            self.log.warning("coaddedmap.coadd.single_map_warning", n_maps_coadded=1)
+        if len(self.input_maps) == 1:
+            self.log.warning(
+                "coaddedrhokappamap.coadd.single_map_warning", n_maps_coadded=1
+            )
             self.n_maps = 1
             return
 
-        for sourcemap in self.source_maps[1:]:
+        for sourcemap in self.input_maps[1:]:
             sourcemap.build()
-            sourcemap.finalize()
             self.log.info(
-                "coaddedmap.source_map.built",
+                "coaddedrhokappamap.source_map.built",
                 map_start_time=sourcemap.observation_start,
                 map_end_time=sourcemap.observation_end,
                 map_frequency=sourcemap.frequency,
             )
+            ## will want to do a weighted sum using inverse variance.
             self.rho = enmap.map_union(
                 self.rho,
                 sourcemap.rho,
@@ -757,20 +744,19 @@ class CoaddedMap(ProcessableMap):
             coadd_start_time=self.observation_start,
             coadd_end_time=self.observation_end,
         )
+
         return
 
     def get_time_and_mapdepth(self, new_map):
         if isinstance(new_map.time_mean, ndmap):
             if isinstance(self.time_mean, type(None)):
-                self.time_mean = (
-                    new_map.time_mean.copy() + new_map.start_time.timestamp()
-                )
+                self.time_mean = new_map.time_mean.copy()
                 self.map_depth = new_map.time_mean.copy()
                 self.map_depth[self.map_depth > 0] = 1.0
             else:
                 self.time_mean = enmap.map_union(
                     self.time_mean,
-                    new_map.time_mean + new_map.start_time.timestamp(),
+                    new_map.time_mean,
                 )
                 new_map_depth = new_map.time_mean.copy()
                 new_map_depth[new_map_depth > 0] = 1.0
@@ -784,20 +770,27 @@ class CoaddedMap(ProcessableMap):
 
     def update_map_times(self, new_map):
         if self.observation_start is None:
-            self.observation_start = new_map.start_time.timestamp()
+            self.observation_start = new_map.observation_start.timestamp()
         else:
             self.observation_start = min(
-                self.observation_start, new_map.start_time.timestamp()
+                self.observation_start, new_map.observation_start.timestamp()
             )
         if self.observation_end is None:
-            self.observation_end = new_map.end_time.timestamp()
+            self.observation_end = new_map.observation_end.timestamp()
         else:
             self.observation_end = max(
-                self.observation_end, new_map.end_time.timestamp()
+                self.observation_end, new_map.observation_end.timestamp()
             )
         self.input_map_times += [
-            0.5 * (new_map.start_time.timestamp() + new_map.end_time.timestamp())
+            0.5
+            * (
+                new_map.observation_start.timestamp()
+                + new_map.observation_end.timestamp()
+            )
         ]
+
+    def get_pixel_times(self, pix: tuple[int, int]):
+        return super().get_pixel_times(pix)
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -813,4 +806,5 @@ class CoaddedMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        self.time_mean /= self.map_depth
         super().finalize()

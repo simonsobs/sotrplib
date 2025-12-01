@@ -28,6 +28,7 @@ __all__ = ["BaseRunner"]
 
 class BaseRunner:
     maps: Iterable[ProcessableMap]
+    coadders: Iterable[ProcessableMap] | None
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
@@ -45,6 +46,7 @@ class BaseRunner:
     def __init__(
         self,
         maps: Iterable[ProcessableMap],
+        coadders: Iterable[ProcessableMap] | None,
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
@@ -60,6 +62,7 @@ class BaseRunner:
         profile: bool = False,
     ):
         self.maps = maps
+        self.coadders = coadders or []
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
@@ -207,6 +210,7 @@ class BaseRunner:
         decorated with the flow as prefect needs these to be defined in advance.
         """
         self.maps = self.basic_task(self.build_map).map(self.maps).result()
+        self.maps += [c.coadd(self.maps) for c in self.coadders]
         all_simulated_sources = self.basic_task(self.simulate_sources)()
         return (
             self.basic_task(self.analyze_map)
