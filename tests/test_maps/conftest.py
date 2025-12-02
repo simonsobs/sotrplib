@@ -87,7 +87,7 @@ def create_time_map(
 def ones_map_set(tmp_path, map_params, mapkey="map1"):
     """
     Creates a set of five maps: map, ivar, rho, kappa and time.
-    time is just a map of zeros.
+    time is just a map of a constant given by the current timestamp.
     """
     map_paths = {
         x: tmp_path / f"{x}.fits" for x in ["map", "ivar", "rho", "kappa", "time"]
