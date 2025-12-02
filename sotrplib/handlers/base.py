@@ -210,7 +210,12 @@ class BaseRunner:
         decorated with the flow as prefect needs these to be defined in advance.
         """
         self.maps = self.basic_task(self.build_map).map(self.maps).result()
-        self.maps += [c.coadd(self.maps) for c in self.coadders]
+        map_freqs = list(set([m.frequency for m in self.maps]))
+        self.maps += [
+            c.coadd(self.maps, frequency=freq)
+            for c in self.coadders
+            for freq in map_freqs
+        ]
         all_simulated_sources = self.basic_task(self.simulate_sources)()
         return (
             self.basic_task(self.analyze_map)

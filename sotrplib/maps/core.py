@@ -561,20 +561,18 @@ class RhoAndKappaMap(ProcessableMap):
         box = self.box.to(u.rad).value if self.box is not None else None
         try:
             self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=box)
-            log.debug("rho_kappa.rho.read.sel")
-        except (IndexError, AttributeError):
+            assert type(self.rho) is enmap.ndmap
+        except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=box)
-            log.debug("rho_kappa.rho.read.nosel")
 
         log = log.new(kappa_filename=self.kappa_filename)
         try:
             self.kappa = enmap.read_map(str(self.kappa_filename), sel=0, box=box)
-            log.debug("rho_kappa.kappa.read.sel")
-        except (IndexError, AttributeError):
+            assert type(self.kappa) is enmap.ndmap
+        except (IndexError, AttributeError, AssertionError):
             # Kappa map does not have Q, U
             self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
-            log.debug("rho_kappa.kappa.read.nosel")
 
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
@@ -585,11 +583,10 @@ class RhoAndKappaMap(ProcessableMap):
             # TODO: Handle nuance that the start time is not included.
             try:
                 time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
-                log.debug("rho_kappa.time.read.sel")
-            except (IndexError, AttributeError):
+                assert type(time_map) is enmap.ndmap
+            except (IndexError, AttributeError, AssertionError):
                 # Somehow time map requires sel=0
                 time_map = enmap.read_map(str(self.time_filename), box=box)
-                log.debug("rho_kappa.time.read.nosel")
         else:
             time_map = None
             log.debug("rho_kappa.time.none")
@@ -671,11 +668,15 @@ class CoaddedRhoKappaMap(ProcessableMap):
     def __init__(
         self,
         input_maps: list[ProcessableMap],
+        frequency: str,
         map_depth: ndmap | None = None,
+        array: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.input_maps = input_maps
         self.map_depth = map_depth
+        self.frequency = frequency
+        self.array = array if array is not None else "coadd"
 
         self.input_map_times: list[float] = []
         self.time_end = None
@@ -687,6 +688,33 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     def build(self):
+        ## check if frequency and arrays match
+        good_maps = [True] * len(self.input_maps)
+        for imap in self.input_maps:
+            if self.frequency != imap.frequency:
+                good_maps[self.input_maps.index(imap)] = False
+            if self.array is not None and self.array != imap.array:
+                good_maps[self.input_maps.index(imap)] = False
+
+        if not any(good_maps):
+            self.log.warning(
+                "coaddedrhokappamap.coadd.no_good_maps",
+                n_input_maps=len(self.input_maps),
+                frequency=self.frequency,
+                array=self.array,
+            )
+            return
+        if not all(good_maps):
+            self.log.info(
+                "coaddedrhokappamap.coadd.dropping_maps",
+                n_input_maps=len(self.input_maps),
+                n_dropped_maps=len([good for good in good_maps if not good]),
+                frequency=self.frequency,
+                array=self.array,
+            )
+        self.input_maps = [
+            imap for imap, good in zip(self.input_maps, good_maps) if good
+        ]
         base_map = self.input_maps[0]
         base_map.build()
         self.log.info(
@@ -696,11 +724,13 @@ class CoaddedRhoKappaMap(ProcessableMap):
             map_frequency=base_map.frequency,
         )
 
-        self.rho = base_map.rho.copy()
-        self.kappa = base_map.kappa.copy()
+        self.rho = enmap.enmap(base_map.rho)
+        self.kappa = enmap.enmap(base_map.kappa)
+
         self.map_resolution = u.Quantity(
             abs(base_map.rho.wcs.wcs.cdelt[0]), base_map.rho.wcs.wcs.cunit[0]
         )
+        self.flux_units = base_map.flux_units
 
         self.get_time_and_mapdepth(base_map)
         self.update_map_times(base_map)
@@ -723,6 +753,10 @@ class CoaddedRhoKappaMap(ProcessableMap):
                 map_frequency=sourcemap.frequency,
             )
             ## will want to do a weighted sum using inverse variance.
+            if sourcemap.flux_units != self.flux_units:
+                flux_conv = u.Quantity(1.0, sourcemap.flux_units).to(self.flux_units)
+                sourcemap.rho *= flux_conv
+                sourcemap.kappa /= flux_conv * flux_conv
             self.rho = enmap.map_union(
                 self.rho,
                 sourcemap.rho,
@@ -734,9 +768,6 @@ class CoaddedRhoKappaMap(ProcessableMap):
             self.get_time_and_mapdepth(sourcemap)
             self.update_map_times(sourcemap)
 
-        if self.time_mean is not None:
-            with np.errstate(divide="ignore"):
-                self.time_mean /= self.map_depth
         self.n_maps = len(self.input_map_times)
         self.log.info(
             "coaddedmap.coadd.finalized",
@@ -750,44 +781,65 @@ class CoaddedRhoKappaMap(ProcessableMap):
     def get_time_and_mapdepth(self, new_map):
         if isinstance(new_map.time_mean, ndmap):
             if isinstance(self.time_mean, type(None)):
-                self.time_mean = new_map.time_mean.copy()
-                self.map_depth = new_map.time_mean.copy()
+                self.time_mean = enmap.enmap(new_map.time_mean)
+                self.map_depth = enmap.enmap(new_map.time_mean)
                 self.map_depth[self.map_depth > 0] = 1.0
             else:
                 self.time_mean = enmap.map_union(
                     self.time_mean,
                     new_map.time_mean,
                 )
-                new_map_depth = new_map.time_mean.copy()
+                new_map_depth = enmap.enmap(new_map.time_mean)
                 new_map_depth[new_map_depth > 0] = 1.0
                 self.map_depth = enmap.map_union(
                     self.map_depth,
                     new_map_depth,
                 )
+        else:
+            self.log.error(
+                "coaddedrhokappamap.get_time_and_mapdepth.no_time_mean",
+            )
         ## get earliest start time per pixel ... can I use map_union with a<b or b<a or something?
-
+        if isinstance(new_map.time_first, ndmap):
+            if isinstance(self.time_first, type(None)):
+                self.time_first = enmap.enmap(new_map.time_first)
+            else:
+                self.time_first = np.minimum(
+                    self.time_first,
+                    new_map.time_first,
+                )
+        else:
+            self.log.error(
+                "coaddedrhokappamap.get_time_and_mapdepth.no_time_first",
+            )
         ## get latest end time per pixel ... can I use map_union with a>b or b>a or something?
+        if isinstance(new_map.time_end, ndmap):
+            if isinstance(self.time_end, type(None)):
+                self.time_end = enmap.enmap(new_map.time_end)
+            else:
+                self.time_end = np.maximum(
+                    self.time_end,
+                    new_map.time_end,
+                )
+        else:
+            self.log.error(
+                "coaddedrhokappamap.get_time_and_mapdepth.no_time_end",
+            )
 
     def update_map_times(self, new_map):
         if self.observation_start is None:
-            self.observation_start = new_map.observation_start.timestamp()
+            self.observation_start = new_map.observation_start
         else:
             self.observation_start = min(
-                self.observation_start, new_map.observation_start.timestamp()
+                self.observation_start, new_map.observation_start
             )
         if self.observation_end is None:
-            self.observation_end = new_map.observation_end.timestamp()
+            self.observation_end = new_map.observation_end
         else:
-            self.observation_end = max(
-                self.observation_end, new_map.observation_end.timestamp()
-            )
-        self.input_map_times += [
-            0.5
-            * (
-                new_map.observation_start.timestamp()
-                + new_map.observation_end.timestamp()
-            )
-        ]
+            self.observation_end = max(self.observation_end, new_map.observation_end)
+        time_delta = new_map.observation_end - new_map.observation_start
+        mid_time = new_map.observation_start + (time_delta / 2)
+        self.input_map_times.append(mid_time)
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)

@@ -26,10 +26,16 @@ class RhoKappaMapCoadderConfig(MapCoadderConfig):
     coadd_type: Literal["rhokappa_coadd"] = "rhokappa_coadd"
 
     def coadd(
-        self, input_maps: list[ProcessableMap], log: FilteringBoundLogger | None = None
+        self,
+        input_maps: list[ProcessableMap],
+        frequency: str,
+        array: str | None = None,
+        log: FilteringBoundLogger | None = None,
     ) -> ProcessableMap:
         coadd_map = CoaddedRhoKappaMap(
             input_maps=input_maps,
+            frequency=frequency,
+            array=array,
             log=log,
         )
         coadd_map.build()

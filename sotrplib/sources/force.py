@@ -150,6 +150,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         self.min_flux = min_flux
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
+        self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.log = log or get_logger()
 
     def force(
