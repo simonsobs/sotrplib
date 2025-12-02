@@ -79,7 +79,7 @@ def create_time_map(
 ):
     shape, wcs = build_wcs(map_params, mapkey)
     time_map = enmap.zeros(shape, wcs=wcs)
-    time_map += datetime.datetime.now().timestamp()
+    time_map += datetime.datetime(2025, 10, 10, 0, 0, 0).timestamp()
     time_map.write(full_path, fmt="fits")
 
 

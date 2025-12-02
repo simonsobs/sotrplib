@@ -199,7 +199,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumbnails=self.reproject_thumbnails,
-            removed_nearby_sources=sum(np.array(has_nearby_sources)),
+            removed_nearby_sources=sum(has_nearby_sources),
         )
 
         fit_sources = scipy_2d_gaussian_fit(

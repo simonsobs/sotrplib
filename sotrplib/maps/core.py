@@ -690,12 +690,11 @@ class CoaddedRhoKappaMap(ProcessableMap):
     def build(self):
         ## check if frequency and arrays match
         good_maps = [True] * len(self.input_maps)
-        for imap in self.input_maps:
+        for i, imap in enumerate(self.input_maps):
             if self.frequency != imap.frequency:
-                good_maps[self.input_maps.index(imap)] = False
+                good_maps[i] = False
             if self.array != "coadd" and self.array != imap.array:
-                good_maps[self.input_maps.index(imap)] = False
-
+                good_maps[i] = False
         if not any(good_maps):
             self.log.warning(
                 "coaddedrhokappamap.coadd.no_good_maps",
@@ -861,7 +860,8 @@ class CoaddedRhoKappaMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        self.time_mean /= self.map_depth
+        with np.errstate(divide="ignore"):
+            self.time_mean /= self.map_depth
         super().finalize()
 
 
