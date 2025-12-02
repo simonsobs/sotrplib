@@ -806,9 +806,10 @@ class CoaddedRhoKappaMap(ProcessableMap):
             if isinstance(self.time_first, type(None)):
                 self.time_first = enmap.enmap(new_map.time_first)
             else:
-                self.time_first = np.minimum(
+                self.time_first = pixell_map_union(
                     self.time_first,
                     new_map.time_first,
+                    op=lambda a, b: np.minimum(a, b),
                 )
         else:
             self.log.error(
@@ -819,9 +820,10 @@ class CoaddedRhoKappaMap(ProcessableMap):
             if isinstance(self.time_end, type(None)):
                 self.time_end = enmap.enmap(new_map.time_end)
             else:
-                self.time_end = np.maximum(
+                self.time_end = pixell_map_union(
                     self.time_end,
                     new_map.time_end,
+                    op=lambda a, b: np.maximum(a, b),
                 )
         else:
             self.log.error(
@@ -861,3 +863,23 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.flux = self.get_flux()
         self.time_mean /= self.map_depth
         super().finalize()
+
+
+def pixell_map_union(map1, map2, op=lambda a, b: a + b):
+    """Create a new pixell map that is the union of map1 and map2.
+    The new map will have the shape and wcs that covers both input maps.
+    The pixel values will be combined using the provided operation.
+
+    Args:
+        map1: First input pixell map.
+        map2: Second input pixell map.
+        op: Function to combine pixel values (default is addition).
+
+    """
+    from pixell import enmap
+
+    oshape, owcs = enmap.union_geometry([map1.geometry, map2.geometry])
+    omap = enmap.zeros(map1.shape[:-2] + oshape[-2:], owcs, map1.dtype)
+    omap.insert(map1)
+    omap.insert(map2, op=op)
+    return omap
