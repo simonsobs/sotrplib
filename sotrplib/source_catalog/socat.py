@@ -397,8 +397,7 @@ class SOCatWebskyCatalog(SourceCatalog):
                 name=name,
             )
 
-            if flux > self.flux_lower_limit:
-                self.valid_fluxes.add(name)
+            self.valid_fluxes.add(name)
 
         self.log.info("socat_csv.loaded", n_sources=len(self.valid_fluxes))
 
@@ -424,8 +423,7 @@ class SOCatWebskyCatalog(SourceCatalog):
                 name=name,
             )
 
-            if flux > self.flux_lower_limit:
-                self.valid_fluxes.add(name)
+            self.valid_fluxes.add(name)
 
         self.log.info("socat_fits.loaded", n_sources=len(self.valid_fluxes))
 
