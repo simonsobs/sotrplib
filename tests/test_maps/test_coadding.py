@@ -7,7 +7,7 @@ from sotrplib.config.map_coadding import RhoKappaMapCoadderConfig
 from sotrplib.maps.core import CoaddedRhoKappaMap, RhoAndKappaMap
 
 
-def test_rhokappa_coadder(map_params, tmp_path, map_set_1, map_set_2):
+def test_rhokappa_coadder(map_set_1, map_set_2):
     """Test the RhoKappaMapCoadderConfig coadder."""
     map_path_1 = map_set_1
     map_path_2 = map_set_2
@@ -17,6 +17,7 @@ def test_rhokappa_coadder(map_params, tmp_path, map_set_1, map_set_2):
             rho_filename=map_path_1["rho"],
             kappa_filename=map_path_1["kappa"],
             time_filename=map_path_1["time"],
+            frequency="f090",
             start_time=datetime.datetime.now(),
             end_time=datetime.datetime.now() + datetime.timedelta(hours=1),
         ),
@@ -24,13 +25,14 @@ def test_rhokappa_coadder(map_params, tmp_path, map_set_1, map_set_2):
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
+            frequency="f090",
             start_time=datetime.datetime.now() + datetime.timedelta(hours=1),
             end_time=datetime.datetime.now() + datetime.timedelta(hours=2),
         ),
     ]
 
     coadder_config = RhoKappaMapCoadderConfig()
-    coadded_map = coadder_config.coadd(input_maps=input_maps)
+    coadded_map = coadder_config.coadd(input_maps=input_maps, frequency="f090")
 
     # Check that the coadded map is a CoaddedRhoKappaMap
     assert isinstance(coadded_map, CoaddedRhoKappaMap)

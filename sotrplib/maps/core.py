@@ -693,7 +693,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         for imap in self.input_maps:
             if self.frequency != imap.frequency:
                 good_maps[self.input_maps.index(imap)] = False
-            if self.array is not None and self.array != imap.array:
+            if self.array != "coadd" and self.array != imap.array:
                 good_maps[self.input_maps.index(imap)] = False
 
         if not any(good_maps):
@@ -715,8 +715,10 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.input_maps = [
             imap for imap, good in zip(self.input_maps, good_maps) if good
         ]
+
         base_map = self.input_maps[0]
         base_map.build()
+
         self.log.info(
             "coaddedrhokappamap.base_map.built",
             map_start_time=base_map.observation_start,
@@ -847,7 +849,6 @@ class CoaddedRhoKappaMap(ProcessableMap):
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.rho / np.sqrt(self.kappa)
-
         return snr
 
     def get_flux(self):
