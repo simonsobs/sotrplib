@@ -108,7 +108,7 @@ def ones_map_set(tmp_path, map_params, mapkey="map1"):
 def ones_unfiltered_partial_map_set(tmp_path, map_params, mapkey="map1"):
     """
     Creates a set of three maps: map, ivar, and time.
-    time is just a map of zeros.
+    time is just a map of a constant given by the current timestamp.
 
     rho and kappa are not created.
     """
@@ -128,7 +128,7 @@ def ones_unfiltered_partial_map_set(tmp_path, map_params, mapkey="map1"):
 def ones_filtered_partial_map_set(tmp_path, map_params, mapkey="map1"):
     """
     Creates a set of three maps: rho, kappa and time.
-    time is just a map of zeros.
+    time is just a map of a constant given by the current timestamp.
 
     map and ivar are not created.
     """
@@ -148,7 +148,7 @@ def ones_filtered_partial_map_set(tmp_path, map_params, mapkey="map1"):
 def map_set_1(tmp_path, map_params, mapkey="map1"):
     """
     Creates a set of five maps: map, ivar, rho, kappa and time.
-    time is just a map of zeros.
+    time is just a map of a constant given by the current timestamp.
     """
     map_paths = {
         x: tmp_path / f"{x}_set1.fits" for x in ["map", "ivar", "rho", "kappa", "time"]
@@ -169,7 +169,7 @@ def map_set_1(tmp_path, map_params, mapkey="map1"):
 def map_set_2(tmp_path, map_params, mapkey="map2"):
     """
     Creates a set of five maps: map, ivar, rho, kappa and time.
-    time is just a map of zeros.
+    time is just a map of a constant given by the current timestamp.
     """
     map_paths = {
         x: tmp_path / f"{x}_set2.fits" for x in ["map", "ivar", "rho", "kappa", "time"]
