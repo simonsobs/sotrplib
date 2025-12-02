@@ -27,6 +27,7 @@ def test_basic_pipeline_scipy(
     source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PrefectRunner(
         maps=maps,
+        coadders=[],
         source_catalogs=[],
         source_injector=None,
         preprocessors=None,
