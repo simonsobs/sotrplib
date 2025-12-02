@@ -411,13 +411,11 @@ class SOCatWebskyCatalog(SourceCatalog):
 
         # TODO: Remove this when it's part of SOCat
         for _, row in enumerate(data.data):
-            print(row)
             flux = row[0] * u.Jy
             if flux < self.flux_lower_limit:
                 continue
             ra = (row[1] if row[1] > 0.0 else row[1] + 2 * np.pi) * u.rad
-            dec = row[2]
-            print(ra, dec)
+            dec = row[2] * u.rad
             name = radec_to_str_name(ra.to_value(u.deg), dec.to_value(u.deg))
             # TODO: Need to store flux in SOCat, otherwise we can't filter on it.
             self.core.catalog.create(
