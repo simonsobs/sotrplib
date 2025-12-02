@@ -18,7 +18,13 @@ class MapCoadderConfig(BaseModel, ABC):
     coadd_type: str
 
     @abstractmethod
-    def coadd(self, log: FilteringBoundLogger | None = None) -> ProcessableMap:
+    def coadd(
+        self,
+        input_maps: list[ProcessableMap],
+        frequency: str | None = None,
+        array: str | None = None,
+        log: FilteringBoundLogger | None = None,
+    ) -> ProcessableMap:
         return
 
 

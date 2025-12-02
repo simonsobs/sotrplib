@@ -12,22 +12,23 @@ def test_rhokappa_coadder(map_set_1, map_set_2):
     map_path_1 = map_set_1
     map_path_2 = map_set_2
 
+    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
             kappa_filename=map_path_1["kappa"],
             time_filename=map_path_1["time"],
             frequency="f090",
-            start_time=datetime.datetime.now(),
-            end_time=datetime.datetime.now() + datetime.timedelta(hours=1),
+            start_time=start_time,
+            end_time=start_time + datetime.timedelta(hours=1),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=datetime.datetime.now() + datetime.timedelta(hours=1),
-            end_time=datetime.datetime.now() + datetime.timedelta(hours=2),
+            start_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + datetime.timedelta(hours=2),
         ),
     ]
 

@@ -657,13 +657,24 @@ class RhoAndKappaMap(ProcessableMap):
         super().finalize()
 
 
-"""
-Need to update this to use individual time maps and calcaulte the time_start, time_mean and time_end maps.
-"""
-
-
 class CoaddedRhoKappaMap(ProcessableMap):
-    """ """
+    """
+    Represents a coadded map created by combining multiple input `RhoAndKappaMap` (or similar) maps.
+    This class is used to coadd (combine) a list of input maps
+
+    Parameters
+    ----------
+    input_maps : list of ProcessableMap
+        The list of input maps to be coadded. Each should be a `RhoAndKappaMap`.
+    frequency : str
+        The frequency band of the maps to coadd ["f090", "f150", "f220", etc.].
+    map_depth : ndmap, optional
+        An optional map of the depth (n hits) to associate with the coadded map.
+    array : str, optional
+        The array name to associate with the coadded map. Defaults to "coadd" if not specified.
+    log : FilteringBoundLogger, optional
+        Logger for logging messages. If not provided, a default logger is used.
+    """
 
     def __init__(
         self,
@@ -781,7 +792,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
 
     def get_time_and_mapdepth(self, new_map):
         if isinstance(new_map.time_mean, ndmap):
-            if isinstance(self.time_mean, type(None)):
+            if self.time_mean is None:
                 self.time_mean = enmap.enmap(new_map.time_mean)
                 self.map_depth = enmap.enmap(new_map.time_mean)
                 self.map_depth[self.map_depth > 0] = 1.0
@@ -802,7 +813,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
             )
         ## get earliest start time per pixel ... can I use map_union with a<b or b<a or something?
         if isinstance(new_map.time_first, ndmap):
-            if isinstance(self.time_first, type(None)):
+            if self.time_first is None:
                 self.time_first = enmap.enmap(new_map.time_first)
             else:
                 self.time_first = pixell_map_union(
@@ -816,7 +827,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
             )
         ## get latest end time per pixel ... can I use map_union with a>b or b>a or something?
         if isinstance(new_map.time_end, ndmap):
-            if isinstance(self.time_end, type(None)):
+            if self.time_end is None:
                 self.time_end = enmap.enmap(new_map.time_end)
             else:
                 self.time_end = pixell_map_union(
