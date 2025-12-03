@@ -270,6 +270,31 @@ def scipy_2d_gaussian_fit(
         pix = input_map.flux.sky2pix(
             [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
         )
+        ## since we've applied a pointing correction this could be outside the map now.
+        if (
+            pix[0] < 0
+            or pix[1] < 0
+            or pix[0] >= input_map.flux.shape[0]
+            or pix[1] >= input_map.flux.shape[1]
+        ):
+            log.warning(
+                f"{preamble}source_outside_map_bounds_after_pointing_correction",
+                source=source_name,
+            )
+            forced_source = MeasuredSource(
+                ra=source.ra,
+                dec=source.dec,
+                flux=source.flux,
+                source_id=source.source_id,
+                instrument=input_map.instrument,
+                array=input_map.array,
+                frequency=get_frequency(input_map.frequency),
+            )
+            forced_source.fit_failed = True
+            forced_source.fit_failure_reason = "source_outside_map_bounds"
+            fit_sources.append(forced_source)
+            continue
+
         size_pix = thumbnail_half_width / map_res
         t_start, t_mean, t_end = input_map.get_pixel_times(pix)
         ## setup default MeasuredSource

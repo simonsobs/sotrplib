@@ -1,7 +1,7 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 2,
+            "number_to_read": 1,
             "instrument": "SOLAT"
         },
     "source_catalogs": [
@@ -18,9 +18,11 @@
         "reproject_thumbnails": "True"
     },
     "pointing_residual": {
-        "pointing_residual_type": "mean",
+        "pointing_residual_type": "polynomial",
         "min_snr": 5.0,
-        "min_sources": 5
+        "min_sources": 5,
+        "sigma_clip_level": 3.0,
+        "polynomial_order": 3
     },
     "preprocessors": [
         {
@@ -28,6 +30,18 @@
         },
         {
             "preprocessor_type": "kappa_rho"
+        },
+        {
+            "preprocessor_type": "edge_mask",
+            "mask_on": "kappa",
+            "edge_width": "10.0 arcmin"
+        }
+    ],
+    "postprocessors": [
+       {
+            "postprocessor_type": "flatfield",
+            "sigma_val": 5.0,
+            "tile_size": "1.0 deg"
         }
     ],
     "source_subtractor": {

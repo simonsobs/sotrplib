@@ -310,6 +310,17 @@ class PolynomialPointingOffset(MapPointingOffset):
         dra = self.ra_model(ra, dec)[0]
         ddec = self.dec_model(ra, dec)[0]
 
+        ## if offset > 5arcmin , warn and skip.
+        if abs(dra) > 5 * u.arcmin or abs(ddec) > 5 * u.arcmin:
+            self.log.warn(
+                "PolynomialPointingOffset.large_offset_warning",
+                ra=pos.ra,
+                dec=pos.dec,
+                dra=dra,
+                ddec=ddec,
+            )
+            return pos
+
         return SkyCoord(
             ra=pos.ra - dra,
             dec=pos.dec - ddec,

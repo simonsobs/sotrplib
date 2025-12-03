@@ -17,8 +17,9 @@ from sotrplib.sims.sources.core import (
 @pytest.fixture
 def empty_map():
     map = SimulatedMap(
-        observation_start=datetime.datetime.now() - datetime.timedelta(days=1),
-        observation_end=datetime.datetime.now(),
+        observation_start=datetime.datetime.now(tz=datetime.timezone.utc)
+        - datetime.timedelta(days=1),
+        observation_end=datetime.datetime.now(tz=datetime.timezone.utc),
     )
 
     map.build()

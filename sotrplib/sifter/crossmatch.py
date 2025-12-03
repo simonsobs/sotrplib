@@ -401,7 +401,7 @@ def sift(
     transient_candidates, new_noise_candidates = recalculate_local_snr(
         transient_candidates,
         input_map,
-        thumb_size=0.5 * u.deg,
+        thumb_size=0.25 * u.deg,
         fwhm=fwhm,
         snr_cut=cuts["snr"][0],
     )
@@ -452,10 +452,11 @@ def get_cut_decision(candidate: MeasuredSource, cuts: dict = {}, debug=False) ->
 def recalculate_local_snr(
     transient_candidates: list[MeasuredSource],
     imap: ProcessableMap,
-    thumb_size: u.Quantity = 0.5 * u.deg,
+    thumb_size: u.Quantity = 0.25 * u.deg,
     fwhm: u.Quantity = 2.2 * u.arcmin,
     snr_cut: float = 5.0,
     ratio_cut: float = 1.3,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Recalculate the local SNR for each transient source.
@@ -478,6 +479,8 @@ def recalculate_local_snr(
     from ..maps.maps import get_submap
     from ..utils.utils import get_pix_from_peak_to_noise
 
+    log = log if log else get_logger()
+    log = log.bind(func_name="recalculate_local_snr")
     updated_transient_candidates = []
     updated_noise_candidates = []
     ## same mask for each one
@@ -520,7 +523,7 @@ def recalculate_local_snr(
         candidate.snr = candidate.flux.to(imap.flux_units).value / rms_noise
         new_snr = candidate.snr
         snr_ratio = old_snr / new_snr
-        # print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux,rms_noise))
+        # print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux.to_value(imap.flux_units),rms_noise))
         if candidate.snr > snr_cut and snr_ratio < ratio_cut and np.isfinite(snr_ratio):
             updated_transient_candidates.append(candidate)
         else:

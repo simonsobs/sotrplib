@@ -17,7 +17,7 @@ log = get_logger()
 def test_fixed_source_type():
     position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
     flux = u.Quantity(1.0, "Jy")
-    time = datetime.datetime.now()
+    time = datetime.datetime.now(tz=datetime.UTC)
 
     source = sim_sources.FixedSimulatedSource(position=position, flux=flux)
     assert source.flux(time=time) == flux
@@ -28,7 +28,7 @@ def test_gaussian_source_type():
     position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
     flux = u.Quantity(1.0, "Jy")
     width = datetime.timedelta(days=1)
-    time = datetime.datetime.now()
+    time = datetime.datetime.now(tz=datetime.UTC)
 
     source = sim_sources.GaussianTransientSimulatedSource(
         position=position, peak_time=time, flare_width=width, peak_amplitude=flux
@@ -51,7 +51,7 @@ def test_fixed_source_generation():
     right = 20.0 * u.deg
     bottom = 0.0 * u.deg
     top = 10.0 * u.deg
-    time = datetime.datetime.now()
+    time = datetime.datetime.now(tz=datetime.UTC)
     number = 32
 
     generator = sim_source_generators.FixedSourceGenerator(
@@ -81,7 +81,7 @@ def test_gaussian_source_generation():
     right = 20.0 * u.deg
     bottom = 0.0 * u.deg
     top = 10.0 * u.deg
-    time = datetime.datetime.now()
+    time = datetime.datetime.now(tz=datetime.UTC)
     dt = datetime.timedelta(hours=2)
     earliest = time - dt
     latest = time + dt
@@ -126,8 +126,9 @@ def test_source_injection_into_map():
         catalog_fraction=0.5,
     )
 
-    start_obs = datetime.datetime.now() - datetime.timedelta(hours=2)
-    end_obs = datetime.datetime.now()
+    start_obs = datetime.datetime.now(tz=datetime.UTC)
+    -datetime.timedelta(hours=2)
+    end_obs = datetime.datetime.now(tz=datetime.UTC)
 
     base_map = maps.SimulatedMap(
         observation_start=start_obs,
@@ -138,21 +139,8 @@ def test_source_injection_into_map():
 
     base_map.build()
 
-    # Grab the geometry -- TODO actually have this as a property
-    # of maps...
-    sp = base_map.simulation_parameters
-    left = sp.center_ra - sp.width_ra
-    right = sp.center_ra + sp.width_ra
-    bottom = sp.center_dec - sp.width_dec
-    top = sp.center_dec + sp.width_dec
-
-    box = [
-        SkyCoord(ra=left, dec=bottom),
-        SkyCoord(ra=right, dec=top),
-    ]
-
     injector = source_injector.PhotutilsSourceInjector()
-    sources, catalog = generator.generate(box=box)
+    sources, catalog = generator.generate(input_map=base_map)
     new_map = injector.inject(input_map=base_map, simulated_sources=sources)
     new_map.finalize()
 

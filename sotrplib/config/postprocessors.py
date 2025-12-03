@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.postprocessor import (
-    EdgeMask,
     GalaxyMask,
     MapPostprocessor,
     PhotutilsFlatFielder,
@@ -33,16 +32,6 @@ class GalaxyMaskConfig(PostprocessorConfig):
         return GalaxyMask(mask_filename=self.mask_filename)
 
 
-class EdgeMaskConfig(PostprocessorConfig):
-    postprocessor_type: Literal["edge_mask"] = "edge_mask"
-    edge_width: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(10 * u.arcmin)
-
-    def to_postprocessor(
-        self, log: FilteringBoundLogger | None = None
-    ) -> MapPostprocessor:
-        return EdgeMask(edge_width=self.edge_width, log=log)
-
-
 class FlatfieldConfig(PostprocessorConfig):
     postprocessor_type: Literal["flatfield"] = "flatfield"
     sigma_val: float = 5.0
@@ -56,4 +45,4 @@ class FlatfieldConfig(PostprocessorConfig):
         )
 
 
-AllPostprocessorConfigTypes = GalaxyMaskConfig | EdgeMaskConfig | FlatfieldConfig
+AllPostprocessorConfigTypes = GalaxyMaskConfig | FlatfieldConfig
