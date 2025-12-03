@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Literal
 
 from astropy import units as u
@@ -76,8 +76,8 @@ class SOCatSourceGeneratorConfig(SourceSimulationConfig):
     simulation_type: Literal["socat"] = "socat"
     fraction_fixed: float = 0.5
     fraction_gaussian: float = 0.5
-    flare_earliest_time: datetime
-    flare_latest_time: datetime
+    flare_earliest_time: AwareDatetime
+    flare_latest_time: AwareDatetime
     flare_width_shortest: timedelta
     flare_width_longest: timedelta
     peak_amplitude_minimum_factor: float = 1.0
