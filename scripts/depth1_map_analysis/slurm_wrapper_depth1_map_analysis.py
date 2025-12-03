@@ -227,7 +227,7 @@ def generate_config_json(
             "preprocessor_type": "kappa_rho"
         }},
         {{
-            "postprocessor_type": "edge_mask",
+            "preprocessor_type": "edge_mask",
             "mask_on": "inverse_variance",
             "edge_width": "10.0 arcmin"
         }}
