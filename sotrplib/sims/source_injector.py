@@ -123,8 +123,8 @@ class PhotutilsSourceInjector(SourceInjector):
         )
 
         table_data = {
-            "x_0": [source_to_array_index(x)[1] for x in valid_sources],
-            "y_0": [source_to_array_index(x)[0] for x in valid_sources],
+            "x_0": [source_to_array_index(x)[0] for x in valid_sources],
+            "y_0": [source_to_array_index(x)[1] for x in valid_sources],
             "flux": [
                 x.flux(time=observed_times[i]).to_value(input_map.flux_units)
                 for i, x in enumerate(valid_sources)

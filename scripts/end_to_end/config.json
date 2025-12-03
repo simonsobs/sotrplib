@@ -135,7 +135,8 @@
         "search_type": "photutils"
     },
     "sifter": {
-        "sifter_type": "simple"
+        "sifter_type": "simple",
+        "radius": "1.0 arcmin"
     },
     "outputs": [
         {
