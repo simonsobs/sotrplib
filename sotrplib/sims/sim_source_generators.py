@@ -408,7 +408,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
         flare_sources = [
             GaussianTransientSimulatedSource(
-                position=source.position,
+                position=SkyCoord(ra=source.position.ra, dec=source.position.dec),
                 peak_time=random_datetime(
                     self.flare_earliest_time, self.flare_latest_time
                 ),
