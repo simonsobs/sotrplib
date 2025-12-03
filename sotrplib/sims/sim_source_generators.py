@@ -343,7 +343,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
             )
 
         self.fraction_fixed = fraction_fixed
-        self.fraction_guassian = fraction_gaussian
+        self.fraction_gaussian = fraction_gaussian
         self.flare_earliest_time = flare_earliest_time
         self.flare_latest_time = flare_latest_time
         self.flare_width_shortest = flare_width_shortest
@@ -368,7 +368,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         number_of_sources = len(sources)
 
         number_of_fixed = int(number_of_sources * self.fraction_fixed)
-        number_of_flares = int(number_of_sources * self.fraction_guassian)
+        number_of_flares = int(number_of_sources * self.fraction_gaussian)
 
         all_sources = [
             RegisteredSource(
@@ -394,8 +394,6 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
             for source in sources[: number_of_fixed + number_of_flares]
         ]
 
-        fixed_sources = all_sources[:number_of_fixed]
-
         fixed_sources = [
             FixedSimulatedSource(
                 position=SkyCoord(ra=source.ra, dec=source.dec), flux=source.flux
@@ -405,7 +403,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
         flare_sources = [
             GaussianTransientSimulatedSource(
-                position=SkyCoord(source.position),
+                position=source.position,
                 peak_time=random_datetime(
                     self.flare_earliest_time, self.flare_latest_time
                 ),

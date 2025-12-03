@@ -30,6 +30,7 @@ class EmptySourceCatalogConfig(SourceCatalogConfig):
 
 
 class SOCatConfig(SourceCatalogConfig):
+    catalog_type: Literal["socat"] = "socat"
     flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
 
     def to_source_catalog(self, log=None) -> SOCat:
@@ -39,4 +40,4 @@ class SOCatConfig(SourceCatalogConfig):
         )
 
 
-AllSourceCatalogConfigTypes = SOCatConfig
+AllSourceCatalogConfigTypes = SOCatConfig | EmptySourceCatalogConfig

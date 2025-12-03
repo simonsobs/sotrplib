@@ -1,3 +1,5 @@
+#!bash
+
 source .env
 
 echo $SOCAT_CLIENT_PICKLE_PATH

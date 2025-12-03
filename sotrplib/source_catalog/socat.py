@@ -135,7 +135,7 @@ class SOCatWrapper:
 
 class SOCat(SourceCatalog):
     """
-    An empty catalog, using SOCat under the hood.
+    A catalog implementation that uses the configured SOCat database.
     """
 
     def __init__(

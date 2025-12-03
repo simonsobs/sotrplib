@@ -1,5 +1,5 @@
 """
-Tests for the SOCat source catlaog integration
+Tests for the SOCat source catalog integration
 """
 
 import datetime
@@ -53,4 +53,4 @@ def test_socat_source_generator(socat_pickle):
 
     sources, _ = source_generator.generate()
 
-    assert len(sources) == 0.75 * 128
+    assert len(sources) == int(0.75 * 128)

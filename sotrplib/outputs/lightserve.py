@@ -66,9 +66,7 @@ class LightServeOutput(SourceOutput):
 
             fm = FluxMeasurement(
                 band_name="f090",
-                source_id=(
-                    source.crossmatches[0].source_id if source.crossmatches else -1
-                ),
+                source_id=(source.crossmatches[0].source_id),
                 time=source.observation_mean_time.to_datetime().strftime(
                     "%Y-%m-%dT%H:%M:%S.%fZ"
                 ),
