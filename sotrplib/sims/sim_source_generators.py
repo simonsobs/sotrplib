@@ -5,7 +5,7 @@ the random generation of those sources.
 """
 
 import random
-from abc import ABC
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from astropy import units as u
@@ -51,6 +51,7 @@ def random_timedelta(min_td, max_td):
 
 
 class SimulatedSourceGenerator(ABC):
+    @abstractmethod
     def generate(
         self,
         input_map: ProcessableMap | None = None,
@@ -352,7 +353,11 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         self.peak_amplitude_maximum_factor = peak_amplitude_maximum_factor
         self.log = log or get_logger()
 
-    def generate(self, box: tuple[SkyCoord] | None = None):
+    def generate(
+        self,
+        box: tuple[SkyCoord] | None = None,
+        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+    ):
         socat_client_settings = SOCatClientSettings()
         socat_client = socat_client_settings.client
 
