@@ -246,6 +246,18 @@ class ProcessableMap(ABC):
         return t_start, t_mean, t_end
 
     @abstractmethod
+    def apply_mask(self):
+        """
+        Apply the mask to the snr and flux maps if a mask is present.
+        Assumes masked region is indicated by 0s in the mask map.
+
+        """
+        if self.mask is not None:
+            self.snr *= self.mask
+            self.flux *= self.mask
+        return
+
+    @abstractmethod
     def finalize(self):
         """
         Called just before source injection to ensure that the snr, flux, and
@@ -255,7 +267,7 @@ class ProcessableMap(ABC):
         """
         del self.rho
         del self.kappa
-
+        self.apply_mask()
         self.finalized = True
 
         return
@@ -398,12 +410,12 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
 
+    def apply_mask(self):
+        return super().apply_mask()
+
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        if self.mask is not None:
-            self.snr *= self.mask
-            self.flux *= self.mask
         super().finalize()
 
 
@@ -509,12 +521,12 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
 
+    def apply_mask(self):
+        return super().apply_mask()
+
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        if self.mask is not None:
-            self.snr *= self.mask
-            self.flux *= self.mask
         super().finalize()
 
 
@@ -639,21 +651,19 @@ class RhoAndKappaMap(ProcessableMap):
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.rho / np.sqrt(self.kappa)
-
         return snr
 
     def get_flux(self):
         with np.errstate(divide="ignore"):
             flux = self.rho / self.kappa
-
         return flux
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        if self.mask is not None:
-            self.snr *= self.mask
-            self.flux *= self.mask
         super().finalize()
 
 
