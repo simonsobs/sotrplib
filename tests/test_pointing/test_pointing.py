@@ -2,7 +2,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.pointing import ConstantPointingOffset
-from sotrplib.source_catalog.socat import SOCatFITSCatalog
+from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.force import (
     Scipy2DGaussianFitter,
     Scipy2DGaussianPointingFitter,
@@ -23,7 +23,7 @@ def test_median_residual_empty(map_with_single_source):
     new_sources[0].ra += ra_offset
     new_sources[0].dec += dec_offset
 
-    catalog = SOCatFITSCatalog()
+    catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     _ = forced_photometry.force(input_map=input_map, catalogs=[catalog])
@@ -49,7 +49,7 @@ def test_median_residual_notenough_sources(map_with_single_source):
     new_sources[0].ra += ra_offset
     new_sources[0].dec += dec_offset
 
-    catalog = SOCatFITSCatalog()
+    catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
@@ -76,7 +76,7 @@ def test_median_residual(map_with_sources):
         new_sources[i].ra += ra_offset
         new_sources[i].dec += dec_offset
 
-    catalog = SOCatFITSCatalog()
+    catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = pointing_fitter.force(input_map=input_map, catalogs=[catalog])
@@ -114,7 +114,7 @@ def test_mean_residual(map_with_sources):
         source.ra += ra_offset
         source.dec += dec_offset
 
-    catalog = SOCatFITSCatalog()
+    catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = pointing_fitter.force(input_map=input_map, catalogs=[catalog])
