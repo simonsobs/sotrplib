@@ -78,6 +78,9 @@ class RegisteredSourceCatalog(SourceCatalog):
 
     def add_sources(self, sources: list[RegisteredSource]):
         self.sources.extend(sources)
+        self.ra_dec_array = np.array(
+            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in self.sources]
+        )
 
     def get_sources_in_map(
         self, input_map: ProcessableMap | None = None
@@ -159,6 +162,9 @@ class RegisteredSourceCatalog(SourceCatalog):
         Get sources within radius of the catalog.
         """
 
+        if len(self.ra_dec_array) == 0:
+            return []
+
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("deg").value, dec.to("deg").value]],
             pos2=self.ra_dec_array,
@@ -170,6 +176,8 @@ class RegisteredSourceCatalog(SourceCatalog):
 
         return [
             CrossMatch(
+                ra=s.ra,
+                dec=s.dec,
                 source_id=str(s.source_id),
                 probability=1.0 / len(sources),
                 angular_separation=angular_separation(

@@ -6,19 +6,18 @@ import astropy.units as u
 import pytest
 
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
-from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.sources import RegisteredSource
 
 
 @pytest.fixture
 def dummy_socat_db():
-    return SOCatFITSCatalog()
+    return RegisteredSourceCatalog(sources=[])
 
 
 def test_socat_mock_db(dummy_socat_db):
     db = dummy_socat_db
     assert db is not None
-    assert isinstance(db, SOCatFITSCatalog)
+    assert isinstance(db, RegisteredSourceCatalog)
 
     assert (
         db.crossmatch(
@@ -72,7 +71,7 @@ def test_socat_mock_db(dummy_socat_db):
     assert near_source.source_id == "test_source_2"
     assert near_source.ra == source2.ra
     assert near_source.dec == source2.dec
-    assert near_source.catalog_idx == 0
+    assert near_source.catalog_idx == 1
 
     nearby = db.crossmatch(
         ra=source2.ra, dec=source2.dec, radius=3 * u.deg, method="all"
