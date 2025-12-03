@@ -73,11 +73,18 @@ class PhotutilsSourceInjector(SourceInjector):
         # First, filter the sources for those that lie on top of a pixel with
         # a valid 'hit'.
         def source_to_array_index(source: SimulatedSource):
-            return input_map.flux.wcs.world_to_array_index(
-                source.position(
-                    time=input_map.time_mean
-                )  ## TODO: if fast evolving, mean time isnt good enough
-            )
+            try:
+                return input_map.flux.wcs.world_to_array_index(
+                    source.position(
+                        time=input_map.time_mean
+                    )  ## TODO: if fast evolving, mean time isnt good enough
+                )
+            except ValueError as e:
+                log.error(
+                    "simulation_position_error",
+                    position=source.position(time=input_map.time_mean),
+                )
+                raise e
 
         def source_in_map(source: SimulatedSource):
             pixel = source_to_array_index(source=source)
@@ -116,8 +123,8 @@ class PhotutilsSourceInjector(SourceInjector):
         )
 
         table_data = {
-            "x_0": [source_to_array_index(x)[1] for x in valid_sources],
-            "y_0": [source_to_array_index(x)[0] for x in valid_sources],
+            "x_0": [source_to_array_index(x)[0] for x in valid_sources],
+            "y_0": [source_to_array_index(x)[1] for x in valid_sources],
             "flux": [
                 x.flux(time=observed_times[i]).to_value(input_map.flux_units)
                 for i, x in enumerate(valid_sources)
