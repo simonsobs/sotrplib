@@ -62,7 +62,7 @@ class RhoKappaMapCoadder(MapCoadder):
         self.time_mean = None
         self.observation_start = None
         self.observation_end = None
-
+        self.map_depth = None
         self.log = log or structlog.get_logger()
 
     def coadd(self, input_maps: list[ProcessableMap]):
@@ -110,10 +110,19 @@ class RhoKappaMapCoadder(MapCoadder):
                         array=arr,
                     )
 
-                input_maps = [imap for imap, good in zip(input_maps, good_maps) if good]
+                valid_input_maps = [
+                    imap for imap, good in zip(input_maps, good_maps) if good
+                ]
 
-                base_map = input_maps[0]
+                base_map = valid_input_maps[0]
                 base_map.build()
+
+                self.time_last = None
+                self.time_first = None
+                self.time_mean = None
+                self.observation_start = None
+                self.observation_end = None
+                self.map_depth = None
 
                 self.log.info(
                     "rhokappamapcoadder.base_map.built",
@@ -137,7 +146,7 @@ class RhoKappaMapCoadder(MapCoadder):
                 self.get_time_and_mapdepth(base_map)
                 self.update_map_times(base_map)
 
-                if len(input_maps) == 1:
+                if len(valid_input_maps) == 1:
                     self.log.warning(
                         "rhokappamapcoadder.coadd.single_map_warning", n_maps_coadded=1
                     )
@@ -145,7 +154,7 @@ class RhoKappaMapCoadder(MapCoadder):
                     coadded_maps.append(base_map)
                     continue
 
-                for sourcemap in input_maps[1:]:
+                for sourcemap in valid_input_maps[1:]:
                     sourcemap.build()
                     self.log.info(
                         "rhokappamapcoadder.source_map.built",
@@ -190,6 +199,11 @@ class RhoKappaMapCoadder(MapCoadder):
                     arr=arr,
                 )
                 self.observation_length = self.observation_end - self.observation_start
+                with np.errstate(divide="ignore"):
+                    self.time_mean /= self.map_depth
+
+                self.mask[self.mask > 0] = 1
+
                 coadded_maps.append(
                     CoaddedRhoKappaMap(
                         rho=self.rho,
@@ -206,6 +220,7 @@ class RhoKappaMapCoadder(MapCoadder):
                         flux_units=self.flux_units,
                         mask=self.mask,
                         map_resolution=self.map_resolution,
+                        hits=self.map_depth,
                     )
                 )
 
@@ -275,26 +290,6 @@ class RhoKappaMapCoadder(MapCoadder):
         time_delta = new_map.observation_end - new_map.observation_start
         mid_time = new_map.observation_start + (time_delta / 2)
         self.input_map_times.append(mid_time)
-
-    def get_pixel_times(self, pix: tuple[int, int]):
-        return super().get_pixel_times(pix)
-
-    def get_snr(self):
-        with np.errstate(divide="ignore"):
-            snr = self.rho / np.sqrt(self.kappa)
-        return snr
-
-    def get_flux(self):
-        with np.errstate(divide="ignore"):
-            flux = self.rho / self.kappa
-        return flux
-
-    def finalize(self):
-        self.snr = self.get_snr()
-        self.flux = self.get_flux()
-        with np.errstate(divide="ignore"):
-            self.time_mean /= self.map_depth
-        super().finalize()
 
 
 def pixell_map_union(map1, map2, op=lambda a, b: a + b):

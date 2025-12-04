@@ -106,7 +106,6 @@ class BaseRunner:
         return output_map
 
     def coadd_maps(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
-        print(input_maps)
         return self.map_coadder.coadd(input_maps)
 
     @property

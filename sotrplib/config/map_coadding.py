@@ -24,12 +24,12 @@ class MapCoadderConfig(BaseModel, ABC):
 class EmptyMapCoadderConfig(MapCoadderConfig):
     coadd_type: Literal["empty"] = "empty"
 
-    def to_coadder(self) -> MapCoadder:
+    def to_coadder(self, log: FilteringBoundLogger | None = None) -> MapCoadder:
         return EmptyMapCoadder()
 
 
 class RhoKappaMapCoadderConfig(MapCoadderConfig):
-    coadd_type: Literal["rhokappa_coadd"] = "rhokappa_coadd"
+    coadd_type: Literal["rhokappa"] = "rhokappa"
 
     frequencies: list[str] | None = None
     arrays: list[str] | None = None

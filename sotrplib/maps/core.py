@@ -691,6 +691,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
         map_resolution: u.Quantity | None = None,
+        hits: ndmap | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho = rho
@@ -707,6 +708,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
+        self.hits = hits
         self.map_resolution = map_resolution
         self.log = log or structlog.get_logger()
 
