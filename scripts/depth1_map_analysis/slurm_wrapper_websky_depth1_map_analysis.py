@@ -52,7 +52,7 @@ P.add_argument(
 P.add_argument(
     "--pointing-flux-threshold",
     action="store",
-    default="0.3 Jy",
+    default="0.25 Jy",
     type=str,
     help="Flux threshold for pointing sources, json compatible quantity.",
 )
@@ -213,7 +213,7 @@ def generate_config_json(
         "reproject_thumbnails": "True"
     }},
     "pointing_residual": {{
-        "pointing_residual_type": "polynomial",
+        "pointing_residual_type": "median",
         "min_snr": {min_snr},
         "min_sources": {min_pointing_sources},
         "sigma_clip_level": 3.0,
