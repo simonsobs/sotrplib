@@ -115,7 +115,7 @@ class SimulatedMap(ProcessableMap):
             end_time=self.observation_end,
         )
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         log.debug("simulated_map.build.time")
@@ -227,7 +227,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
             )
 
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         log.debug("simulated_map.build.time")

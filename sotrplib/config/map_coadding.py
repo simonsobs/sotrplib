@@ -8,44 +8,43 @@ from typing import Literal
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import (
-    CoaddedRhoKappaMap,
-    ProcessableMap,
-)
+from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder, RhoKappaMapCoadder
 
 
 class MapCoadderConfig(BaseModel, ABC):
     coadd_type: str
 
     @abstractmethod
-    def coadd(
+    def to_coadder(
         self,
-        input_maps: list[ProcessableMap],
-        frequency: str | None = None,
-        array: str | None = None,
-        log: FilteringBoundLogger | None = None,
-    ) -> ProcessableMap:
+    ) -> MapCoadder:
         return
+
+
+class EmptyMapCoadderConfig(MapCoadderConfig):
+    coadd_type: Literal["empty"] = "empty"
+
+    def to_coadder(self) -> MapCoadder:
+        return EmptyMapCoadder()
 
 
 class RhoKappaMapCoadderConfig(MapCoadderConfig):
     coadd_type: Literal["rhokappa_coadd"] = "rhokappa_coadd"
 
-    def coadd(
+    frequencies: list[str] | None = None
+    arrays: list[str] | None = None
+    instrument: str | None = None
+
+    def to_coadder(
         self,
-        input_maps: list[ProcessableMap],
-        frequency: str,
-        array: str | None = None,
         log: FilteringBoundLogger | None = None,
-    ) -> ProcessableMap:
-        coadd_map = CoaddedRhoKappaMap(
-            input_maps=input_maps,
-            frequency=frequency,
-            array=array,
+    ) -> MapCoadder:
+        return RhoKappaMapCoadder(
+            frequencies=self.frequencies,
+            arrays=self.arrays,
+            instrument=self.instrument,
             log=log,
         )
-        coadd_map.build()
-        return coadd_map
 
 
-AllMapCoadderConfigTypes = RhoKappaMapCoadderConfig
+AllMapCoadderConfigTypes = RhoKappaMapCoadderConfig | EmptyMapCoadderConfig
