@@ -176,6 +176,7 @@ class Gaussian2DFitter:
             amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
             ra_offset, dec_offset = None, None
             ra_err, dec_err = None, None
+
         else:
             amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
             (
@@ -228,6 +229,7 @@ class Gaussian2DFitter:
             fwhm_dec_err=fwhm_y_err,
             theta=theta * u.rad,
             theta_err=theta_err * u.rad,
+            forced_center=self.force_center,
         )
         return self.fit_params
 

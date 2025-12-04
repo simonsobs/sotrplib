@@ -168,7 +168,6 @@ class BaseRunner:
         _ = self.profilable_task(self.pointing_residual.get_offset)(
             pointing_sources=pointing_sources
         )
-
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
         )(

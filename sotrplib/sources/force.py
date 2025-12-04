@@ -180,7 +180,10 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
                     init_source.ra,
                     init_source.dec,
                 )
-                if sep < self.thumbnail_half_width and init_source.flux is not None:
+                if (
+                    sep < self.thumbnail_half_width * (2**-0.5)
+                    and init_source.flux is not None
+                ):
                     if (
                         init_source.flux
                         > pointing_source.flux * self.near_source_rel_flux_limit
