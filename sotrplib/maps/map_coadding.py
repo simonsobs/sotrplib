@@ -202,7 +202,8 @@ class RhoKappaMapCoadder(MapCoadder):
                 with np.errstate(divide="ignore"):
                     self.time_mean /= self.map_depth
 
-                self.mask[self.mask > 0] = 1
+                if self.mask is not None:
+                    self.mask[self.mask > 0] = 1
 
                 coadded_maps.append(
                     CoaddedRhoKappaMap(

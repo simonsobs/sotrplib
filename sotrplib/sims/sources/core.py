@@ -62,6 +62,9 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
 
+    def apply_mask(self):
+        return super().apply_mask()
+
     def finalize(self):
         super().finalize()
         return

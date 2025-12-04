@@ -46,7 +46,7 @@ def test_basic_pipeline_scipy(
     source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PipelineRunner(
         maps=[new_map, new_map],
-        coadders=[],
+        map_coadder=None,
         source_catalogs=[source_cat],
         source_injector=None,
         preprocessors=None,
