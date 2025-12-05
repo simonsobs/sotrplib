@@ -2,7 +2,6 @@
 Use a 'mock' database using SOCat
 """
 
-from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -15,7 +14,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
-from sotrplib.utils.utils import angular_separation, radec_to_str_name
+from sotrplib.utils.utils import angular_separation
 
 from .core import SourceCatalog
 
@@ -80,7 +79,9 @@ class SOCatWrapper:
     ) -> list[RegisteredSource]:
         return [
             self._socat_source_to_registered(x)
-            for x in self.catalog.forced_photometry_sources(min_flux=minimum_flux)
+            for x in self.catalog.get_forced_photometry_sources(
+                minimum_flux=minimum_flux
+            )
         ]
 
     ## TODO: need to update for boxes which need to be broken in two.
@@ -169,138 +170,6 @@ class SOCat(SourceCatalog):
             mask_map=mask_map,
             sources=base_source_list,
         )
-
-    def source_by_id(self, id) -> RegisteredSource:
-        return self.core.source_from_id(id=id)
-
-    def crossmatch(
-        self,
-        ra: u.Quantity,
-        dec: u.Quantity,
-        radius: u.Quantity,
-        method: Literal["closest", "all"],
-    ) -> list[CrossMatch]:
-        """
-        Get sources within radius of the catalog.
-        """
-        ra_min = ra - 2.0 * radius
-        ra_max = ra + 2.0 * radius
-        dec_min = dec - 2.0 * radius
-        dec_max = dec + 2.0 * radius
-        close_sources = self.get_sources_in_box(
-            [
-                SkyCoord(ra=ra_min, dec=dec_min),
-                SkyCoord(ra=ra_max, dec=dec_max),
-            ],
-        )
-        ra_dec_array = np.asarray(
-            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in close_sources]
-        )
-        if len(ra_dec_array) == 0:
-            return []
-        matches = pixell_utils.crossmatch(
-            pos1=[[ra.to("deg").value, dec.to("deg").value]],
-            pos2=ra_dec_array,
-            rmax=radius.to("deg").value,
-            mode=method,
-            coords="radec",
-        )
-        sources = [close_sources[y] for _, y in matches]
-        return [
-            CrossMatch(
-                source_id=s.source_id,
-                probability=1.0 / len(sources),  ##TODO fix probability calculation
-                angular_separation=angular_separation(s.ra, s.dec, ra, dec),
-                flux=s.flux,
-                err_flux=s.err_flux,
-                frequency=s.frequency,
-                catalog_name=s.catalog_name,
-                catalog_idx=y,
-                alternate_names=s.alternate_names,
-                ra=s.ra,
-                dec=s.dec,
-            )
-            for y, s in enumerate(sources)
-        ]
-
-
-class SOCatWebskyCatalog(SourceCatalog):
-    """
-    A catalog, using SOCat under the hood, that reads a websky FITS file from disk.
-    """
-
-    def __init__(
-        self,
-        path: Path | None = None,
-        hdu: int = 1,
-        flux_lower_limit: u.Quantity = 0.01 * u.Jy,
-        log: FilteringBoundLogger | None = None,
-    ):
-        self.log = log or structlog.get_logger()
-        self.path = path
-        self.hdu = hdu
-        self.flux_lower_limit = flux_lower_limit
-        self.core = SOCatWrapper(log=self.log)
-        self.valid_fluxes = set()
-        if ".csv" in str(self.path):
-            self._read_csv_file()
-        elif ".fits" in str(self.path):
-            self._read_fits_file()
-        else:
-            self.log.error("socat_websky.unsupported_file_format", path=self.path)
-
-    def _read_csv_file(self):
-        import pandas as pd
-
-        if self.path is None:
-            self.log.info("socat_csv.initialized_empty")
-            return
-
-        data = pd.read_csv(self.path)
-        data.columns = data.columns.str.strip().str.lstrip("# #").str.strip()
-        for _, row in data.iterrows():
-            flux = row["flux(Jy)"] * u.Jy
-            if flux < self.flux_lower_limit:
-                continue
-            ra = (
-                row["RA(deg)"] if row["RA(deg)"] > 0.0 else row["RA(deg)"] + 360.0
-            ) * u.deg
-            dec = row["dec(deg)"] * u.deg
-            name = radec_to_str_name(ra.to_value(u.deg), dec.to_value(u.deg))
-            self.core.catalog.create(
-                position=SkyCoord(ra=ra, dec=dec),
-                flux=flux,
-                name=name,
-            )
-
-            self.valid_fluxes.add(name)
-
-        self.log.info("socat_csv.loaded", n_sources=len(self.valid_fluxes))
-
-    def add_sources(self, sources: list[RegisteredSource]):
-        for source in sources:
-            self.core.add_source(source=source)
-            if source.flux >= self.flux_lower_limit:
-                self.valid_fluxes.add(source.source_id)
-
-    def get_sources_in_box(
-        self, box: list[SkyCoord] | None = None
-    ) -> list[RegisteredSource]:
-        return self.core.get_sources_in_box(box=box)
-
-    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        return self.core.get_sources_in_map(mask_map=input_map)
-
-    def get_all_sources(self) -> list[RegisteredSource]:
-        sources = self.core.get_sources_in_box(box=None)
-        return sources
-
-    def forced_photometry_sources(self, mask_map: ProcessableMap):
-        return [
-            x
-            for x in self.get_sources_in_map(mask_map)
-            if x.source_id in self.valid_fluxes
-        ]
 
     def source_by_id(self, id) -> RegisteredSource:
         return self.core.source_from_id(id=id)
