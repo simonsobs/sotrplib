@@ -223,7 +223,6 @@ class ProcessableMap(ABC):
             else f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
-    @abstractmethod
     def get_pixel_times(self, pix: tuple[int, int]):
         """
         Given a pixel in the map, return the observation start, mean and end time of that pixel.
@@ -245,7 +244,6 @@ class ProcessableMap(ABC):
         )
         return t_start, t_mean, t_end
 
-    @abstractmethod
     def apply_mask(self):
         """
         Apply the mask to the snr and flux maps if a mask is present.
@@ -257,7 +255,6 @@ class ProcessableMap(ABC):
             self.flux *= self.mask
         return
 
-    @abstractmethod
     def finalize(self):
         """
         Called just before source injection to ensure that the snr, flux, and
@@ -669,10 +666,12 @@ class RhoAndKappaMap(ProcessableMap):
 
 class CoaddedRhoKappaMap(ProcessableMap):
     """
-    Docstring for CoaddedMap
-    """
+    A coadded rho/kappa map created from multiple observations.
+    Attributes are the same as RhoAndKappaMap, but the maps are provided
+    directly rather than read from disk.
 
-    input_map_list: list[str]
+    Coadds are built using map_coadding.MapCoadder classes.
+    """
 
     def __init__(
         self,

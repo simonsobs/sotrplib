@@ -12,7 +12,11 @@ from sotrplib.maps.core import CoaddedRhoKappaMap, ProcessableMap
 
 class MapCoadder(ABC):
     """
-    Docstring for MapCoadder
+    Abstract base class for map coadding strategies.
+    Subclasses should implement the `coadd` method, which takes a list of
+    `ProcessableMap` instances and returns a list of coadded `ProcessableMap` objects.
+    This interface allows for different coadding algorithms to be implemented
+    and used interchangeably.
     """
 
     @abstractmethod
