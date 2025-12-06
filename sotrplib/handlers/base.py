@@ -4,6 +4,7 @@ from typing import Iterable
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
@@ -28,6 +29,7 @@ __all__ = ["BaseRunner"]
 
 class BaseRunner:
     maps: Iterable[ProcessableMap]
+    map_coadder: MapCoadder | None
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
@@ -45,6 +47,7 @@ class BaseRunner:
     def __init__(
         self,
         maps: Iterable[ProcessableMap],
+        map_coadder: MapCoadder | None,
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
@@ -60,6 +63,7 @@ class BaseRunner:
         profile: bool = False,
     ):
         self.maps = maps
+        self.map_coadder = map_coadder or EmptyMapCoadder()
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
@@ -100,6 +104,9 @@ class BaseRunner:
             )
 
         return output_map
+
+    def coadd_maps(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
+        return self.map_coadder.coadd(input_maps)
 
     @property
     def bbox(self):
@@ -165,7 +172,6 @@ class BaseRunner:
         _ = self.profilable_task(self.pointing_residual.get_offset)(
             pointing_sources=pointing_sources
         )
-
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
         )(
@@ -207,6 +213,7 @@ class BaseRunner:
         decorated with the flow as prefect needs these to be defined in advance.
         """
         self.maps = self.basic_task(self.build_map).map(self.maps).result()
+        self.maps = self.coadd_maps(self.maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)()
         return (
             self.basic_task(self.analyze_map)

@@ -115,7 +115,7 @@ class SimulatedMap(ProcessableMap):
             end_time=self.observation_end,
         )
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         log.debug("simulated_map.build.time")
@@ -130,6 +130,9 @@ class SimulatedMap(ProcessableMap):
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         super().finalize()
@@ -227,7 +230,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
             )
 
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         log.debug("simulated_map.build.time")
@@ -242,6 +245,9 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         super().finalize()

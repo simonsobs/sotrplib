@@ -80,7 +80,9 @@ class MatchedFilterConfig(PreprocessorConfig):
 class EdgeMaskConfig(PreprocessorConfig):
     preprocessor_type: Literal["edge_mask"] = "edge_mask"
     edge_width: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(10 * u.arcmin)
-    mask_on: Literal["rho", "kappa", "flux", "snr"] = "kappa"
+    mask_on: Literal["rho", "kappa", "flux", "snr", "inverse_variance", "intensity"] = (
+        "kappa"
+    )
 
     def to_preprocessor(
         self, log: FilteringBoundLogger | None = None

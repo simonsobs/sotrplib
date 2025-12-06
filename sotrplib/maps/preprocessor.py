@@ -124,12 +124,16 @@ class MatchedFilter(MapPreprocessor):
 
 class EdgeMask(MapPreprocessor):
     edge_width: AstroPydanticQuantity = AstroPydanticQuantity(10.0 * u.arcmin)
-    mask_on: Literal["rho", "kappa", "flux", "snr"] = "kappa"
+    mask_on: Literal["rho", "kappa", "flux", "snr", "inverse_variance", "intensity"] = (
+        "kappa"
+    )
 
     def __init__(
         self,
         edge_width: u.Quantity = u.Quantity(10.0, "arcmin"),
-        mask_on: Literal["rho", "kappa", "flux", "snr"] = "kappa",
+        mask_on: Literal[
+            "rho", "kappa", "flux", "snr", "inverse_variance", "intensity"
+        ] = "kappa",
         log: FilteringBoundLogger | None = None,
     ):
         self.edge_width = edge_width
@@ -156,7 +160,6 @@ class EdgeMask(MapPreprocessor):
 
         edge_mask = mask_edge(imap=mask_map, pix_num=number_of_pixels)
         input_map.mask = edge_mask
-
         self.log.info("EdgeMask.preprocess completed")
 
         return input_map
