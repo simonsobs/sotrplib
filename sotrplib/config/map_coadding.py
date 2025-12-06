@@ -17,6 +17,7 @@ class MapCoadderConfig(BaseModel, ABC):
     @abstractmethod
     def to_coadder(
         self,
+        log: FilteringBoundLogger | None = None,
     ) -> MapCoadder:
         return
 

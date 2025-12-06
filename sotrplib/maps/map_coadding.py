@@ -36,8 +36,6 @@ class RhoKappaMapCoadder(MapCoadder):
 
     Parameters
     ----------
-    input_maps : list of ProcessableMap
-        The list of input maps to be coadded. Each should be a `RhoAndKappaMap`.
     frequencies : list of str
         The frequency bands of the maps to coadd ["f090", "f150", "f220", etc.].
         Coadds are split by band.
@@ -81,6 +79,10 @@ class RhoKappaMapCoadder(MapCoadder):
 
         returns a list of Coadded ProcessableMap
         """
+        if not input_maps:
+            self.log.warning("rhokappamapcoadder.coadd.no_input_maps")
+            return []
+
         if self.frequencies is None:
             self.frequencies = sorted(list(set(imap.frequency for imap in input_maps)))
             self.log.info(
@@ -127,6 +129,7 @@ class RhoKappaMapCoadder(MapCoadder):
                 self.observation_start = None
                 self.observation_end = None
                 self.map_depth = None
+                self.input_map_times = []
 
                 self.log.info(
                     "rhokappamapcoadder.base_map.built",
@@ -260,7 +263,7 @@ class RhoKappaMapCoadder(MapCoadder):
                 self.time_first = pixell_map_union(
                     self.time_first,
                     new_map.time_first,
-                    op=lambda a, b: np.minimum(a, b),
+                    op=np.minimum,
                 )
         else:
             self.log.error(
@@ -274,7 +277,7 @@ class RhoKappaMapCoadder(MapCoadder):
                 self.time_last = pixell_map_union(
                     self.time_last,
                     new_map.time_last,
-                    op=lambda a, b: np.maximum(a, b),
+                    op=np.maximum,
                 )
         else:
             self.log.error(
