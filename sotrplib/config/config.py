@@ -13,6 +13,7 @@ from sotrplib.handlers.basic import PipelineRunner
 
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
+from .map_coadding import AllMapCoadderConfigTypes, EmptyMapCoadderConfig
 from .maps import AllMapGeneratorConfigTypes
 from .outputs import AllOutputConfigTypes
 from .pointing_residual import (
@@ -37,6 +38,9 @@ class Settings(BaseSettings):
 
     maps: AllMapGeneratorConfigTypes = []
     "Input maps"
+
+    map_coadder: AllMapCoadderConfigTypes = Field(default_factory=EmptyMapCoadderConfig)
+    "Map coadders"
 
     source_simulators: list[AllSourceSimulationConfigTypes] = []
     "Any source simulators to add sources to the map"
@@ -108,6 +112,7 @@ class Settings(BaseSettings):
             "maps": self.maps.to_generator(log=log)
             if not isinstance(self.maps, list)
             else [x.to_map(log=log) for x in self.maps],
+            "map_coadder": self.map_coadder.to_coadder(log=log),
             "source_simulators": [
                 x.to_simulator(log=log) for x in self.source_simulators
             ],

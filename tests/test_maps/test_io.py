@@ -8,11 +8,11 @@ from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
 
 
-def test_basic_pipeline_rhokappa(tmp_path, ones_map_set):
+def test_basic_pipeline_rhokappa(separate_map_set_1):
     """
     Tests a complete setup of the basic pipeline run with input rho,kappa maps
     """
-    paths = ones_map_set
+    paths = separate_map_set_1
     input_map = RhoKappaMapConfig(
         rho_map_path=paths["rho"],
         kappa_map_path=paths["kappa"],
@@ -22,6 +22,7 @@ def test_basic_pipeline_rhokappa(tmp_path, ones_map_set):
     ).to_map()
     runner = PipelineRunner(
         maps=[input_map],
+        map_coadder=None,
         source_catalogs=[],
         source_injector=None,
         preprocessors=None,
@@ -39,11 +40,11 @@ def test_basic_pipeline_rhokappa(tmp_path, ones_map_set):
     runner.run()
 
 
-def test_basic_pipeline_ivar(tmp_path, ones_map_set):
+def test_basic_pipeline_ivar(separate_map_set_1):
     """
     Tests a complete setup of the basic pipeline run with input intensity, inverse variance maps
     """
-    paths = ones_map_set
+    paths = separate_map_set_1
     input_map = InverseVarianceMapConfig(
         intensity_map_path=paths["map"],
         weights_map_path=paths["ivar"],
@@ -53,6 +54,7 @@ def test_basic_pipeline_ivar(tmp_path, ones_map_set):
     ).to_map()
     runner = PipelineRunner(
         maps=[input_map],
+        map_coadder=None,
         source_catalogs=[],
         source_injector=None,
         preprocessors=None,

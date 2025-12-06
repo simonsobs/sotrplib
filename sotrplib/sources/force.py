@@ -14,7 +14,7 @@ from sotrplib.sources.forced_photometry import (
     scipy_2d_gaussian_fit,
 )
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
-from sotrplib.utils.utils import get_fwhm
+from sotrplib.utils.utils import angular_separation, get_fwhm
 
 
 class EmptyForcedPhotometry(ForcedPhotometryProvider):
@@ -144,24 +144,56 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         min_flux: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        near_source_rel_flux_limit: float = 0.3,
         log: FilteringBoundLogger | None = None,
     ):
         self.min_flux = min_flux
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
+        self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.log = log or get_logger()
 
     def force(
         self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
+        ## get all forced photometry sources from catalogs
         source_list = list(
             itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
+        ## select only those above min_flux for pointing fitting
         pointing_source_list = [
             source
             for source in source_list
             if (source.flux is not None) and (source.flux > self.min_flux)
+        ]
+        ## check if there are any pointing sources with a source within the thumbnail_half_width
+        ## and above near_source_rel_flux_limit * pointing_source.flux
+        has_nearby_sources = [False] * len(pointing_source_list)
+        for i, pointing_source in enumerate(pointing_source_list):
+            for init_source in source_list:
+                if pointing_source == init_source:
+                    continue
+                sep = angular_separation(
+                    pointing_source.ra,
+                    pointing_source.dec,
+                    init_source.ra,
+                    init_source.dec,
+                )
+                if (
+                    sep < self.thumbnail_half_width * (2**-0.5)
+                    and init_source.flux is not None
+                ):
+                    if (
+                        init_source.flux
+                        > pointing_source.flux * self.near_source_rel_flux_limit
+                    ):
+                        has_nearby_sources[i] = True
+                        break
+        pointing_source_list = [
+            src
+            for src, has_nearby in zip(pointing_source_list, has_nearby_sources)
+            if not has_nearby
         ]
         self.log.info(
             "Scipy2DGaussianPointingFitter.force",
@@ -170,6 +202,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumbnails=self.reproject_thumbnails,
+            removed_nearby_sources=sum(has_nearby_sources),
         )
 
         fit_sources = scipy_2d_gaussian_fit(

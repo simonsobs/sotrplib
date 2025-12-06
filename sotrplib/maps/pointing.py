@@ -192,8 +192,8 @@ class PolynomialPointingOffset(MapPointingOffset):
         self.log = log or structlog.get_logger()
 
         # identity (no correction)
-        self.ra_model = lambda ra: np.zeros_like(ra) * u.deg
-        self.dec_model = lambda dec: np.zeros_like(dec) * u.deg
+        self.ra_model = lambda ra, dec: np.zeros_like(np.atleast_1d(ra)) * u.deg
+        self.dec_model = lambda ra, dec: np.zeros_like(np.atleast_1d(dec)) * u.deg
 
     ## Basis terms for 2D polynomial fit
     def _poly_terms(self, x, y):

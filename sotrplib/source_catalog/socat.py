@@ -79,12 +79,14 @@ class SOCatWrapper:
     ) -> list[RegisteredSource]:
         return [
             self._socat_source_to_registered(x)
-            for x in self.catalog.forced_photometry_sources(min_flux=minimum_flux)
+            for x in self.catalog.get_forced_photometry_sources(
+                minimum_flux=minimum_flux
+            )
         ]
 
     ## TODO: need to update for boxes which need to be broken in two.
     def get_sources_in_box(self, box: list[SkyCoord] | None = None):
-        self.log.info("socat.get_sources_in_box.initial_box", box=box)
+        self.log = self.log.bind(initial_box=box)
         if box is None:
             box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
@@ -99,9 +101,7 @@ class SOCatWrapper:
             lower_left=box[0],
             upper_right=box[1],
         )
-        self.log.info(
-            "socat.get_sources_in_box", box=box, n_sources=len(sources_in_map)
-        )
+        self.log = self.log.bind(box=box, n_sources=len(sources_in_map))
 
         return [
             self._socat_source_to_registered(socat_source=x) for x in sources_in_map
