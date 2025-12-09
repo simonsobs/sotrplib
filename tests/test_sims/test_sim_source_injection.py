@@ -1,5 +1,6 @@
 import datetime
 
+import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from structlog import get_logger
@@ -135,6 +136,12 @@ def test_source_injection_into_map():
         observation_end=end_obs,
         frequency="f090",
         array="pa5",
+        simulation_parameters=maps.SimulationParameters(
+            center_ra=50.0 * u.deg,
+            center_dec=0.0 * u.deg,
+            width_ra=20.0 * u.deg,
+            width_dec=20.0 * u.deg,
+        ),
     )
 
     base_map.build()
@@ -148,3 +155,12 @@ def test_source_injection_into_map():
     assert new_map.original_map == base_map
 
     assert (new_map.flux != base_map.flux).any()
+
+    for source in catalog.sources:
+        pxiel = new_map.flux.sky2pix(
+            coords=(source.dec.to_value("rad"), source.ra.to_value("rad"))
+        )
+        expected_flux_value = source.flux.to_value(new_map.flux_units)
+        assert pytest.approx(
+            new_map.flux[int(pxiel[0]), int(pxiel[1])], expected_flux_value, rel=0.5
+        )

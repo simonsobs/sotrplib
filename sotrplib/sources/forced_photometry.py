@@ -291,11 +291,18 @@ def scipy_2d_gaussian_fit(
                 instrument=input_map.instrument,
                 array=input_map.array,
                 frequency=get_frequency(input_map.frequency),
+                crossmatches=[
+                    CrossMatch(
+                        ra=source.ra,
+                        dec=source.dec,
+                        observation_time=input_map.time_mean[pix[0], pix[1]],
+                        source_id=source.source_id,
+                        probability=1.0,
+                        catalog_name=source.catalog_name,
+                        angular_separation=None,
+                    )
+                ],
             )
-            forced_source.fit_failed = True
-            forced_source.fit_failure_reason = "source_outside_map_bounds"
-            fit_sources.append(forced_source)
-            continue
 
         size_pix = thumbnail_half_width / map_res
         t_start, t_mean, t_end = input_map.get_pixel_times(pix)
@@ -311,6 +318,17 @@ def scipy_2d_gaussian_fit(
             instrument=input_map.instrument,
             array=input_map.array,
             frequency=get_frequency(input_map.frequency),
+            crossmatches=[
+                CrossMatch(
+                    ra=source.ra,
+                    dec=source.dec,
+                    observation_time=t_mean,
+                    source_id=source.source_id,
+                    probability=1.0,
+                    catalog_name=source.catalog_name,
+                    angular_separation=None,
+                )
+            ],
         )
 
         forced_source.fit_method = fit_method
@@ -365,9 +383,11 @@ def scipy_2d_gaussian_fit(
         fitter = Gaussian2DFitter(
             forced_source,
             reprojected=reproject_thumb,
-            force_center=forced_source.flux < flux_lim_fit_centroid
-            if forced_source.flux is not None
-            else False,  ## TODO: is this what we want??
+            force_center=(
+                forced_source.flux < flux_lim_fit_centroid
+                if forced_source.flux is not None
+                else False
+            ),  ## TODO: is this what we want??
             log=log,
         )
 
