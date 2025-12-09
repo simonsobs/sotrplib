@@ -27,6 +27,7 @@ def test_simple_forced_photometry(map_with_single_source):
     assert results[0].flux.to(u.Jy).value == pytest.approx(
         sources[0].flux.to(u.Jy).value, rel=2e-1
     )
+    assert results[0].crossmatches
     assert results[0].fit_method == "nearest_neighbor"
 
 
@@ -45,6 +46,7 @@ def test_scipy_curve_fit(map_with_single_source):
     source_cat.add_sources(sources=sources)
     source_cat.valid_fluxes = [s.source_id for s in sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
+    assert results[0].crossmatches
     assert len(results) == 1
     ntries = 10
     if results[0].fit_failed:
