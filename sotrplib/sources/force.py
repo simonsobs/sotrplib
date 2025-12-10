@@ -107,6 +107,22 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
+        """
+        Initialize the Scipy2DGaussianFitter.
+        Parameters
+        ----------
+        flux_limit_centroid : astropy.units.Quantity, optional
+            Minimum flux required to attempt centroid fitting (default: 0.3 Jy).
+        reproject_thumbnails : bool, optional
+            Whether to reproject thumbnails before fitting (default: False).
+            If False, just cuts out square in pixel space.
+        thumbnail_half_width : astropy.units.Quantity, optional
+            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+        allowable_center_offset : astropy.units.Quantity, optional
+            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+        log : FilteringBoundLogger or None, optional
+            Logger instance to use (default: None).
+        """
         self.flux_limit_centroid = flux_limit_centroid
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
@@ -152,9 +168,30 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         near_source_rel_flux_limit: float = 0.3,
-        allowable_center_offset: u.Quantity = u.Quantity(2.0, "arcmin"),
+        allowable_center_offset: u.Quantity = u.Quantity(3.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
+        """
+        Initialize the Scipy2DGaussianFitter.
+        Parameters
+        ----------
+        min_flux : astropy.units.Quantity, optional
+            Minimum flux required to attempt pointing fit (default: 0.3 Jy).
+        reproject_thumbnails : bool, optional
+            Whether to reproject thumbnails before fitting (default: False).
+            If False, just cuts out square in pixel space.
+        thumbnail_half_width : astropy.units.Quantity, optional
+            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+        near_source_rel_flux_limit : float, optional
+            Relative flux limit to exclude nearby sources (default: 0.3).
+            If another source within the thumbnail_half_width has a flux
+            greater than near_source_rel_flux_limit * pointing_source.flux,
+            the pointing source is excluded from fitting.
+        allowable_center_offset : astropy.units.Quantity, optional
+            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+        log : FilteringBoundLogger or None, optional
+            Logger instance to use (default: None).
+        """
         self.min_flux = min_flux
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
