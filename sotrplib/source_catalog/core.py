@@ -73,13 +73,13 @@ class RegisteredSourceCatalog(SourceCatalog):
         self.sources = sources
         # Generate the RA, Dec array for crossmatches.
         self.ra_dec_array = np.asarray(
-            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in self.sources]
+            [(x.ra.to("radian").value, x.dec.to("radian").value) for x in self.sources]
         )
 
     def add_sources(self, sources: list[RegisteredSource]):
         self.sources.extend(sources)
-        self.ra_dec_array = np.array(
-            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in self.sources]
+        self.ra_dec_array = np.asarray(
+            [(x.ra.to("radian").value, x.dec.to("radian").value) for x in self.sources]
         )
 
     def get_sources_in_map(
@@ -166,10 +166,11 @@ class RegisteredSourceCatalog(SourceCatalog):
             return []
 
         matches = pixell_utils.crossmatch(
-            pos1=[[ra.to("deg").value, dec.to("deg").value]],
+            pos1=[[ra.to("radian").value, dec.to("radian").value]],
             pos2=self.ra_dec_array,
-            rmax=radius.to("deg").value,  ## same units as positions
+            rmax=radius.to("radian").value,
             mode=method,
+            coords="radec",
         )
 
         sources = [self.sources[y] for _, y in matches]
