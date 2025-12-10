@@ -248,7 +248,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumbnails=self.reproject_thumbnails,
-            allowed_center_offset=self.allowable_center_offset,
+            allowable_center_offset=self.allowable_center_offset,
             removed_nearby_sources=sum(has_nearby_sources),
         )
 
