@@ -168,7 +168,7 @@ def test_source_injection_forced_photometry():
     top = map_sim_params.center_dec + map_sim_params.width_dec / 2
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
     start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
-    number = 3
+    number = 10
 
     generator = sim_source_generators.FixedSourceGenerator(
         min_flux=min_flux,
@@ -197,11 +197,18 @@ def test_source_injection_forced_photometry():
         gauss_fwhm=get_fwhm(base_map.frequency)
     )
     new_map = injector.inject(input_map=base_map, simulated_sources=sources)
-    phot = Scipy2DGaussianFitter()
+    phot = Scipy2DGaussianFitter(thumbnail_half_width=3 * u.arcmin)
     forced_phot_results = phot.force(new_map, catalogs=[cat])
 
     assert len(forced_phot_results) == number
+    n_valid = 0
     for res in forced_phot_results:
+        ## check if two sources nearby:
+        xmatch = cat.crossmatch(res.ra, res.dec, radius=3.0 * u.arcmin, method="all")
+        if len(xmatch) > 1:
+            continue
+        n_valid += 1
         assert min_flux * 0.9 <= res.flux <= max_flux * 1.1
         assert abs(res.offset_ra.to_value(u.arcmin)) < 1.0
         assert abs(res.offset_dec.to_value(u.arcmin)) < 1.0
+    assert n_valid >= number // 2

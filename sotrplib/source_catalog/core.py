@@ -168,7 +168,7 @@ class RegisteredSourceCatalog(SourceCatalog):
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("deg").value, dec.to("deg").value]],
             pos2=self.ra_dec_array,
-            rmax=radius.to("arcmin").value,
+            rmax=radius.to("deg").value,  ## same units as positions
             mode=method,
         )
 
