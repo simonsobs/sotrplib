@@ -137,6 +137,12 @@ def test_source_injection_into_map():
         observation_end=end_obs,
         frequency="f090",
         array="pa5",
+        simulation_parameters=maps.SimulationParameters(
+            center_ra=50.0 * u.deg,
+            center_dec=0.0 * u.deg,
+            width_ra=20.0 * u.deg,
+            width_dec=20.0 * u.deg,
+        ),
     )
 
     base_map.build()

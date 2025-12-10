@@ -80,9 +80,9 @@ class LightServeOutput(SourceOutput):
                     if source.err_dec is not None
                     else 0.0
                 ),
-                i_flux=source.flux.to_value("mJy") if source.flux is not None else 0.0,
+                i_flux=source.flux.to_value("Jy") if source.flux is not None else 0.0,
                 i_uncertainty=(
-                    source.err_flux.to_value("mJy")
+                    source.err_flux.to_value("Jy")
                     if source.err_flux is not None
                     else 0.0
                 ),
