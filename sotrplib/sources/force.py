@@ -96,6 +96,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
+    allowable_center_offset: u.Quantity
     log: FilteringBoundLogger
 
     def __init__(
@@ -103,11 +104,13 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
         self.flux_limit_centroid = flux_limit_centroid
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
+        self.allowable_center_offset = allowable_center_offset
         self.log = log or get_logger()
 
     def force(
@@ -128,6 +131,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
             pointing_residuals=pointing_residuals,
+            allowable_center_offset=self.allowable_center_offset,
             log=self.log,
         )
 
@@ -137,6 +141,9 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
     min_flux: u.Quantity
     reproject_thumbnails: bool
+    thumbnail_half_width: u.Quantity
+    allowable_center_offset: u.Quantity
+    near_source_rel_flux_limit: float
     log: FilteringBoundLogger
 
     def __init__(
@@ -145,12 +152,14 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         near_source_rel_flux_limit: float = 0.3,
+        allowable_center_offset: u.Quantity = u.Quantity(2.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
         self.min_flux = min_flux
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
+        self.allowable_center_offset = allowable_center_offset
         self.log = log or get_logger()
 
     def force(
@@ -202,6 +211,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumbnails=self.reproject_thumbnails,
+            allowed_center_offset=self.allowable_center_offset,
             removed_nearby_sources=sum(has_nearby_sources),
         )
 
@@ -212,6 +222,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
+            allowable_center_offset=self.allowable_center_offset,
             log=self.log,
         )
 

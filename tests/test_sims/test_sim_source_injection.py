@@ -10,6 +10,8 @@ from sotrplib.sims import (
     sim_sources,
     source_injector,
 )
+from sotrplib.sources.force import Scipy2DGaussianFitter
+from sotrplib.utils.utils import get_fwhm
 
 log = get_logger()
 
@@ -148,3 +150,52 @@ def test_source_injection_into_map():
     assert new_map.original_map == base_map
 
     assert (new_map.flux != base_map.flux).any()
+
+
+def test_source_injection_forced_photometry():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(1.1, "Jy")
+    map_sim_params = maps.SimulationParameters()
+    left = map_sim_params.center_ra - map_sim_params.width_ra / 2
+    right = map_sim_params.center_ra + map_sim_params.width_ra / 2
+    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2
+    top = map_sim_params.center_dec + map_sim_params.width_dec / 2
+    map_sim_params.map_noise = u.Quantity(0.001, "Jy")
+    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+    number = 3
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=min_flux,
+        max_flux=max_flux,
+        number=number,
+        catalog_fraction=1.0,
+    )
+
+    sources, cat = generator.generate(
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+    start_obs = start_time
+    end_obs = start_time + datetime.timedelta(hours=2)
+    base_map = maps.SimulatedMap(
+        observation_start=start_obs,
+        observation_end=end_obs,
+        frequency="f090",
+        array="pa5",
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+    )
+
+    base_map.build()
+    base_map.finalize()
+
+    injector = source_injector.PhotutilsSourceInjector(
+        gauss_fwhm=get_fwhm(base_map.frequency)
+    )
+    new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+    phot = Scipy2DGaussianFitter()
+    forced_phot_results = phot.force(new_map, catalogs=[cat])
+
+    assert len(forced_phot_results) == number
+    for res in forced_phot_results:
+        assert min_flux * 0.9 <= res.flux <= max_flux * 1.1
+        assert abs(res.offset_ra.to_value(u.arcmin)) < 1.0
+        assert abs(res.offset_dec.to_value(u.arcmin)) < 1.0

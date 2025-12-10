@@ -80,6 +80,9 @@ class Gaussian2DFitter:
         fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
         force_center: bool = False,
         reprojected: bool = False,
+        allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
+            1.0, "arcmin"
+        ),
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -88,6 +91,7 @@ class Gaussian2DFitter:
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
         self.reprojected = reprojected
+        self.allowable_center_offset = allowable_center_offset
 
     def initialize_model(self):
         ny, nx = self.source.thumbnail.shape
@@ -107,6 +111,7 @@ class Gaussian2DFitter:
         )
         x0_guess -= (nx - 1) / 2
         y0_guess -= (ny - 1) / 2
+
         sigma_guess = (
             self.fwhm_guess.to(u.arcmin).value
             / self.source.thumbnail_res.to(u.arcmin).value
@@ -155,13 +160,42 @@ class Gaussian2DFitter:
     def fit(self) -> GaussianFitParameters:
         # Fit the data
         self.fit_params = GaussianFitParameters()
+        allowable_center_offset_pixels = (
+            self.allowable_center_offset.to(u.arcmin).value
+            / self.source.thumbnail_res.to(u.arcmin).value
+        )
+        ## set bounds if not forcing center
         try:
+            bounds = (-np.inf, np.inf)
+            if not self.force_center:
+                bounds = (
+                    [
+                        -np.inf,
+                        self.initial_guess[1] - allowable_center_offset_pixels,
+                        self.initial_guess[2] - allowable_center_offset_pixels,
+                        -np.inf,
+                        -np.inf,
+                        -np.inf,
+                        -np.inf,
+                    ],
+                    [
+                        np.inf,
+                        self.initial_guess[1] + allowable_center_offset_pixels,
+                        self.initial_guess[2] + allowable_center_offset_pixels,
+                        np.inf,
+                        np.inf,
+                        np.inf,
+                        np.inf,
+                    ],
+                )
             popt, pcov = curve_fit(
                 self.model,
                 self.xy,
                 self.source.thumbnail.ravel(),
                 p0=self.initial_guess,
+                bounds=bounds,
             )
+
         except RuntimeError:
             self.log.error("curve_fit_2d_gaussian.curve_fit.failed")
             self.fit_params.failed = True
@@ -242,6 +276,7 @@ def scipy_2d_gaussian_fit(
     fwhm: u.Quantity = u.Quantity(2.2, "arcmin"),
     reproject_thumb: bool = False,
     pointing_residuals: MapPointingOffset | None = None,
+    allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     log: FilteringBoundLogger | None = None,
 ) -> list[MeasuredSource]:
     """ """
@@ -367,7 +402,8 @@ def scipy_2d_gaussian_fit(
             reprojected=reproject_thumb,
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
-            else False,  ## TODO: is this what we want??
+            else False,
+            allowable_center_offset=allowable_center_offset,
             log=log,
         )
 
