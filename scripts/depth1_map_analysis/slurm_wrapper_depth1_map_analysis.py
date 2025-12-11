@@ -117,7 +117,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default="0.2 deg",
+    default="0.1 deg",
     type=str,
     help="Thumbnail radius (half-width of square map), json compatible quantity.",
 )
@@ -142,7 +142,7 @@ P.add_argument(
     "--bands",
     action="store",
     nargs="+",
-    default=["f090", "f150", "f220"],
+    default=["f090", "f150", "f220", "f280"],
     help="Bands to analyze, default is f090,f150,f220 but can also include f030 or f040. ",
 )
 
@@ -167,6 +167,13 @@ cd {script_dir}
 
 source .venv/bin/activate
 
+export socat_client_client_type=pickle
+export socat_client_pickle_path=socat.pickle
+
+if [ ! -e "socat.pickle" ]; then
+    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits  -o socat.pickle
+fi
+
 """
     return slurm_header
 
@@ -178,7 +185,6 @@ def generate_config_json(
     thumbnail_half_width="0.2 deg",
     min_snr=5.0,
     min_pointing_sources=10,
-    poly_order=3,
     output_dir="./",
 ):
     ivar_map_file = mapfile.replace("_map.fits", "_ivar.fits")
@@ -201,8 +207,7 @@ def generate_config_json(
     ],
     "source_catalogs": [
         {{
-            "catalog_type": "fits",
-            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "catalog_type": "socat",
             "flux_lower_limit": "{flux_low_limit}"
         }}
     ],
@@ -210,14 +215,13 @@ def generate_config_json(
         "photometry_type": "scipy_pointing",
         "thumbnail_half_width": "{thumbnail_half_width}",
         "min_flux": "{pointing_flux_threshold}",
-        "reproject_thumbnails": "True"
+        "reproject_thumbnails": "True",
+        "allowable_centroid_offset": "3.0 arcmin"
     }},
     "pointing_residual": {{
-        "pointing_residual_type": "polynomial",
+        "pointing_residual_type": "median",
         "min_snr": {min_snr},
-        "min_sources": {min_pointing_sources},
-        "sigma_clip_level": 3.0,
-        "polynomial_order": {poly_order}
+        "min_sources": {min_pointing_sources}
     }},
     "preprocessors": [
         {{
@@ -248,7 +252,8 @@ def generate_config_json(
     "forced_photometry": {{
         "photometry_type": "scipy",
         "reproject_thumbnails": "True",
-         "flux_limit_centroid": "0.1 Jy"
+        "flux_limit_centroid": "0.1 Jy",
+        "allowable_centroid_offset": "2.0 arcmin"
     }},
     "sifter": {{
         "sifter_type": "default"

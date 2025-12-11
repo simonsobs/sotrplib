@@ -62,7 +62,7 @@ class MapCatDatabaseReader:
                             result.stop_time, tz=timezone.utc
                         ),
                         intensity_units=u.uK,
-                        frequency="f" + result.frequency,
+                        frequency=result.frequency,
                         array=result.tube_slot,
                         instrument=self.instrument,
                         log=self.log,

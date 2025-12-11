@@ -61,6 +61,8 @@ class RegisteredSource(BaseSource):
     observation_mean_time: AstroPydanticTime | None = None
     observation_end_time: AstroPydanticTime | None = None
 
+    flags: list[str] | None = None
+
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
     def add_crossmatch(self, crossmatch: CrossMatch):
