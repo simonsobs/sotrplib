@@ -195,14 +195,14 @@ class SOCat(SourceCatalog):
             ],
         )
         ra_dec_array = np.asarray(
-            [(x.ra.to("deg").value, x.dec.to("deg").value) for x in close_sources]
+            [(x.ra.to("radian").value, x.dec.to("radian").value) for x in close_sources]
         )
         if len(ra_dec_array) == 0:
             return []
         matches = pixell_utils.crossmatch(
-            pos1=[[ra.to("deg").value, dec.to("deg").value]],
+            pos1=[[ra.to("radian").value, dec.to("radian").value]],
             pos2=ra_dec_array,
-            rmax=radius.to("deg").value,
+            rmax=radius.to("radian").value,
             mode=method,
             coords="radec",
         )

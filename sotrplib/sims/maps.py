@@ -28,6 +28,7 @@ class SimulationParameters(BaseModel):
     map_noise: AstroPydanticQuantity[u.Jy] = u.Quantity(0.01, "Jy")
 
 
+## TODO: if box is supplied, shoudl we override the SimulationParamters?
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
