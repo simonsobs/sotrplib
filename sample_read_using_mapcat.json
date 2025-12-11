@@ -1,14 +1,13 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 1,
+            "number_to_read": 3,
             "instrument": "SOLAT"
         },
     "source_catalogs": [
         {
-            "catalog_type": "fits",
-            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
-            "flux_lower_limit": "0.01 Jy"
+            "catalog_type": "socat",
+            "flux_lower_limit": "0.1 Jy"
         }
     ],
     "pointing_provider": {
@@ -18,11 +17,10 @@
         "reproject_thumbnails": "True"
     },
     "pointing_residual": {
-        "pointing_residual_type": "polynomial",
+        "pointing_residual_type": "median",
         "min_snr": 5.0,
         "min_sources": 5,
-        "sigma_clip_level": 3.0,
-        "polynomial_order": 3
+        "sigma_clip_level": 3.0
     },
     "preprocessors": [
         {
@@ -53,7 +51,8 @@
     "forced_photometry": {
         "photometry_type": "scipy",
         "reproject_thumbnails": "True",
-        "flux_limit_centroid": "0.1 Jy"
+        "flux_limit_centroid": "0.1 Jy",
+        "allowable_center_offset": "2.0 arcmin"
     },
     "sifter": {
         "sifter_type": "default"
