@@ -358,6 +358,9 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         box: tuple[SkyCoord] | None = None,
         time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ):
+        self.log = self.log.bind(
+            func="sim_source_generator.SOCatSourceGenerator.generate"
+        )
         socat_client_settings = SOCatClientSettings()
         socat_client = socat_client_settings.client
 
@@ -374,7 +377,13 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
         number_of_fixed = int(number_of_sources * self.fraction_fixed)
         number_of_flares = int(number_of_sources * self.fraction_gaussian)
-
+        self.log.info(
+            "sim_source_generator.SOCatSourceGenerator.generate.loaded_catalog",
+            n_sources=number_of_sources,
+            n_fixed=number_of_fixed,
+            n_flares=number_of_flares,
+            box=box,
+        )
         all_sources = [
             RegisteredSource(
                 ra=source.position.ra,
