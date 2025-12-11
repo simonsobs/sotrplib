@@ -96,6 +96,7 @@ class Gaussian2DFitter:
         allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
             1.0, "arcmin"
         ),
+        debug: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -104,6 +105,7 @@ class Gaussian2DFitter:
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
         self.reprojected = reprojected
+        self.debug = debug
         self.allowable_center_offset = allowable_center_offset
 
     def initialize_model(self):
@@ -167,13 +169,15 @@ class Gaussian2DFitter:
                 theta_guess,
                 offset_guess,
             ]
-            self.log.debug(
-                "curve_fit_2d_gaussian.force_center", initial_guess=initial_guess
-            )
+            if self.debug:
+                self.log.debug(
+                    "curve_fit_2d_gaussian.force_center", initial_guess=initial_guess
+                )
         else:
-            self.log.debug(
-                "curve_fit_2d_gaussian.free_center", initial_guess=initial_guess
-            )
+            if self.debug:
+                self.log.debug(
+                    "curve_fit_2d_gaussian.free_center", initial_guess=initial_guess
+                )
             gaussian_2d_model = gaussian_2d
 
         self.model = gaussian_2d_model
@@ -231,7 +235,10 @@ class Gaussian2DFitter:
             return self.fit_params
 
         perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
-        self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt, perr=perr)
+        if self.debug:
+            self.log.debug(
+                "curve_fit_2d_gaussian.curve_fit.success", popt=popt, perr=perr
+            )
         # Extract parameters and uncertainties
         if self.force_center:
             amplitude, sigma_x, sigma_y, theta, offset = popt
@@ -307,6 +314,7 @@ def scipy_2d_gaussian_fit(
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     flags: dict = {},
     log: FilteringBoundLogger | None = None,
+    debug: bool = False,
 ) -> list[MeasuredSource]:
     """
     flags must be a dictionary of flag keys and boolean lists of length len(source_list)
@@ -464,12 +472,14 @@ def scipy_2d_gaussian_fit(
             if forced_source.flux is not None
             else False,
             allowable_center_offset=allowable_center_offset,
+            debug=debug,
             log=log,
         )
 
         fitter.initialize_model()
         fit = fitter.fit()
-        log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
+        if debug:
+            log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 
         forced_source.fit_failed = fit.failed
         forced_source.fit_failure_reason = fit.failure_reason
