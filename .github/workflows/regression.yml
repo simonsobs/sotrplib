@@ -41,7 +41,46 @@ jobs:
           cd tests/regression
           python validate_results.py
           cd -
-      
+
+      - name: Post summary
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = JSON.parse(fs.readFileSync('tests/regression/summary.json', 'utf8'));
+            const body = `
+            ## Regression Test Summary
+
+            - Runtime (s): ${summary.duration}
+
+            ### Sources
+
+            - Forced Sources: ${summary.number_with_forced_photometry}
+            - Blind Sources: ${summary.number_blind_sources}
+            - Noise Sources: ${summary.number_noise_sources}
+            - Transient Sources: ${summary.number_transient_sources}
+
+            ### Recovered Source Statistics
+
+            - Mean RA Offset (deg): ${summary.mean_ra_offset_deg}
+            - Median RA Offset (deg): ${summary.median_ra_offset_deg}
+            - Std RA Offset (deg): ${summary.std_ra_offset_deg}
+            - Mean Dec Offset (deg): ${summary.mean_dec_offset_deg}
+            - Median Dec Offset (deg): ${summary.median_dec_offset_deg}
+            - Std Dec Offset (deg): ${summary.std_dec_offset_deg}
+            - Mean Flux Ratio: ${summary.mean_flux_ratio}
+            - Median Flux Ratio: ${summary.median_flux_ratio}
+            - Std Flux Ratio: ${summary.std_flux_ratio}
+
+            ![Offset ECDF](tests/regression/offset_ecdf.png)
+            `;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
       - name: Upload regression results
         uses: actions/upload-artifact@v5
         with:
