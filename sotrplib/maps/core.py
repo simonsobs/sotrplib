@@ -85,6 +85,9 @@ class ProcessableMap(ABC):
     _map_id: str | None = None
     "An identifier for the map, e.g. filename or coadd type"
 
+    _parent_database: Path | None = None
+    "Path to the parent database for this map, if any"
+
     @abstractmethod
     def build(self):
         """
@@ -457,6 +460,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.mask = self.prefiltered_map.mask
         self.instrument = self.prefiltered_map.instrument
         self._map_id = self.prefiltered_map.map_id
+        self._parent_database = self.prefiltered_map._parent_database
 
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]

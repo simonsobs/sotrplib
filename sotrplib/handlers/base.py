@@ -202,7 +202,8 @@ class BaseRunner:
                 sifter_result=sifter_result,
                 input_map=input_map,
             )
-        set_processing_end(input_map.map_id)
+        if input_map._parent_database is not None:
+            set_processing_end(input_map.map_id)
         return forced_photometry_candidates, sifter_result, input_map
 
     def run(self) -> tuple[list[list], list[object], list[ProcessableMap]]:
