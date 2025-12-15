@@ -4,6 +4,7 @@ from typing import Iterable
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.database import set_processing_end
 from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset
 from sotrplib.maps.postprocessor import MapPostprocessor
@@ -201,7 +202,7 @@ class BaseRunner:
                 sifter_result=sifter_result,
                 input_map=input_map,
             )
-
+        set_processing_end(input_map.map_id)
         return forced_photometry_candidates, sifter_result, input_map
 
     def run(self) -> tuple[list[list], list[object], list[ProcessableMap]]:

@@ -436,12 +436,6 @@ def scipy_2d_gaussian_fit(
             fit_sources.append(forced_source)
             continue
 
-        forced_source.extract_thumbnail(
-            input_map,
-            thumb_width=thumbnail_half_width,
-            reproject_thumb=reproject_thumb,
-        )
-
         try:
             forced_source.extract_thumbnail(
                 input_map,

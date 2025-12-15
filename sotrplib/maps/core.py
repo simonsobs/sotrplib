@@ -215,12 +215,16 @@ class ProcessableMap(ABC):
     def map_id(self) -> str:
         """
         An identifier for the map, e.g. filename or coadd type
-        Defaults to {frequency}_{array}_{observationstart_timestamp}
+        Defaults to {frequency}_{array}_{observationstart_timestamp} if not set.
+        """
+        return self._map_id if self._map_id else self.get_map_str_id()
+
+    def get_map_str_id(self) -> str:
+        """
+        Get a string identifier for the map, useful for logging.
         """
         return (
-            self._map_id
-            if self._map_id
-            else f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
+            f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
     def get_pixel_times(self, pix: tuple[int, int]):
@@ -452,6 +456,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.array = self.prefiltered_map.array
         self.mask = self.prefiltered_map.mask
         self.instrument = self.prefiltered_map.instrument
+        self._map_id = self.prefiltered_map.map_id
 
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
