@@ -93,6 +93,7 @@ class MapCatDatabaseReader:
                     )
                 )
                 maps[-1]._map_id = result.map_id
+                maps[-1]._parent_database = mapcat_settings.database_name
                 self.map_ids.append(result.map_id)
                 set_processing_start(result.map_id, session=session)
 
