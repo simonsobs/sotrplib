@@ -2,7 +2,9 @@
     "maps": {
             "map_generator_type": "mapcat_database",
             "number_to_read": 10,
-            "instrument": "SOLAT"
+            "instrument": "SOLAT",
+            "frequency": "f090",
+            "array": "i6"
         },
     "source_catalogs": [
         {
@@ -60,7 +62,7 @@
         "photometry_type": "scipy",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
-        "thumbnail_half_width": "8 arcmin",
+        "thumbnail_half_width": "4 arcmin",
         "allowable_center_offset": "1.0 arcmin",
         "near_source_rel_flux_limit": 1.0
     },
