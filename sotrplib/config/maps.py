@@ -171,6 +171,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     array: str | None = None
     instrument: str | None = None
     number_to_read: int = 1
+    rerun: bool = False
 
     def to_generator(
         self, log: FilteringBoundLogger | None = None
@@ -180,6 +181,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             frequency=self.frequency,
             array=self.array,
             instrument=self.instrument,
+            rerun=self.rerun,
             log=log,
         )
 

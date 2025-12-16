@@ -30,6 +30,7 @@ class MapCatDatabaseReader:
     frequency: str | None = None
     array: str | None = None
     number_to_read: int = 1
+    rerun: bool = False
     log: FilteringBoundLogger
 
     def __init__(
@@ -38,12 +39,14 @@ class MapCatDatabaseReader:
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
+        rerun: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
+        self.rerun = rerun
         self.map_ids = []
         self.log = log or get_logger()
 
@@ -71,6 +74,14 @@ class MapCatDatabaseReader:
             self.log.info("MapCatDatabaseReader.found_maps", number_found=len(results))
 
             for result in results:
+                if not self.rerun and check_if_processed(
+                    result.map_id, session=session
+                ):
+                    self.log.info(
+                        "MapCatDatabaseReader.skipping_processed_map",
+                        map_id=result.map_id,
+                    )
+                    continue
                 maps.append(
                     IntensityAndInverseVarianceMap(
                         intensity_filename=mapcat_settings.depth_one_parent
@@ -101,6 +112,20 @@ class MapCatDatabaseReader:
 
     def __iter__(self):
         return iter(self.map_list())
+
+
+def check_if_processed(map_id: int, session=None) -> bool:
+    ## session is mapcat_settings.session() whatever that is
+    if session is None:
+        session = mapcat_settings.session()
+    query = select(ProcessingStatusTable).where(ProcessingStatusTable.map_id == map_id)
+    session_results = session.execute(query).one_or_none()
+    if session_results is None:
+        return False
+    for r in session_results:
+        if r.processing_status == "completed":
+            return True
+    return False
 
 
 def set_processing_start(map_id: int, session=None):
