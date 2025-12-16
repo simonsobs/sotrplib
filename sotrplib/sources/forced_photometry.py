@@ -374,7 +374,7 @@ def scipy_2d_gaussian_fit(
                     CrossMatch(
                         ra=source.ra,
                         dec=source.dec,
-                        observation_time=input_map.time_mean[pix[0], pix[1]],
+                        observation_time=None,
                         source_id=source.source_id,
                         probability=1.0,
                         catalog_name=source.catalog_name,
