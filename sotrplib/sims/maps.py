@@ -4,6 +4,7 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.units import Quantity
+from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from numpy.typing import ArrayLike
 from pixell import enmap
