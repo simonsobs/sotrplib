@@ -112,9 +112,13 @@ class BaseRunner:
     def bbox(self):
         if not self.maps:
             return None
-        bbox = self.maps[0].bbox
 
-        for input_map in self.maps[1:]:
+        # mapcat map list is not subscriptable so start with maximal bounding box
+        bbox = [
+            SkyCoord(ra=359.999 * units.deg, dec=90.0 * units.deg),
+            SkyCoord(ra=0.0 * units.deg, dec=-90.0 * units.deg),
+        ]
+        for input_map in self.maps:
             map_bbox = input_map.bbox
             left = min(bbox[0].ra, map_bbox[0].ra)
             bottom = min(bbox[0].dec, map_bbox[0].dec)
@@ -212,9 +216,9 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
+        all_simulated_sources = self.basic_task(self.simulate_sources)()
         self.maps = self.basic_task(self.build_map).map(self.maps).result()
         self.maps = self.coadd_maps(self.maps)
-        all_simulated_sources = self.basic_task(self.simulate_sources)()
         return (
             self.basic_task(self.analyze_map)
             .map(self.maps, self.unmapped(all_simulated_sources))
