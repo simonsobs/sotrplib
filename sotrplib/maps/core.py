@@ -308,6 +308,20 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.mask = mask
         self.log = log or structlog.get_logger()
 
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        Read from the inverse variance map header.
+        """
+        shape, wcs = enmap.read_map_geometry(str(self.inverse_variance_filename))
+
+        bottom_left = wcs.array_index_to_world(0, 0)
+        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
+
+        self.box = (bottom_left, top_right)
+        return self.box
+
     def build(self):
         log = self.log.bind(intensity_filename=self.intensity_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
@@ -564,6 +578,20 @@ class RhoAndKappaMap(ProcessableMap):
         self.flux_units = flux_units
         self.mask = mask
         self.log = log or structlog.get_logger()
+
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        Read from the rho map header.
+        """
+        shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
+
+        bottom_left = wcs.array_index_to_world(0, 0)
+        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
+
+        self.box = (bottom_left, top_right)
+        return self.box
 
     def build(self):
         log = self.log.bind(rho_filename=self.rho_filename)
