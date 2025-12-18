@@ -75,6 +75,19 @@ class SimulatedMap(ProcessableMap):
         self.simulation_parameters = simulation_parameters or SimulationParameters()
         self.log = log or structlog.get_logger()
 
+    @property
+    def bbox(self):
+        return [
+            SkyCoord(
+                ra=self.simulation_parameters.center_ra - self.simulation_parameters.width_ra,
+                dec=self.simulation_parameters.center_dec - self.simulation_parameters.width_dec,
+            ),
+            SkyCoord(
+                ra=self.simulation_parameters.center_ra + self.simulation_parameters.width_ra,
+                dec=self.simulation_parameters.center_dec + self.simulation_parameters.width_dec,
+            ),
+        ]
+
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
 
