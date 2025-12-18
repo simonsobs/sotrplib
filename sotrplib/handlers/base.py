@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from typing import Iterable
 
-from astropy.coordinates import SkyCoord
 from astropy import units
+from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
