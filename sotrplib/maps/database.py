@@ -119,7 +119,9 @@ class MapCatDatabaseReader:
         return iter(self.map_list())
 
 
-def check_if_processed(map_id: int, session=None) -> bool:
+def check_if_processed(
+    map_id: int, session=None, valid_statuses: list = ["completed", "processing"]
+) -> bool:
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
@@ -128,7 +130,7 @@ def check_if_processed(map_id: int, session=None) -> bool:
     if session_results is None:
         return False
     for r in session_results:
-        if r.processing_status == "completed":
+        if r.processing_status in valid_statuses:
             return True
     return False
 
