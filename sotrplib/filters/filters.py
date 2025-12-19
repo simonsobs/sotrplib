@@ -2,54 +2,10 @@ import numpy as np
 from astropy import units as u
 from pixell import analysis, bunch, enmap, uharm, utils
 
-from sotrplib.filters.inputs import get_sourceflux_threshold
-from sotrplib.filters.masks import make_circle_mask
-from sotrplib.utils.utils import get_ps_inmap
-
 """
 Lots of functions copied from https://github.com/amaurea/tenki/blob/master/filter_depth1.py
 
 """
-
-
-def renorm_thumbnail_snr(
-    thumb_snr, arr, freq, ra_deg, dec_deg, source_cat=None, apod_size_arcmin=10
-):
-    """
-    renormalize the matched filtered maps
-    Args:
-        thumb_snr:thumbnail of matched filtered map, it should be a snr map
-        arr: array name
-        freq: frequency
-        ra_deg:ra of source in degree
-        dec_deg:dec of source in degree
-        source_cat: catalog of point sources
-    """
-
-    resolution = np.abs(thumb_snr.wcs.wcs.cdelt[0])
-    apod_pix = int(apod_size_arcmin / (resolution * 60) + 2)
-    mask = make_circle_mask(thumb_snr, ra_deg, dec_deg, arr=arr, freq=freq)
-    flux_thresh = get_sourceflux_threshold(freq)
-    mask_apod = enmap.zeros(thumb_snr.shape, wcs=thumb_snr.wcs, dtype=None)
-    mask_apod[
-        apod_pix : thumb_snr.shape[0] - apod_pix,
-        apod_pix : thumb_snr.shape[1] - apod_pix,
-    ] = 1
-    if source_cat:
-        source_cat = get_ps_inmap(thumb_snr, source_cat, fluxlim=flux_thresh)
-        for i in range(len(source_cat)):
-            mask *= make_circle_mask(
-                thumb_ivar,  # noqa
-                source_cat["RADeg"][i],
-                source_cat["decDeg"][i],
-                mask_radius=4,
-            )
-
-    mask *= mask_apod
-    thumb_snr_sel_sq = (thumb_snr * mask) ** 2
-    mean_snr_sq = thumb_snr_sel_sq[np.nonzero(thumb_snr_sel_sq)].mean()
-    thumb_snr_renorm = thumb_snr / (mean_snr_sq) ** 0.5
-    return thumb_snr_renorm
 
 
 def fix_profile(profile):
