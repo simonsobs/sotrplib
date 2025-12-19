@@ -1,15 +1,16 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 2,
+            "number_to_read": 20,
             "instrument": "SOLAT",
             "frequency": "f090",
-            "array": "i6"
+            "array": "i1",
+            "rerun": "True"
         },
     "source_catalogs": [
         {
             "catalog_type": "socat",
-            "flux_lower_limit": "0.05 Jy"
+            "flux_lower_limit": "0.01 Jy"
         }
     ],
     "sso_catalogs": [
