@@ -68,7 +68,7 @@ class MatchedFilter(MapPreprocessor):
         apod_holes: AstroPydanticQuantity = 5 * u.arcmin,
         noisemask_lim: float | None = None,
         highpass: bool = False,
-        band_height: AstroPydanticQuantity = 0 * u.degree,
+        band_height: AstroPydanticQuantity = 1 * u.degree,
         shift: float = 0,
         simple: bool = False,
         simple_lknee: float = 1000,

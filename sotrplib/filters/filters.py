@@ -1,6 +1,10 @@
 import numpy as np
 from astropy import units as u
-from pixell import enmap, utils
+from pixell import analysis, bunch, enmap, uharm, utils
+
+from sotrplib.filters.inputs import get_sourceflux_threshold
+from sotrplib.filters.masks import make_circle_mask
+from sotrplib.utils.utils import get_ps_inmap
 
 """
 Lots of functions copied from https://github.com/amaurea/tenki/blob/master/filter_depth1.py
@@ -21,9 +25,6 @@ def renorm_thumbnail_snr(
         dec_deg:dec of source in degree
         source_cat: catalog of point sources
     """
-    from ..utils.utils import get_ps_inmap
-    from .inputs import get_sourceflux_threshold
-    from .masks import make_circle_mask
 
     resolution = np.abs(thumb_snr.wcs.wcs.cdelt[0])
     apod_pix = int(apod_size_arcmin / (resolution * 60) + 2)
@@ -155,8 +156,6 @@ def build_ips2d_udgrade(map, ivar, lres=(70, 100), apod_corr=1):
 
 
 def overlapping_range_iterator(n, nblock, overlap, padding=0):
-    from pixell.bunch import Bunch
-
     if nblock == 0:
         return
     # We don't handle overlap > half our block size
@@ -185,7 +184,7 @@ def overlapping_range_iterator(n, nblock, overlap, padding=0):
         right = (np.arange(nover2) + 2)[::-1] / (nover2 + 2)
         middle = np.full(ionly2 - ionly1, 1.0)
         weight = np.concatenate([left, middle, right])
-        yield Bunch(
+        yield bunch.Bunch(
             i1=ifull1, i2=ifull2, p1=iuse1 - ifull1, p2=ifull2 - iuse2, weight=weight
         )
 
@@ -208,7 +207,7 @@ def matched_filter_depth1_map(
     apod_holes: u.Quantity = 5 * u.arcmin,
     noisemask_lim: float | None = None,
     highpass: bool = False,
-    band_height: u.Quantity = 0 * u.degree,
+    band_height: u.Quantity = 1 * u.degree,
     shift: float = 0,
     simple: bool = False,
     simple_lknee: float = 1000,
@@ -257,7 +256,7 @@ def matched_filter_depth1_map(
     highpass: bool = False
         perform highpass filtering
 
-    band_height: u.Quantity = 0 * utils.degree
+    band_height: u.Quantity = 1 * utils.degree
         do filtering in dec bands of this height if >0, else one filtering for entire map, in radians.
 
     shift: int = 0
@@ -286,7 +285,6 @@ def matched_filter_depth1_map(
     rho,kappa : enmap
         the matched filtered maps rho and kappa.
     """
-    from pixell import analysis, bunch, enmap, uharm, utils
 
     freq = band_center.to(u.Hz).value
     ## uK-> mJy/sr
@@ -332,7 +330,7 @@ def matched_filter_depth1_map(
         mask |= enmap.read_map(maskfile, geometry=imap.geometry)
     # Optionally mask very bright regions
     if noisemask_lim:
-        bright = np.abs(imap.preflat[0] < noisemask_lim * fconv)
+        bright = np.abs(imap.preflat[0]) < noisemask_lim * fconv
         rmask = 5 * u.arcmin
         mask |= (
             bright.distance_transform(rmax=rmask.to(u.radian).value)

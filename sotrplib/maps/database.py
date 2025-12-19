@@ -66,7 +66,10 @@ class MapCatDatabaseReader:
             if self.array
             else query
         )
-        query = query.limit(self.number_to_read)
+
+        ## Limit the number of maps to read
+        ## but I now want to skip processed ones, so will do that below
+        # query = query.limit(self.number_to_read)
         maps = []
 
         with mapcat_settings.session() as session:
@@ -107,6 +110,8 @@ class MapCatDatabaseReader:
                 maps[-1]._parent_database = mapcat_settings.database_name
                 self.map_ids.append(result.map_id)
                 set_processing_start(result.map_id, session=session)
+                if len(maps) >= self.number_to_read:
+                    break
 
         return maps
 
