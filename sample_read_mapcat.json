@@ -1,10 +1,10 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 20,
+            "number_to_read": 200,
             "instrument": "SOLAT",
-            "frequency": "f090",
-            "array": "i1",
+            "frequency": "f280",
+            "array": "c1",
             "rerun": "True"
         },
     "source_catalogs": [
@@ -35,7 +35,12 @@
     },
     "preprocessors": [
         {
-            "preprocessor_type": "matched_filter"
+            "preprocessor_type": "matched_filter",
+            "band_height": "1 deg",
+            "shrink_holes": "5 arcmin",
+            "noisemask_lim": 0.03,
+            "noisemask_radius": "10 arcmin",
+            "apod_holes": "10 arcmin"
         },
         {
             "preprocessor_type": "kappa_rho"
