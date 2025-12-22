@@ -317,7 +317,53 @@ def scipy_2d_gaussian_fit(
     debug: bool = False,
 ) -> list[MeasuredSource]:
     """
-    flags must be a dictionary of flag keys and boolean lists of length len(source_list)
+    Fit 2D Gaussian models to a list of registered sources on a map using SciPy.
+    Parameters
+    ----------
+    input_map : ProcessableMap
+        Map object containing the image data on which the sources are detected
+        and to which the 2D Gaussian models are fitted.
+    source_list : list[RegisteredSource]
+        List of registered source objects whose positions are used as initial
+        guesses for the Gaussian fits.
+    flux_lim_fit_centroid : astropy.units.Quantity, optional
+        Minimum peak flux density used to decide whether to fit for the source
+        centroid. Sources with peak flux below this limit may have their
+        centroid fixed. The default is 0.3 Jy.
+    thumbnail_half_width : astropy.units.Quantity, optional
+        Half-width of the thumbnail cut-out around each source position, in
+        angular units. The default is 0.25 deg.
+    fwhm : astropy.units.Quantity or None, optional
+        Full-width at half maximum (FWHM) of the instrumental beam. If given,
+        it is used to set the initial size (and/or bounds) of the Gaussian.
+        If None, the FWHM is inferred from the map or other defaults.
+     reproject_thumb : bool, optional
+        If True, thumbnails are reprojected (e.g., to a local tangent-plane
+        projection) before fitting. If False, thumbnails are extracted in the
+        native projection. Defaults to False.
+    pointing_residuals : MapPointingOffset or None, optional
+        Optional pointing residuals to apply to the nominal source positions
+        before cutting thumbnails and fitting.
+    allowable_center_offset : astropy.units.Quantity, optional
+        Maximum allowed offset between the fitted source position and the
+        nominal catalog position. Fits exceeding this offset may be rejected.
+        The default is 1.0 arcmin.
+    flags : dict, optional
+        Dictionary mapping flag names (str) to boolean lists of length
+        ``len(source_list)``. For each source, all flag names whose list entry
+        is True are attached to the corresponding measured source.
+    log : structlog.types.FilteringBoundLogger or None, optional
+        Logger instance used for structured logging. If None, a default logger
+        from :func:`structlog.get_logger` is created and used.
+    debug : bool, optional
+        If True, enable additional debug output and/or diagnostic behaviour
+        during fitting. Defaults to False.
+
+    Returns
+    -------
+    list[MeasuredSource]
+        List of measured source objects containing the results of the 2D
+        Gaussian fits, including fit parameters and status flags.
     """
     log = log or get_logger()
     log = log.bind(func_name="scipy_2d_gaussian_fit")
