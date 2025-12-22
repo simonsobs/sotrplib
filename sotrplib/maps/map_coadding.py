@@ -181,7 +181,10 @@ class RhoKappaMapCoadder(MapCoadder):
                         coadd.mask = enmap.enmap(sourcemap.mask)
 
                     coadd.update_times(sourcemap)
-                    coadd._hits += sourcemap._compute_hits()
+                    coadd._hits = enmap.map_union(
+                        coadd.hits,
+                        sourcemap.hits,
+                    )
                     coadd.map_ids.append(sourcemap.map_id)
 
                 n_maps = len(coadd.input_map_times)
