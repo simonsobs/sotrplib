@@ -50,8 +50,6 @@ class ProcessableMap(ABC):
     "The time at which each pixel was last observed"
     time_mean: ndmap
     "The mean time at which each pixel was observed"
-    hits: ndmap
-    "A hits map stating the number of times each pixel was observed"
     mask: ndmap | None = None
     "A mask map indicating valid pixels as 1 and invalid pixels as 0"
 
@@ -79,6 +77,9 @@ class ProcessableMap(ABC):
     "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
     box: tuple[SkyCoord, SkyCoord] | None = None
+    _hits: ndmap | None = None
+    "A hits map stating the number of times each pixel was observed"
+
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
@@ -95,6 +96,13 @@ class ProcessableMap(ABC):
         or reading them from disk.
         """
         return
+
+    @abstractmethod
+    def hits(self):
+        """
+        Get the hits map if available.
+        """
+        return self._hits
 
     @property
     def noise(self):
@@ -398,6 +406,14 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
 
+    def hits(self):
+        """
+        Get the hits map if available.
+        """
+        if self._hits is None:
+            self._hits = np.where(self.inverse_variance > 0, 1, 0).astype(np.int32)
+        return self._hits
+
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.intensity / np.sqrt(self.inverse_variance)
@@ -461,7 +477,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.instrument = self.prefiltered_map.instrument
         self._map_id = self.prefiltered_map.map_id
         self._parent_database = self.prefiltered_map._parent_database
-
+        self.hits = self.prefiltered_map.hits()
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
         )
@@ -511,6 +527,14 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             self.observation_end = datetime.fromtimestamp(
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
+
+    def hits(self):
+        """
+        Get the hits map if available.
+        """
+        if self._hits is None:
+            self._hits = np.where(self.kappa > 0, 1, 0).astype(np.int32)
+        return self._hits
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -653,6 +677,14 @@ class RhoAndKappaMap(ProcessableMap):
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
+
+    def hits(self):
+        """
+        Get the hits map if available.
+        """
+        if self._hits is None:
+            self._hits = np.where(self.kappa > 0, 1, 0).astype(np.int32)
+        return self._hits
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
