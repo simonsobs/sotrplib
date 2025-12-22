@@ -43,7 +43,7 @@ class ConstantResidualConfig(PointingResidualConfig):
         return ConstantPointingOffset(
             min_snr=self.min_snr,
             min_num=self.min_sources,
-            avg_method="mean",
+            avg_method=self.pointing_residual_type,
             sigma_clip_level=self.sigma_clip_level,
             log=log,
         )

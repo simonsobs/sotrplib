@@ -167,15 +167,21 @@ class InverseVarianceMapConfig(MapConfig):
 
 class MapCatDatabaseConfig(MapGeneratorConfig):
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
+    frequency: str | None = None
+    array: str | None = None
     instrument: str | None = None
     number_to_read: int = 1
+    rerun: bool = False
 
     def to_generator(
         self, log: FilteringBoundLogger | None = None
     ) -> Iterable[ProcessableMap]:
         return MapCatDatabaseReader(
             number_to_read=self.number_to_read,
+            frequency=self.frequency,
+            array=self.array,
             instrument=self.instrument,
+            rerun=self.rerun,
             log=log,
         )
 
