@@ -54,6 +54,9 @@ class RhoKappaMapCoadder(MapCoadder):
         log: FilteringBoundLogger | None = None,
     ):
         self.map_depth = None
+        self.rho = None
+        self.kappa = None
+        self.mask = None
         self.frequencies = frequencies
         self.arrays = arrays if arrays is not None else ["coadd"]
         self.instrument = instrument
@@ -62,6 +65,7 @@ class RhoKappaMapCoadder(MapCoadder):
         self.time_last = None
         self.time_first = None
         self.time_mean = None
+        self.n_maps = 0
         self.observation_start = None
         self.observation_end = None
         self.map_depth = None
@@ -198,7 +202,7 @@ class RhoKappaMapCoadder(MapCoadder):
 
                 self.n_maps = len(self.input_map_times)
                 self.log.info(
-                    "rhokappamapcoadder.coadd.finalized",
+                    "rhokappamapcoadder.coadd.completed",
                     n_maps_coadded=self.n_maps,
                     coadd_start_time=self.observation_start,
                     coadd_end_time=self.observation_end,
@@ -235,26 +239,44 @@ class RhoKappaMapCoadder(MapCoadder):
         return coadded_maps
 
     def get_time_and_mapdepth(self, new_map):
-        if isinstance(new_map.time_mean, ndmap):
-            if self.time_mean is None:
-                self.time_mean = enmap.enmap(new_map.time_mean)
-                self.map_depth = enmap.enmap(new_map.time_mean)
-                self.map_depth[self.map_depth > 0] = 1.0
+        if not isinstance(new_map.hits, ndmap) and not isinstance(
+            new_map.time_mean, ndmap
+        ):
+            self.log.error(
+                "rhokappamapcoadder.get_time_and_mapdepth.no_hits_or_time_mean",
+            )
+            return
+        ## mapdepth use hits if available, else use time_mean>0 count
+        if isinstance(new_map.hits, ndmap):
+            if self.map_depth is None:
+                self.map_depth = enmap.enmap(new_map.hits)
             else:
-                self.time_mean = enmap.map_union(
-                    self.time_mean,
-                    new_map.time_mean,
+                self.map_depth = enmap.map_union(
+                    self.map_depth,
+                    new_map.hits,
                 )
+        else:
+            if self.map_depth is not None:
                 new_map_depth = enmap.enmap(new_map.time_mean)
                 new_map_depth[new_map_depth > 0] = 1.0
                 self.map_depth = enmap.map_union(
                     self.map_depth,
                     new_map_depth,
                 )
+
+        if isinstance(new_map.time_mean, ndmap):
+            if self.time_mean is None:
+                self.time_mean = enmap.enmap(new_map.time_mean)
+            else:
+                self.time_mean = enmap.map_union(
+                    self.time_mean,
+                    new_map.time_mean,
+                )
         else:
             self.log.error(
                 "rhokappamapcoadder.get_time_and_mapdepth.no_time_mean",
             )
+
         ## get earliest start time per pixel ... can I use map_union with a<b or b<a or something?
         if isinstance(new_map.time_first, ndmap):
             if self.time_first is None:
