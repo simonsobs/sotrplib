@@ -17,6 +17,8 @@ from pixell.enmap import ndmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.utils import pixell_map_union
+
 
 class ProcessableMap(ABC):
     """
@@ -50,8 +52,6 @@ class ProcessableMap(ABC):
     "The time at which each pixel was last observed"
     time_mean: ndmap
     "The mean time at which each pixel was observed"
-    hits: ndmap
-    "A hits map stating the number of times each pixel was observed"
     mask: ndmap | None = None
     "A mask map indicating valid pixels as 1 and invalid pixels as 0"
 
@@ -79,11 +79,18 @@ class ProcessableMap(ABC):
     "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
     box: tuple[SkyCoord, SkyCoord] | None = None
+
+    _hits: ndmap | None = None
+    "A hits map stating the number of times each pixel was observed"
+
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
-    _map_id: str | None = None
+    __map_id: str | None = None
     "An identifier for the map, e.g. filename or coadd type"
+
+    _parent_database: Path | None = None
+    "Path to the parent database for this map, if any"
 
     @abstractmethod
     def build(self):
@@ -92,6 +99,24 @@ class ProcessableMap(ABC):
         or reading them from disk.
         """
         return
+
+    @property
+    def hits(self):
+        """
+        Lazily computed hits map.
+        """
+        if self._hits is None:
+            self._hits = self._compute_hits()
+        return self._hits
+
+    @abstractmethod
+    def _compute_hits(self):
+        """
+        Must return an ndmap of hits.
+        """
+        raise NotImplementedError(
+            "_compute_hits must be implemented by ProcessableMap subclass"
+        )
 
     @property
     def noise(self):
@@ -215,12 +240,27 @@ class ProcessableMap(ABC):
     def map_id(self) -> str:
         """
         An identifier for the map, e.g. filename or coadd type
-        Defaults to {frequency}_{array}_{observationstart_timestamp}
+        Defaults to {frequency}_{array}_{observationstart_timestamp} if not set.
+        """
+        return self.__map_id if self.__map_id is not None else self.get_map_str_id()
+
+    @map_id.setter
+    def map_id(self, x):
+        self.__map_id = x
+
+    @map_id.deleter
+    def map_id(self):
+        try:
+            del self.__map_id
+        except AttributeError:
+            pass
+
+    def get_map_str_id(self) -> str:
+        """
+        Get a string identifier for the map, useful for logging.
         """
         return (
-            self._map_id
-            if self._map_id
-            else f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
+            f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
     def get_pixel_times(self, pix: tuple[int, int]):
@@ -291,6 +331,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         matched_filtered: bool = False,
         mask: ndmap | None = None,
         intensity_units: Unit = u.K,
+        map_id: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
@@ -306,6 +347,10 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.instrument = instrument
         self.matched_filtered = matched_filtered
         self.mask = mask
+        if map_id is not None:
+            self.map_id = map_id
+        self.map_id = map_id
+        self._hits = None
         self.log = log or structlog.get_logger()
 
     @property
@@ -405,6 +450,12 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
 
+    def _compute_hits(self):
+        return (self.inverse_variance > 0).astype(np.int32)
+
+    def get_map_id(self):
+        return self.__map_id or super().get_map_str_id()
+
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.intensity / np.sqrt(self.inverse_variance)
@@ -466,7 +517,10 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.array = self.prefiltered_map.array
         self.mask = self.prefiltered_map.mask
         self.instrument = self.prefiltered_map.instrument
-
+        if self.prefiltered_map.map_id is not None:
+            self.map_id = self.prefiltered_map.map_id
+        self._parent_database = self.prefiltered_map._parent_database
+        self._hits = self.prefiltered_map._hits
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
         )
@@ -482,6 +536,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
     def build(self):
         return
+
+    def get_map_id(self):
+        return self.__map_id or super().get_map_str_id()
 
     def add_time_offset(self, offset: timedelta):
         """
@@ -516,6 +573,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             self.observation_end = datetime.fromtimestamp(
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
+
+    def _compute_hits(self):
+        return (self.kappa > 0).astype(np.int32)
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -563,6 +623,7 @@ class RhoAndKappaMap(ProcessableMap):
         instrument: str | None = None,
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
+        map_id: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -577,6 +638,9 @@ class RhoAndKappaMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
+        if map_id is not None:
+            self.map_id = map_id
+        self._hits = None
         self.log = log or structlog.get_logger()
 
     @property
@@ -673,6 +737,12 @@ class RhoAndKappaMap(ProcessableMap):
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
 
+    def get_map_id(self):
+        return self.__map_id or super().get_map_str_id()
+
+    def _compute_hits(self):
+        return (self.kappa > 0).astype(np.int32)
+
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.rho / np.sqrt(self.kappa)
@@ -719,6 +789,8 @@ class CoaddedRhoKappaMap(ProcessableMap):
         mask: ndmap | None = None,
         map_resolution: u.Quantity | None = None,
         hits: ndmap | None = None,
+        map_ids: list = [],
+        input_map_times: list = [],
         log: FilteringBoundLogger | None = None,
     ):
         self.rho = rho
@@ -735,12 +807,86 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
-        self.hits = hits
+        self._hits = hits
         self.map_resolution = map_resolution
+        self.map_ids = map_ids
+        self.input_map_times = input_map_times
         self.log = log or structlog.get_logger()
 
     def build(self):
         pass
+
+    def update_times(self, new_map):
+        """
+        Update the coadd observation start and observation end
+        given the new map.
+
+        Update the time maps themselves as well.
+        """
+        log = self.log or structlog.get_logger()
+
+        self.observation_start = (
+            new_map.observation_start
+            if self.observation_start is None
+            else min(self.observation_start, new_map.observation_start)
+        )
+        self.observation_end = (
+            new_map.observation_end
+            if self.observation_end is None
+            else max(self.observation_end, new_map.observation_end)
+        )
+        time_delta = new_map.observation_end - new_map.observation_start
+        mid_time = new_map.observation_start + (time_delta / 2)
+        self.input_map_times.append(mid_time)
+
+        ## get map union if adding two maps, use hits-weighted mean.
+        total_hits = self._compute_hits()
+        hit_mask = total_hits > 0
+        if isinstance(new_map.time_mean, ndmap):
+            if self.time_mean is None:
+                self.time_mean = enmap.enmap(new_map.time_mean)
+            else:
+                self.time_mean = enmap.map_union(
+                    self.time_mean * self.hits,
+                    new_map.time_mean * new_map.hits,
+                )
+
+                self.time_mean[hit_mask] /= total_hits[hit_mask]
+
+        else:
+            log.error(
+                "CoaddedRhoKappaMap.update_times.no_time_mean",
+            )
+
+        if isinstance(new_map.time_first, ndmap):
+            if self.time_first is None:
+                self.time_first = enmap.enmap(new_map.time_first)
+            else:
+                self.time_first = pixell_map_union(
+                    self.time_first,
+                    new_map.time_first,
+                    op=np.minimum,
+                )
+        else:
+            log.error(
+                "CoaddedRhoKappaMap.update_times.no_time_first",
+            )
+        if isinstance(new_map.time_last, ndmap):
+            if self.time_last is None:
+                self.time_last = enmap.enmap(new_map.time_last)
+            else:
+                self.time_last = pixell_map_union(
+                    self.time_last,
+                    new_map.time_last,
+                    op=np.maximum,
+                )
+        else:
+            log.error(
+                "CoaddedRhoKappaMap.update_times.no_time_last",
+            )
+
+    def _compute_hits(self):
+        return (self.kappa > 0).astype(np.int32)
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)

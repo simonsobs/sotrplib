@@ -45,8 +45,9 @@ class MatchedFilterConfig(PreprocessorConfig):
     apod_edge: AstroPydanticQuantity = 10 * u.arcmin
     apod_holes: AstroPydanticQuantity = 5 * u.arcmin
     noisemask_lim: float | None = None
+    noisemask_radius: AstroPydanticQuantity = 10 * u.arcmin
     highpass: bool = False
-    band_height: AstroPydanticQuantity = 0 * u.degree
+    band_height: AstroPydanticQuantity = 1 * u.degree
     shift: float = 0
     simple: bool = False
     simple_lknee: float = 1000
@@ -65,6 +66,7 @@ class MatchedFilterConfig(PreprocessorConfig):
             apod_edge=self.apod_edge,
             apod_holes=self.apod_holes,
             noisemask_lim=self.noisemask_lim,
+            noisemask_radius=self.noisemask_radius,
             highpass=self.highpass,
             band_height=self.band_height,
             shift=self.shift,

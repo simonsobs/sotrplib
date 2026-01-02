@@ -81,7 +81,7 @@ class ConstantPointingOffset(MapPointingOffset):
     ):
         log = self.log or structlog.get_logger()
         log = log.bind(
-            func="pointing.calculate_mean_offsets",
+            func="pointing.ConstantPointingOffset.get_offset",
             min_snr=self.min_snr,
             min_num=self.min_num,
         )
