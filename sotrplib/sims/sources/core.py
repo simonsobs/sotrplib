@@ -38,7 +38,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
 
         self.time_first = np.minimum(time, original_map.time_first)
         self.time_mean = time
-        self.time_end = np.maximum(time, original_map.time_first)
+        self.time_last = np.maximum(time, original_map.time_first)
 
         self.original_map = original_map
 
@@ -61,6 +61,9 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         super().finalize()

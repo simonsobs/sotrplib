@@ -39,7 +39,7 @@ P.add_argument(
 P.add_argument(
     "--data-dir",
     action="store",
-    default="/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/",
+    default="/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/pipe-s0004_depth1/",
     help="Data directory, where the depth1 maps live.",
 )
 
@@ -52,7 +52,7 @@ P.add_argument(
 P.add_argument(
     "--pointing-flux-threshold",
     action="store",
-    default="0.3 Jy",
+    default="0.25 Jy",
     type=str,
     help="Flux threshold for pointing sources, json compatible quantity.",
 )
@@ -117,7 +117,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default="0.2 deg",
+    default="4 arcmin",
     type=str,
     help="Thumbnail radius (half-width of square map), json compatible quantity.",
 )
@@ -125,7 +125,7 @@ P.add_argument(
 P.add_argument(
     "--ncores",
     action="store",
-    default=4,
+    default=12,
     type=int,
     help="Number of cores to request for each slurm job. ",
 )
@@ -133,7 +133,7 @@ P.add_argument(
 P.add_argument(
     "--nserial",
     action="store",
-    default=4,
+    default=12,
     type=int,
     help="Number of serial sets of `ncores` scripts to run per job. ",
 )
@@ -142,8 +142,8 @@ P.add_argument(
     "--bands",
     action="store",
     nargs="+",
-    default=["f090", "f150", "f220", "f280"],
-    help="Bands to analyze, default is f090,f150,f220,f280. ",
+    default=["f090", "f150", "f220"],
+    help="Bands to analyze, default is f090,f150,f220 but can also includ f030 or f040. ",
 )
 
 args = P.parse_args()
@@ -178,7 +178,7 @@ def generate_config_json(
     thumbnail_half_width="0.2 deg",
     min_snr=5.0,
     min_pointing_sources=10,
-    poly_order=3,
+    poly_order=1,
     output_dir="./",
 ):
     ivar_map_file = mapfile.replace("_map.fits", "_ivar.fits")
@@ -201,15 +201,9 @@ def generate_config_json(
     ],
     "source_catalogs": [
         {{
-            "catalog_type": "fits",
-            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "catalog_type": "websky",
+            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/pipe-s0004_depth1_sims/websky_cat_100_1mJy_infield.csv",
             "flux_lower_limit": "{flux_low_limit}"
-        }}
-    ],
-    "sso_catalogs": [
-        {{
-            "catalog_type": "sso",
-            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
         }}
     ],
     "pointing_provider": {{
@@ -219,7 +213,7 @@ def generate_config_json(
         "reproject_thumbnails": "True"
     }},
     "pointing_residual": {{
-        "pointing_residual_type": "polynomial",
+        "pointing_residual_type": "median",
         "min_snr": {min_snr},
         "min_sources": {min_pointing_sources},
         "sigma_clip_level": 3.0,
@@ -234,7 +228,7 @@ def generate_config_json(
         }},
         {{
             "preprocessor_type": "edge_mask",
-            "mask_on": "inverse_variance",
+            "mask_on": "kappa",
             "edge_width": "10.0 arcmin"
         }}
     ],
@@ -254,7 +248,8 @@ def generate_config_json(
     "forced_photometry": {{
         "photometry_type": "scipy",
         "reproject_thumbnails": "True",
-         "flux_limit_centroid": "0.1 Jy"
+        "flux_limit_centroid": "0.1 Jy",
+        "thumbnail_half_width": "{thumbnail_half_width}"
     }},
     "sifter": {{
         "sifter_type": "default"

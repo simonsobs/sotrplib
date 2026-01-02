@@ -5,12 +5,13 @@ the random generation of those sources.
 """
 
 import random
-from abc import ABC
-from datetime import timedelta
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from pydantic import AwareDatetime
+from socat.client.settings import SOCatClientSettings
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -33,7 +34,24 @@ from .sim_sources import (
 )
 
 
+def random_datetime(start, end):
+    """Generate a random datetime between `start` and `end`"""
+    delta = end - start
+    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+    random_second = random.randrange(int_delta)
+    return start + timedelta(seconds=random_second)
+
+
+def random_timedelta(min_td, max_td):
+    """Generate a random timedelta between `min_td` and `max_td`"""
+    delta = max_td - min_td
+    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+    random_second = random.randrange(int_delta)
+    return min_td + timedelta(seconds=random_second)
+
+
 class SimulatedSourceGenerator(ABC):
+    @abstractmethod
     def generate(
         self,
         input_map: ProcessableMap | None = None,
@@ -285,3 +303,136 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         log.info("source_simulation.gaussian.complete")
 
         return simulated_sources, catalog
+
+
+class SOCatSourceGenerator(SimulatedSourceGenerator):
+    """
+    A source generator that uses an existing source catalog in SOCat format.
+    We then generate simulated sources based on that catalog, so it can be
+    matched against the same catalog.
+    """
+
+    def __init__(
+        self,
+        fraction_fixed: float,
+        fraction_gaussian: float,
+        flare_earliest_time: datetime,
+        flare_latest_time: datetime,
+        flare_width_shortest: timedelta,
+        flare_width_longest: timedelta,
+        peak_amplitude_minimum_factor: float,
+        peak_amplitude_maximum_factor: float,
+        log: FilteringBoundLogger | None = None,
+    ):
+        """
+        Parameters
+        ----------
+        fraction_fixed: float
+            Fraction of sources in the catalog to inject as 'fixed' flux sources.
+        fraction_gaussian: float
+            Fraction of sources to inject as gaussian flares.
+
+        Notes
+        -----
+        The fraction of fixed and gaussian sources together must be less than 1.0.
+        For information on the flare parameters, see the `GaussianTransientSourceGenerator` class.
+        """
+
+        if (fraction_fixed + fraction_gaussian) > 1.0:
+            raise ValueError(
+                "Incompatible fractions for fixed and gaussian sources in SOCat generation"
+            )
+
+        self.fraction_fixed = fraction_fixed
+        self.fraction_gaussian = fraction_gaussian
+        self.flare_earliest_time = flare_earliest_time
+        self.flare_latest_time = flare_latest_time
+        self.flare_width_shortest = flare_width_shortest
+        self.flare_width_longest = flare_width_longest
+        self.peak_amplitude_minimum_factor = peak_amplitude_minimum_factor
+        self.peak_amplitude_maximum_factor = peak_amplitude_maximum_factor
+        self.log = log or get_logger()
+
+    def generate(
+        self,
+        box: tuple[SkyCoord] | None = None,
+        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+    ):
+        self.log = self.log.bind(
+            func="sim_source_generator.SOCatSourceGenerator.generate"
+        )
+        socat_client_settings = SOCatClientSettings()
+        socat_client = socat_client_settings.client
+
+        if box is None:
+            box = [
+                SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
+                SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
+            ]
+
+        sources = socat_client.get_box(lower_left=box[0], upper_right=box[1])
+        random.shuffle(sources)
+
+        number_of_sources = len(sources)
+
+        number_of_fixed = int(number_of_sources * self.fraction_fixed)
+        number_of_flares = int(number_of_sources * self.fraction_gaussian)
+        self.log.info(
+            "sim_source_generator.SOCatSourceGenerator.generate.loaded_catalog",
+            n_sources=number_of_sources,
+            n_fixed=number_of_fixed,
+            n_flares=number_of_flares,
+            box=box,
+        )
+        all_sources = [
+            RegisteredSource(
+                ra=source.position.ra,
+                dec=source.position.dec,
+                frequency=90.0 * u.GHz,
+                flux=source.flux if source.flux is not None else u.Quantity(0.0, "Jy"),
+                source_id=str(source.id),
+                source_type="simulated",
+                err_ra=0.0 * u.deg,
+                err_dec=0.0 * u.deg,
+                err_flux=0.0 * u.Jy,
+                crossmatches=[
+                    CrossMatch(
+                        ra=source.position.ra,
+                        dec=source.position.dec,
+                        source_id=str(source.id),
+                        catalog_name="socat",
+                        alternate_names=[source.name] if source.name else [],
+                    )
+                ],
+            )
+            for source in sources[: number_of_fixed + number_of_flares]
+        ]
+
+        fixed_sources = [
+            FixedSimulatedSource(
+                position=SkyCoord(ra=source.ra, dec=source.dec), flux=source.flux
+            )
+            for source in all_sources[:number_of_fixed]
+        ]
+
+        flare_sources = [
+            GaussianTransientSimulatedSource(
+                position=SkyCoord(ra=source.position.ra, dec=source.position.dec),
+                peak_time=random_datetime(
+                    self.flare_earliest_time, self.flare_latest_time
+                ),
+                flare_width=random_timedelta(
+                    self.flare_width_shortest, self.flare_width_longest
+                ),
+                peak_amplitude=source.flux
+                * random.uniform(
+                    self.peak_amplitude_minimum_factor,
+                    self.peak_amplitude_maximum_factor,
+                ),
+            )
+            for source in sources[number_of_fixed : number_of_fixed + number_of_flares]
+        ]
+
+        catalog = RegisteredSourceCatalog(sources=all_sources)
+
+        return fixed_sources + flare_sources, catalog

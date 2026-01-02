@@ -3,6 +3,7 @@ from pathlib import Path
 import astropy.units as u
 import numpy as np
 import structlog
+from astropy.coordinates import SkyCoord
 from astropy.units import Quantity
 from astropydantic import AstroPydanticQuantity
 from numpy.typing import ArrayLike
@@ -28,6 +29,7 @@ class SimulationParameters(BaseModel):
     map_noise: AstroPydanticQuantity[u.Jy] = u.Quantity(0.01, "Jy")
 
 
+## TODO: if box is supplied, shoudl we override the SimulationParamters?
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
@@ -74,6 +76,19 @@ class SimulatedMap(ProcessableMap):
         self.simulation_parameters = simulation_parameters or SimulationParameters()
         self.log = log or structlog.get_logger()
 
+    @property
+    def bbox(self):
+        return [
+            SkyCoord(
+                ra=self.simulation_parameters.center_ra - self.simulation_parameters.width_ra,
+                dec=self.simulation_parameters.center_dec - self.simulation_parameters.width_dec,
+            ),
+            SkyCoord(
+                ra=self.simulation_parameters.center_ra + self.simulation_parameters.width_ra,
+                dec=self.simulation_parameters.center_dec + self.simulation_parameters.width_dec,
+            ),
+        ]
+
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
 
@@ -115,7 +130,7 @@ class SimulatedMap(ProcessableMap):
             end_time=self.observation_end,
         )
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         log.debug("simulated_map.build.time")
@@ -130,6 +145,9 @@ class SimulatedMap(ProcessableMap):
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         super().finalize()
@@ -227,7 +245,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
             )
 
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         log.debug("simulated_map.build.time")
@@ -242,6 +260,9 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         super().finalize()

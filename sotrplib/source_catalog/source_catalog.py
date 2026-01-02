@@ -154,7 +154,11 @@ def load_json_test_catalog(source_cat_file: str, flux_threshold: float = 0, log=
     return sources
 
 
-def load_websky_csv_catalog(source_cat_file: str, flux_threshold: float = 0, log=None):
+def load_websky_csv_catalog(
+    source_cat_file: str,
+    flux_threshold: float = 0,
+    log: FilteringBoundLogger | None = None,
+):
     """
     load the websky catalog from a csv containing the columns
     flux(Jy), ra(deg), dec(deg)
@@ -163,11 +167,11 @@ def load_websky_csv_catalog(source_cat_file: str, flux_threshold: float = 0, log
 
     from ..utils.utils import radec_to_str_name
 
-    log.bind(func_name="load_websky_csv_catalog")
+    log = log or get_logger()
+    log = log.bind(func_name="load_websky_csv_catalog")
     websky_flux, websky_ra, websky_dec = loadtxt(
         source_cat_file, delimiter=",", unpack=True, skiprows=1
     )
-    websky_ra[websky_ra > 180.0] -= 360
     inds = websky_flux > flux_threshold
     log.info(
         "load_websky_csv_catalog.sources_above_threshold",

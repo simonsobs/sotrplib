@@ -2,7 +2,6 @@ import pytest
 from astropy import units as u
 
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
-from sotrplib.source_catalog.socat import SOCatFITSCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     Scipy2DGaussianFitter,
@@ -28,6 +27,7 @@ def test_simple_forced_photometry(map_with_single_source):
     assert results[0].flux.to(u.Jy).value == pytest.approx(
         sources[0].flux.to(u.Jy).value, rel=2e-1
     )
+    assert results[0].crossmatches
     assert results[0].fit_method == "nearest_neighbor"
 
 
@@ -42,10 +42,11 @@ def test_empty_forced_photometry(map_with_single_source):
 def test_scipy_curve_fit(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = Scipy2DGaussianFitter(thumbnail_half_width=0.1 * u.deg)
-    source_cat = SOCatFITSCatalog()
+    source_cat = RegisteredSourceCatalog(sources=[])
     source_cat.add_sources(sources=sources)
     source_cat.valid_fluxes = [s.source_id for s in sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
+    assert results[0].crossmatches
     assert len(results) == 1
     ntries = 10
     if results[0].fit_failed:
@@ -71,7 +72,7 @@ def test_source_offset(map_with_single_source):
     new_sources = [x.model_copy() for x in sources]
     new_sources[0].ra += ra_offset
 
-    catalog = SOCatFITSCatalog()
+    catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=new_sources)
     catalog.valid_fluxes = [s.source_id for s in new_sources]
     results = forced_photometry.force(input_map=input_map, catalogs=[catalog])

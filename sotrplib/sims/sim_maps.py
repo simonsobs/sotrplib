@@ -551,7 +551,7 @@ def inject_simulated_sources(
                 log = log.bind(ra_lims=ra_lims, dec_lims=dec_lims, hits_map=hits_map)
 
                 min_time = np.min(mapdata.time_first[mapdata.time_first > 0])
-                max_time = np.max(mapdata.time_end[np.isfinite(mapdata.time_end)])
+                max_time = np.max(mapdata.time_last[np.isfinite(mapdata.time_last)])
                 transients_to_inject = generate_transients(
                     n=sim_params["injected_transients"]["n_transients"],
                     imap=hits_map,

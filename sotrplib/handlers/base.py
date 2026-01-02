@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
 from typing import Iterable
 
+from astropy import units
 from astropy.coordinates import SkyCoord
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
@@ -28,6 +30,7 @@ __all__ = ["BaseRunner"]
 
 class BaseRunner:
     maps: Iterable[ProcessableMap]
+    map_coadder: MapCoadder | None
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
@@ -46,6 +49,7 @@ class BaseRunner:
     def __init__(
         self,
         maps: Iterable[ProcessableMap],
+        map_coadder: MapCoadder | None,
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
@@ -62,6 +66,7 @@ class BaseRunner:
         profile: bool = False,
     ):
         self.maps = maps
+        self.map_coadder = map_coadder or EmptyMapCoadder()
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
@@ -104,13 +109,20 @@ class BaseRunner:
 
         return output_map
 
+    def coadd_maps(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
+        return self.map_coadder.coadd(input_maps)
+
     @property
     def bbox(self):
         if not self.maps:
             return None
-        bbox = self.maps[0].bbox
 
-        for input_map in self.maps[1:]:
+        # mapcat map list is not subscriptable so start with maximal bounding box
+        bbox = [
+            SkyCoord(ra=359.999 * units.deg, dec=90.0 * units.deg),
+            SkyCoord(ra=0.0 * units.deg, dec=-90.0 * units.deg),
+        ]
+        for input_map in self.maps:
             map_bbox = input_map.bbox
             left = min(bbox[0].ra, map_bbox[0].ra)
             bottom = min(bbox[0].dec, map_bbox[0].dec)
@@ -217,8 +229,9 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
-        self.maps = self.basic_task(self.build_map).map(self.maps).result()
         all_simulated_sources = self.basic_task(self.simulate_sources)()
+        self.maps = self.basic_task(self.build_map).map(self.maps).result()
+        self.maps = self.coadd_maps(self.maps)
         return (
             self.basic_task(self.analyze_map)
             .map(self.maps, self.unmapped(all_simulated_sources))

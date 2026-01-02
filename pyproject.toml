@@ -28,6 +28,8 @@ dependencies = [
     "numpydantic",
     "mapcat",
     "pyinstrument",
+    "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
+    "soauth",
 ]
 
 [project.optional-dependencies]

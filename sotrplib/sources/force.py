@@ -14,7 +14,7 @@ from sotrplib.sources.forced_photometry import (
     scipy_2d_gaussian_fit,
 )
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
-from sotrplib.utils.utils import get_fwhm
+from sotrplib.utils.utils import angular_separation, get_fwhm
 
 
 class EmptyForcedPhotometry(ForcedPhotometryProvider):
@@ -96,6 +96,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
+    allowable_center_offset: u.Quantity
     log: FilteringBoundLogger
 
     def __init__(
@@ -103,11 +104,29 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
+        """
+        Initialize the Scipy2DGaussianFitter.
+        Parameters
+        ----------
+        flux_limit_centroid : astropy.units.Quantity, optional
+            Minimum flux required to attempt centroid fitting (default: 0.3 Jy).
+        reproject_thumbnails : bool, optional
+            Whether to reproject thumbnails before fitting (default: False).
+            If False, just cuts out square in pixel space.
+        thumbnail_half_width : astropy.units.Quantity, optional
+            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+        allowable_center_offset : astropy.units.Quantity, optional
+            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+        log : FilteringBoundLogger or None, optional
+            Logger instance to use (default: None).
+        """
         self.flux_limit_centroid = flux_limit_centroid
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
+        self.allowable_center_offset = allowable_center_offset
         self.log = log or get_logger()
 
     def force(
@@ -128,6 +147,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
             pointing_residuals=pointing_residuals,
+            allowable_center_offset=self.allowable_center_offset,
             log=self.log,
         )
 
@@ -137,6 +157,9 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
 class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
     min_flux: u.Quantity
     reproject_thumbnails: bool
+    thumbnail_half_width: u.Quantity
+    allowable_center_offset: u.Quantity
+    near_source_rel_flux_limit: float
     log: FilteringBoundLogger
 
     def __init__(
@@ -144,24 +167,79 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         min_flux: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        near_source_rel_flux_limit: float = 0.3,
+        allowable_center_offset: u.Quantity = u.Quantity(3.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
+        """
+        Initialize the Scipy2DGaussianFitter.
+        Parameters
+        ----------
+        min_flux : astropy.units.Quantity, optional
+            Minimum flux required to attempt pointing fit (default: 0.3 Jy).
+        reproject_thumbnails : bool, optional
+            Whether to reproject thumbnails before fitting (default: False).
+            If False, just cuts out square in pixel space.
+        thumbnail_half_width : astropy.units.Quantity, optional
+            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+        near_source_rel_flux_limit : float, optional
+            Relative flux limit to exclude nearby sources (default: 0.3).
+            If another source within the thumbnail_half_width has a flux
+            greater than near_source_rel_flux_limit * pointing_source.flux,
+            the pointing source is excluded from fitting.
+        allowable_center_offset : astropy.units.Quantity, optional
+            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+        log : FilteringBoundLogger or None, optional
+            Logger instance to use (default: None).
+        """
         self.min_flux = min_flux
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
+        self.near_source_rel_flux_limit = near_source_rel_flux_limit
+        self.allowable_center_offset = allowable_center_offset
         self.log = log or get_logger()
 
     def force(
         self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
+        ## get all forced photometry sources from catalogs
         source_list = list(
             itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
+        ## select only those above min_flux for pointing fitting
         pointing_source_list = [
             source
             for source in source_list
             if (source.flux is not None) and (source.flux > self.min_flux)
+        ]
+        ## check if there are any pointing sources with a source within the thumbnail_half_width
+        ## and above near_source_rel_flux_limit * pointing_source.flux
+        has_nearby_sources = [False] * len(pointing_source_list)
+        for i, pointing_source in enumerate(pointing_source_list):
+            for init_source in source_list:
+                if pointing_source == init_source:
+                    continue
+                sep = angular_separation(
+                    pointing_source.ra,
+                    pointing_source.dec,
+                    init_source.ra,
+                    init_source.dec,
+                )
+                if (
+                    sep < self.thumbnail_half_width * (2**-0.5)
+                    and init_source.flux is not None
+                ):
+                    if (
+                        init_source.flux
+                        > pointing_source.flux * self.near_source_rel_flux_limit
+                    ):
+                        has_nearby_sources[i] = True
+                        break
+        pointing_source_list = [
+            src
+            for src, has_nearby in zip(pointing_source_list, has_nearby_sources)
+            if not has_nearby
         ]
         self.log.info(
             "Scipy2DGaussianPointingFitter.force",
@@ -170,6 +248,8 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumbnails=self.reproject_thumbnails,
+            allowable_center_offset=self.allowable_center_offset,
+            removed_nearby_sources=sum(has_nearby_sources),
         )
 
         fit_sources = scipy_2d_gaussian_fit(
@@ -179,6 +259,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
+            allowable_center_offset=self.allowable_center_offset,
             log=self.log,
         )
 
