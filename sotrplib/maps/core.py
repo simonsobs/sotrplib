@@ -86,7 +86,7 @@ class ProcessableMap(ABC):
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
-    _map_id: str | None = None
+    __map_id: str | None = None
     "An identifier for the map, e.g. filename or coadd type"
 
     _parent_database: Path | None = None
@@ -242,7 +242,18 @@ class ProcessableMap(ABC):
         An identifier for the map, e.g. filename or coadd type
         Defaults to {frequency}_{array}_{observationstart_timestamp} if not set.
         """
-        return self._map_id if self._map_id else self.get_map_str_id()
+        return self.__map_id if self.__map_id is not None else self.get_map_str_id()
+
+    @map_id.setter
+    def map_id(self, x):
+        self.__map_id = x
+
+    @map_id.deleter
+    def map_id(self):
+        try:
+            del self.__map_id
+        except AttributeError:
+            pass
 
     def get_map_str_id(self) -> str:
         """
@@ -336,7 +347,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.instrument = instrument
         self.matched_filtered = matched_filtered
         self.mask = mask
-        self._map_id = map_id
+        if map_id is not None:
+            self.map_id = map_id
+        self.map_id = map_id
         self._hits = None
         self.log = log or structlog.get_logger()
 
@@ -426,8 +439,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def _compute_hits(self):
         return (self.inverse_variance > 0).astype(np.int32)
 
-    def map_id(self):
-        return self._map_id or super().map_id()
+    def get_map_id(self):
+        return self.__map_id or super().get_map_str_id()
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -490,7 +503,8 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.array = self.prefiltered_map.array
         self.mask = self.prefiltered_map.mask
         self.instrument = self.prefiltered_map.instrument
-        self._map_id = self.prefiltered_map.map_id
+        if self.prefiltered_map.map_id is not None:
+            self.map_id = self.prefiltered_map.map_id
         self._parent_database = self.prefiltered_map._parent_database
         self._hits = self.prefiltered_map._hits
         self.map_resolution = u.Quantity(
@@ -509,8 +523,8 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     def build(self):
         return
 
-    def map_id(self):
-        return self._map_id or super().map_id()
+    def get_map_id(self):
+        return self.__map_id or super().get_map_str_id()
 
     def add_time_offset(self, offset: timedelta):
         """
@@ -610,7 +624,8 @@ class RhoAndKappaMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
-        self._map_id = map_id
+        if map_id is not None:
+            self.map_id = map_id
         self._hits = None
         self.log = log or structlog.get_logger()
 
@@ -694,8 +709,8 @@ class RhoAndKappaMap(ProcessableMap):
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
 
-    def map_id(self):
-        return self._map_id or super().map_id()
+    def get_map_id(self):
+        return self.__map_id or super().get_map_str_id()
 
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
