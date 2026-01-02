@@ -80,12 +80,16 @@ class SimulatedMap(ProcessableMap):
     def bbox(self):
         return [
             SkyCoord(
-                ra=self.simulation_parameters.center_ra - self.simulation_parameters.width_ra,
-                dec=self.simulation_parameters.center_dec - self.simulation_parameters.width_dec,
+                ra=self.simulation_parameters.center_ra
+                - self.simulation_parameters.width_ra,
+                dec=self.simulation_parameters.center_dec
+                - self.simulation_parameters.width_dec,
             ),
             SkyCoord(
-                ra=self.simulation_parameters.center_ra + self.simulation_parameters.width_ra,
-                dec=self.simulation_parameters.center_dec + self.simulation_parameters.width_dec,
+                ra=self.simulation_parameters.center_ra
+                + self.simulation_parameters.width_ra,
+                dec=self.simulation_parameters.center_dec
+                + self.simulation_parameters.width_dec,
             ),
         ]
 
@@ -136,12 +140,15 @@ class SimulatedMap(ProcessableMap):
         log.debug("simulated_map.build.time")
 
         # Hits
-        self.hits = (np.abs(self.flux) > 0.0).astype(int)
+        self._hits = self._compute_hits()
         log.debug("simulated_map.build.hits")
 
         log.debug("simulated_map.build.complete")
 
         return
+
+    def _compute_hits(self):
+        return (abs(self.flux) > 0).astype(np.int32)
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
@@ -251,7 +258,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
         log.debug("simulated_map.build.time")
 
         # Hits
-        self.hits = (np.abs(self.flux) > 0.0).astype(int)
+        self._hits = self._compute_hits()
         log.debug("simulated_map.build.hits")
 
         log.debug("simulated_map.build.complete")

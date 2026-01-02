@@ -96,6 +96,7 @@ class Gaussian2DFitter:
         allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
             1.0, "arcmin"
         ),
+        debug: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -104,6 +105,7 @@ class Gaussian2DFitter:
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
         self.reprojected = reprojected
+        self.debug = debug
         self.allowable_center_offset = allowable_center_offset
 
     def initialize_model(self):
@@ -167,13 +169,15 @@ class Gaussian2DFitter:
                 theta_guess,
                 offset_guess,
             ]
-            self.log.debug(
-                "curve_fit_2d_gaussian.force_center", initial_guess=initial_guess
-            )
+            if self.debug:
+                self.log.debug(
+                    "curve_fit_2d_gaussian.force_center", initial_guess=initial_guess
+                )
         else:
-            self.log.debug(
-                "curve_fit_2d_gaussian.free_center", initial_guess=initial_guess
-            )
+            if self.debug:
+                self.log.debug(
+                    "curve_fit_2d_gaussian.free_center", initial_guess=initial_guess
+                )
             gaussian_2d_model = gaussian_2d
 
         self.model = gaussian_2d_model
@@ -231,7 +235,10 @@ class Gaussian2DFitter:
             return self.fit_params
 
         perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
-        self.log.debug("curve_fit_2d_gaussian.curve_fit.success", popt=popt, perr=perr)
+        if self.debug:
+            self.log.debug(
+                "curve_fit_2d_gaussian.curve_fit.success", popt=popt, perr=perr
+            )
         # Extract parameters and uncertainties
         if self.force_center:
             amplitude, sigma_x, sigma_y, theta, offset = popt
@@ -305,9 +312,59 @@ def scipy_2d_gaussian_fit(
     reproject_thumb: bool = False,
     pointing_residuals: MapPointingOffset | None = None,
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+    flags: dict = {},
     log: FilteringBoundLogger | None = None,
+    debug: bool = False,
 ) -> list[MeasuredSource]:
-    """ """
+    """
+    Fit 2D Gaussian models to a list of registered sources on a map using SciPy.
+    Parameters
+    ----------
+    input_map : ProcessableMap
+        Map object containing the image data on which the sources are detected
+        and to which the 2D Gaussian models are fitted.
+    source_list : list[RegisteredSource]
+        List of registered source objects whose positions are used as initial
+        guesses for the Gaussian fits.
+    flux_lim_fit_centroid : astropy.units.Quantity, optional
+        Minimum peak flux density used to decide whether to fit for the source
+        centroid. Sources with peak flux below this limit may have their
+        centroid fixed. The default is 0.3 Jy.
+    thumbnail_half_width : astropy.units.Quantity, optional
+        Half-width of the thumbnail cut-out around each source position, in
+        angular units. The default is 0.25 deg.
+    fwhm : astropy.units.Quantity or None, optional
+        Full-width at half maximum (FWHM) of the instrumental beam. If given,
+        it is used to set the initial size (and/or bounds) of the Gaussian.
+        If None, the FWHM is inferred from the map or other defaults.
+     reproject_thumb : bool, optional
+        If True, thumbnails are reprojected (e.g., to a local tangent-plane
+        projection) before fitting. If False, thumbnails are extracted in the
+        native projection. Defaults to False.
+    pointing_residuals : MapPointingOffset or None, optional
+        Optional pointing residuals to apply to the nominal source positions
+        before cutting thumbnails and fitting.
+    allowable_center_offset : astropy.units.Quantity, optional
+        Maximum allowed offset between the fitted source position and the
+        nominal catalog position. Fits exceeding this offset may be rejected.
+        The default is 1.0 arcmin.
+    flags : dict, optional
+        Dictionary mapping flag names (str) to boolean lists of length
+        ``len(source_list)``. For each source, all flag names whose list entry
+        is True are attached to the corresponding measured source.
+    log : structlog.types.FilteringBoundLogger or None, optional
+        Logger instance used for structured logging. If None, a default logger
+        from :func:`structlog.get_logger` is created and used.
+    debug : bool, optional
+        If True, enable additional debug output and/or diagnostic behaviour
+        during fitting. Defaults to False.
+
+    Returns
+    -------
+    list[MeasuredSource]
+        List of measured source objects containing the results of the 2D
+        Gaussian fits, including fit parameters and status flags.
+    """
     log = log or get_logger()
     log = log.bind(func_name="scipy_2d_gaussian_fit")
     preamble = "sources.fitting.scipy_2d_gaussian_fit."
@@ -319,6 +376,10 @@ def scipy_2d_gaussian_fit(
     ):
         source = source_list[i]
 
+        source_flags = []
+        for flag in flags:
+            if flags[flag][i]:
+                source_flags.append(flag)
         ## apply pointing residuals to source position
         source_pos = SkyCoord(ra=source.ra, dec=source.dec)
         source_pos = (
@@ -332,15 +393,22 @@ def scipy_2d_gaussian_fit(
 
         source_name = source.source_id
         map_res = input_map.map_resolution
+        size_pix = thumbnail_half_width / map_res
         pix = input_map.flux.sky2pix(
             [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
         )
-        ## since we've applied a pointing correction this could be outside the map now.
+
+        ## set default fit to empty parameters and fit_failed.
+        ## once the fit is successfully completed, this will be updated.
+        fit = GaussianFitParameters()
+        fit.failed = True
+
+        ## if outside the map; dont attempt to fit it.
         if (
-            pix[0] < 0
-            or pix[1] < 0
-            or pix[0] >= input_map.flux.shape[0]
-            or pix[1] >= input_map.flux.shape[1]
+            pix[0] + size_pix > input_map.flux.shape[0]
+            or pix[1] + size_pix > input_map.flux.shape[1]
+            or pix[0] - size_pix < 0
+            or pix[1] - size_pix < 0
         ):
             log.warning(
                 f"{preamble}source_outside_map_bounds_after_pointing_correction",
@@ -354,20 +422,33 @@ def scipy_2d_gaussian_fit(
                 instrument=input_map.instrument,
                 array=input_map.array,
                 frequency=get_frequency(input_map.frequency),
+                flags=source_flags,
                 crossmatches=[
                     CrossMatch(
                         ra=source.ra,
                         dec=source.dec,
-                        observation_time=input_map.time_mean[pix[0], pix[1]],
+                        observation_time=None,
                         source_id=source.source_id,
                         probability=1.0,
                         catalog_name=source.catalog_name,
+                        flux=source.flux,
                         angular_separation=None,
                     )
                 ],
             )
+            forced_source.fit_method = fit_method
+            forced_source.fit_failed = True
+            fit.failure_reason = "source_outside_map_bounds"
+            forced_source.fit_failure_reason = "source_outside_map_bounds"
+            log.warning(
+                f"{preamble}source_outside_map_bounds",
+                source=source_name,
+                thumb_size_pix=size_pix.value,
+            )
+            forced_source.fit_params = fit.model_dump()
+            fit_sources.append(forced_source)
+            continue
 
-        size_pix = thumbnail_half_width / map_res
         t_start, t_mean, t_end = input_map.get_pixel_times(pix)
         ## setup default MeasuredSource
         forced_source = MeasuredSource(
@@ -381,6 +462,7 @@ def scipy_2d_gaussian_fit(
             instrument=input_map.instrument,
             array=input_map.array,
             frequency=get_frequency(input_map.frequency),
+            flags=source_flags,
             crossmatches=[
                 CrossMatch(
                     ra=source.ra,
@@ -388,39 +470,11 @@ def scipy_2d_gaussian_fit(
                     observation_time=t_mean,
                     source_id=source.source_id,
                     probability=1.0,
+                    flux=source.flux,
                     catalog_name=source.catalog_name,
                     angular_separation=None,
                 )
             ],
-        )
-
-        forced_source.fit_method = fit_method
-        ## set default fit to empty parameters and fit_failed.
-        ## once the fit is successfully completed, this will be updated.
-        fit = GaussianFitParameters()
-        fit.failed = True
-        forced_source.fit_failed = True
-        if (
-            pix[0] + size_pix > input_map.flux.shape[0]
-            or pix[1] + size_pix > input_map.flux.shape[1]
-            or pix[0] - size_pix < 0
-            or pix[1] - size_pix < 0
-        ):
-            fit.failure_reason = "source_outside_map_bounds"
-            forced_source.fit_failure_reason = "source_outside_map_bounds"
-            log.warning(
-                f"{preamble}source_outside_map_bounds",
-                source=source_name,
-                thumb_size_pix=size_pix.value,
-            )
-            forced_source.fit_params = fit.model_dump()
-            fit_sources.append(forced_source)
-            continue
-
-        forced_source.extract_thumbnail(
-            input_map,
-            thumb_width=thumbnail_half_width,
-            reproject_thumb=reproject_thumb,
         )
 
         try:
@@ -453,12 +507,14 @@ def scipy_2d_gaussian_fit(
             if forced_source.flux is not None
             else False,
             allowable_center_offset=allowable_center_offset,
+            debug=debug,
             log=log,
         )
 
         fitter.initialize_model()
         fit = fitter.fit()
-        log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
+        if debug:
+            log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 
         forced_source.fit_failed = fit.failed
         forced_source.fit_failure_reason = fit.failure_reason
@@ -485,188 +541,6 @@ def scipy_2d_gaussian_fit(
             n_successful += 1
     log.info(f"{preamble}fits_complete", n_sources=len(fit_sources), n_fit=n_successful)
     return fit_sources
-
-
-def fit_2d_gaussian(
-    flux_map: enmap.ndmap,
-    noise_map: enmap.ndmap,
-    resolution_arcmin: float,
-    fwhm_guess_arcmin: float = 2.2,
-    thumbnail_center: tuple = (0, 0),
-    force_center: bool = False,
-    PLOT: bool = False,
-):
-    """
-    Fits a 2D Gaussian to the given data array and calculates uncertainties.
-
-    noise_map : enmap
-        can be map of pixel noise,but matched filtered maps seem to have correlated noise proportional to signal.
-        So this isn't used right now.
-
-    thumbnail_center: tuple
-        The ra,dec center of the thumbnail in decimal degrees. A reprojected map has center 0,0 so
-        the fits give the ra,dec offsets. If using a simple cut (flux_map[-x:x,-y:y]) the center is
-        at thumbnail_center so we will subtract that off to get the ra,dec offsets.
-
-    force_center: bool
-        if True, center of gaussian fit is centered at the expected location and not allowed to vary.
-
-    """
-    import warnings
-
-    from pixell.utils import arcmin, degree
-    from scipy.optimize import OptimizeWarning, curve_fit
-
-    warnings.simplefilter("ignore", category=OptimizeWarning)
-
-    ny, nx = flux_map.shape
-    x = np.arange(nx)
-    y = np.arange(ny)
-    X, Y = np.meshgrid(x, y)
-    xy = (X.ravel(), Y.ravel())
-
-    # Initial guess for parameters
-    amplitude_guess = flux_map.max()
-    x0_guess, y0_guess = nx / 2, ny / 2  # Assume center of the image
-    sigma_guess = fwhm_guess_arcmin / resolution_arcmin / 2.355  # Rough width estimate
-    theta_guess = 0
-    offset_guess = 0
-    initial_guess = [
-        amplitude_guess,
-        x0_guess,
-        y0_guess,
-        sigma_guess,
-        sigma_guess,
-        theta_guess,
-        offset_guess,
-    ]
-
-    ## if force center, fix the x0,y0 guesses by not varying them
-    if force_center:
-
-        def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
-            return gaussian_2d(
-                xy, amplitude, x0_guess, y0_guess, sigma_x, sigma_y, theta, offset
-            )
-
-        initial_guess = [
-            amplitude_guess,
-            sigma_guess,
-            sigma_guess,
-            theta_guess,
-            offset_guess,
-        ]
-    else:
-        gaussian_2d_model = gaussian_2d
-
-    # Fit the data with uncertainty weighting
-    try:
-        popt, pcov = curve_fit(
-            gaussian_2d_model,
-            xy,
-            flux_map.ravel(),
-            # sigma=noise_map.ravel(),
-            p0=initial_guess,
-            # absolute_sigma=True
-        )
-    except RuntimeError:
-        return {}
-
-    perr = np.sqrt(np.diag(pcov))  # Parameter uncertainties
-
-    # Extract parameters and uncertainties
-    if force_center:
-        amplitude, sigma_x, sigma_y, theta, offset = popt
-        amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
-        ra_fit, dec_fit = None, None
-        ra_offset_arcmin, dec_offset_arcmin = None, None
-        ra_err_arcmin, dec_err_arcmin = None, None
-    else:
-        amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
-        (
-            amplitude_err,
-            x0_err,
-            y0_err,
-            sigma_x_err,
-            sigma_y_err,
-            theta_err,
-            offset_err,
-        ) = perr
-        dec_fit, ra_fit = flux_map.pix2sky([y0, x0]) / degree
-        dec_offset_arcmin = (dec_fit - thumbnail_center[1]) * degree / arcmin
-        ra_offset = ra_fit - thumbnail_center[0]
-        if ra_offset > 180.0:
-            ra_offset -= 360.0
-        elif ra_offset < -180.0:
-            ra_offset += 360.0
-        ra_offset_arcmin = ra_offset * degree / arcmin
-        ra_err_arcmin = x0_err * resolution_arcmin
-        dec_err_arcmin = y0_err * resolution_arcmin
-
-    fwhm_x_arcmin = 2.355 * sigma_x * resolution_arcmin
-    fwhm_y_arcmin = 2.355 * sigma_y * resolution_arcmin
-
-    fwhm_x_err_arcmin = 2.355 * sigma_x_err * resolution_arcmin
-    fwhm_y_err_arcmin = 2.355 * sigma_y_err * resolution_arcmin
-    theta_err_deg = theta_err / degree
-
-    ## effectively set offset to zero
-    amplitude = amplitude + offset
-    amplitude_err = np.sqrt(amplitude_err**2 + offset_err**2)
-
-    gauss_fit = {
-        "amplitude": (amplitude, amplitude_err),
-        "ra_offset_arcmin": (ra_offset_arcmin, ra_err_arcmin),
-        "dec_offset_arcmin": (dec_offset_arcmin, dec_err_arcmin),
-        "fwhm_x_arcmin": (fwhm_x_arcmin, fwhm_x_err_arcmin),
-        "fwhm_y_arcmin": (fwhm_y_arcmin, fwhm_y_err_arcmin),
-        "theta": (np.degrees(theta), theta_err_deg),
-        "forced": force_center,
-    }
-
-    if PLOT:
-        from matplotlib import pylab as plt
-
-        # Generate fitted Gaussian data
-        fitted_data = gaussian_2d_model((X, Y), *popt).reshape(ny, nx)
-
-        # Compute contour levels using best-fit sigma_x, sigma_y, and theta
-        sigma_levels = np.array([1, 2, 3])
-        levels = offset + amplitude * np.exp(-0.5 * (sigma_levels**2))
-        if not np.all(np.diff(levels) > 0):
-            levels = levels[::-1]
-        # Plot the data with contours
-        plt.figure(figsize=(6, 6))
-        plt.imshow(
-            flux_map,
-            origin="lower",
-            cmap="viridis",
-            extent=[
-                -nx / 2 * resolution_arcmin,
-                nx / 2 * resolution_arcmin,
-                -ny / 2 * resolution_arcmin,
-                ny / 2 * resolution_arcmin,
-            ],
-        )
-        plt.colorbar(label="Intensity")
-
-        if np.all(np.diff(levels) > 0):
-            plt.contour(
-                (X - nx / 2 + 0.5) * resolution_arcmin,
-                (Y - ny / 2 + 0.5) * resolution_arcmin,
-                fitted_data,
-                levels=levels,
-                colors="white",
-                linewidths=1.5,
-            )
-
-        plt.xlabel(r"$\Delta$RA (arcmin)")
-        plt.ylabel(r"$\Delta$Dec (arcmin)")
-        plt.title("2D Gaussian Fit with Contours")
-        plt.show()
-        print(gauss_fit)
-
-    return gauss_fit
 
 
 def convert_catalog_to_registered_source_objects(
