@@ -1,10 +1,10 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 200,
+            "number_to_read": 1,
             "instrument": "SOLAT",
-            "frequency": "f280",
-            "array": "c1",
+            "frequency": "f090",
+            "array": "i6",
             "rerun": "True"
         },
     "source_catalogs": [
