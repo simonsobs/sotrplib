@@ -11,6 +11,7 @@ from sotrplib.sims.sim_source_generators import (
     FixedSourceGenerator,
     GaussianTransientSourceGenerator,
     SimulatedSourceGenerator,
+    SOCatSourceGenerator,
 )
 
 
@@ -71,6 +72,35 @@ class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
         )
 
 
+class SOCatSourceGeneratorConfig(SourceSimulationConfig):
+    simulation_type: Literal["socat"] = "socat"
+    fraction_fixed: float = 0.5
+    fraction_gaussian: float = 0.5
+    flare_earliest_time: AwareDatetime
+    flare_latest_time: AwareDatetime
+    flare_width_shortest: timedelta
+    flare_width_longest: timedelta
+    peak_amplitude_minimum_factor: float = 1.0
+    peak_amplitude_maximum_factor: float = 5.0
+
+    def to_simulator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> SOCatSourceGenerator:
+        return SOCatSourceGenerator(
+            fraction_fixed=self.fraction_fixed,
+            fraction_gaussian=self.fraction_gaussian,
+            flare_earliest_time=self.flare_earliest_time,
+            flare_latest_time=self.flare_latest_time,
+            flare_width_shortest=self.flare_width_shortest,
+            flare_width_longest=self.flare_width_longest,
+            peak_amplitude_minimum_factor=self.peak_amplitude_minimum_factor,
+            peak_amplitude_maximum_factor=self.peak_amplitude_maximum_factor,
+            log=log,
+        )
+
+
 AllSourceSimulationConfigTypes = (
-    FixedSourceGeneratorConfig | GaussianTransientSourceGeneratorConfig
+    FixedSourceGeneratorConfig
+    | GaussianTransientSourceGeneratorConfig
+    | SOCatSourceGeneratorConfig
 )

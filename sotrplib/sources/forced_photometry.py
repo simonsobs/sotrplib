@@ -20,7 +20,7 @@ from sotrplib.sources.sources import (
     MeasuredSource,
     RegisteredSource,
 )
-from sotrplib.utils.utils import get_frequency
+from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
 class GaussianFitParameters(BaseModel):
@@ -71,7 +71,20 @@ def gaussian_2d(
 
 class Gaussian2DFitter:
     """
-    provide class for fitting a 2D gaussian
+    provide class for fitting a 2D gaussian to a source thumbnail.
+
+    Parameters
+    ----------
+    source : MeasuredSource
+        The source object containing the thumbnail to fit.
+    fwhm_guess : AstroPydanticQuantity[u.arcmin], optional
+        Initial guess for the FWHM of the Gaussian, by default u.Quantity(2.2, "arcmin")
+    force_center : bool, optional
+        Whether to force the Gaussian center to be at the thumbnail center, by default False
+    reprojected : bool, optional
+        Whether the thumbnail was reprojected (affects RA offset sign), by default False
+    allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
+        Maximum allowable offset from the thumbnail center for the fit, by default u.Quantity(1.0, "arcmin")
     """
 
     def __init__(
@@ -80,6 +93,9 @@ class Gaussian2DFitter:
         fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
         force_center: bool = False,
         reprojected: bool = False,
+        allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
+            1.0, "arcmin"
+        ),
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -88,8 +104,18 @@ class Gaussian2DFitter:
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
         self.reprojected = reprojected
+        self.allowable_center_offset = allowable_center_offset
 
     def initialize_model(self):
+        """
+        Docstring for initialize_model
+
+        Initialize the 2D Gaussian model and initial parameter guesses
+        used by scipy curve_fit.
+
+        Forcing center removes the x0,y0 from the fit parameters.
+        """
+
         ny, nx = self.source.thumbnail.shape
 
         # Define coordinate system centered at the image middle (i.e. the thumbnail center)
@@ -107,6 +133,7 @@ class Gaussian2DFitter:
         )
         x0_guess -= (nx - 1) / 2
         y0_guess -= (ny - 1) / 2
+
         sigma_guess = (
             self.fwhm_guess.to(u.arcmin).value
             / self.source.thumbnail_res.to(u.arcmin).value
@@ -153,15 +180,50 @@ class Gaussian2DFitter:
         self.initial_guess = initial_guess
 
     def fit(self) -> GaussianFitParameters:
-        # Fit the data
+        """
+        Set up and perform the 2D Gaussian fit using scipy curve_fit.
+
+        sets the MeasuredSource fit_params attribute to the fit results.
+
+        """
+
         self.fit_params = GaussianFitParameters()
+        allowable_center_offset_pixels = (
+            self.allowable_center_offset.to(u.arcmin).value
+            / self.source.thumbnail_res.to(u.arcmin).value
+        )
+        ## set bounds if not forcing center
         try:
+            bounds = (-np.inf, np.inf)
+            if not self.force_center:
+                bounds = (
+                    [
+                        -np.inf,
+                        self.initial_guess[1] - allowable_center_offset_pixels,
+                        self.initial_guess[2] - allowable_center_offset_pixels,
+                        -np.inf,
+                        -np.inf,
+                        -np.inf,
+                        -np.inf,
+                    ],
+                    [
+                        np.inf,
+                        self.initial_guess[1] + allowable_center_offset_pixels,
+                        self.initial_guess[2] + allowable_center_offset_pixels,
+                        np.inf,
+                        np.inf,
+                        np.inf,
+                        np.inf,
+                    ],
+                )
             popt, pcov = curve_fit(
                 self.model,
                 self.xy,
                 self.source.thumbnail.ravel(),
                 p0=self.initial_guess,
+                bounds=bounds,
             )
+
         except RuntimeError:
             self.log.error("curve_fit_2d_gaussian.curve_fit.failed")
             self.fit_params.failed = True
@@ -176,6 +238,7 @@ class Gaussian2DFitter:
             amplitude_err, sigma_x_err, sigma_y_err, theta_err, offset_err = perr
             ra_offset, dec_offset = None, None
             ra_err, dec_err = None, None
+
         else:
             amplitude, x0, y0, sigma_x, sigma_y, theta, offset = popt
             (
@@ -228,6 +291,7 @@ class Gaussian2DFitter:
             fwhm_dec_err=fwhm_y_err,
             theta=theta * u.rad,
             theta_err=theta_err * u.rad,
+            forced_center=self.force_center,
         )
         return self.fit_params
 
@@ -237,9 +301,10 @@ def scipy_2d_gaussian_fit(
     source_list: list[RegisteredSource],
     flux_lim_fit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
-    fwhm: u.Quantity = u.Quantity(2.2, "arcmin"),
+    fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
     pointing_residuals: MapPointingOffset | None = None,
+    allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     log: FilteringBoundLogger | None = None,
 ) -> list[MeasuredSource]:
     """ """
@@ -289,11 +354,18 @@ def scipy_2d_gaussian_fit(
                 instrument=input_map.instrument,
                 array=input_map.array,
                 frequency=get_frequency(input_map.frequency),
+                crossmatches=[
+                    CrossMatch(
+                        ra=source.ra,
+                        dec=source.dec,
+                        observation_time=input_map.time_mean[pix[0], pix[1]],
+                        source_id=source.source_id,
+                        probability=1.0,
+                        catalog_name=source.catalog_name,
+                        angular_separation=None,
+                    )
+                ],
             )
-            forced_source.fit_failed = True
-            forced_source.fit_failure_reason = "source_outside_map_bounds"
-            fit_sources.append(forced_source)
-            continue
 
         size_pix = thumbnail_half_width / map_res
         t_start, t_mean, t_end = input_map.get_pixel_times(pix)
@@ -309,6 +381,17 @@ def scipy_2d_gaussian_fit(
             instrument=input_map.instrument,
             array=input_map.array,
             frequency=get_frequency(input_map.frequency),
+            crossmatches=[
+                CrossMatch(
+                    ra=source.ra,
+                    dec=source.dec,
+                    observation_time=t_mean,
+                    source_id=source.source_id,
+                    probability=1.0,
+                    catalog_name=source.catalog_name,
+                    angular_separation=None,
+                )
+            ],
         )
 
         forced_source.fit_method = fit_method
@@ -363,9 +446,13 @@ def scipy_2d_gaussian_fit(
         fitter = Gaussian2DFitter(
             forced_source,
             reprojected=reproject_thumb,
+            fwhm_guess=fwhm
+            if fwhm is not None
+            else get_fwhm(freq=input_map.frequency, arr=input_map.array),
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
-            else False,  ## TODO: is this what we want??
+            else False,
+            allowable_center_offset=allowable_center_offset,
             log=log,
         )
 

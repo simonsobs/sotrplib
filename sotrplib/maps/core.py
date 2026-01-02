@@ -46,7 +46,7 @@ class ProcessableMap(ABC):
     "The flux map"
     time_first: ndmap
     "The time at which each pixel was first observed"
-    time_end: ndmap
+    time_last: ndmap
     "The time at which each pixel was last observed"
     time_mean: ndmap
     "The mean time at which each pixel was observed"
@@ -223,7 +223,6 @@ class ProcessableMap(ABC):
             else f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
-    @abstractmethod
     def get_pixel_times(self, pix: tuple[int, int]):
         """
         Given a pixel in the map, return the observation start, mean and end time of that pixel.
@@ -241,11 +240,21 @@ class ProcessableMap(ABC):
             else self.observation_time
         )
         t_end = (
-            self.time_end[x, y] if self.time_end is not None else self.observation_end
+            self.time_last[x, y] if self.time_last is not None else self.observation_end
         )
         return t_start, t_mean, t_end
 
-    @abstractmethod
+    def apply_mask(self):
+        """
+        Apply the mask to the snr and flux maps if a mask is present.
+        Assumes masked region is indicated by 0s in the mask map.
+
+        """
+        if self.mask is not None:
+            self.snr *= self.mask
+            self.flux *= self.mask
+        return
+
     def finalize(self):
         """
         Called just before source injection to ensure that the snr, flux, and
@@ -255,7 +264,7 @@ class ProcessableMap(ABC):
         """
         del self.rho
         del self.kappa
-
+        self.apply_mask()
         self.finalized = True
 
         return
@@ -299,6 +308,20 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.mask = mask
         self.log = log or structlog.get_logger()
 
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        Read from the inverse variance map header.
+        """
+        shape, wcs = enmap.read_map_geometry(str(self.inverse_variance_filename))
+
+        bottom_left = wcs.array_index_to_world(0, 0)
+        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
+
+        self.box = (bottom_left, top_right)
+        return self.box
+
     def build(self):
         log = self.log.bind(intensity_filename=self.intensity_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
@@ -341,7 +364,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
         ##TODO : what to do here?
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
@@ -379,7 +402,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             self.time_first[self.time_first > 0] += offset.timestamp()
         if self.observation_end is None:
             self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_end)), tz=timezone.utc
+                float(np.amax(self.time_last)), tz=timezone.utc
             )
 
     def get_snr(self):
@@ -398,12 +421,12 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
 
+    def apply_mask(self):
+        return super().apply_mask()
+
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        if self.mask is not None:
-            self.snr *= self.mask
-            self.flux *= self.mask
         super().finalize()
 
 
@@ -430,7 +453,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.flux_units = flux_units
         self.log = log or structlog.get_logger()
         self.time_first = self.prefiltered_map.time_first
-        self.time_end = self.prefiltered_map.time_end
+        self.time_last = self.prefiltered_map.time_last
         self.time_mean = self.prefiltered_map.time_mean
         self.observation_start = self.prefiltered_map.observation_start
         self.observation_end = self.prefiltered_map.observation_end
@@ -491,7 +514,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             self.time_first[self.time_first > 0] += offset.timestamp()
         if self.observation_end is None:
             self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_end)), tz=timezone.utc
+                float(np.amax(self.time_last)), tz=timezone.utc
             )
 
     def get_snr(self):
@@ -509,12 +532,12 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
 
+    def apply_mask(self):
+        return super().apply_mask()
+
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        if self.mask is not None:
-            self.snr *= self.mask
-            self.flux *= self.mask
         super().finalize()
 
 
@@ -556,25 +579,37 @@ class RhoAndKappaMap(ProcessableMap):
         self.mask = mask
         self.log = log or structlog.get_logger()
 
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        Read from the rho map header.
+        """
+        shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
+
+        bottom_left = wcs.array_index_to_world(0, 0)
+        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
+
+        self.box = (bottom_left, top_right)
+        return self.box
+
     def build(self):
         log = self.log.bind(rho_filename=self.rho_filename)
         box = self.box.to(u.rad).value if self.box is not None else None
         try:
             self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=box)
-            log.debug("rho_kappa.rho.read.sel")
-        except (IndexError, AttributeError):
+            assert type(self.rho) is enmap.ndmap
+        except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=box)
-            log.debug("rho_kappa.rho.read.nosel")
 
         log = log.new(kappa_filename=self.kappa_filename)
         try:
             self.kappa = enmap.read_map(str(self.kappa_filename), sel=0, box=box)
-            log.debug("rho_kappa.kappa.read.sel")
-        except (IndexError, AttributeError):
+            assert type(self.kappa) is enmap.ndmap
+        except (IndexError, AttributeError, AssertionError):
             # Kappa map does not have Q, U
             self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
-            log.debug("rho_kappa.kappa.read.nosel")
 
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
@@ -585,17 +620,16 @@ class RhoAndKappaMap(ProcessableMap):
             # TODO: Handle nuance that the start time is not included.
             try:
                 time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
-                log.debug("rho_kappa.time.read.sel")
-            except (IndexError, AttributeError):
+                assert type(time_map) is enmap.ndmap
+            except (IndexError, AttributeError, AssertionError):
                 # Somehow time map requires sel=0
                 time_map = enmap.read_map(str(self.time_filename), box=box)
-                log.debug("rho_kappa.time.read.nosel")
         else:
             time_map = None
             log.debug("rho_kappa.time.none")
 
         self.time_first = time_map
-        self.time_end = time_map
+        self.time_last = time_map
         self.time_mean = time_map
 
         self.add_time_offset(self.observation_start)
@@ -633,7 +667,7 @@ class RhoAndKappaMap(ProcessableMap):
             self.time_first[self.time_first > 0] += offset.timestamp()
         if self.observation_end is None:
             self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_end)), tz=timezone.utc
+                float(np.amax(self.time_last)), tz=timezone.utc
             )
 
     def get_pixel_times(self, pix: tuple[int, int]):
@@ -642,173 +676,87 @@ class RhoAndKappaMap(ProcessableMap):
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.rho / np.sqrt(self.kappa)
-
         return snr
 
     def get_flux(self):
         with np.errstate(divide="ignore"):
             flux = self.rho / self.kappa
-
         return flux
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
-        if self.mask is not None:
-            self.snr *= self.mask
-            self.flux *= self.mask
         super().finalize()
 
 
-"""
-Need to update this to use individual time maps and calcaulte the time_start, time_mean and time_end maps.
-"""
-
-
-class CoaddedMap(ProcessableMap):
+class CoaddedRhoKappaMap(ProcessableMap):
     """
-    A set of FITS maps read from disk suitable for coadding.
+    A coadded rho/kappa map created from multiple observations.
+    Attributes are the same as RhoAndKappaMap, but the maps are provided
+    directly rather than read from disk.
 
-    res in radian
+    Coadds are built using map_coadding.MapCoadder classes.
     """
 
     def __init__(
         self,
-        source_maps: list[ProcessableMap],
-        log: FilteringBoundLogger | None = None,
-        time_start: ndmap | None = None,
+        rho: ndmap,
+        kappa: ndmap,
+        observation_start: AwareDatetime,
+        observation_end: AwareDatetime,
+        time_first: ndmap | None = None,
         time_mean: ndmap | None = None,
-        time_end: ndmap | None = None,
-        map_depth: ndmap | None = None,
-        start_time: AwareDatetime | None = None,
-        end_time: AwareDatetime | None = None,
-        input_map_times: list[float] | None = None,
+        time_last: ndmap | None = None,
+        observation_length: timedelta | None = None,
+        box: AstroPydanticQuantity[u.deg] | None = None,
         frequency: str | None = None,
         array: str | None = None,
+        instrument: str | None = None,
+        flux_units: Unit = u.Jy,
+        mask: ndmap | None = None,
+        map_resolution: u.Quantity | None = None,
+        hits: ndmap | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
-        self.source_maps = source_maps
-        self.log = log or structlog.get_logger()
-        self.initialized = False
-
-        self.time_start = time_start
+        self.rho = rho
+        self.kappa = kappa
+        self.time_first = time_first
         self.time_mean = time_mean
-        self.time_end = time_end
-        self.map_depth = map_depth
-        self.observation_start = start_time
-        self.observation_end = end_time
-        self.input_map_times = input_map_times or []
+        self.time_last = time_last
+        self.observation_start = observation_start
+        self.observation_end = observation_end
+        self.observation_length = observation_length
+        self.box = box
         self.frequency = frequency
         self.array = array
+        self.instrument = instrument
+        self.flux_units = flux_units
+        self.mask = mask
+        self.hits = hits
+        self.map_resolution = map_resolution
+        self.log = log or structlog.get_logger()
 
     def build(self):
-        base_map = self.source_maps[0]
-        base_map.build()
-        base_map.finalize()
-        self.log.info(
-            "coaddedmap.base_map.built",
-            map_start_time=base_map.observation_start,
-            map_end_time=base_map.observation_end,
-            map_frequency=base_map.frequency,
-        )
+        pass
 
-        self.rho = base_map.rho.copy()
-        self.kappa = base_map.kappa.copy()
-        self.map_resolution = u.Quantity(
-            abs(base_map.rho.wcs.wcs.cdelt[0]), base_map.rho.wcs.wcs.cunit[0]
-        )
-
-        self.get_time_and_mapdepth(base_map)
-        self.update_map_times(base_map)
-        self.initialized = True
-        self.log.info("coaddedmap.coadd.initialized")
-
-        if len(self.source_maps) == 1:
-            self.log.warning("coaddedmap.coadd.single_map_warning", n_maps_coadded=1)
-            self.n_maps = 1
-            return
-
-        for sourcemap in self.source_maps[1:]:
-            sourcemap.build()
-            sourcemap.finalize()
-            self.log.info(
-                "coaddedmap.source_map.built",
-                map_start_time=sourcemap.observation_start,
-                map_end_time=sourcemap.observation_end,
-                map_frequency=sourcemap.frequency,
-            )
-            self.rho = enmap.map_union(
-                self.rho,
-                sourcemap.rho,
-            )
-            self.kappa = enmap.map_union(
-                self.kappa,
-                sourcemap.kappa,
-            )
-            self.get_time_and_mapdepth(sourcemap)
-            self.update_map_times(sourcemap)
-
-        if self.time_mean is not None:
-            with np.errstate(divide="ignore"):
-                self.time_mean /= self.map_depth
-        self.n_maps = len(self.input_map_times)
-        self.log.info(
-            "coaddedmap.coadd.finalized",
-            n_maps_coadded=self.n_maps,
-            coadd_start_time=self.observation_start,
-            coadd_end_time=self.observation_end,
-        )
-        return
-
-    def get_time_and_mapdepth(self, new_map):
-        if isinstance(new_map.time_mean, ndmap):
-            if isinstance(self.time_mean, type(None)):
-                self.time_mean = (
-                    new_map.time_mean.copy() + new_map.start_time.timestamp()
-                )
-                self.map_depth = new_map.time_mean.copy()
-                self.map_depth[self.map_depth > 0] = 1.0
-            else:
-                self.time_mean = enmap.map_union(
-                    self.time_mean,
-                    new_map.time_mean + new_map.start_time.timestamp(),
-                )
-                new_map_depth = new_map.time_mean.copy()
-                new_map_depth[new_map_depth > 0] = 1.0
-                self.map_depth = enmap.map_union(
-                    self.map_depth,
-                    new_map_depth,
-                )
-        ## get earliest start time per pixel ... can I use map_union with a<b or b<a or something?
-
-        ## get latest end time per pixel ... can I use map_union with a>b or b>a or something?
-
-    def update_map_times(self, new_map):
-        if self.observation_start is None:
-            self.observation_start = new_map.start_time.timestamp()
-        else:
-            self.observation_start = min(
-                self.observation_start, new_map.start_time.timestamp()
-            )
-        if self.observation_end is None:
-            self.observation_end = new_map.end_time.timestamp()
-        else:
-            self.observation_end = max(
-                self.observation_end, new_map.end_time.timestamp()
-            )
-        self.input_map_times += [
-            0.5 * (new_map.start_time.timestamp() + new_map.end_time.timestamp())
-        ]
+    def get_pixel_times(self, pix: tuple[int, int]):
+        return super().get_pixel_times(pix)
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.rho / np.sqrt(self.kappa)
-
         return snr
 
     def get_flux(self):
         with np.errstate(divide="ignore"):
             flux = self.rho / self.kappa
         return flux
+
+    def apply_mask(self):
+        return super().apply_mask()
 
     def finalize(self):
         self.snr = self.get_snr()

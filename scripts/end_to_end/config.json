@@ -1,0 +1,147 @@
+{
+    "maps": [
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-01T00:00:00Z",
+            "observation_end": "2025-01-02T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-02T00:00:00Z",
+            "observation_end": "2025-01-03T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-03T00:00:00Z",
+            "observation_end": "2025-01-04T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-04T00:00:00Z",
+            "observation_end": "2025-01-05T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-05T00:00:00Z",
+            "observation_end": "2025-01-06T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-06T00:00:00Z",
+            "observation_end": "2025-01-07T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-07T00:00:00Z",
+            "observation_end": "2025-01-08T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-08T00:00:00Z",
+            "observation_end": "2025-01-09T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-09T00:00:00Z",
+            "observation_end": "2025-01-10T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        },
+        {
+            "map_type": "simulated",
+            "observation_start": "2025-01-10T00:00:00Z",
+            "observation_end": "2025-01-11T00:00:00Z",
+            "simulation_parameters": {
+                "center_ra": "90.0 deg",
+                "center_dec": "0.0 deg",
+                "width_ra": "30.0 deg",
+                "width_dec": "20.0 deg"
+            }
+        }
+    ],
+    "source_simulators": [
+        {
+            "simulation_type": "socat",
+            "fraction_fixed": 0.9,
+            "fraction_gaussian": 0.1,
+            "flare_earliest_time": "2025-01-01T00:00:00Z",
+            "flare_latest_time": "2025-01-10T00:00:00Z",
+            "flare_width_shortest": "01:00:00",
+            "flare_width_longest": "12:00:00"
+        }
+    ],
+    "source_injector": {
+        "injector_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "scipy"
+    },
+    "source_subtractor": {
+        "subtractor_type": "photutils"
+    },
+    "blind_search": {
+        "search_type": "photutils"
+    },
+    "sifter": {
+        "sifter_type": "simple",
+        "radius": "1.0 arcmin"
+    },
+    "outputs": [
+        {
+            "output_type": "lightserve",
+            "hostname": "http://localhost:8001/"
+        }
+    ]
+}
