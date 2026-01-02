@@ -197,7 +197,8 @@ def matched_filter_depth1_map(
         fwhm of the Gaussian beam, in radian. e.g. 2.2*utils.arcmin for f090
 
     beam1d: str | None = None
-        beam transform file, the first column is ell 0,1,2,3,... and the second column B(ell)
+        beam profile file, B(r), where col[0]=r, col[1]=B(r).
+        currently, r assumed to be in arcseconds
 
     shrink_holes: u.Quantity = 20 * utils.arcmin
         hole size under which to ignore
@@ -252,14 +253,17 @@ def matched_filter_depth1_map(
     fconv = utils.dplanck(freq) * 1e3
 
     if beam1d:
-        beam = np.loadtxt(beam1d).T[1]
+        beamdata = np.loadtxt(beam1d).T
+        beam_response = beamdata[1]
+        beam_response_radius = (beamdata[0] * u.arcsec).to_value(u.rad)
+        uht = uharm.UHT(imap.shape, imap.wcs)
+        beam = uht.rprof2hprof(beam_response, beam_response_radius)
         beam /= np.max(beam)
-        beamis2d = False
     elif beam_fwhm is not None:
         bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
         uht = uharm.UHT(imap.shape, imap.wcs)
         beam = np.exp(-0.5 * uht.l**2 * bsigma**2)
-        beamis2d = beam.shape != (len(beam),)
+        beam_response = None
     else:
         raise "Need one of beam1d or beam_fwhm"
     ## convert map in T_cmb to mJy/sr
@@ -348,14 +352,14 @@ def matched_filter_depth1_map(
             )
             biC.wcs = bmap.wcs.deepcopy()
         # 2d beam
-        if beamis2d:
+        if beam_response is None:
             bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
             uht = uharm.UHT(bmap.shape, bmap.wcs)
             beam2d = np.exp(-0.5 * uht.l**2 * bsigma**2)
         else:
-            beam2d = enmap.samewcs(
-                utils.interp(bmap.modlmap(), np.arange(len(beam)), beam), bmap
-            )
+            uht = uharm.UHT(bmap.shape, bmap.wcs)
+            beam2d = uht.rprof2hprof(beam_response, beam_response_radius)
+            beam2d /= np.max(beam2d)
 
         # Pixel window. We include it as part of the 2d beam, which is valid in the flat sky
         # approximation we use here.
