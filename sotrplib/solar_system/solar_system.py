@@ -254,7 +254,7 @@ def get_sso_in_map(
     time_range = [
         np.amin(input_map.time_first[input_map.time_first > 0]),
         np.nanmean(input_map.time_mean[input_map.time_first > 0]),
-        np.nanmax(input_map.time_end),
+        np.nanmax(input_map.time_last),
     ]
     x = np.arange(len(time_range))
     x_new = np.linspace(0, len(time_range) - 1, int(interp_factor * len(time_range)))
