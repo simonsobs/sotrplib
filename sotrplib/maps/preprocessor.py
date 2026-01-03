@@ -67,8 +67,9 @@ class MatchedFilter(MapPreprocessor):
         apod_edge: AstroPydanticQuantity = 10 * u.arcmin,
         apod_holes: AstroPydanticQuantity = 5 * u.arcmin,
         noisemask_lim: float | None = None,
+        noisemask_radius: AstroPydanticQuantity = 10 * u.arcmin,
         highpass: bool = False,
-        band_height: AstroPydanticQuantity = 0 * u.degree,
+        band_height: AstroPydanticQuantity = 1 * u.degree,
         shift: float = 0,
         simple: bool = False,
         simple_lknee: float = 1000,
@@ -84,6 +85,7 @@ class MatchedFilter(MapPreprocessor):
         self.apod_edge = apod_edge
         self.apod_holes = apod_holes
         self.noisemask_lim = noisemask_lim
+        self.noisemask_radius = noisemask_radius
         self.highpass = highpass
         self.band_height = band_height
         self.shift = shift
@@ -108,6 +110,7 @@ class MatchedFilter(MapPreprocessor):
             apod_edge=self.apod_edge,
             apod_holes=self.apod_holes,
             noisemask_lim=self.noisemask_lim,
+            noisemask_radius=self.noisemask_radius,
             highpass=self.highpass,
             band_height=self.band_height,
             shift=self.shift,

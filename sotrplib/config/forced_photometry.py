@@ -47,6 +47,8 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
     flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
     thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(1.0, "arcmin")
+    near_source_rel_flux_limit: float = 1.0
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
@@ -55,6 +57,8 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
             flux_limit_centroid=self.flux_limit_centroid,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
+            allowable_center_offset=self.allowable_center_offset,
+            near_source_rel_flux_limit=self.near_source_rel_flux_limit,
             log=log,
         )
 
@@ -64,6 +68,8 @@ class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
     min_flux: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
     thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(3.0, "arcmin")
+    near_source_rel_flux_limit: float = 0.3
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
@@ -72,6 +78,8 @@ class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
             min_flux=self.min_flux,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
+            allowable_center_offset=self.allowable_center_offset,
+            near_source_rel_flux_limit=self.near_source_rel_flux_limit,
             log=log,
         )
 

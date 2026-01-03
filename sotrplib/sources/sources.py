@@ -46,7 +46,7 @@ class RegisteredSource(BaseSource):
 
     source_id: str | None = None
     source_type: (
-        Literal["extragalactic", "star", "asteroid", "simulated", "unknown"] | None
+        Literal["extragalactic", "star", "sso", "simulated", "unknown"] | None
     ) = None
 
     crossmatches: list[CrossMatch] | None = None
@@ -60,6 +60,8 @@ class RegisteredSource(BaseSource):
     observation_start_time: AstroPydanticTime | None = None
     observation_mean_time: AstroPydanticTime | None = None
     observation_end_time: AstroPydanticTime | None = None
+
+    flags: list[str] | None = None
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 

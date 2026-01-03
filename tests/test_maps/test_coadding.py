@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from matplotlib import pylab as plt
 
 from sotrplib.maps.core import RhoAndKappaMap
 from sotrplib.maps.map_coadding import RhoKappaMapCoadder
@@ -177,24 +176,10 @@ def test_coadding_with_sources_in_separate_maps(
     coadder = RhoKappaMapCoadder(frequencies=["f090"])
     coadded_maps = coadder.coadd(input_maps=input_maps)
     coadd = coadded_maps[0]
-
     coadd.finalize()
-    plt.figure()
-    ax = plt.subplot(projection=coadd.flux.wcs)
-    im = ax.imshow(coadd.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("coadded_map.png")
-    plt.close()
     injector = source_injector.PhotutilsSourceInjector()
     new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
     new_map.finalize()
-
-    plt.figure()
-    ax = plt.subplot(projection=new_map.flux.wcs)
-    im = ax.imshow(new_map.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("coadded_map_w_source.png")
-    plt.close()
 
     assert new_map != coadd
     assert new_map.original_map == coadd
@@ -275,22 +260,9 @@ def test_coadding_with_sources_in_overlapping_maps(
     coadd = coadded_maps[0]
 
     coadd.finalize()
-    plt.figure()
-    ax = plt.subplot(projection=coadd.flux.wcs)
-    im = ax.imshow(coadd.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("overlaping_coadded_map.png")
-    plt.close()
     injector = source_injector.PhotutilsSourceInjector()
     new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
     new_map.finalize()
-
-    plt.figure()
-    ax = plt.subplot(projection=new_map.flux.wcs)
-    im = ax.imshow(new_map.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("overlapping_coadded_map_w_source.png")
-    plt.close()
 
     assert new_map != coadd
     assert new_map.original_map == coadd

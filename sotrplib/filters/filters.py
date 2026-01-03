@@ -1,54 +1,11 @@
 import numpy as np
 from astropy import units as u
-from pixell import enmap, utils
+from pixell import analysis, bunch, enmap, uharm, utils
 
 """
 Lots of functions copied from https://github.com/amaurea/tenki/blob/master/filter_depth1.py
 
 """
-
-
-def renorm_thumbnail_snr(
-    thumb_snr, arr, freq, ra_deg, dec_deg, source_cat=None, apod_size_arcmin=10
-):
-    """
-    renormalize the matched filtered maps
-    Args:
-        thumb_snr:thumbnail of matched filtered map, it should be a snr map
-        arr: array name
-        freq: frequency
-        ra_deg:ra of source in degree
-        dec_deg:dec of source in degree
-        source_cat: catalog of point sources
-    """
-    from ..utils.utils import get_ps_inmap
-    from .inputs import get_sourceflux_threshold
-    from .masks import make_circle_mask
-
-    resolution = np.abs(thumb_snr.wcs.wcs.cdelt[0])
-    apod_pix = int(apod_size_arcmin / (resolution * 60) + 2)
-    mask = make_circle_mask(thumb_snr, ra_deg, dec_deg, arr=arr, freq=freq)
-    flux_thresh = get_sourceflux_threshold(freq)
-    mask_apod = enmap.zeros(thumb_snr.shape, wcs=thumb_snr.wcs, dtype=None)
-    mask_apod[
-        apod_pix : thumb_snr.shape[0] - apod_pix,
-        apod_pix : thumb_snr.shape[1] - apod_pix,
-    ] = 1
-    if source_cat:
-        source_cat = get_ps_inmap(thumb_snr, source_cat, fluxlim=flux_thresh)
-        for i in range(len(source_cat)):
-            mask *= make_circle_mask(
-                thumb_ivar,  # noqa
-                source_cat["RADeg"][i],
-                source_cat["decDeg"][i],
-                mask_radius=4,
-            )
-
-    mask *= mask_apod
-    thumb_snr_sel_sq = (thumb_snr * mask) ** 2
-    mean_snr_sq = thumb_snr_sel_sq[np.nonzero(thumb_snr_sel_sq)].mean()
-    thumb_snr_renorm = thumb_snr / (mean_snr_sq) ** 0.5
-    return thumb_snr_renorm
 
 
 def fix_profile(profile):
@@ -151,12 +108,11 @@ def build_ips2d_udgrade(map, ivar, lres=(70, 100), apod_corr=1):
         inclusive=True,
         oshape=ps2d.shape,
     )
+
     return 1 / ps2d
 
 
 def overlapping_range_iterator(n, nblock, overlap, padding=0):
-    from pixell.bunch import Bunch
-
     if nblock == 0:
         return
     # We don't handle overlap > half our block size
@@ -185,7 +141,7 @@ def overlapping_range_iterator(n, nblock, overlap, padding=0):
         right = (np.arange(nover2) + 2)[::-1] / (nover2 + 2)
         middle = np.full(ionly2 - ionly1, 1.0)
         weight = np.concatenate([left, middle, right])
-        yield Bunch(
+        yield bunch.Bunch(
             i1=ifull1, i2=ifull2, p1=iuse1 - ifull1, p2=ifull2 - iuse2, weight=weight
         )
 
@@ -203,12 +159,13 @@ def matched_filter_depth1_map(
     maskfile: str | None = None,
     beam_fwhm: u.Quantity | None = None,
     beam1d: str | None = None,
-    shrink_holes: u.Quantity = 20 * u.arcmin,
+    shrink_holes: u.Quantity = 5 * u.arcmin,
     apod_edge: u.Quantity = 10 * u.arcmin,
     apod_holes: u.Quantity = 5 * u.arcmin,
     noisemask_lim: float | None = None,
+    noisemask_radius: u.Quantity = 10 * u.arcmin,
     highpass: bool = False,
-    band_height: u.Quantity = 0 * u.degree,
+    band_height: u.Quantity = 1 * u.degree,
     shift: float = 0,
     simple: bool = False,
     simple_lknee: float = 1000,
@@ -240,24 +197,28 @@ def matched_filter_depth1_map(
         fwhm of the Gaussian beam, in radian. e.g. 2.2*utils.arcmin for f090
 
     beam1d: str | None = None
-        beam transform file, the first column is ell 0,1,2,3,... and the second column B(ell)
+        beam profile file, B(r), where col[0]=r, col[1]=B(r).
+        currently, r assumed to be in arcseconds
 
     shrink_holes: u.Quantity = 20 * utils.arcmin
-        hole size under which to ignore, radians
+        hole size under which to ignore
 
     apod_edge: u.Quantity = 10 * utils.arcmin
-        apodize this far from the map edge, radians
+        apodize this far from the map edge
 
     apod_holes: u.Quantity = 5 * utils.arcmin
-        apodize this far around holes, radians
+        apodize this far around holes
 
     noisemask_lim: float | None = None
         an upper limit to the noise, above which you mask. mJy/sr
 
+    noisemask_radius: u.Quantity = 10 * utils.arcmin
+        radius around bright sources to mask
+
     highpass: bool = False
         perform highpass filtering
 
-    band_height: u.Quantity = 0 * utils.degree
+    band_height: u.Quantity = 1 * utils.degree
         do filtering in dec bands of this height if >0, else one filtering for entire map, in radians.
 
     shift: int = 0
@@ -286,21 +247,23 @@ def matched_filter_depth1_map(
     rho,kappa : enmap
         the matched filtered maps rho and kappa.
     """
-    from pixell import analysis, bunch, enmap, uharm, utils
 
     freq = band_center.to(u.Hz).value
     ## uK-> mJy/sr
     fconv = utils.dplanck(freq) * 1e3
 
     if beam1d:
-        beam = np.loadtxt(beam1d).T[1]
+        beamdata = np.loadtxt(beam1d).T
+        beam_response = beamdata[1]
+        beam_response_radius = (beamdata[0] * u.arcsec).to_value(u.rad)
+        uht = uharm.UHT(imap.shape, imap.wcs)
+        beam = uht.rprof2hprof(beam_response, beam_response_radius)
         beam /= np.max(beam)
-        beamis2d = False
     elif beam_fwhm is not None:
         bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
         uht = uharm.UHT(imap.shape, imap.wcs)
         beam = np.exp(-0.5 * uht.l**2 * bsigma**2)
-        beamis2d = beam.shape != (len(beam),)
+        beam_response = None
     else:
         raise "Need one of beam1d or beam_fwhm"
     ## convert map in T_cmb to mJy/sr
@@ -332,17 +295,18 @@ def matched_filter_depth1_map(
         mask |= enmap.read_map(maskfile, geometry=imap.geometry)
     # Optionally mask very bright regions
     if noisemask_lim:
-        bright = np.abs(imap.preflat[0] < noisemask_lim * fconv)
-        rmask = 5 * u.arcmin
+        bright = np.abs(imap.preflat[0]) < noisemask_lim * fconv
         mask |= (
-            bright.distance_transform(rmax=rmask.to(u.radian).value)
-            < rmask.to(u.radian).value
+            bright.distance_transform(rmax=noisemask_radius.to(u.radian).value)
+            < noisemask_radius.to(u.radian).value
         )
         del bright
     mask = np.asanyarray(mask)
     if mask.size > 0 and mask.ndim > 0:
         noise_apod *= enmap.apod_mask(1 - mask, apod_holes.to(u.radian).value)
     del mask
+    imap *= noise_apod
+
     # Build the noise model
     iC = build_ips2d_udgrade(
         S.forward(imap),
@@ -388,14 +352,14 @@ def matched_filter_depth1_map(
             )
             biC.wcs = bmap.wcs.deepcopy()
         # 2d beam
-        if beamis2d:
+        if beam_response is None:
             bsigma = beam_fwhm.to(u.radian).value * utils.fwhm
             uht = uharm.UHT(bmap.shape, bmap.wcs)
             beam2d = np.exp(-0.5 * uht.l**2 * bsigma**2)
         else:
-            beam2d = enmap.samewcs(
-                utils.interp(bmap.modlmap(), np.arange(len(beam)), beam), bmap
-            )
+            uht = uharm.UHT(bmap.shape, bmap.wcs)
+            beam2d = uht.rprof2hprof(beam_response, beam_response_radius)
+            beam2d /= np.max(beam2d)
 
         # Pixel window. We include it as part of the 2d beam, which is valid in the flat sky
         # approximation we use here.
