@@ -369,12 +369,23 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
     def build(self):
         log = self.log.bind(intensity_filename=self.intensity_filename)
-        box = self.box.to(u.rad).value if self.box is not None else None
+        # box = self.box.to(u.rad).value if self.box is not None else None
+        enmap_box = (
+            [
+                [self.box[0].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
+                [self.box[1].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
+            ]
+            if self.box is not None
+            else None
+        )
+        if enmap_box is not None:
+            if enmap_box[0][1] < enmap_box[1][1]:
+                enmap_box[1][1] -= 2 * np.pi
         intensity_shape = enmap.read_map_geometry(str(self.intensity_filename))[0]
         self.intensity = enmap.read_map(
             str(self.intensity_filename),
             sel=0 if len(intensity_shape) > 2 else None,
-            box=box,
+            box=enmap_box,
         )
         log.debug("intensity_ivar.intensity.read")
 
@@ -386,7 +397,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.inverse_variance = enmap.read_map(
             str(self.inverse_variance_filename),
             sel=0 if len(inverse_variance_shape) > 2 else None,
-            box=box,
+            box=enmap_box,
         )
         log.debug("intensity_ivar.ivar.read")
 
@@ -400,7 +411,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             # TODO: Handle nuance that the start time is not included.
             time_shape = enmap.read_map_geometry(str(self.time_filename))[0]
             time_map = enmap.read_map(
-                str(self.time_filename), sel=0 if len(time_shape) > 2 else None, box=box
+                str(self.time_filename),
+                sel=0 if len(time_shape) > 2 else None,
+                box=enmap_box,
             )
             log.debug("intensity_ivar.time.read")
         else:
@@ -659,21 +672,31 @@ class RhoAndKappaMap(ProcessableMap):
 
     def build(self):
         log = self.log.bind(rho_filename=self.rho_filename)
-        box = self.box.to(u.rad).value if self.box is not None else None
+        enmap_box = (
+            [
+                [self.box[0].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
+                [self.box[1].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
+            ]
+            if self.box is not None
+            else None
+        )
+        if enmap_box is not None:
+            if enmap_box[0][1] < enmap_box[1][1]:
+                enmap_box[1][1] -= 2 * np.pi
         try:
-            self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=box)
+            self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=enmap_box)
             assert type(self.rho) is enmap.ndmap
         except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
-            self.rho = enmap.read_map(str(self.rho_filename), box=box)
+            self.rho = enmap.read_map(str(self.rho_filename), box=enmap_box)
 
         log = log.new(kappa_filename=self.kappa_filename)
         try:
-            self.kappa = enmap.read_map(str(self.kappa_filename), sel=0, box=box)
+            self.kappa = enmap.read_map(str(self.kappa_filename), sel=0, box=enmap_box)
             assert type(self.kappa) is enmap.ndmap
         except (IndexError, AttributeError, AssertionError):
             # Kappa map does not have Q, U
-            self.kappa = enmap.read_map(str(self.kappa_filename), box=box)
+            self.kappa = enmap.read_map(str(self.kappa_filename), box=enmap_box)
 
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]
@@ -683,11 +706,11 @@ class RhoAndKappaMap(ProcessableMap):
         if self.time_filename is not None:
             # TODO: Handle nuance that the start time is not included.
             try:
-                time_map = enmap.read_map(str(self.time_filename), sel=0, box=box)
+                time_map = enmap.read_map(str(self.time_filename), sel=0, box=enmap_box)
                 assert type(time_map) is enmap.ndmap
             except (IndexError, AttributeError, AssertionError):
                 # Somehow time map requires sel=0
-                time_map = enmap.read_map(str(self.time_filename), box=box)
+                time_map = enmap.read_map(str(self.time_filename), box=enmap_box)
         else:
             time_map = None
             log.debug("rho_kappa.time.none")
