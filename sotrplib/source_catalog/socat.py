@@ -107,6 +107,24 @@ class SOCatWrapper:
             self._socat_source_to_registered(socat_source=x) for x in sources_in_map
         ]
 
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        box = input_map.bbox
+        all_sources = self.get_sources_in_box(box=box)
+        if len(all_sources) == 0:
+            return []
+        coords = SkyCoord(
+            ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
+        )
+        y, x = input_map.flux.wcs.world_to_pixel(coords)
+        nx, ny = input_map.flux.shape
+        x, y = np.round(x).astype(int), np.round(y).astype(int)
+        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+        result = np.zeros_like(x, dtype=bool)
+        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
+            bool
+        )
+        return [all_sources[i] for i, valid in enumerate(result) if valid]
+
     def nearby_sources(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
     ) -> list[RegisteredSource]:
@@ -157,7 +175,7 @@ class SOCat(SourceCatalog):
         return self.core.get_sources_in_box(box=box)
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        return self.core.get_sources_in_map(mask_map=input_map)
+        return self.core.get_sources_in_map(input_map=input_map)
 
     def get_all_sources(self) -> list[RegisteredSource]:
         return self.core.get_sources_in_box(box=None)
