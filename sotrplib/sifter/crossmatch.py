@@ -5,7 +5,7 @@ import os.path as op
 import numpy as np
 import pandas as pd
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, angular_separation
 from astropy.table import Table
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
@@ -239,7 +239,17 @@ def sift(
     """
     log = log if log else get_logger()
     log = log.bind(func_name="sift")
-    log.info("sift.start")
+    ## log the parameters
+    log.info(
+        "sift.start",
+        radius1Jy=radius1Jy,
+        min_match_radius=min_match_radius,
+        ra_jitter=ra_jitter,
+        dec_jitter=dec_jitter,
+        cuts=cuts,
+        crossmatch_with_gaia=crossmatch_with_gaia,
+        crossmatch_with_million_quasar=crossmatch_with_million_quasar,
+    )
 
     fwhm = get_fwhm(map_freq, arr=arr)
 
@@ -296,7 +306,10 @@ def sift(
             source_measurement.crossmatches = catalog_sources[
                 catalog_match[source][0][1]
             ].crossmatches
-
+            for cm in source_measurement.crossmatches:
+                cm.angular_separation = angular_separation(
+                    source_measurement.ra, source_measurement.dec, cm.ra, cm.dec
+                )
         else:
             source_measurement.crossmatches = []
 

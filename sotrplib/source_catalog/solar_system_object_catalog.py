@@ -95,6 +95,15 @@ class SSOCat(SolarSystemObjectCatalog):
                     ra=np.mean(sso_in_map[sso]["pos"].ra),
                     dec=np.mean(sso_in_map[sso]["pos"].dec),
                     observation_mean_time=datetime_mean(sso_in_map[sso]["time"]),
+                    crossmatches=[
+                        CrossMatch(
+                            ra=np.mean(sso_in_map[sso]["pos"].ra),
+                            dec=np.mean(sso_in_map[sso]["pos"].dec),
+                            source_type="sso",
+                            catalog_name="solar_system_catalog",
+                            source_id=sso,
+                        )
+                    ],
                 )
             )
         self.sso_ephems = sso_in_map
