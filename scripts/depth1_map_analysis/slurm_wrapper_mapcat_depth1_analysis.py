@@ -217,7 +217,7 @@ def generate_config_json(
     }},
     "pointing_residual": {{
         "pointing_residual_type": "polynomial",
-        "polynomial_order": 3,
+        "polynomial_order": 2,
         "min_snr": {min_snr},
         "min_sources": {min_pointing_sources}
     }},
@@ -227,7 +227,7 @@ def generate_config_json(
             "beam1d": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/observatories/so/profile_{frequency}_1756699200_20000000000.txt",
             "band_height": "1 deg",
             "shrink_holes": "5 arcmin",
-            "noisemask_lim": 0.03,
+            "noisemask_lim": 0.1,
             "noisemask_radius": "10 arcmin",
             "apod_holes": "10 arcmin"
         }},
