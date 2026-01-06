@@ -262,7 +262,8 @@ def generate_config_json(
         "near_source_rel_flux_limit": 1.0
     }},
     "sifter": {{
-        "sifter_type": "default"
+        "sifter_type": "default",
+        "min_match_radius": "5.0 arcmin"
     }},
     "outputs": [
         {{

@@ -187,8 +187,8 @@ def sift(
     map_freq: str | None = None,
     arr: str | None = None,
     cuts: dict = {
-        "fwhm_ra": [0.5 * u.arcmin, 5.0 * u.arcmin],
-        "fwhm_dec": [0.5 * u.arcmin, 5.0 * u.arcmin],
+        "fwhm_ra": [0.2 * u.arcmin, 5.0 * u.arcmin],
+        "fwhm_dec": [0.2 * u.arcmin, 5.0 * u.arcmin],
         "snr": [5.0, np.inf],
     },
     crossmatch_with_gaia: bool = True,
@@ -468,7 +468,7 @@ def recalculate_local_snr(
     thumb_size: u.Quantity = 0.25 * u.deg,
     fwhm: u.Quantity = 2.2 * u.arcmin,
     snr_cut: float = 5.0,
-    ratio_cut: float = 1.3,
+    ratio_cut: float = 10.0,
     log: FilteringBoundLogger | None = None,
 ):
     """
@@ -483,7 +483,9 @@ def recalculate_local_snr(
     - ratio_cut: The ratio of the old SNR to the new SNR above which to cut.
 
     assumes that if the new snr is significantly different from the old snr, the region is noisier than expected.
-    empircally 30% change seems to indicate a noisy region.
+    empircally 30% change seems to indicate a noisy region....
+    todo: however because an unmasked source creates filtering wings, the snr can be significantly different.
+          so for now, set the ratio_cut fairly high to avoid cutting real transients.
 
     Returns:
     - updated_transient_candidates: List of transient source candidates with updated SNR.
