@@ -38,7 +38,7 @@
             "preprocessor_type": "matched_filter",
             "band_height": "1 deg",
             "shrink_holes": "5 arcmin",
-            "noisemask_lim": 0.03,
+            "noisemask_lim": 0.1,
             "noisemask_radius": "10 arcmin",
             "apod_holes": "10 arcmin"
         },
