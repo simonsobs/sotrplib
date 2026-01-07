@@ -223,6 +223,10 @@ def generate_config_json(
     }},
     "preprocessors": [
         {{
+            "preprocessor_type": "planet_mask",
+            "mask_radius": "15 arcmin"
+        }},
+        {{
             "preprocessor_type": "matched_filter",
             "beam1d": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/observatories/so/profile_{frequency}_1756699200_20000000000.txt",
             "band_height": "1 deg",

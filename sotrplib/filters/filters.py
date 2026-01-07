@@ -300,6 +300,7 @@ def matched_filter_depth1_map(
     ## Apply source mask if given
     if source_mask is not None:
         mask |= 1 - source_mask
+
     # Optionally mask very bright regions
     if noisemask_lim:
         bright = np.abs(imap.preflat[0]) < noisemask_lim * fconv
