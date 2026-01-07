@@ -35,6 +35,10 @@
     },
     "preprocessors": [
         {
+            "preprocessor_type": "planet_mask",
+            "mask_radius": "15 arcmin"
+        },
+        {
             "preprocessor_type": "matched_filter",
             "band_height": "1 deg",
             "shrink_holes": "5 arcmin",

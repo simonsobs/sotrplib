@@ -12,6 +12,7 @@ from sotrplib.maps.preprocessor import (
     KappaRhoCleaner,
     MapPreprocessor,
     MatchedFilter,
+    PlanetMasker,
 )
 
 
@@ -23,6 +24,14 @@ class PreprocessorConfig(BaseModel, ABC):
         self, log: FilteringBoundLogger | None = None
     ) -> MapPreprocessor:
         return
+
+
+class PlanetMaskConfig(PreprocessorConfig):
+    preprocessor_type: Literal["planet_mask"] = "planet_mask"
+    mask_radius: AstroPydanticQuantity = 15 * u.arcmin
+
+    def to_preprocessor(self, log: FilteringBoundLogger | None = None) -> PlanetMasker:
+        return PlanetMasker(mask_radius=self.mask_radius, log=log)
 
 
 class KappaRhoCleanerConfig(PreprocessorConfig):
@@ -93,5 +102,5 @@ class EdgeMaskConfig(PreprocessorConfig):
 
 
 AllPreprocessorConfigTypes = (
-    KappaRhoCleanerConfig | MatchedFilterConfig | EdgeMaskConfig
+    KappaRhoCleanerConfig | MatchedFilterConfig | EdgeMaskConfig | PlanetMaskConfig
 )
