@@ -195,16 +195,21 @@ def get_sso_ephems_at_time(
     ## then combine to get the SSO position as seen by the observer.
     ## see https://rhodesmill.org/skyfield/kepler-orbits.html
     sso_ephems = {}
-    for sso in tqdm(orbital_df.iloc, desc="Computing SSO ephemerides"):
-        designation = sso["designation"]
-        sso_pos = sun + mpc.mpcorb_orbit(sso, ts, GM_SUN)
-        ra, dec, distance = observer_topo.at(skyfield_time).observe(sso_pos).radec()
+    if orbital_df is not None:
+        for sso in tqdm(orbital_df.iloc, desc="Computing SSO ephemerides"):
+            designation = sso["designation"]
+            sso_pos = sun + mpc.mpcorb_orbit(sso, ts, GM_SUN)
+            ra, dec, distance = observer_topo.at(skyfield_time).observe(sso_pos).radec()
 
-        sso_ephems[designation] = {}
-        sso_ephems[designation]["pos"] = SkyCoord(
-            ra=ra.degrees * u.deg, dec=dec.degrees * u.deg
+            sso_ephems[designation] = {}
+            sso_ephems[designation]["pos"] = SkyCoord(
+                ra=ra.degrees * u.deg, dec=dec.degrees * u.deg
+            )
+            sso_ephems[designation]["distance"] = distance.km * u.km
+    else:
+        log.warning(
+            "No orbital data provided; skipping SSO ephemerides computation for non-planets."
         )
-        sso_ephems[designation]["distance"] = distance.km * u.km
 
     for p in planets:
         planet_eph = eph[f"{p} Barycenter"]

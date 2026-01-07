@@ -381,7 +381,7 @@ def get_cut_radius(
     """
 
     if not fwhm_arcmin:
-        fwhm_arcmin = get_fwhm(freq, arr)
+        fwhm_arcmin = get_fwhm(freq, arr).to_value(u.arcmin)
 
     ## I guess this is needed for filtering wings?
     mf_factor = 2**0.5 if matched_filtered else 1.0
