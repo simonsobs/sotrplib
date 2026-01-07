@@ -157,6 +157,7 @@ def matched_filter_depth1_map(
     band_center: u.Quantity,
     infofile: str | None = None,
     maskfile: str | None = None,
+    source_mask: enmap.ndmap | None = None,
     beam_fwhm: u.Quantity | None = None,
     beam1d: str | None = None,
     shrink_holes: u.Quantity = 5 * u.arcmin,
@@ -192,6 +193,9 @@ def matched_filter_depth1_map(
 
     maskfile: str | None = None
         a mask file to apply to the observation
+
+    source_mask: enmap.ndmap | None = None
+        a source mask to apply to the observation, with 1==unmasked, 0==masked
 
     beam_fwhm: u.Quantity | None = None
         fwhm of the Gaussian beam, in radian. e.g. 2.2*utils.arcmin for f090
@@ -293,6 +297,9 @@ def matched_filter_depth1_map(
     mask = 0
     if maskfile:
         mask |= enmap.read_map(maskfile, geometry=imap.geometry)
+    ## Apply source mask if given
+    if source_mask is not None:
+        mask |= 1 - source_mask
     # Optionally mask very bright regions
     if noisemask_lim:
         bright = np.abs(imap.preflat[0]) < noisemask_lim * fconv
