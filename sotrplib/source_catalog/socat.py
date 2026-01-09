@@ -172,7 +172,7 @@ class SOCat(SourceCatalog):
         )
 
     def source_by_id(self, id) -> RegisteredSource:
-        return self.core.source_from_id(id=id)
+        return self.core.source_from_id(source_id=id)
 
     def crossmatch(
         self,
