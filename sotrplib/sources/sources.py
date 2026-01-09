@@ -24,6 +24,7 @@ class CrossMatch(BaseModel):
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
     source_id: str
+    source_type: str | None = None
     probability: float | None = None
     angular_separation: AstroPydanticQuantity[u.deg] | None = None
     flux: AstroPydanticQuantity[u.mJy] | None = None

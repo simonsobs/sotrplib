@@ -216,8 +216,7 @@ def generate_config_json(
         "allowable_centroid_offset": "3.0 arcmin"
     }},
     "pointing_residual": {{
-        "pointing_residual_type": "polynomial",
-        "polynomial_order": 2,
+        "pointing_residual_type": "median",
         "min_snr": {min_snr},
         "min_sources": {min_pointing_sources}
     }},
