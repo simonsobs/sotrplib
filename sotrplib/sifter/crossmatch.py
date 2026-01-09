@@ -179,7 +179,7 @@ def sift(
     extracted_sources: list[MeasuredSource],
     catalog_sources: list[RegisteredSource] | None = None,
     input_map: ProcessableMap = None,
-    radius1Jy: AstroPydanticQuantity[u.arcmin] = 30.0 * u.arcmin,
+    radius1Jy: AstroPydanticQuantity[u.arcmin] = 10.0 * u.arcmin,
     min_match_radius: AstroPydanticQuantity[u.arcmin] = 1.5 * u.arcmin,
     ra_jitter: AstroPydanticQuantity[u.arcmin] = 0.0 * u.arcmin,
     dec_jitter: AstroPydanticQuantity[u.arcmin] = 0.0 * u.arcmin,

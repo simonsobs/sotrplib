@@ -11,8 +11,10 @@ import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clip, sigma_clipped_stats
+from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import RegisteredSource
 
 
@@ -326,3 +328,43 @@ class PolynomialPointingOffset(MapPointingOffset):
             dec=pos.dec - ddec,
             frame=pos.frame,
         )
+
+
+def save_model_maps(
+    pointing_model: MapPointingOffset, input_map: ProcessableMap, filename_prefix: str
+):
+    """
+    Save the pointing offset model as maps for visualization.
+
+    Parameters
+    ----------
+    filename_prefix : str
+        Prefix for the output map filenames.
+    """
+    pixmap = enmap.pixmap(input_map.flux.shape, wcs=input_map.flux.wcs)
+
+    decmap, ramap = enmap.pix2sky(input_map.flux.shape, input_map.flux.wcs, pixmap)
+
+    ra_offset_map = pointing_model.ra_model(
+        (ramap.flatten() * u.rad).to_value(u.deg),
+        (decmap.flatten() * u.rad).to_value(u.deg),
+    ).to_value(u.arcsec)
+    dec_offset_map = pointing_model.dec_model(
+        (ramap.flatten() * u.rad).to_value(u.deg),
+        (decmap.flatten() * u.rad).to_value(u.deg),
+    ).to_value(u.arcsec)
+
+    ra_offset_map = enmap.enmap(
+        ra_offset_map.reshape(input_map.flux.shape), wcs=input_map.flux.wcs
+    )
+    dec_offset_map = enmap.enmap(
+        dec_offset_map.reshape(input_map.flux.shape), wcs=input_map.flux.wcs
+    )
+
+    ra_offset_map[(input_map.flux == 0) | (~np.isfinite(input_map.flux))] = 0.0
+    dec_offset_map[(input_map.flux == 0) | (~np.isfinite(input_map.flux))] = 0.0
+
+    enmap.write_map(f"{filename_prefix}_ra_offset_map.fits", ra_offset_map)
+    enmap.write_map(f"{filename_prefix}_dec_offset_map.fits", dec_offset_map)
+
+    return

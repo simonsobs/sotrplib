@@ -7,7 +7,11 @@ from astropy.coordinates import SkyCoord
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.database import set_processing_end
 from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
-from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset
+from sotrplib.maps.pointing import (
+    EmptyPointingOffset,
+    MapPointingOffset,
+    save_model_maps,
+)
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import SourceOutput
@@ -181,7 +185,11 @@ class BaseRunner:
         _ = self.profilable_task(self.pointing_residual.get_offset)(
             pointing_sources=pointing_sources
         )
-
+        save_model_maps(
+            self.pointing_residual,
+            input_map,
+            filename_prefix=f"pointing_residual_{input_map.map_id}",
+        )
         sso_sources = []
         for sso_catalog in self.sso_catalogs:
             sso_sources.extend(
@@ -194,7 +202,7 @@ class BaseRunner:
             self.forced_photometry.force
         )(
             input_map=input_map,
-            catalogs=self.source_catalogs,
+            catalogs=self.source_catalogs + self.sso_catalogs,
             pointing_residuals=self.pointing_residual,
         )
 
