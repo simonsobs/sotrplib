@@ -303,13 +303,11 @@ def sift(
         source_string_name = radec_to_str_name(cand_pos[0], cand_pos[1])
 
         if isin_cat[source]:
-            source_measurement.crossmatches = catalog_sources[
-                catalog_match[source][0][1]
-            ].crossmatches
-            for cm in source_measurement.crossmatches:
-                cm.angular_separation = angular_separation(
-                    source_measurement.ra, source_measurement.dec, cm.ra, cm.dec
-                )
+            cm = catalog_sources[catalog_match[source][0][1]]
+            source_measurement.crossmatches = cm.crossmatches
+            source_measurement.crossmatches[0].angular_separation = angular_separation(
+                source_measurement.ra, source_measurement.dec, cm.ra, cm.dec
+            )
         else:
             source_measurement.crossmatches = []
 
