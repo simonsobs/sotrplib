@@ -10,7 +10,7 @@ from astropy import units as u
 # connection; this only happens once, and we don't want it to
 # affect the import time of this module (or need a database to
 # be available just to import sotrplib).
-from mapcat.database import DepthOneMapTable, ProcessingStatusTable
+from mapcat.database import DepthOneMapTable, TimeDomainProcessingTable
 from mapcat.helper import settings as mapcat_settings
 from sqlmodel import select
 from structlog import get_logger
@@ -125,7 +125,9 @@ def check_if_processed(
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(ProcessingStatusTable).where(ProcessingStatusTable.map_id == map_id)
+    query = select(TimeDomainProcessingTable).where(
+        TimeDomainProcessingTable.map_id == map_id
+    )
     session_results = session.execute(query).one_or_none()
     if session_results is None:
         return False
@@ -139,11 +141,13 @@ def set_processing_start(map_id: int, session=None):
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(ProcessingStatusTable).where(ProcessingStatusTable.map_id == map_id)
+    query = select(TimeDomainProcessingTable).where(
+        TimeDomainProcessingTable.map_id == map_id
+    )
     session_results = session.execute(query).one_or_none()
     if session_results is None:
         session_results = [
-            ProcessingStatusTable(processing_status_id=map_id, map_id=map_id)
+            TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id)
         ]
     for r in session_results:
         r.processing_start = datetime.now(timezone.utc).timestamp()
@@ -158,8 +162,8 @@ def set_processing_end(map_id: int, session=None):
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(ProcessingStatusTable).where(
-        ProcessingStatusTable.processing_status_id == map_id
+    query = select(TimeDomainProcessingTable).where(
+        TimeDomainProcessingTable.processing_status_id == map_id
     )
     session_result = session.execute(query).one_or_none()
     if session_result is None:
