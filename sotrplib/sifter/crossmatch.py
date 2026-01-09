@@ -5,7 +5,7 @@ import os.path as op
 import numpy as np
 import pandas as pd
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, angular_separation
 from astropy.table import Table
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
@@ -179,7 +179,7 @@ def sift(
     extracted_sources: list[MeasuredSource],
     catalog_sources: list[RegisteredSource] | None = None,
     input_map: ProcessableMap = None,
-    radius1Jy: AstroPydanticQuantity[u.arcmin] = 30.0 * u.arcmin,
+    radius1Jy: AstroPydanticQuantity[u.arcmin] = 10.0 * u.arcmin,
     min_match_radius: AstroPydanticQuantity[u.arcmin] = 1.5 * u.arcmin,
     ra_jitter: AstroPydanticQuantity[u.arcmin] = 0.0 * u.arcmin,
     dec_jitter: AstroPydanticQuantity[u.arcmin] = 0.0 * u.arcmin,
@@ -187,8 +187,8 @@ def sift(
     map_freq: str | None = None,
     arr: str | None = None,
     cuts: dict = {
-        "fwhm_ra": [0.5 * u.arcmin, 5.0 * u.arcmin],
-        "fwhm_dec": [0.5 * u.arcmin, 5.0 * u.arcmin],
+        "fwhm_ra": [0.2 * u.arcmin, 5.0 * u.arcmin],
+        "fwhm_dec": [0.2 * u.arcmin, 5.0 * u.arcmin],
         "snr": [5.0, np.inf],
     },
     crossmatch_with_gaia: bool = True,
@@ -239,7 +239,17 @@ def sift(
     """
     log = log if log else get_logger()
     log = log.bind(func_name="sift")
-    log.info("sift.start")
+    ## log the parameters
+    log.info(
+        "sift.start",
+        radius1Jy=radius1Jy,
+        min_match_radius=min_match_radius,
+        ra_jitter=ra_jitter,
+        dec_jitter=dec_jitter,
+        cuts=cuts,
+        crossmatch_with_gaia=crossmatch_with_gaia,
+        crossmatch_with_million_quasar=crossmatch_with_million_quasar,
+    )
 
     fwhm = get_fwhm(map_freq, arr=arr)
 
@@ -293,10 +303,11 @@ def sift(
         source_string_name = radec_to_str_name(cand_pos[0], cand_pos[1])
 
         if isin_cat[source]:
-            source_measurement.crossmatches = catalog_sources[
-                catalog_match[source][0][1]
-            ].crossmatches
-
+            cm = catalog_sources[catalog_match[source][0][1]]
+            source_measurement.crossmatches = cm.crossmatches
+            source_measurement.crossmatches[0].angular_separation = angular_separation(
+                source_measurement.ra, source_measurement.dec, cm.ra, cm.dec
+            )
         else:
             source_measurement.crossmatches = []
 
@@ -455,7 +466,7 @@ def recalculate_local_snr(
     thumb_size: u.Quantity = 0.25 * u.deg,
     fwhm: u.Quantity = 2.2 * u.arcmin,
     snr_cut: float = 5.0,
-    ratio_cut: float = 1.3,
+    ratio_cut: float = 10.0,
     log: FilteringBoundLogger | None = None,
 ):
     """
@@ -470,7 +481,9 @@ def recalculate_local_snr(
     - ratio_cut: The ratio of the old SNR to the new SNR above which to cut.
 
     assumes that if the new snr is significantly different from the old snr, the region is noisier than expected.
-    empircally 30% change seems to indicate a noisy region.
+    empircally 30% change seems to indicate a noisy region....
+    todo: however because an unmasked source creates filtering wings, the snr can be significantly different.
+          so for now, set the ratio_cut fairly high to avoid cutting real transients.
 
     Returns:
     - updated_transient_candidates: List of transient source candidates with updated SNR.

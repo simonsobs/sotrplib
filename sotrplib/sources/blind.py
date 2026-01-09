@@ -82,4 +82,5 @@ class SigmaClipBlindSearch(BlindSearchProvider):
                 )
                 source.ra = source_pos.ra
                 source.dec = source_pos.dec
+
         return extracted_sources, []

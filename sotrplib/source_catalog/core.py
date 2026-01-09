@@ -34,6 +34,15 @@ class SourceCatalog(ABC):
         return
 
     @abstractmethod
+    def get_sources_in_map(
+        self, input_map: ProcessableMap | None = None
+    ) -> list[RegisteredSource]:
+        """
+        Get sources that are within the valid region of a given map.
+        """
+        return
+
+    @abstractmethod
     def forced_photometry_sources(
         self, mask_map: ProcessableMap | None = None
     ) -> list[RegisteredSource]:

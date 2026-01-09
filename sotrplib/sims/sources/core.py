@@ -59,6 +59,9 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
     def build(self):
         return
 
+    def _compute_hits(self):
+        return (abs(self.flux) > 0).astype(np.int32)
+
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
 
