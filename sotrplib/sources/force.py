@@ -170,12 +170,15 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             )
             for i, fp_source in enumerate(source_list):
                 c = SkyCoord(ra=fp_source.ra, dec=fp_source.dec)
-                _, dist, _ = c.match_to_catalog_sky(source_positions)
-                nearby = dist <= self.thumbnail_half_width * (2**-0.5)
-                brighter = (
-                    source_fluxes >= fp_source.flux * self.near_source_rel_flux_limit
+                neighboridx, neighbordist, _ = c.match_to_catalog_sky(
+                    source_positions, nthneighbor=2
                 )
-                if np.sum(nearby & brighter) > 1:  # more than itself
+                nearby = neighbordist <= self.thumbnail_half_width * (2**-0.5)
+                brighter = (
+                    source_fluxes[neighboridx]
+                    >= fp_source.flux * self.near_source_rel_flux_limit
+                )
+                if nearby & brighter:  # more than itself
                     has_nearby_sources[i] = True
 
         self.log.info(

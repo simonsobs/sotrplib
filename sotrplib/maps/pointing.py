@@ -158,10 +158,10 @@ class ConstantPointingOffset(MapPointingOffset):
             "pointing.ConstantPointingOffset.offsets",
             num_sources=len(ra_off_list),
             min_snr=self.min_snr,
-            ra_offset=self.ra_offset,
-            dec_offset=self.dec_offset,
-            ra_offset_rms=self.ra_offset_rms,
-            dec_offset_rms=self.dec_offset_rms,
+            ra_offset=f"{self.ra_offset.to_value(u.arcsec):.1f} arcsec",
+            dec_offset=f"{self.dec_offset.to_value(u.arcsec):.1f} arcsec",
+            ra_offset_rms=f"{self.ra_offset_rms.to_value(u.arcsec):.1f} arcsec",
+            dec_offset_rms=f"{self.dec_offset_rms.to_value(u.arcsec):.1f} arcsec",
         )
 
         return
@@ -331,16 +331,31 @@ class PolynomialPointingOffset(MapPointingOffset):
 
 
 def save_model_maps(
-    pointing_model: MapPointingOffset, input_map: ProcessableMap, filename_prefix: str
+    pointing_model: MapPointingOffset,
+    input_map: ProcessableMap,
+    filename_prefix: str,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Save the pointing offset model as maps for visualization.
 
     Parameters
     ----------
+    pointing_model : MapPointingOffset
+        The pointing offset model to be saved.
+    input_map : ProcessableMap
+        The input map used to define the shape and WCS of the output maps.
     filename_prefix : str
         Prefix for the output map filenames.
+    log : FilteringBoundLogger | None
+        Logger for logging messages. If None, no logging is performed.
     """
+    log = log or structlog.get_logger()
+    log = log.bind(func="save_model_maps")
+
+    if isinstance(pointing_model, (ConstantPointingOffset, EmptyPointingOffset)):
+        log.warn("save_model_maps.Constant_or_EmptyModel.no_maps_saved")
+        return
     pixmap = enmap.pixmap(input_map.flux.shape, wcs=input_map.flux.wcs)
 
     decmap, ramap = enmap.pix2sky(input_map.flux.shape, input_map.flux.wcs, pixmap)
