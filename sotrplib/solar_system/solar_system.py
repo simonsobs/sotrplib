@@ -229,11 +229,12 @@ def get_sso_ephems_at_time(
     return sso_ephems
 
 
-def get_sso_in_map(
+def get_sso_ephem_in_map(
     input_map: ProcessableMap,
     orbital_df: pd.DataFrame,
     observer: wgs84.latlon,
     interp_factor: int = 10,
+    return_nearest: bool = True,
     log: FilteringBoundLogger | None = None,
 ) -> list[RegisteredSource]:
     """Get solar system objects that fall within the provided map.
@@ -284,12 +285,30 @@ def get_sso_in_map(
         )
         if not np.any(result):
             sso_not_in_map.append(sso)
-        sso_ephems[sso]["pos"] = sso_coords[result]
-        sso_ephems[sso]["distance"] = sso_ephems[sso]["distance"][result]
-        sso_ephems[sso]["time"] = [
-            datetime.fromtimestamp(t, tz=timezone.utc)
-            for t in interp_time_range[result]
-        ]
+            continue
+
+        if return_nearest:
+            mean_pos = SkyCoord(
+                ra=np.mean(sso_coords.ra[result]),
+                dec=np.mean(sso_coords.dec[result]),
+            )
+            map_time_at_mean_pos = input_map.time_mean.at(
+                [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")]
+            )
+            nearest_idx = np.argmin(np.abs(interp_time_range - map_time_at_mean_pos))
+        else:
+            nearest_idx = result
+
+        sso_ephems[sso]["pos"] = sso_coords[nearest_idx]
+        sso_ephems[sso]["distance"] = sso_ephems[sso]["distance"][nearest_idx]
+        sso_ephems[sso]["time"] = (
+            datetime.fromtimestamp(interp_time_range[nearest_idx], tz=timezone.utc)
+            if isinstance(nearest_idx, (int, np.int64))
+            else [
+                datetime.fromtimestamp(interp_time_range[idx], tz=timezone.utc)
+                for idx in nearest_idx
+            ]
+        )
 
     for sso in sso_not_in_map:
         del sso_ephems[sso]

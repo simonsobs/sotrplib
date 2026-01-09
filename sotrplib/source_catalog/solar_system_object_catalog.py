@@ -14,9 +14,12 @@ from pixell import utils as pixell_utils
 from skyfield.api import wgs84
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.solar_system.solar_system import get_sso_in_map, load_mpc_orbital_database
+from sotrplib.solar_system.solar_system import (
+    get_sso_ephem_in_map,
+    load_mpc_orbital_database,
+)
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
-from sotrplib.utils.utils import angular_separation, datetime_mean
+from sotrplib.utils.utils import angular_separation
 
 
 class SolarSystemObjectCatalog(ABC):
@@ -87,7 +90,7 @@ class SSOCat(SolarSystemObjectCatalog):
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
         # Implementation to get sources in the map
-        sso_in_map = get_sso_in_map(
+        sso_in_map = get_sso_ephem_in_map(
             input_map,
             orbital_df=self.db,
             observer=self.observer,
@@ -100,14 +103,15 @@ class SSOCat(SolarSystemObjectCatalog):
                 RegisteredSource(
                     source_id=sso,
                     source_type="sso",
-                    ra=np.mean(sso_in_map[sso]["pos"].ra),
-                    dec=np.mean(sso_in_map[sso]["pos"].dec),
+                    ra=sso_in_map[sso]["pos"].ra,
+                    dec=sso_in_map[sso]["pos"].dec,
                     flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
-                    observation_mean_time=datetime_mean(sso_in_map[sso]["time"]),
+                    observation_mean_time=sso_in_map[sso]["time"],
+                    catalog_name="solar_system_catalog",
                     crossmatches=[
                         CrossMatch(
-                            ra=np.mean(sso_in_map[sso]["pos"].ra),
-                            dec=np.mean(sso_in_map[sso]["pos"].dec),
+                            ra=sso_in_map[sso]["pos"].ra,
+                            dec=sso_in_map[sso]["pos"].dec,
                             flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
                             source_type="sso",
                             catalog_name="solar_system_catalog",
@@ -138,6 +142,7 @@ class SSOCat(SolarSystemObjectCatalog):
             source_id=sso["designation"],
             source_type="sso",
             flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
+            catalog_name="solar_system_catalog",
         )
         return source
 
@@ -196,7 +201,7 @@ class SSOCat(SolarSystemObjectCatalog):
                 flux=s.flux,
                 err_flux=s.err_flux,
                 frequency=s.frequency,
-                catalog_name="sso",
+                catalog_name="solar_system_catalog",
                 catalog_idx=y[1],
                 alternate_names=[],
             )
