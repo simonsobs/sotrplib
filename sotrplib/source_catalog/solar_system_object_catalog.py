@@ -27,6 +27,14 @@ class SolarSystemObjectCatalog(ABC):
         """
         return
 
+    def forced_photometry_sources(
+        self, input_map: ProcessableMap
+    ) -> list[RegisteredSource]:
+        """
+        Wrapper for forced photometry sources.
+        """
+        return
+
     @abstractmethod
     def source_by_id(self, id) -> RegisteredSource:
         """
@@ -94,11 +102,13 @@ class SSOCat(SolarSystemObjectCatalog):
                     source_type="sso",
                     ra=np.mean(sso_in_map[sso]["pos"].ra),
                     dec=np.mean(sso_in_map[sso]["pos"].dec),
+                    flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
                     observation_mean_time=datetime_mean(sso_in_map[sso]["time"]),
                     crossmatches=[
                         CrossMatch(
                             ra=np.mean(sso_in_map[sso]["pos"].ra),
                             dec=np.mean(sso_in_map[sso]["pos"].dec),
+                            flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
                             source_type="sso",
                             catalog_name="solar_system_catalog",
                             source_id=sso,
@@ -113,6 +123,11 @@ class SSOCat(SolarSystemObjectCatalog):
         )
         return out_sources
 
+    def forced_photometry_sources(self, input_map) -> list[RegisteredSource]:
+        return (
+            self.catalog if self.catalog != [] else self.get_sources_in_map(input_map)
+        )
+
     def source_by_id(self, id) -> RegisteredSource:
         # Implementation to get source by ID
         sso_row = self.db[self.db["designation"] == id]
@@ -122,6 +137,7 @@ class SSOCat(SolarSystemObjectCatalog):
         source = RegisteredSource(
             source_id=sso["designation"],
             source_type="sso",
+            flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
         )
         return source
 

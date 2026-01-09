@@ -9,8 +9,14 @@ from tqdm import tqdm
 
 from sotrplib.maps.core import IntensityAndInverseVarianceMap
 from sotrplib.maps.map_coadding import RhoKappaMapCoadder
-from sotrplib.maps.preprocessor import EdgeMask, KappaRhoCleaner, MatchedFilter
+from sotrplib.maps.preprocessor import (
+    EdgeMask,
+    KappaRhoCleaner,
+    MatchedFilter,
+    PlanetMasker,
+)
 
+pm = PlanetMasker()
 mf = MatchedFilter(
     band_height=1 * u.deg,
     shrink_holes=5 * u.arcmin,
@@ -58,7 +64,7 @@ for i in tqdm(range(len(ivar_files))):
 
     imap.build()
 
-    filtered_map = em.preprocess(kc.preprocess(mf.preprocess(imap)))
+    filtered_map = em.preprocess(kc.preprocess(mf.preprocess(pm.preprocess(imap))))
 
     map_coadds = coadder.coadd(map_coadds + [filtered_map])
 
