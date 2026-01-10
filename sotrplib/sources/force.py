@@ -3,6 +3,7 @@ from typing import List, Literal
 
 import numpy as np
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -97,6 +98,8 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
     allowable_center_offset: u.Quantity
+    thumbnail_half_width: u.Quantity
+    near_source_rel_flux_limit: float | None
     log: FilteringBoundLogger
 
     def __init__(
@@ -104,6 +107,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        near_source_rel_flux_limit: float | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
         log: FilteringBoundLogger | None = None,
     ):
@@ -120,6 +124,12 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
         allowable_center_offset : astropy.units.Quantity, optional
             Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+        near_source_rel_flux_limit : float | None, optional
+            Relative flux limit to exclude nearby sources (default: None).
+            If another source within the thumbnail_half_width has a flux
+            greater than near_source_rel_flux_limit * source.flux,
+            flag the source as fitting failed.
+            If None, ignore.
         log : FilteringBoundLogger or None, optional
             Logger instance to use (default: None).
         """
@@ -127,6 +137,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
         self.allowable_center_offset = allowable_center_offset
+        self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.log = log or get_logger()
 
     def force(
@@ -139,6 +150,39 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         source_list = list(
             itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
+        self.log.info(
+            "Scipy2DGaussianFitter.force",
+            n_sources=len(source_list),
+            thumbnail_half_width=self.thumbnail_half_width,
+            fwhm=fwhm,
+            reproject_thumbnails=self.reproject_thumbnails,
+            allowable_center_offset=self.allowable_center_offset,
+        )
+        ## check if there are any pointing sources with a source within the thumbnail_half_width
+        ## and above near_source_rel_flux_limit * pointing_source.flux
+        has_nearby_sources = [False] * len(source_list)
+        if self.near_source_rel_flux_limit is not None:
+            source_positions = SkyCoord(
+                ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
+            )
+            source_fluxes = (
+                np.array([s.flux.to_value(u.Jy) for s in source_list]) * u.Jy
+            )
+            for i, fp_source in enumerate(source_list):
+                c = SkyCoord(ra=fp_source.ra, dec=fp_source.dec)
+                _, dist, _ = c.match_to_catalog_sky(source_positions)
+                nearby = dist <= self.thumbnail_half_width * (2**-0.5)
+                brighter = (
+                    source_fluxes >= fp_source.flux * self.near_source_rel_flux_limit
+                )
+                if np.sum(nearby & brighter) > 1:  # more than itself
+                    has_nearby_sources[i] = True
+
+        self.log.info(
+            "Scipy2DGaussianFitter.force",
+            flagged_nearby_sources=sum(has_nearby_sources),
+        )
+
         fit_sources = scipy_2d_gaussian_fit(
             input_map,
             source_list=source_list,
@@ -148,6 +192,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             reproject_thumb=self.reproject_thumbnails,
             pointing_residuals=pointing_residuals,
             allowable_center_offset=self.allowable_center_offset,
+            flags={"nearby_source": has_nearby_sources},
             log=self.log,
         )
 
@@ -227,7 +272,7 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
                     init_source.dec,
                 )
                 if (
-                    sep < self.thumbnail_half_width * (2**-0.5)
+                    sep < self.thumbnail_half_width * (2**0.5)
                     and init_source.flux is not None
                 ):
                     if (
