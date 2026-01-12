@@ -56,7 +56,6 @@ def test_planet_positions():
     # Define observer location
     observer = create_observer()
     eph = load("de440s.bsp")
-    sun = eph["sun"]
     earth = eph["earth"]
     observer_topo = earth + observer
     # Call the function
