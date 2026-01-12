@@ -22,6 +22,7 @@ class SourceOutput(ABC):
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
+        pointing_sources: list[MeasuredSource] = [],  # for compatibility
     ):
         """
         Output the source candidates somehow. We also pass the
@@ -45,6 +46,7 @@ class JSONSerializer(SourceOutput):
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
+        pointing_sources: list[MeasuredSource] = [],  # for compatibility
     ):
         filename = (
             self.directory
@@ -55,6 +57,7 @@ class JSONSerializer(SourceOutput):
                 obj={
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
+                    "pointing_sources": pointing_sources,
                 },
                 fp=handle,
             )
@@ -77,6 +80,7 @@ class PickleSerializer(SourceOutput):
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
+        pointing_sources: list[MeasuredSource] = [],  # for compatibility
     ):
         filename = (
             self.directory
@@ -88,6 +92,7 @@ class PickleSerializer(SourceOutput):
                     "map_id": input_map.get_map_str_id(),
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
+                    "pointing_sources": pointing_sources,
                 },
                 file=handle,
             )
@@ -110,6 +115,7 @@ class CutoutImageOutput(SourceOutput):
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
+        pointing_sources: list[MeasuredSource] = [],  # for compatibility
     ):
         for source in forced_photometry_candidates:
             cutout = source.thumbnail

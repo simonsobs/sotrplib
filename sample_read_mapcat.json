@@ -28,10 +28,12 @@
         "near_source_rel_flux_limit": 0.3
     },
     "pointing_residual": {
-        "pointing_residual_type": "median",
+        "pointing_residual_type": "polynomial",
         "min_snr": 5.0,
         "min_sources": 5,
-        "sigma_clip_level": 3.0
+        "sigma_clip_level": 3.0,
+        "polynomial_order": 3
+
     },
     "preprocessors": [
         {
