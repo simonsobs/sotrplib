@@ -15,9 +15,9 @@ from sotrplib.sims.sources.core import (
 
 map_sim_params = SimulationParameters(
     center_ra=u.Quantity(20.0, "deg"),
-    center_dec=u.Quantity(-10.0, "deg"),
-    width_ra=u.Quantity(2.0, "deg"),
-    width_dec=u.Quantity(2.0, "deg"),
+    center_dec=u.Quantity(-1.0, "deg"),
+    width_ra=u.Quantity(4.0, "deg"),
+    width_dec=u.Quantity(4.0, "deg"),
     resolution=u.Quantity(0.5, "arcmin"),
     map_noise=u.Quantity(0.01, "Jy"),
 )

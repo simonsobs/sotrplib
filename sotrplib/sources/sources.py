@@ -153,7 +153,9 @@ class MeasuredSource(RegisteredSource):
                 ],
             )
 
-        self.thumbnail_res = input_map.map_resolution
+        self.thumbnail_res = (
+            thumb.wcs.wcs.cdelt * u.deg
+        )  ## list of two values; 0 is RA, 1 is Dec
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)
 

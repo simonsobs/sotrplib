@@ -138,7 +138,7 @@ class Gaussian2DFitter:
 
         sigma_guess = (
             self.fwhm_guess.to(u.arcmin).value
-            / self.source.thumbnail_res.to(u.arcmin).value
+            / abs(self.source.thumbnail_res.to(u.arcmin).value)
             / 2.355
         )  # Rough width estimate, in pixels
         theta_guess = 0
@@ -148,8 +148,8 @@ class Gaussian2DFitter:
             amplitude_guess,
             x0_guess,
             y0_guess,
-            sigma_guess,
-            sigma_guess,
+            sigma_guess[0],
+            sigma_guess[1],
             theta_guess,
             offset_guess,
         ]
@@ -164,8 +164,8 @@ class Gaussian2DFitter:
 
             initial_guess = [
                 amplitude_guess,
-                sigma_guess,
-                sigma_guess,
+                sigma_guess[0],
+                sigma_guess[1],
                 theta_guess,
                 offset_guess,
             ]
@@ -192,10 +192,9 @@ class Gaussian2DFitter:
         """
 
         self.fit_params = GaussianFitParameters()
-        allowable_center_offset_pixels = (
-            self.allowable_center_offset.to(u.arcmin).value
-            / self.source.thumbnail_res.to(u.arcmin).value
-        )
+        allowable_center_offset_pixels = self.allowable_center_offset.to(
+            u.arcmin
+        ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
         ## set bounds if not forcing center
         try:
             bounds = (-np.inf, np.inf)
@@ -203,8 +202,8 @@ class Gaussian2DFitter:
                 bounds = (
                     [
                         -np.inf,
-                        self.initial_guess[1] - allowable_center_offset_pixels,
-                        self.initial_guess[2] - allowable_center_offset_pixels,
+                        self.initial_guess[1] - allowable_center_offset_pixels[0],
+                        self.initial_guess[2] - allowable_center_offset_pixels[1],
                         -np.inf,
                         -np.inf,
                         -np.inf,
@@ -212,8 +211,8 @@ class Gaussian2DFitter:
                     ],
                     [
                         np.inf,
-                        self.initial_guess[1] + allowable_center_offset_pixels,
-                        self.initial_guess[2] + allowable_center_offset_pixels,
+                        self.initial_guess[1] + allowable_center_offset_pixels[0],
+                        self.initial_guess[2] + allowable_center_offset_pixels[1],
                         np.inf,
                         np.inf,
                         np.inf,
@@ -257,12 +256,12 @@ class Gaussian2DFitter:
                 theta_err,
                 offset_err,
             ) = perr
-            dec_offset = -1 * y0 * self.source.thumbnail_res
+            sign_flip = -1
+            dec_offset = sign_flip * y0 * self.source.thumbnail_res[1]
             ## if the thumbnail is reprojected or just cut out of the map
             ## determines the sign of the RA offset and the declination
             ## correction.
-            x_sign = 1 if self.reprojected else -1
-            ra_offset = x_sign * x0 * self.source.thumbnail_res
+            ra_offset = sign_flip * x0 * self.source.thumbnail_res[0]
             if not self.reprojected:
                 ra_offset *= math.cos(self.source.dec.to(u.rad).value)
             if ra_offset > 180.0 * u.deg:
@@ -270,13 +269,13 @@ class Gaussian2DFitter:
             elif ra_offset < -180.0 * u.deg:
                 ra_offset += 360.0 * u.deg
 
-            ra_err = x0_err * self.source.thumbnail_res
-            dec_err = y0_err * self.source.thumbnail_res
+            ra_err = x0_err * abs(self.source.thumbnail_res[0])
+            dec_err = y0_err * abs(self.source.thumbnail_res[1])
 
-        fwhm_x = 2.355 * sigma_x * self.source.thumbnail_res
-        fwhm_y = 2.355 * sigma_y * self.source.thumbnail_res
-        fwhm_x_err = 2.355 * sigma_x_err * self.source.thumbnail_res
-        fwhm_y_err = 2.355 * sigma_y_err * self.source.thumbnail_res
+        fwhm_x = 2.355 * sigma_x * abs(self.source.thumbnail_res[0])
+        fwhm_y = 2.355 * sigma_y * abs(self.source.thumbnail_res[1])
+        fwhm_x_err = 2.355 * sigma_x_err * abs(self.source.thumbnail_res[0])
+        fwhm_y_err = 2.355 * sigma_y_err * abs(self.source.thumbnail_res[1])
         ## effectively set offset to zero
         amplitude = AstroPydanticQuantity(
             amplitude + offset, self.source.thumbnail_unit

@@ -226,6 +226,7 @@ class BaseRunner:
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
                 input_map=input_map,
+                pointing_sources=pointing_sources,
             )
         if input_map._parent_database is not None:
             set_processing_end(input_map.map_id)
