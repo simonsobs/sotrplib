@@ -60,5 +60,6 @@ test_*.json
 
 # any ephemeris files
 *.bsp
+*.txt
 # ipynb checkpoints
 .ipynb_checkpoints
