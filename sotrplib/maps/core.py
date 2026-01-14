@@ -277,7 +277,8 @@ class ProcessableMap(ABC):
         t_mean = (
             self.time_mean[x, y]
             if self.time_mean is not None
-            else self.observation_time
+            else (self.observation_end - self.observation_start) / 2
+            + self.observation_start
         )
         t_end = (
             self.time_last[x, y] if self.time_last is not None else self.observation_end
