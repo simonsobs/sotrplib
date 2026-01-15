@@ -5,7 +5,7 @@ The core dependency for the sifter
 import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 import astropy.units as u
 import numpy as np
@@ -31,7 +31,7 @@ class SiftingProvider(ABC):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[Union[SourceCatalog, SolarSystemObjectCatalog]],
+        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         raise NotImplementedError
@@ -41,7 +41,7 @@ class EmptySifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[SourceCatalog],
+        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         return SifterResult(
@@ -70,7 +70,7 @@ class SimpleCatalogSifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[Union[SourceCatalog, SolarSystemObjectCatalog]],
+        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         source_candidates = []
@@ -171,7 +171,7 @@ class DefaultSifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[Union[SourceCatalog, SolarSystemObjectCatalog]],
+        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         from .crossmatch import sift
