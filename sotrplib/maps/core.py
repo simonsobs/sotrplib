@@ -350,7 +350,6 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.mask = mask
         if map_id is not None:
             self.map_id = map_id
-        self.map_id = map_id
         self._hits = None
         self.log = log or structlog.get_logger()
 
