@@ -58,8 +58,9 @@ docs/_build/
 # test config files
 test_*.json
 
-# any ephemeris files
+# any ephemeris / orbital param files
 *.bsp
 *.txt
+*.csv
 # ipynb checkpoints
 .ipynb_checkpoints
