@@ -1,5 +1,10 @@
+from datetime import datetime
+
 import numpy as np
+from astropy import units as u
 from pixell import enmap
+
+from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
 
 
 def mask_dustgal(imap: enmap.ndmap, galmask: enmap.ndmap):
@@ -7,32 +12,60 @@ def mask_dustgal(imap: enmap.ndmap, galmask: enmap.ndmap):
 
 
 def mask_planets(
-    tmap: enmap.ndmap,
-    ctime: float,
+    input_map: enmap.ndmap,
+    mask_time: datetime | list[datetime],
+    array: str | None = None,
+    frequency: str | None = None,
+    mask_radius=10 * u.arcmin,
     planets=["Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
 ) -> enmap.ndmap:
-    from pixell.utils import arcmin, ctime2mjd
+    """
+    Get's the planet ephemerides at start and end times of the map, and creates a mask around each planet position.
+    Assumes that the planet positions do not change significantly during the observation.
 
-    try:
-        from enlib import planet9
-    except ModuleNotFoundError:
-        print("enlib not found, cannot mask planets")
-        return np.ones(tmap.shape)
+    Args:
+        input_map: enmap.ndmap to create planet mask for
+        mask_time: time to get planet positions at, if None uses map start and end times
+        array: array name, if None uses input_map.array
+        frequency: frequency, if None uses input_map.frequency
+        planets: list of planet names to mask
+    """
+    ephem_times = mask_time if isinstance(mask_time, list) else [mask_time]
+    planet_ephems = get_sso_ephems_at_time(
+        orbital_df=None, time=ephem_times, planets=planets, observer=create_observer()
+    )
 
-    mjd_min = ctime2mjd(ctime)
-    mjd_max = ctime2mjd(ctime + np.amax(tmap))
-    mjds = np.linspace(mjd_min, mjd_max, 10)
-    try:
-        mask = planet9.build_planet_mask(
-            tmap.shape, tmap.wcs, planets, mjds, r=50 * arcmin
+    mask = enmap.ones(input_map.shape, input_map.wcs)
+    for p in planet_ephems:
+        sky_coord_pos = planet_ephems[p]["pos"]
+        ras = sky_coord_pos.ra.rad
+        decs = sky_coord_pos.dec.rad
+
+        planet_locs = []
+        for ra, dec in zip(ras, decs):
+            planet_pix = input_map.sky2pix([dec, ra])
+            planet_locs.append(planet_pix)
+
+        if len(planet_locs) == 0:
+            continue
+
+        mask_radius_pix = 1.0
+        planet_mask = make_src_mask(
+            input_map,
+            srcs_pix=planet_locs,
+            fwhm=None,
+            mask_radius=[mask_radius_pix] * len(planet_locs),
+            arr=array,
+            freq=frequency,
         )
-        mask_planet = mask.copy()
-        mask_planet[np.where(not mask)] = 1.0
-        mask_planet[np.where(mask)] = 0.0
-    except Exception:
-        mask_planet = np.ones(tmap.shape)
+        mask *= planet_mask
 
-    return mask_planet
+    ## some silliness required
+    ## convert to bool, then grow mask, but grow mask grows the True
+    ## so need to negate before, grow, then negate again
+    mask = enmap.enmap(mask, mask.wcs, dtype=bool)
+    mask = ~enmap.grow_mask(~mask, mask_radius.to_value(u.rad))
+    return mask
 
 
 def mask_edge(imap: enmap.ndmap, pix_num: int):
@@ -95,14 +128,12 @@ def make_src_mask(
     sotrplib.utils.utils.get_pix_from_peak_to_noise
 
     """
-    from pixell.utils import arcmin, degree
-
     from ..utils.utils import get_cut_radius
 
     mask = enmap.ones(imap.shape, wcs=imap.wcs, dtype=None)
-    map_res = np.abs(imap.wcs.wcs.cdelt[0]) * degree
+    map_res = np.abs(imap.wcs.wcs.cdelt[0]) * u.deg
     if arr and freq and len(mask_radius) == 0:
-        r_pix = get_cut_radius(map_res / arcmin, arr, freq, fwhm)
+        r_pix = get_cut_radius(map_res.to_value(u.arcmin), arr, freq, fwhm)
     else:
         r_pix = np.asarray(mask_radius)
 

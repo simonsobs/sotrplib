@@ -19,7 +19,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
 )
 from sotrplib.maps.maps import clean_map, kappa_clean
-from sotrplib.maps.masks import mask_edge
+from sotrplib.maps.masks import mask_edge, mask_planets
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -29,6 +29,35 @@ class MapPreprocessor(ABC):
         """
         Provides preprocessing for the input map
         """
+        return input_map
+
+
+class PlanetMasker(MapPreprocessor):
+    mask_radius: AstroPydanticQuantity = 15 * u.arcmin
+
+    def __init__(
+        self,
+        mask_radius: AstroPydanticQuantity = 15 * u.arcmin,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_radius = mask_radius
+        self.log = log or structlog.get_logger()
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(func="PlanetMasker.preprocess")
+        log.info(
+            "PlanetMasker.preprocess.masking_planets",
+            mask_radius=self.mask_radius,
+            time_range=[input_map.observation_start, input_map.observation_end],
+        )
+        planet_mask = mask_planets(
+            input_map.time_mean,
+            [input_map.observation_start, input_map.observation_end],
+            mask_radius=self.mask_radius,
+        )
+        input_map.mask = (
+            input_map.mask * planet_mask if input_map.mask is not None else planet_mask
+        )
         return input_map
 
 
@@ -67,8 +96,9 @@ class MatchedFilter(MapPreprocessor):
         apod_edge: AstroPydanticQuantity = 10 * u.arcmin,
         apod_holes: AstroPydanticQuantity = 5 * u.arcmin,
         noisemask_lim: float | None = None,
+        noisemask_radius: AstroPydanticQuantity = 10 * u.arcmin,
         highpass: bool = False,
-        band_height: AstroPydanticQuantity = 0 * u.degree,
+        band_height: AstroPydanticQuantity = 1 * u.degree,
         shift: float = 0,
         simple: bool = False,
         simple_lknee: float = 1000,
@@ -84,6 +114,7 @@ class MatchedFilter(MapPreprocessor):
         self.apod_edge = apod_edge
         self.apod_holes = apod_holes
         self.noisemask_lim = noisemask_lim
+        self.noisemask_radius = noisemask_radius
         self.highpass = highpass
         self.band_height = band_height
         self.shift = shift
@@ -102,12 +133,14 @@ class MatchedFilter(MapPreprocessor):
             band_center=get_frequency(input_map.frequency),
             infofile=self.infofile,
             maskfile=self.maskfile,
+            source_mask=input_map.mask,
             beam_fwhm=get_fwhm(input_map.frequency),
             beam1d=self.beam1d,
             shrink_holes=self.shrink_holes,
             apod_edge=self.apod_edge,
             apod_holes=self.apod_holes,
             noisemask_lim=self.noisemask_lim,
+            noisemask_radius=self.noisemask_radius,
             highpass=self.highpass,
             band_height=self.band_height,
             shift=self.shift,

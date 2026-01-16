@@ -29,6 +29,7 @@ def test_basic_pipeline_scipy(
         maps=maps,
         map_coadder=None,
         source_catalogs=[],
+        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,

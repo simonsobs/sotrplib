@@ -24,6 +24,7 @@ class CrossMatch(BaseModel):
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
     source_id: str
+    source_type: str | None = None
     probability: float | None = None
     angular_separation: AstroPydanticQuantity[u.deg] | None = None
     flux: AstroPydanticQuantity[u.mJy] | None = None
@@ -46,7 +47,7 @@ class RegisteredSource(BaseSource):
 
     source_id: str | None = None
     source_type: (
-        Literal["extragalactic", "star", "asteroid", "simulated", "unknown"] | None
+        Literal["extragalactic", "star", "sso", "simulated", "unknown"] | None
     ) = None
 
     crossmatches: list[CrossMatch] | None = None
@@ -60,6 +61,8 @@ class RegisteredSource(BaseSource):
     observation_start_time: AstroPydanticTime | None = None
     observation_mean_time: AstroPydanticTime | None = None
     observation_end_time: AstroPydanticTime | None = None
+
+    flags: list[str] | None = None
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
@@ -150,7 +153,9 @@ class MeasuredSource(RegisteredSource):
                 ],
             )
 
-        self.thumbnail_res = input_map.map_resolution
+        self.thumbnail_res = (
+            thumb.wcs.wcs.cdelt * u.deg
+        )  ## list of two values; 0 is RA, 1 is Dec
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)
 

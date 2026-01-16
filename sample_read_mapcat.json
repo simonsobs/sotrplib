@@ -2,20 +2,30 @@
     "maps": {
             "map_generator_type": "mapcat_database",
             "number_to_read": 1,
-            "instrument": "SOLAT"
+            "instrument": "SOLAT",
+            "frequency": "f090",
+            "array": "i6",
+            "rerun": "True"
         },
     "source_catalogs": [
         {
-            "catalog_type": "fits",
-            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
+            "catalog_type": "socat",
             "flux_lower_limit": "0.01 Jy"
+        }
+    ],
+    "sso_catalogs": [
+        {
+            "catalog_type": "sso",
+            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
         }
     ],
     "pointing_provider": {
         "photometry_type": "scipy_pointing",
-        "thumbnail_half_width": "0.2 deg",
-        "min_flux": "0.2 Jy",
-        "reproject_thumbnails": "True"
+        "thumbnail_half_width": "6 arcmin",
+        "min_flux": "0.3 Jy",
+        "reproject_thumbnails": "True",
+        "allowable_center_offset": "3.0 arcmin",
+        "near_source_rel_flux_limit": 0.3
     },
     "pointing_residual": {
         "pointing_residual_type": "polynomial",
@@ -23,16 +33,26 @@
         "min_sources": 5,
         "sigma_clip_level": 3.0,
         "polynomial_order": 3
+
     },
     "preprocessors": [
         {
-            "preprocessor_type": "matched_filter"
+            "preprocessor_type": "planet_mask",
+            "mask_radius": "15 arcmin"
+        },
+        {
+            "preprocessor_type": "matched_filter",
+            "band_height": "1 deg",
+            "shrink_holes": "5 arcmin",
+            "noisemask_lim": 0.1,
+            "noisemask_radius": "10 arcmin",
+            "apod_holes": "10 arcmin"
         },
         {
             "preprocessor_type": "kappa_rho"
         },
         {
-            "preprocessor_type": "edge_mask",
+            "postprocessor_type": "edge_mask",
             "mask_on": "kappa",
             "edge_width": "10.0 arcmin"
         }
@@ -41,7 +61,7 @@
        {
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
-            "tile_size": "1.0 deg"
+            "tile_size": ".5 deg"
         }
     ],
     "source_subtractor": {
@@ -53,7 +73,10 @@
     "forced_photometry": {
         "photometry_type": "scipy",
         "reproject_thumbnails": "True",
-        "flux_limit_centroid": "0.1 Jy"
+        "flux_limit_centroid": "0.1 Jy",
+        "thumbnail_half_width": "4 arcmin",
+        "allowable_center_offset": "1.0 arcmin",
+        "near_source_rel_flux_limit": 1.0
     },
     "sifter": {
         "sifter_type": "default"

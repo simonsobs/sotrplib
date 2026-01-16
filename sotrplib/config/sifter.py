@@ -44,9 +44,11 @@ class SimpleCatalogSifterConfig(SifterConfig):
 
 class DefaultSifterConfig(SifterConfig):
     sifter_type: Literal["default"] = "default"
+    min_match_radius: AstroPydanticQuantity[u.arcmin] = 1.5 * u.arcmin
 
     def to_sifter(self, log: FilteringBoundLogger | None = None) -> SiftingProvider:
         return DefaultSifter(
+            min_match_radius=self.min_match_radius,
             log=log,
         )
 

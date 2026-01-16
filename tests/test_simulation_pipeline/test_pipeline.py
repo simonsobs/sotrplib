@@ -44,10 +44,12 @@ def test_basic_pipeline_scipy(
 
     new_map, sources = map_with_sources
     source_cat = RegisteredSourceCatalog(sources=sources)
+
     runner = PipelineRunner(
         maps=[new_map, new_map],
         map_coadder=None,
         source_catalogs=[source_cat],
+        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,
@@ -137,7 +139,7 @@ def test_default_sifter(
     the blind search algorithm.
     """
     new_map, sources = map_with_sources
-
+    assert len(sources) > 0
     searcher = SigmaClipBlindSearch()
 
     found_sources, _ = searcher.search(input_map=new_map)

@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sotrplib.config.source_catalog import (
     AllSourceCatalogConfigTypes,
 )
+from sotrplib.config.sso_catalog import (
+    AllSSOCatalogConfigTypes,
+)
 from sotrplib.handlers.base import BaseRunner
 from sotrplib.handlers.basic import PipelineRunner
 
@@ -52,6 +55,9 @@ class Settings(BaseSettings):
 
     source_catalogs: list[AllSourceCatalogConfigTypes] = []
     "Source catalogs to use"
+
+    sso_catalogs: list[AllSSOCatalogConfigTypes] = []
+    "Solar system object catalogs to use"
 
     preprocessors: list[AllPreprocessorConfigTypes] = []
     "Map pre-processors"
@@ -120,6 +126,7 @@ class Settings(BaseSettings):
             "source_catalogs": [
                 x.to_source_catalog(log=log) for x in self.source_catalogs
             ],
+            "sso_catalogs": [x.to_source_catalog(log=log) for x in self.sso_catalogs],
             "preprocessors": [x.to_preprocessor(log=log) for x in self.preprocessors],
             "pointing_provider": self.pointing_provider.to_forced_photometry(log=log),
             "pointing_residual": self.pointing_residual.to_residuals(log=log),
