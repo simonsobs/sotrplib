@@ -5,6 +5,7 @@ Read maps from the map tracking database.
 from datetime import datetime, timezone
 
 from astropy import units as u
+from astropy.coordinates import ICRS
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -29,16 +30,18 @@ class MapCatDatabaseReader:
     instrument: str | None = None
     frequency: str | None = None
     array: str | None = None
-    number_to_read: int = 1
+    number_to_read: int | None = 1
+    box: ICRS | None = None
     rerun: bool = False
     log: FilteringBoundLogger
 
     def __init__(
         self,
-        number_to_read: int = 1,
+        number_to_read: int | None = 1,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
+        box: ICRS | None = None,
         rerun: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
@@ -46,6 +49,7 @@ class MapCatDatabaseReader:
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
+        self.box = box
         self.rerun = rerun
         self.map_ids = []
         self.log = log or get_logger()
@@ -75,7 +79,8 @@ class MapCatDatabaseReader:
         with mapcat_settings.session() as session:
             results = session.execute(query).scalars().all()
             self.log.info("MapCatDatabaseReader.found_maps", number_found=len(results))
-
+            if self.number_to_read is None:
+                self.number_to_read = len(results)
             for result in results:
                 if not self.rerun and check_if_processed(
                     result.map_id, session=session
@@ -99,6 +104,7 @@ class MapCatDatabaseReader:
                         end_time=datetime.fromtimestamp(
                             result.stop_time, tz=timezone.utc
                         ),
+                        box=self.box,
                         intensity_units=u.uK,
                         frequency=result.frequency,
                         array=result.tube_slot,

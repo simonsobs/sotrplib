@@ -323,7 +323,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         inverse_variance_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: AstroPydanticQuantity[u.deg] | None = None,
+        box: SkyCoord | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -358,8 +358,13 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         """
         The bounding box of the map provided as sky coordinates.
         Read from the inverse variance map header.
+
+        if self.box is set, return that instead.
         """
-        shape, wcs = enmap.read_map_geometry(str(self.inverse_variance_filename))
+        if self.box is not None:
+            return self.box
+
+        shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
 
         bottom_left = wcs.array_index_to_world(0, 0)
         top_right = wcs.array_index_to_world(shape[-2], shape[-1])
@@ -368,16 +373,17 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         return self.box
 
     def build(self):
-        log = self.log.bind(intensity_filename=self.intensity_filename)
+        log = self.log.bind(intensity_filename=self.intensity_filename, box=self.box)
         # box = self.box.to(u.rad).value if self.box is not None else None
         enmap_box = (
             [
-                [self.box[0].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
-                [self.box[1].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
+                [self.box[0].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
+                [self.box[1].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
             ]
             if self.box is not None
             else None
         )
+
         if enmap_box is not None:
             if enmap_box[0][1] < enmap_box[1][1]:
                 enmap_box[1][1] -= 2 * np.pi
@@ -628,7 +634,7 @@ class RhoAndKappaMap(ProcessableMap):
         kappa_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: AstroPydanticQuantity[u.deg] | None = None,
+        box: SkyCoord | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -662,6 +668,9 @@ class RhoAndKappaMap(ProcessableMap):
         The bounding box of the map provided as sky coordinates.
         Read from the rho map header.
         """
+        if self.box is not None:
+            return self.box
+
         shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
 
         bottom_left = wcs.array_index_to_world(0, 0)
