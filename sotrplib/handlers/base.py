@@ -108,7 +108,6 @@ class BaseRunner:
         self.profilable_task(input_map.build)()
         output_map = input_map
         if not np.any(output_map.hits > 0):
-            print(output_map.hits)
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
