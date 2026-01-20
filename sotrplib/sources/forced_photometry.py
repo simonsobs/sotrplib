@@ -490,12 +490,14 @@ def scipy_2d_gaussian_fit(
             log.error(
                 f"{preamble}extract_thumbnail_failed", source=source_name, error=e
             )
+            forced_source.fit_failed = True
             forced_source.fit_failure_reason = "extract_thumbnail_failed"
             fit_sources.append(forced_source)
             continue
 
         if np.any(np.isnan(forced_source.thumbnail)):
             log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
+            forced_source.fit_failed = True
             forced_source.fit_failure_reason = "flux_thumb_has_nan"
             fit_sources.append(forced_source)
             continue
