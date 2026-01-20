@@ -163,7 +163,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         ## check if there are any pointing sources with a source within the thumbnail_half_width
         ## and above near_source_rel_flux_limit * pointing_source.flux
         has_nearby_sources = [False] * len(source_list)
-        if self.near_source_rel_flux_limit is not None:
+        if self.near_source_rel_flux_limit is not None and len(source_list) > 1:
             source_positions = SkyCoord(
                 ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
             )
