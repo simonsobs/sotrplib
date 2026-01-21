@@ -5,7 +5,7 @@ Read maps from the map tracking database.
 from datetime import datetime, timezone
 
 from astropy import units as u
-from astropy.coordinates import ICRS
+from astropy.coordinates import SkyCoord
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -31,7 +31,7 @@ class MapCatDatabaseReader:
     frequency: str | None = None
     array: str | None = None
     number_to_read: int | None = 1
-    box: ICRS | None = None
+    box: tuple[SkyCoord, SkyCoord] | None = None
     rerun: bool = False
     log: FilteringBoundLogger
 
@@ -41,7 +41,7 @@ class MapCatDatabaseReader:
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
-        box: ICRS | None = None,
+        box: tuple[SkyCoord, SkyCoord] | None = None,
         rerun: bool = False,
         log: FilteringBoundLogger | None = None,
     ):

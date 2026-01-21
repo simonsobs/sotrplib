@@ -11,7 +11,6 @@ import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
 from astropy.units import Unit
-from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pixell.enmap import ndmap
 from pydantic import AwareDatetime
@@ -323,7 +322,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         inverse_variance_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: SkyCoord | None = None,
+        box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -634,7 +633,7 @@ class RhoAndKappaMap(ProcessableMap):
         kappa_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: SkyCoord | None = None,
+        box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -813,7 +812,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         time_mean: ndmap | None = None,
         time_last: ndmap | None = None,
         observation_length: timedelta | None = None,
-        box: AstroPydanticQuantity[u.deg] | None = None,
+        box: tuple[SkyCoord, SkyCoord] | None = None,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
