@@ -21,7 +21,6 @@
     "source_catalogs": [
         {
             "catalog_type": "socat",
-            "path": "./PS_S19_f090_2pass_optimalCatalog.fits",
             "flux_lower_limit": "0.1 Jy"
         }
     ],
