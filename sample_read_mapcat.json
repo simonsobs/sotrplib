@@ -5,13 +5,7 @@
             "instrument": "SOLAT",
             "frequency": "f090",
             "array": "i6",
-            "rerun": "True",
-            "box": {"value":[
-                        [-10.095,137.52],
-                        [-14.095,141.52]
-                    ],
-                    "unit": "deg"
-                }
+            "rerun": "True"
         },
     "source_catalogs": [
         {
