@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Iterable
 
+import numpy as np
 from astropy import units
 from astropy.coordinates import SkyCoord
 
@@ -106,7 +107,8 @@ class BaseRunner:
     def build_map(self, input_map: ProcessableMap) -> ProcessableMap:
         self.profilable_task(input_map.build)()
         output_map = input_map
-
+        if not np.any(output_map.hits > 0):
+            return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
                 input_map=output_map
@@ -242,6 +244,7 @@ class BaseRunner:
         """
         all_simulated_sources = self.basic_task(self.simulate_sources)()
         self.maps = self.basic_task(self.build_map).map(self.maps).result()
+        self.maps = [m for m in self.maps if m is not None]
         self.maps = self.coadd_maps(self.maps)
         return (
             self.basic_task(self.analyze_map)

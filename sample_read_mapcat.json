@@ -16,7 +16,7 @@
     "sso_catalogs": [
         {
             "catalog_type": "sso",
-            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "db_path": "sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
         }
     ],
     "pointing_provider": {

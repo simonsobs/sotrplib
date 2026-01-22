@@ -1,8 +1,10 @@
 from datetime import datetime
 
 import numpy as np
+import structlog
 from astropy import units as u
 from pixell import enmap
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
 
@@ -18,6 +20,7 @@ def mask_planets(
     frequency: str | None = None,
     mask_radius=10 * u.arcmin,
     planets=["Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
+    log: FilteringBoundLogger | None = None,
 ) -> enmap.ndmap:
     """
     Get's the planet ephemerides at start and end times of the map, and creates a mask around each planet position.
@@ -30,9 +33,15 @@ def mask_planets(
         frequency: frequency, if None uses input_map.frequency
         planets: list of planet names to mask
     """
+    log = log or structlog.get_logger()
+    log = log.bind(func="mask_planets")
     ephem_times = mask_time if isinstance(mask_time, list) else [mask_time]
     planet_ephems = get_sso_ephems_at_time(
-        orbital_df=None, time=ephem_times, planets=planets, observer=create_observer()
+        orbital_df=None,
+        time=ephem_times,
+        planets=planets,
+        observer=create_observer(),
+        log=log,
     )
 
     mask = enmap.ones(input_map.shape, input_map.wcs)
@@ -65,6 +74,12 @@ def mask_planets(
     ## so need to negate before, grow, then negate again
     mask = enmap.enmap(mask, mask.wcs, dtype=bool)
     mask = ~enmap.grow_mask(~mask, mask_radius.to_value(u.rad))
+    log.info(
+        "mask_planets.completed",
+        input_map_wcs=input_map.wcs,
+        times=mask_time,
+        planets=planets,
+    )
     return mask
 
 

@@ -54,10 +54,12 @@ class PlanetMasker(MapPreprocessor):
             input_map.time_mean,
             [input_map.observation_start, input_map.observation_end],
             mask_radius=self.mask_radius,
+            log=log,
         )
         input_map.mask = (
             input_map.mask * planet_mask if input_map.mask is not None else planet_mask
         )
+        log.info("PlanetMasker.preprocess.completed")
         return input_map
 
 

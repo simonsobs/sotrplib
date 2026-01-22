@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable, Literal
 
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity, AstroPydanticUnit
+from astropydantic import AstroPydanticICRS, AstroPydanticQuantity, AstroPydanticUnit
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
 
@@ -112,7 +112,7 @@ class RhoKappaMapConfig(MapConfig):
     instrument: str | None = None
     observation_start: AwareDatetime | None = None
     observation_end: AwareDatetime | None = None
-    box: AstroPydanticQuantity[u.deg] | None = None
+    box: list[AstroPydanticICRS] | None = None
     flux_units: AstroPydanticUnit = u.Unit("Jy")
 
     def to_map(self, log: FilteringBoundLogger | None = None) -> RhoAndKappaMap:
@@ -143,7 +143,7 @@ class InverseVarianceMapConfig(MapConfig):
     instrument: str | None = None
     observation_start: AwareDatetime | None = None
     observation_end: AwareDatetime | None = None
-    box: AstroPydanticQuantity[u.deg] | None = None
+    box: list[AstroPydanticICRS] | None = None
     intensity_units: AstroPydanticUnit = u.Unit("K")
 
     def to_map(
@@ -170,7 +170,8 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     frequency: str | None = None
     array: str | None = None
     instrument: str | None = None
-    number_to_read: int = 1
+    number_to_read: int | None = None  ## if None, all in database will be read
+    box: list[AstroPydanticICRS] | None = None
     rerun: bool = False
 
     def to_generator(
@@ -181,6 +182,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             frequency=self.frequency,
             array=self.array,
             instrument=self.instrument,
+            box=self.box,
             rerun=self.rerun,
             log=log,
         )

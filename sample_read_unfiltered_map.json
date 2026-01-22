@@ -8,18 +8,21 @@
             "frequency": "f090",
             "band": "pa5",
             "intensity_units": "K",
-            "box": {"value":[
-                        [-40,300],
-                        [-50,320]
-                    ],
-                    "unit": "deg"
-                }
+            "box":[
+                    {
+                    "ra":{"value":138.52,"unit":"deg"},
+                    "dec":{"value":-13.095,"unit":"deg"}
+                    },
+                    {
+                    "ra":{"value":140.52,"unit":"deg"},
+                    "dec":{"value":-11.095,"unit":"deg"}
+                    }
+                ]
         }
     ],
     "source_catalogs": [
         {
             "catalog_type": "socat",
-            "path": "./PS_S19_f090_2pass_optimalCatalog.fits",
             "flux_lower_limit": "0.1 Jy"
         }
     ],
