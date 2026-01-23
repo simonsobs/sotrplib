@@ -7,7 +7,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import MapPointingOffset
+from sotrplib.maps.pointing import MapPointingOffset, PointingData
 from sotrplib.sources.core import BlindSearchProvider
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.sources import MeasuredSource
@@ -51,6 +51,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         self,
         input_map: ProcessableMap,
         pointing_residuals: MapPointingOffset | None = None,
+        pointing_offset_data: PointingData | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         if not input_map.finalized:
             raise ValueError(
@@ -78,7 +79,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             source.extract_thumbnail(input_map, reproject_thumb=True)
             if pointing_residuals:
                 source_pos = pointing_residuals.apply_offset_at_position(
-                    SkyCoord(ra=source.ra, dec=source.dec)
+                    SkyCoord(ra=source.ra, dec=source.dec), data=pointing_offset_data
                 )
                 source.ra = source_pos.ra
                 source.dec = source_pos.dec
