@@ -43,7 +43,7 @@ class BaseRunner:
     sso_catalogs: list[SourceCatalog] | None
     preprocessors: list[MapPreprocessor] | None
     pointing_provider: ForcedPhotometryProvider | None
-    pointing_residual: MapPointingOffset | None
+    pointing_residual_model: MapPointingOffset | None
     postprocessors: list[MapPostprocessor] | None
     forced_photometry: ForcedPhotometryProvider | None
     source_subtractor: SourceSubtractor | None
@@ -62,7 +62,7 @@ class BaseRunner:
         sso_catalogs: list[SourceCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
         pointing_provider: ForcedPhotometryProvider | None,
-        pointing_residual: MapPointingOffset | None,
+        pointing_residual_model: MapPointingOffset | None,
         postprocessors: list[MapPostprocessor] | None,
         forced_photometry: ForcedPhotometryProvider | None,
         source_subtractor: SourceSubtractor | None,
@@ -79,7 +79,7 @@ class BaseRunner:
         self.sso_catalogs = sso_catalogs or []
         self.preprocessors = preprocessors or []
         self.pointing_provider = pointing_provider or EmptyForcedPhotometry()
-        self.pointing_residual = pointing_residual or EmptyPointingOffset()
+        self.pointing_residual_model = pointing_residual_model or EmptyPointingOffset()
         self.postprocessors = postprocessors or []
         self.forced_photometry = forced_photometry or EmptyForcedPhotometry()
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
