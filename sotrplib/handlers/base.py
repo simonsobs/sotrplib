@@ -184,10 +184,10 @@ class BaseRunner:
             input_map=input_map, catalogs=self.source_catalogs
         )
 
-        _ = self.profilable_task(self.pointing_residual.get_offset)(
+        pointing_data = self.profilable_task(self.pointing_residual_model.get_offset)(
             pointing_sources=pointing_sources
         )
-        save_model_maps(
+        self.profilable_task(save_model_maps)(
             self.pointing_residual,
             input_map,
             filename_prefix=f"pointing_residual_{input_map.map_id}",
@@ -205,7 +205,8 @@ class BaseRunner:
         )(
             input_map=input_map,
             catalogs=self.source_catalogs + self.sso_catalogs,
-            pointing_residuals=self.pointing_residual,
+            pointing_residuals=self.pointing_residual_model,
+            pointing_offset_data=pointing_data,
         )
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
@@ -214,7 +215,8 @@ class BaseRunner:
 
         blind_sources, _ = self.profilable_task(self.blind_search.search)(
             input_map=source_subtracted_map,
-            pointing_residuals=self.pointing_residual,
+            pointing_residuals=self.pointing_residual_model,
+            pointing_offset_data=pointing_data,
         )
 
         sifter_result = self.profilable_task(self.sifter.sift)(
