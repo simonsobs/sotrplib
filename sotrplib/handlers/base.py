@@ -136,6 +136,7 @@ class BaseRunner:
             right = max(bbox[1].ra, map_bbox[1].ra)
             top = max(bbox[1].dec, map_bbox[1].dec)
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+
         return bbox
 
     @property
@@ -164,6 +165,7 @@ class BaseRunner:
 
             all_simulated_sources.extend(simulated_sources)
             self.source_catalogs.append(catalog)
+
         return all_simulated_sources
 
     def analyze_map(
@@ -171,7 +173,7 @@ class BaseRunner:
     ) -> tuple[list, object, ProcessableMap]:
         self.profilable_task(input_map.finalize)()
 
-        input_map = self.profilable_task(self.source_injector.inject)(
+        injected_sources, input_map = self.profilable_task(self.source_injector.inject)(
             input_map=input_map, simulated_sources=simulated_sources
         )
 
@@ -229,6 +231,7 @@ class BaseRunner:
                 sifter_result=sifter_result,
                 input_map=input_map,
                 pointing_sources=pointing_sources,
+                injected_sources=injected_sources,
             )
         if input_map._parent_database is not None:
             set_processing_end(input_map.map_id)

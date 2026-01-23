@@ -149,7 +149,7 @@ def test_source_injection_into_map():
 
     injector = source_injector.PhotutilsSourceInjector()
     sources, catalog = generator.generate(input_map=base_map)
-    new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+    _, new_map = injector.inject(input_map=base_map, simulated_sources=sources)
     new_map.finalize()
 
     assert new_map != base_map
@@ -196,7 +196,7 @@ def test_source_injection_forced_photometry():
     injector = source_injector.PhotutilsSourceInjector(
         gauss_fwhm=get_fwhm(base_map.frequency)
     )
-    new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+    _, new_map = injector.inject(input_map=base_map, simulated_sources=sources)
     phot = Scipy2DGaussianFitter(thumbnail_half_width=3 * u.arcmin)
     forced_phot_results = phot.force(new_map, catalogs=[cat])
 
