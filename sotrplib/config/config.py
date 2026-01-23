@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -102,6 +103,8 @@ class Settings(BaseSettings):
     profile: bool = False
     "Enable pyinstrument profiling"
 
+    loglevel: int | str = logging.INFO
+
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(env_prefix="sotrp_", extra="ignore")
 
@@ -112,6 +115,9 @@ class Settings(BaseSettings):
             return cls.model_validate_json(handle.read())
 
     def to_dependencies(self) -> dict[str, Any]:
+        structlog.configure(
+            wrapper_class=structlog.make_filtering_bound_logger(self.loglevel),
+        )
         log = structlog.get_logger()
 
         contents = {
