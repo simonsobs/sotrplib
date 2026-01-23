@@ -1,8 +1,10 @@
 import tempfile
 from datetime import datetime
+from functools import partial
 
 import pyinstrument
 from prefect import artifacts, flow, task, unmapped
+from prefect.task_runners import ProcessPoolTaskRunner
 
 from .base import BaseRunner
 
@@ -71,7 +73,7 @@ def profile_task(func: callable) -> callable:
         )
         return result
 
-    return task(wrapped, name=func.__name__)
+    return task(wrapped, name=func.__name__, cache_result_in_memory=False, persist_result=False)
 
 
 class PrefectRunner(BaseRunner):
@@ -80,15 +82,17 @@ class PrefectRunner(BaseRunner):
         if self.profile:
             return profile_task
         else:
-            return task
+            return self.basic_task
 
     @property
     def basic_task(self):
-        return task
+        # disable result persistence to avoid excessive memory use
+        # https://github.com/PrefectHQ/prefect/issues/12668
+        return partial(task, cache_result_in_memory=False, persist_result=False)
 
     @property
     def flow(self):
-        return flow
+        return partial(flow, task_runner=ProcessPoolTaskRunner())
 
     @property
     def unmapped(self):
