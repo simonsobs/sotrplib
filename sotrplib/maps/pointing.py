@@ -4,6 +4,7 @@ These operations happen after forced photometry and before source subtraction.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -18,6 +19,21 @@ from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import RegisteredSource
 
 
+@dataclass
+class ConstantPointingData:
+    ra_offset: u.Quantity
+    dec_offset: u.Quantity
+
+
+@dataclass
+class PolynomialPointingData:
+    coeffs_ra: np.ndarray
+    coeffs_dec: np.ndarray
+
+
+PointingData = ConstantPointingData | PolynomialPointingData
+
+
 class MapPointingOffset(ABC):
     """
     Base class for map pointing offsets.
@@ -27,13 +43,11 @@ class MapPointingOffset(ABC):
 
     pointing_sources: list[RegisteredSource] | None = None
 
-    @abstractmethod
     def get_offset(self, pointing_sources: list[RegisteredSource] | None = None):
         """Calculate the pointing offset based on the provided sources."""
-        return
+        pass
 
-    @abstractmethod
-    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
+    def apply_offset_at_position(self, pos: SkyCoord, data: PointingData | None) -> SkyCoord:
         """
         Apply inverse offsets to one or more SkyCoord positions.
 
@@ -47,15 +61,76 @@ class MapPointingOffset(ABC):
         SkyCoord
             New coordinates with the offsets removed.
         """
+        ## returns an array of offsets, but only apply to single position.
+        dra = self.ra_model(pos.ra, pos.dec, data)[0]
+        ddec = self.dec_model(pos.ra, pos.dec, data)[0]
+
+        ## if offset > 5arcmin , warn and skip.
+        if abs(dra) > 5 * u.arcmin or abs(ddec) > 5 * u.arcmin:
+            self.log.warn(
+                f"{self.__class__.__name__}.large_offset_warning",
+                ra=pos.ra,
+                dec=pos.dec,
+                dra=dra,
+                ddec=ddec,
+            )
+            return pos
+
+        return SkyCoord(
+            ra=pos.ra - dra,
+            dec=pos.dec - ddec,
+            frame=pos.frame,
+        )
+
+    @abstractmethod
+    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None) -> u.Quantity:
+        """
+        Model function to compute RA offsets at given positions.
+
+        Parameters
+        ----------
+        ra : u.Quantity
+            Array of RA positions in degrees.
+        dec : u.Quantity
+            Array of Dec positions in degrees.
+
+        Returns
+        -------
+        u.Quantity
+            Array of RA offsets in degrees.
+        """
+        return
+
+    @abstractmethod
+    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None) -> u.Quantity:
+        """
+        Model function to compute dec offsets at given positions.
+
+        Parameters
+        ----------
+        ra : u.Quantity
+            Array of RA positions in degrees.
+        dec : u.Quantity
+            Array of Dec positions in degrees.
+
+        Returns
+        -------
+        u.Quantity
+            Array of dec offsets in degrees.
+        """
         return
 
 
 class EmptyPointingOffset(MapPointingOffset):
     def get_offset(self, pointing_sources: list[RegisteredSource] | None = None):
-        return
+        # no need for a deepcopy as apply offset is a noop
+        pass
 
-    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
-        return pos
+    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: None = None) -> u.Quantity:
+        return np.zeros_like(dec) * u.deg
+
+    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: None = None) -> u.Quantity:
+        return np.zeros_like(ra) * u.deg
 
 
 class ConstantPointingOffset(MapPointingOffset):
@@ -80,7 +155,7 @@ class ConstantPointingOffset(MapPointingOffset):
     def get_offset(
         self,
         pointing_sources: list[RegisteredSource] | None = None,
-    ):
+    ) -> ConstantPointingData:
         log = self.log or structlog.get_logger()
         log = log.bind(
             func="pointing.ConstantPointingOffset.get_offset",
@@ -97,9 +172,9 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(snr) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_sources")
-            self.ra_offset = 0.0 * u.deg
-            self.dec_offset = 0.0 * u.deg
-            return (self.ra_offset, self.dec_offset)
+            return ConstantPointingData(
+                ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg
+            )
 
         ra_offsets = [
             src.offset_ra
@@ -117,9 +192,9 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(ra_offsets) == 0 or len(dec_offsets) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_offsets")
-            self.ra_offset = 0.0 * u.deg
-            self.dec_offset = 0.0 * u.deg
-            return
+            return ConstantPointingData(
+                ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg
+            )
 
         # Compute median offsets where snr>min_snr
         ra_off_list = u.Quantity(
@@ -135,9 +210,9 @@ class ConstantPointingOffset(MapPointingOffset):
                 "pointing.ConstantPointingOffset.not_enough_sources_above_snr",
                 n_valid_sources=len(ra_off_list),
             )
-            self.ra_offset = 0.0 * u.deg
-            self.dec_offset = 0.0 * u.deg
-            return
+            return ConstantPointingData(
+                ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg
+            )
 
         mean_ra, median_ra, std_ra = sigma_clipped_stats(
             ra_off_list,
@@ -148,30 +223,26 @@ class ConstantPointingOffset(MapPointingOffset):
             sigma=self.sigma_clip_level,
         )
 
-        self.ra_offset = median_ra if self.avg_method == "median" else mean_ra
-        self.dec_offset = median_dec if self.avg_method == "median" else mean_dec
-
-        self.ra_offset_rms = std_ra
-        self.dec_offset_rms = std_dec
+        ra_offset = median_ra if self.avg_method == "median" else mean_ra
+        dec_offset = median_dec if self.avg_method == "median" else mean_dec
 
         log.info(
             "pointing.ConstantPointingOffset.offsets",
             num_sources=len(ra_off_list),
             min_snr=self.min_snr,
-            ra_offset=f"{self.ra_offset.to_value(u.arcsec):.1f} arcsec",
-            dec_offset=f"{self.dec_offset.to_value(u.arcsec):.1f} arcsec",
-            ra_offset_rms=f"{self.ra_offset_rms.to_value(u.arcsec):.1f} arcsec",
-            dec_offset_rms=f"{self.dec_offset_rms.to_value(u.arcsec):.1f} arcsec",
+            ra_offset=f"{ra_offset.to_value(u.arcsec):.1f} arcsec",
+            dec_offset=f"{dec_offset.to_value(u.arcsec):.1f} arcsec",
+            ra_offset_rms=f"{std_ra.to_value(u.arcsec):.1f} arcsec",
+            dec_offset_rms=f"{std_dec.to_value(u.arcsec):.1f} arcsec",
         )
 
-        return
+        return ConstantPointingData(ra_offset=ra_offset, dec_offset=dec_offset)
 
-    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
-        return SkyCoord(
-            ra=pos.ra - self.ra_offset,
-            dec=pos.dec - self.dec_offset,
-            frame=pos.frame,
-        )
+    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData) -> u.Quantity:
+        return ra - data.ra_offset
+
+    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData) -> u.Quantity:
+        return dec - data.dec_offset
 
 
 class PolynomialPointingOffset(MapPointingOffset):
@@ -193,10 +264,6 @@ class PolynomialPointingOffset(MapPointingOffset):
         self.pointing_sources = pointing_sources or []
         self.log = log or structlog.get_logger()
 
-        # identity (no correction)
-        self.ra_model = lambda ra, dec: np.zeros_like(np.atleast_1d(ra)) * u.deg
-        self.dec_model = lambda ra, dec: np.zeros_like(np.atleast_1d(dec)) * u.deg
-
     ## Basis terms for 2D polynomial fit
     def _poly_terms(self, x, y):
         terms = []
@@ -206,9 +273,8 @@ class PolynomialPointingOffset(MapPointingOffset):
         return np.vstack(terms).T
 
     def get_offset(
-        self,
-        pointing_sources: list[RegisteredSource] | None = None,
-    ):
+        self, pointing_sources: list[RegisteredSource] | None = None
+    ) -> PolynomialPointingData:
         log = self.log.bind(func="PolynomialPointingOffset.get_offset")
         pointing_sources = pointing_sources or self.pointing_sources
 
@@ -223,7 +289,11 @@ class PolynomialPointingOffset(MapPointingOffset):
 
         if len(valid) == 0:
             log.warn("PolynomialPointingOffset.no_valid_sources")
-            return
+            n_terms = (self.poly_order + 1) * (self.poly_order + 2) // 2
+            return PolynomialPointingData(
+                coeffs_ra=np.zeros(n_terms),
+                coeffs_dec=np.zeros(n_terms),
+            )
 
         ras = np.array([s.ra.to_value(u.deg) for s in valid])
         decs = np.array([s.dec.to_value(u.deg) for s in valid])
@@ -246,7 +316,11 @@ class PolynomialPointingOffset(MapPointingOffset):
                 "PolynomialPointingOffset.not_enough_sources_above_snr",
                 n_valid_sources=len(ras),
             )
-            return
+            n_terms = (self.poly_order + 1) * (self.poly_order + 2) // 2
+            return PolynomialPointingData(
+                coeffs_ra=np.zeros(n_terms),
+                coeffs_dec=np.zeros(n_terms),
+            )
 
         # sigma clip independently
         dra_clipped = sigma_clip(dra, sigma=self.sigma_clip_level, masked=True)
@@ -278,22 +352,6 @@ class PolynomialPointingOffset(MapPointingOffset):
         yw = y_dec * w_dec
         coeffs_dec, *_ = np.linalg.lstsq(Aw, yw, rcond=None)
 
-        ## Store ra,dec poly fit models
-        def ra_model_fn(ra, dec, c=coeffs_ra):
-            ra = np.atleast_1d(ra)
-            dec = np.atleast_1d(dec)
-            T = self._poly_terms(ra, dec)
-            return (T @ c) * u.deg
-
-        def dec_model_fn(ra, dec, c=coeffs_dec):
-            ra = np.atleast_1d(ra)
-            dec = np.atleast_1d(dec)
-            T = self._poly_terms(ra, dec)
-            return (T @ c) * u.deg
-
-        self.ra_model = ra_model_fn
-        self.dec_model = dec_model_fn
-
         log.info(
             "PolynomialPointingOffset.weighted_poly_fit",
             num_sources=len(ras),
@@ -303,14 +361,27 @@ class PolynomialPointingOffset(MapPointingOffset):
             coeffs_dec=coeffs_dec,
         )
 
-        return
+        return PolynomialPointingData(
+            coeffs_ra=coeffs_ra,
+            coeffs_dec=coeffs_dec,
+        )
 
-    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
-        ra = pos.ra.to_value(u.deg)
-        dec = pos.dec.to_value(u.deg)
+    def model_fn(self, ra: u.Quantity, dec: u.Quantity, coeffs: np.ndarray) -> u.Quantity:
+        ra = np.atleast_1d(ra.to_value(u.deg))
+        dec = np.atleast_1d(dec.to_value(u.deg))
+        T = self._poly_terms(ra, dec)
+        return (T @ coeffs) * u.deg
+
+    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: PolynomialPointingData) -> u.Quantity:
+        return self.model_fn(ra, dec, data.coeffs_ra)
+
+    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: PolynomialPointingData) -> u.Quantity:
+        return self.model_fn(ra, dec, data.coeffs_dec)
+
+    def apply_offset_at_position(self, pos: SkyCoord, data: PolynomialPointingData) -> SkyCoord:
         ## returns an array of offsets, but only apply to single position.
-        dra = self.ra_model(ra, dec)[0]
-        ddec = self.dec_model(ra, dec)[0]
+        dra = self.ra_model(pos.ra, pos.dec, data)[0]
+        ddec = self.dec_model(pos.ra, pos.dec, data)[0]
 
         ## if offset > 5arcmin , warn and skip.
         if abs(dra) > 5 * u.arcmin or abs(ddec) > 5 * u.arcmin:
@@ -332,6 +403,7 @@ class PolynomialPointingOffset(MapPointingOffset):
 
 def save_model_maps(
     pointing_model: MapPointingOffset,
+    pointing_data: PointingData | None,
     input_map: ProcessableMap,
     filename_prefix: str,
     log: FilteringBoundLogger | None = None,
@@ -363,10 +435,12 @@ def save_model_maps(
     ra_offset_map = pointing_model.ra_model(
         (ramap.flatten() * u.rad).to_value(u.deg),
         (decmap.flatten() * u.rad).to_value(u.deg),
+        data=pointing_data,
     ).to_value(u.arcsec)
     dec_offset_map = pointing_model.dec_model(
         (ramap.flatten() * u.rad).to_value(u.deg),
         (decmap.flatten() * u.rad).to_value(u.deg),
+        data=pointing_data,
     ).to_value(u.arcsec)
 
     ra_offset_map = enmap.enmap(

@@ -129,7 +129,7 @@ class Settings(BaseSettings):
             "sso_catalogs": [x.to_source_catalog(log=log) for x in self.sso_catalogs],
             "preprocessors": [x.to_preprocessor(log=log) for x in self.preprocessors],
             "pointing_provider": self.pointing_provider.to_forced_photometry(log=log),
-            "pointing_residual": self.pointing_residual.to_residuals(log=log),
+            "pointing_residual_model": self.pointing_residual.to_residuals(log=log),
             "postprocessors": [
                 x.to_postprocessor(log=log) for x in self.postprocessors
             ],
