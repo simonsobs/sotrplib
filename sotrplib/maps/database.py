@@ -32,6 +32,7 @@ class MapCatDatabaseReader:
     array: str | None = None
     number_to_read: int | None = 1
     box: tuple[SkyCoord, SkyCoord] | None = None
+    intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
     log: FilteringBoundLogger
 
@@ -42,6 +43,7 @@ class MapCatDatabaseReader:
         array: str | None = None,
         instrument: str | None = None,
         box: tuple[SkyCoord, SkyCoord] | None = None,
+        intensity_units: u.Unit = u.Unit("K"),
         rerun: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
@@ -49,6 +51,7 @@ class MapCatDatabaseReader:
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
+        self.intensity_units = intensity_units
         self.box = box
         self.rerun = rerun
         self.map_ids = []
@@ -105,7 +108,7 @@ class MapCatDatabaseReader:
                             result.stop_time, tz=timezone.utc
                         ),
                         box=self.box,
-                        intensity_units=u.uK,
+                        intensity_units=self.intensity_units,
                         frequency=result.frequency,
                         array=result.tube_slot,
                         instrument=self.instrument,
