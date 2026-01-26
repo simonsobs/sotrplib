@@ -9,6 +9,7 @@ import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from pixell import utils as pixell_utils
+from pixell.wcsutils import fix_wcs
 from socat.client.settings import SOCatClientSettings
 from structlog.types import FilteringBoundLogger
 
@@ -66,14 +67,8 @@ class SOCatWrapper:
         if len(sources) == 0:
             return []
         coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
-
-        from pixell.wcsutils import fix_wcs
-
+        ## map may need to have wcs rotated into valid sky region.
         mask_map.flux.wcs = fix_wcs(mask_map.flux.wcs)
-        wcs = mask_map.flux.wcs
-        shape = mask_map.flux.shape
-        bottom_left = wcs.array_index_to_world(0, 0)
-        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
         y, x = mask_map.flux.wcs.world_to_pixel(coords)
         nx, ny = mask_map.flux.shape
         x, y = np.round(x).astype(int), np.round(y).astype(int)
