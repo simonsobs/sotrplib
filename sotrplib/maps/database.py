@@ -100,7 +100,7 @@ class MapCatDatabaseReader:
                         inverse_variance_filename=mapcat_settings.depth_one_parent
                         / result.ivar_path,
                         time_filename=mapcat_settings.depth_one_parent
-                        / result.time_path,
+                        / result.mean_time_path,
                         start_time=datetime.fromtimestamp(
                             result.start_time, tz=timezone.utc
                         ),
