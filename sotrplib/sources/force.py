@@ -158,6 +158,7 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
             reproject_thumbnails=self.reproject_thumbnails,
             allowable_center_offset=self.allowable_center_offset,
         )
+
         if len(source_list) == 0:
             return []
         ## check if there are any pointing sources with a source within the thumbnail_half_width

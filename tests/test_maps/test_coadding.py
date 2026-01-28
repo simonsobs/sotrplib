@@ -178,7 +178,7 @@ def test_coadding_with_sources_in_separate_maps(
     coadd = coadded_maps[0]
     coadd.finalize()
     injector = source_injector.PhotutilsSourceInjector()
-    new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
+    _, new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
     new_map.finalize()
 
     assert new_map != coadd
@@ -261,7 +261,7 @@ def test_coadding_with_sources_in_overlapping_maps(
 
     coadd.finalize()
     injector = source_injector.PhotutilsSourceInjector()
-    new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
+    _, new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
     new_map.finalize()
 
     assert new_map != coadd
