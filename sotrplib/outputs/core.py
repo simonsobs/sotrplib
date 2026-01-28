@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
+from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 
@@ -23,6 +24,7 @@ class SourceOutput(ABC):
         sifter_result: SifterResult,
         input_map: ProcessableMap,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
+        injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         """
         Output the source candidates somehow. We also pass the
@@ -47,6 +49,7 @@ class JSONSerializer(SourceOutput):
         sifter_result: SifterResult,
         input_map: ProcessableMap,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
+        injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         filename = (
             self.directory
@@ -58,6 +61,7 @@ class JSONSerializer(SourceOutput):
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
                     "pointing_sources": pointing_sources,
+                    "injected_sources": injected_sources,
                 },
                 fp=handle,
             )
@@ -81,6 +85,7 @@ class PickleSerializer(SourceOutput):
         sifter_result: SifterResult,
         input_map: ProcessableMap,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
+        injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         filename = (
             self.directory
@@ -93,6 +98,7 @@ class PickleSerializer(SourceOutput):
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
                     "pointing_sources": pointing_sources,
+                    "injected_sources": injected_sources,
                 },
                 file=handle,
             )
@@ -116,6 +122,7 @@ class CutoutImageOutput(SourceOutput):
         sifter_result: SifterResult,
         input_map: ProcessableMap,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
+        injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         for source in forced_photometry_candidates:
             cutout = source.thumbnail
