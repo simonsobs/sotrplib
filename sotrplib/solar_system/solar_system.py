@@ -138,7 +138,10 @@ def load_mpc_orbital_database(
 
     ## convert to floats where possible. needed for skyfield
     for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="ignore")
+        try:
+            df[col] = pd.to_numeric(df[col], errors="raise")
+        except ValueError:
+            pass
 
     return df
 

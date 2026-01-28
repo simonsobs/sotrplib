@@ -172,6 +172,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     instrument: str | None = None
     number_to_read: int | None = None  ## if None, all in database will be read
     box: list[AstroPydanticICRS] | None = None
+    intensity_units: AstroPydanticUnit = u.Unit("K")
     rerun: bool = False
 
     def to_generator(
@@ -183,6 +184,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             array=self.array,
             instrument=self.instrument,
             box=self.box,
+            intensity_units=self.intensity_units,
             rerun=self.rerun,
             log=log,
         )
