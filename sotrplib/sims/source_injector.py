@@ -28,7 +28,7 @@ class SourceInjector(ABC):
         self,
         input_map: ProcessableMap,
         simulated_sources: list[SimulatedSource],
-    ) -> ProcessableMapWithSimulatedSources:
+    ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
         return
 
 
@@ -36,9 +36,9 @@ class EmptySourceInjector(SourceInjector):
     def inject(
         self,
         input_map: ProcessableMap,
-        simulated_sources: list[SimulatedSource],
-    ) -> ProcessableMapWithSimulatedSources:
-        return input_map
+        simulated_sources: list[SimulatedSource] = [],
+    ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
+        return ([], input_map)
 
 
 class PhotutilsSourceInjector(SourceInjector):
@@ -64,7 +64,7 @@ class PhotutilsSourceInjector(SourceInjector):
         self,
         input_map: ProcessableMap,
         simulated_sources: list[SimulatedSource],
-    ) -> ProcessableMapWithSimulatedSources:
+    ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
         # Create the photutils source injection table and 'model image' - the
         # template to add to the map.
 
@@ -168,6 +168,12 @@ class PhotutilsSourceInjector(SourceInjector):
 
         log.info("source_injection.photutils.complete")
 
-        return ProcessableMapWithSimulatedSources(
-            flux=new_flux, snr=new_snr, time=input_map.time_mean, original_map=input_map
+        return (
+            valid_sources,
+            ProcessableMapWithSimulatedSources(
+                flux=new_flux,
+                snr=new_snr,
+                time=input_map.time_mean,
+                original_map=input_map,
+            ),
         )
