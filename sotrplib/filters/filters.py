@@ -253,7 +253,8 @@ def matched_filter_depth1_map(
     """
 
     freq = band_center.to(u.Hz).value
-    ## uK-> mJy/sr
+    ## dplanck is Jy/sr / K
+    ## to get mJy/sr /K you want 1e3 fconv
     fconv = utils.dplanck(freq) * 1e3
 
     if beam1d:
@@ -270,10 +271,11 @@ def matched_filter_depth1_map(
         beam_response = None
     else:
         raise "Need one of beam1d or beam_fwhm"
+
     ## convert map in T_cmb to mJy/sr
     imap *= fconv
     ivarmap /= fconv**2
-
+    imap.fillbad(inplace=True)  ## doesnt like nans
     if shift > 0:
         info = bunch.read(infofile)
     ny, _ = imap.shape[-2:]
@@ -291,6 +293,7 @@ def matched_filter_depth1_map(
             enmap.grow_mask(hit, shrink_holes.to(u.radian).value),
             shrink_holes.to(u.radian).value,
         )
+
     # Apodize the edge by decreasing the significance in ivar
     noise_apod = enmap.apod_mask(hit, apod_edge.to(u.radian).value)
     # Check if we have a noise model mask too
@@ -309,10 +312,12 @@ def matched_filter_depth1_map(
             < noisemask_radius.to(u.radian).value
         )
         del bright
+
     mask = np.asanyarray(mask)
     if mask.size > 0 and mask.ndim > 0:
         noise_apod *= enmap.apod_mask(1 - mask, apod_holes.to(u.radian).value)
     del mask
+
     imap *= noise_apod
 
     # Build the noise model
@@ -345,6 +350,7 @@ def matched_filter_depth1_map(
     ):
         # Get band-local versions of the map etc.
         bmap, bivar, bhit = [a[..., r.i1 : r.i2, :] for a in [imap, ivarmap, hit]]
+
         bny, _ = bmap.shape[-2:]
         if shift > 0:
             bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)
@@ -382,12 +388,15 @@ def matched_filter_depth1_map(
         # Set up apodization
         filter_apod = enmap.apod_mask(bhit, apod_edge.to(u.radian).value)
         bivar = bivar * filter_apod
+
         del filter_apod
         # Phew! Actually perform the filtering
         uht = uharm.UHT(bmap.shape, bmap.wcs, mode="flat")
+
         brho, bkappa = analysis.matched_filter_constcorr_dual(
             bmap, beam2d, bivar, biC, uht, S=bS.forward, iS=bS.backward
         )
+
         del uht
         # Restrict to exposed area
         brho *= bhit
