@@ -133,6 +133,16 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
+                crossmatches=[
+                    CrossMatch(
+                        source_id=f"sim-{base + i:07d}",
+                        source_type="simulated_fixed",
+                        catalog_name="simulated",
+                        ra=positions[i][1],
+                        dec=positions[i][0],
+                        angular_separation=0.0 * u.deg,
+                    )
+                ],
             )
             for i in range(self.number)
         ]
@@ -269,6 +279,9 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                     CrossMatch(
                         source_id=f"sim-{base + i:07d}",
                         catalog_name="simulated",
+                        source_type="simulated_gaussian",
+                        ra=positions[i][1],
+                        dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
                     )
                 ],
