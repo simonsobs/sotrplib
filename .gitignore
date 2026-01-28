@@ -58,9 +58,16 @@ docs/_build/
 # test config files
 test_*.json
 
+# test scripts
+scripts/*/test*.py
+
+# any databases
+*sqlite
+
 # any ephemeris / orbital param files
 *.bsp
 *.txt
 *.csv
+
 # ipynb checkpoints
 .ipynb_checkpoints
