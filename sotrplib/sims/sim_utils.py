@@ -41,8 +41,8 @@ def generate_random_positions_in_map(
 def generate_random_positions(
     n: int,
     imap: enmap.ndmap = None,
-    ra_lims: AstroPydanticQuantity[u.deg] | None = None,
-    dec_lims: AstroPydanticQuantity[u.deg] | None = None,
+    ra_lims: tuple[AstroPydanticQuantity[u.deg]] | None = None,
+    dec_lims: tuple[AstroPydanticQuantity[u.deg]] | None = None,
     edge_buffer: AstroPydanticQuantity[u.deg] = 5 * u.arcmin,
     log: FilteringBoundLogger | None = None,
 ):
@@ -74,7 +74,7 @@ def generate_random_positions(
     ## assume that if limits are something like (350,10) that the ra limits wrap 0, so -10,10
     if ra_lims[0] > ra_lims[1]:
         if ra_lims[0] > 180 * u.deg:
-            ra_lims[0] -= 360 * u.deg
+            ra_lims = (ra_lims[0] - 360 * u.deg, ra_lims[1])
 
     # Generate RA uniformly between ra_lims
     ra = (
