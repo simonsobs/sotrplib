@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from pixell import enmap
 from structlog import get_logger
 
@@ -120,40 +121,44 @@ def test_photutils_sim_n_sources_seed_behavior(sim_map_params, log=log):
     sim_maps.photutils_sim_n_sources(test_map, n_sources=1, seed=None, log=log)
 
 
-def test_inject_sources_empty_and_not_flaring(sim_map_params, dummy_source, log=log):
+def test_inject_sources_empty_and_not_flaring(
+    sim_map_params, dummy_gaussian_source, log=log
+):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Empty sources list
     out_map, injected = sim_maps.inject_sources(test_map, [], 0.0, log=log)
     assert isinstance(out_map, enmap.ndmap)
     assert injected == []
     # Not flaring: peak_time far from observation_time
-    dummy_source.peak_time = 0.0
-    dummy_source.flare_width = 1.0
+
     out_map, injected = sim_maps.inject_sources(
-        test_map, [dummy_source], 100.0, log=log
+        test_map, [dummy_gaussian_source], 0.0, log=log
     )
     assert injected == []
 
 
-def test_inject_sources_out_of_bounds(sim_map_params, dummy_source, log=log):
+def test_inject_sources_out_of_bounds(sim_map_params, dummy_fixed_source, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Place source out of bounds
-    dummy_source.ra = 999.0 * u.deg
-    dummy_source.dec = 999.0 * u.deg
-    _, injected = sim_maps.inject_sources(test_map, [dummy_source], 0.0, log=log)
+    dummy_fixed_source._position = SkyCoord(ra=0.0 * u.deg, dec=90.0 * u.deg)
+    _, injected = sim_maps.inject_sources(test_map, [dummy_fixed_source], 0.0, log=log)
     assert injected == []
 
 
-def test_inject_sources_nan_mapval(sim_map_params, dummy_source, log=log):
+def test_inject_sources_nan_mapval(sim_map_params, dummy_fixed_source, log=log):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Set a pixel to nan and inject source there
-    dummy_source.ra = sim_map_params["maps"]["center_ra"]
-    dummy_source.dec = sim_map_params["maps"]["center_dec"]
+    dummy_fixed_source._position = SkyCoord(
+        ra=sim_map_params["maps"]["center_ra"], dec=sim_map_params["maps"]["center_dec"]
+    )
     x, y = test_map.sky2pix(
-        [dummy_source.dec.to(u.rad).value, dummy_source.ra.to(u.rad).value]
+        [
+            dummy_fixed_source.position().dec.to(u.rad).value,
+            dummy_fixed_source.position().ra.to(u.rad).value,
+        ]
     )
     test_map[int(x), int(y)] = np.nan
-    _, injected = sim_maps.inject_sources(test_map, [dummy_source], 0.0, log=log)
+    _, injected = sim_maps.inject_sources(test_map, [dummy_fixed_source], 0.0, log=log)
     assert injected == []
 
 
