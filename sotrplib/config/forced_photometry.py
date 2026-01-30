@@ -9,6 +9,8 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     ForcedPhotometryProvider,
+    Lmfit2DGaussianFitter,
+    Lmfit2DGaussianPointingFitter,
     Scipy2DGaussianFitter,
     Scipy2DGaussianPointingFitter,
     SimpleForcedPhotometry,
@@ -63,6 +65,27 @@ class ScipyGaussianFitterConfig(ForcedPhotometryConfig):
         )
 
 
+class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
+    photometry_type: Literal["lmfit"] = "lmfit"
+    flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
+    reproject_thumbnails: bool = False
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(1.0, "arcmin")
+    near_source_rel_flux_limit: float = 1.0
+
+    def to_forced_photometry(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Lmfit2DGaussianFitter:
+        return Lmfit2DGaussianFitter(
+            flux_limit_centroid=self.flux_limit_centroid,
+            reproject_thumbnails=self.reproject_thumbnails,
+            thumbnail_half_width=self.thumbnail_half_width,
+            allowable_center_offset=self.allowable_center_offset,
+            near_source_rel_flux_limit=self.near_source_rel_flux_limit,
+            log=log,
+        )
+
+
 class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
     photometry_type: Literal["scipy_pointing"] = "scipy_pointing"
     min_flux: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
@@ -84,9 +107,32 @@ class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
         )
 
 
+class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
+    photometry_type: Literal["lmfit_pointing"] = "lmfit_pointing"
+    min_flux: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
+    reproject_thumbnails: bool = False
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(3.0, "arcmin")
+    near_source_rel_flux_limit: float = 0.3
+
+    def to_forced_photometry(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Lmfit2DGaussianPointingFitter:
+        return Lmfit2DGaussianPointingFitter(
+            min_flux=self.min_flux,
+            reproject_thumbnails=self.reproject_thumbnails,
+            thumbnail_half_width=self.thumbnail_half_width,
+            allowable_center_offset=self.allowable_center_offset,
+            near_source_rel_flux_limit=self.near_source_rel_flux_limit,
+            log=log,
+        )
+
+
 AllForcedPhotometryConfigTypes = (
     EmptyPhotometryConfig
     | ScipyGaussianFitterConfig
     | SimpleForcedPhotometryConfig
     | Scipy2DGaussianPointingConfig
+    | LmfitGaussianFitterConfig
+    | Lmfit2DGaussianPointingConfig
 )
