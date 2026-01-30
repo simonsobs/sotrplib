@@ -2,12 +2,13 @@ import math
 
 import numpy as np
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sims.sim_sources import SimTransient
+from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 
@@ -280,15 +281,15 @@ def dec_lims_valid(
 
 
 def save_transients_to_db(
-    transients: list[SimTransient],
+    transients: list[SimulatedSource],
     db_path: str,
     log: FilteringBoundLogger | None = None,
 ):
     """
-    Save a list of SimTransient objects to a SQLite database.
+    Save a list of SimulatedSource objects to a SQLite database.
 
     Parameters:
-    - transients: List of SimTransient objects to save.
+    - transients: List of SimulatedSource objects to save.
     - db_path: Path to the SQLite database file.
     """
     import pickle as pk
@@ -315,7 +316,12 @@ def save_transients_to_db(
             VALUES (?, ?, ?, ?, ?, ?)
         """,
             (
-                pk.dumps((transient.dec.to(u.deg).value, transient.ra.to(u.deg).value)),
+                pk.dumps(
+                    (
+                        transient.position.dec.to(u.deg).value,
+                        transient.position.ra.to(u.deg).value,
+                    )
+                ),
                 transient.peak_amplitude.to(u.Jy).value,
                 transient.peak_time,
                 transient.flare_width,
@@ -329,22 +335,24 @@ def save_transients_to_db(
 
 def load_transients_from_db(
     db_path,
-    log=None,
-) -> list[SimTransient]:
+    log: FilteringBoundLogger | None = None,
+) -> list[SimulatedSource]:
     """
-    Load a list of SimTransient objects from a SQLite database.
+
+    ### DEPRECATED ? AF Jan 30 2026
+
+    Load a list of SimulatedSource objects from a SQLite database.
 
     Parameters:
     - db_path: Path to the SQLite database file.
 
     Returns:
-    - List of SimTransient objects.
+    - List of SimulatedSource objects.
     """
     import pickle as pk
     import sqlite3
 
-    from .sim_sources import SimTransient
-
+    log = log or get_logger()
     if not db_path:
         return []
     conn = sqlite3.connect(db_path)
@@ -359,8 +367,8 @@ def load_transients_from_db(
     for row in rows:
         position = pk.loads(row[0])
         beam_params = pk.loads(row[5])
-        transient = SimTransient(
-            position=(position[0] * u.deg, position[1] * u.deg),
+        transient = SimulatedSource(
+            position=SkyCoord(ra=position[1] * u.deg, dec=position[0] * u.deg),
             peak_amplitude=row[1] * u.Jy,
             peak_time=row[2],
             flare_width=row[3],
@@ -373,7 +381,7 @@ def load_transients_from_db(
 
 def load_config_yaml(
     config_path: str,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Load a configuration file in YAML format.
@@ -397,7 +405,7 @@ def load_config_yaml(
 
 def get_sim_map_group(
     sim_params,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     freq_arr_idx = (
         sim_params["array_info"]["arr"] + "_" + sim_params["array_info"]["freq"]
@@ -424,7 +432,7 @@ def make_2d_gaussian_model_param_table(
     nominal_fwhm: u.Quantity = 2.2 * u.arcmin,
     verbose: bool = False,
     cuts={},
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Create a 2D Gaussian model parameter table from the sources detected in the image.
@@ -434,6 +442,7 @@ def make_2d_gaussian_model_param_table(
     """
     from astropy.table import QTable
 
+    log = log or get_logger()
     log = log.bind(func_name="make_2d_gaussian_model_param_table")
     model_params = {
         "x_0": [],

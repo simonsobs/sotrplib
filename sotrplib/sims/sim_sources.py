@@ -30,10 +30,10 @@ class FixedSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time):
+    def position(self, time: AwareDatetime | None = None) -> SkyCoord:
         return self._position
 
-    def flux(self, time):
+    def flux(self, time: AwareDatetime | None = None) -> u.Quantity:
         return self._flux
 
 
@@ -63,7 +63,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: AwareDatetime) -> SkyCoord:
+    def position(self, time: AwareDatetime | None = None) -> SkyCoord:
         return self._position
 
     def flux(self, time: AwareDatetime) -> u.Quantity:
@@ -192,15 +192,22 @@ def generate_transients(
     ):
         raise ValueError("All input lists must be of the same length.")
 
-    # for i in range(len(positions)):
-    # transient = SimTransient(
-    #     position=(positions[i][0], positions[i][1]),
-    #     peak_amplitude=peak_amplitudes[i],
-    #     peak_time=peak_times[i],
-    #     flare_width=flare_widths[i],
-    #     flare_morph=flare_morphs[i],
-    #     beam_params=beam_params[i],
-    # )
-    # transients.append(transient)
+    for i in range(len(positions)):
+        if flare_morphs[i] == "Gaussian":
+            transient = GaussianTransientSimulatedSource(
+                position=SkyCoord(ra=positions[i][1], dec=positions[i][0]),
+                peak_amplitude=peak_amplitudes[i],
+                peak_time=peak_times[i],
+                flare_width=flare_widths[i],
+            )
+        elif flare_morphs[i] == "Fixed":
+            transient = FixedSimulatedSource(
+                position=SkyCoord(ra=positions[i][1], dec=positions[i][0]),
+                flux=peak_amplitudes[i],
+            )
+        else:
+            raise ValueError(f"Unsupported flare morphology: {flare_morphs[i]}")
 
-    # return transients
+        transients.append(transient)
+
+    return transients
