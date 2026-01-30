@@ -1,5 +1,6 @@
 import math
 
+import lmfit
 import numpy as np
 import structlog
 from astropy import units as u
@@ -39,6 +40,9 @@ class GaussianFitParameters(BaseModel):
     forced_center: bool | None = None
     failed: bool = False
     failure_reason: str | None = None
+    chisquared: float | None = None
+    reduced_chisquared: float | None = None
+    goodness_of_fit: float | None = None
 
 
 def gaussian_2d(
@@ -67,6 +71,20 @@ def gaussian_2d(
     return offset + amplitude * np.exp(
         -(a * (x - x0) ** 2 + 2 * b * (x - x0) * (y - y0) + c * (y - y0) ** 2)
     )
+
+
+def gaussian_2d_lmfit(
+    x: ArrayLike,
+    y: ArrayLike,
+    amplitude: float,
+    x0: float,
+    y0: float,
+    sigma_x: float,
+    sigma_y: float,
+    theta: float,
+    offset: float,
+):
+    return gaussian_2d((x, y), amplitude, x0, y0, sigma_x, sigma_y, theta, offset)
 
 
 class Gaussian2DFitter:
@@ -302,6 +320,246 @@ class Gaussian2DFitter:
         return self.fit_params
 
 
+class LmfitGaussian2DFitter:
+    """
+    Provide class for fitting a 2D gaussian to a source thumbnail using lmfit.
+
+    Parameters
+    ----------
+    source : MeasuredSource
+        The source object containing the thumbnail to fit.
+    fwhm_guess : AstroPydanticQuantity[u.arcmin], optional
+        Initial guess for the FWHM of the Gaussian, by default u.Quantity(2.2, "arcmin")
+    force_center : bool, optional
+        Whether to force the Gaussian center to be at the thumbnail center, by default False
+    reprojected : bool, optional
+        Whether the thumbnail was reprojected (affects RA offset sign), by default False
+    allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
+        Maximum allowable offset from the thumbnail center for the fit, by default u.Quantity(1.0, "arcmin")
+    """
+
+    def __init__(
+        self,
+        source: MeasuredSource,
+        fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
+        force_center: bool = False,
+        reprojected: bool = False,
+        allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
+            1.0, "arcmin"
+        ),
+        debug: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or get_logger()
+        self.log = self.log.bind(func_name="LmfitGaussian2DFitter")
+        self.source = source
+        self.fwhm_guess = fwhm_guess
+        self.force_center = force_center
+        self.reprojected = reprojected
+        self.debug = debug
+        self.allowable_center_offset = allowable_center_offset
+
+    def initialize_model(self):
+        """
+        Initialize the 2D Gaussian model and initial parameter guesses
+        used by lmfit.
+
+        Forcing center removes the x0,y0 from the fit parameters.
+        """
+        try:
+            LmfitModel = lmfit.Model
+        except Exception:  # pragma: no cover - optional dependency
+            self.model = None
+            return
+
+        ny, nx = self.source.thumbnail.shape
+
+        # Define coordinate system centered at the image middle (i.e. the thumbnail center)
+        x = np.arange(nx) - (nx - 1) / 2
+        y = np.arange(ny) - (ny - 1) / 2
+        X, Y = np.meshgrid(x, y)
+
+        self.X = X
+        self.Y = Y
+
+        amplitude_guess = self.source.thumbnail.max()
+        y0_guess, x0_guess = np.unravel_index(
+            np.argmax(self.source.thumbnail), self.source.thumbnail.shape
+        )
+        x0_guess -= (nx - 1) / 2
+        y0_guess -= (ny - 1) / 2
+
+        sigma_guess = (
+            self.fwhm_guess.to(u.arcmin).value
+            / abs(self.source.thumbnail_res.to(u.arcmin).value)
+            / 2.355
+        )
+        sigma_guess = np.atleast_1d(sigma_guess)
+        if sigma_guess.size == 1:
+            sigma_guess = np.array([sigma_guess.item(), sigma_guess.item()])
+
+        model = LmfitModel(gaussian_2d_lmfit, independent_vars=["x", "y"])
+        params = model.make_params(
+            amplitude=amplitude_guess,
+            x0=x0_guess,
+            y0=y0_guess,
+            sigma_x=sigma_guess[0],
+            sigma_y=sigma_guess[1],
+            theta=0.0,
+            offset=0.0,
+        )
+
+        allowable_center_offset_pixels = self.allowable_center_offset.to(
+            u.arcmin
+        ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
+
+        if self.force_center:
+            params["x0"].set(vary=False)
+            params["y0"].set(vary=False)
+        else:
+            params["x0"].set(
+                min=x0_guess - allowable_center_offset_pixels[0],
+                max=x0_guess + allowable_center_offset_pixels[0],
+            )
+            params["y0"].set(
+                min=y0_guess - allowable_center_offset_pixels[1],
+                max=y0_guess + allowable_center_offset_pixels[1],
+            )
+
+        params["sigma_x"].set(min=0.0)
+        params["sigma_y"].set(min=0.0)
+        params["theta"].set(min=-np.pi / 2, max=np.pi / 2)
+
+        if self.debug:
+            self.log.debug(
+                "lmfit_2d_gaussian.initialize",
+                amplitude_guess=amplitude_guess,
+                x0_guess=x0_guess,
+                y0_guess=y0_guess,
+                sigma_guess=sigma_guess.tolist(),
+            )
+
+        self.model = model
+        self.params = params
+
+    def fit(self) -> GaussianFitParameters:
+        """
+        Set up and perform the 2D Gaussian fit using lmfit.
+        """
+        self.fit_params = GaussianFitParameters()
+
+        if self.model is None:
+            self.log.error("lmfit_2d_gaussian.lmfit_not_available")
+            self.fit_params.failed = True
+            self.fit_params.failure_reason = "lmfit_not_available"
+            return self.fit_params
+
+        try:
+            result = self.model.fit(
+                self.source.thumbnail, self.params, x=self.X, y=self.Y
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.log.error("lmfit_2d_gaussian.fit_failed", error=exc)
+            self.fit_params.failed = True
+            self.fit_params.failure_reason = "lmfit_fit_error"
+            return self.fit_params
+
+        if not result.success:
+            self.log.error("lmfit_2d_gaussian.fit_failed", error=result.message)
+            self.fit_params.failed = True
+            self.fit_params.failure_reason = "lmfit_fit_failed"
+            return self.fit_params
+
+        params = result.params
+        amplitude = params["amplitude"].value
+        amplitude_err = params["amplitude"].stderr
+        sigma_x = params["sigma_x"].value
+        sigma_y = params["sigma_y"].value
+        sigma_x_err = params["sigma_x"].stderr
+        sigma_y_err = params["sigma_y"].stderr
+        theta = params["theta"].value
+        theta_err = params["theta"].stderr
+        offset = params["offset"].value
+        offset_err = params["offset"].stderr
+        chisquared = result.chisqr
+        reduced_chisquared = result.redchi
+        goodness_of_fit = result.rsquared
+
+        if self.force_center:
+            ra_offset, dec_offset = None, None
+            ra_err, dec_err = None, None
+        else:
+            x0 = params["x0"].value
+            y0 = params["y0"].value
+            x0_err = params["x0"].stderr
+            y0_err = params["y0"].stderr
+
+            sign_flip = -1
+            dec_offset = sign_flip * y0 * self.source.thumbnail_res[1]
+            ra_offset = sign_flip * x0 * self.source.thumbnail_res[0]
+            if not self.reprojected:
+                ra_offset *= math.cos(self.source.dec.to(u.rad).value)
+            if ra_offset > 180.0 * u.deg:
+                ra_offset -= 360.0 * u.deg
+            elif ra_offset < -180.0 * u.deg:
+                ra_offset += 360.0 * u.deg
+
+            ra_err = (
+                x0_err * abs(self.source.thumbnail_res[0])
+                if x0_err is not None
+                else None
+            )
+            dec_err = (
+                y0_err * abs(self.source.thumbnail_res[1])
+                if y0_err is not None
+                else None
+            )
+
+        fwhm_x = 2.355 * sigma_x * abs(self.source.thumbnail_res[0])
+        fwhm_y = 2.355 * sigma_y * abs(self.source.thumbnail_res[1])
+        fwhm_x_err = (
+            2.355 * sigma_x_err * abs(self.source.thumbnail_res[0])
+            if sigma_x_err is not None
+            else None
+        )
+        fwhm_y_err = (
+            2.355 * sigma_y_err * abs(self.source.thumbnail_res[1])
+            if sigma_y_err is not None
+            else None
+        )
+
+        amplitude = AstroPydanticQuantity(
+            amplitude + offset, self.source.thumbnail_unit
+        )
+        amplitude_err = (
+            AstroPydanticQuantity(
+                np.sqrt(amplitude_err**2 + offset_err**2), self.source.thumbnail_unit
+            )
+            if (amplitude_err is not None and offset_err is not None)
+            else None
+        )
+
+        self.fit_params = GaussianFitParameters(
+            amplitude=amplitude,
+            amplitude_err=amplitude_err,
+            ra_offset=ra_offset,
+            ra_err=ra_err,
+            dec_offset=dec_offset,
+            dec_err=dec_err,
+            fwhm_ra=fwhm_x,
+            fwhm_dec=fwhm_y,
+            fwhm_ra_err=fwhm_x_err,
+            fwhm_dec_err=fwhm_y_err,
+            theta=theta * u.rad,
+            theta_err=theta_err * u.rad if theta_err is not None else None,
+            forced_center=self.force_center,
+            chisquared=chisquared,
+            reduced_chisquared=reduced_chisquared,
+            goodness_of_fit=goodness_of_fit,
+        )
+        return self.fit_params
+
+
 def scipy_2d_gaussian_fit(
     input_map: ProcessableMap,
     source_list: list[RegisteredSource],
@@ -527,6 +785,203 @@ def scipy_2d_gaussian_fit(
         if debug:
             log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 
+        forced_source.fit_failed = fit.failed
+        forced_source.fit_failure_reason = fit.failure_reason
+        forced_source.flux = fit.amplitude
+        forced_source.err_flux = fit.amplitude_err
+        forced_source.snr = (
+            (fit.amplitude / fit.amplitude_err).value
+            if (fit.amplitude_err is not None) and (fit.amplitude is not None)
+            else None
+        )
+
+        forced_source.offset_ra = fit.ra_offset
+        forced_source.offset_dec = fit.dec_offset
+        forced_source.fwhm_ra = fit.fwhm_ra
+        forced_source.fwhm_dec = fit.fwhm_dec
+        forced_source.err_fwhm_ra = fit.fwhm_ra_err
+        forced_source.err_fwhm_dec = fit.fwhm_dec_err
+        forced_source.fit_params = fit.model_dump()
+        fit_sources.append(forced_source)
+
+    n_successful = 0
+    for s in fit_sources:
+        if not s.fit_failed:
+            n_successful += 1
+    log.info(f"{preamble}fits_complete", n_sources=len(fit_sources), n_fit=n_successful)
+    return fit_sources
+
+
+def lmfit_2d_gaussian_fit(
+    input_map: ProcessableMap,
+    source_list: list[RegisteredSource],
+    flux_lim_fit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
+    thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
+    fwhm: u.Quantity | None = None,
+    reproject_thumb: bool = False,
+    pointing_residuals: MapPointingOffset | None = None,
+    allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+    flags: dict = {},
+    log: FilteringBoundLogger | None = None,
+    debug: bool = False,
+) -> list[MeasuredSource]:
+    """
+    Fit 2D Gaussian models to a list of registered sources on a map using lmfit.
+    """
+    log = log or get_logger()
+    log = log.bind(func_name="lmfit_2d_gaussian_fit")
+    preamble = "sources.fitting.lmfit_2d_gaussian_fit."
+    fit_method = "2d_gaussian_lmfit"
+    fit_sources = []
+    for i in tqdm(
+        range(len(source_list)),
+        desc="Cutting thumbnails and fitting sources w 2D Gaussian (lmfit)",
+    ):
+        source = source_list[i]
+
+        source_flags = []
+        for flag in flags:
+            if flags[flag][i]:
+                source_flags.append(flag)
+
+        source_pos = SkyCoord(ra=source.ra, dec=source.dec)
+        source_pos = (
+            pointing_residuals.apply_offset_at_position(source_pos)
+            if pointing_residuals
+            else source_pos
+        )
+
+        source.ra = source_pos.ra
+        source.dec = source_pos.dec
+
+        source_name = source.source_id
+        map_res = input_map.map_resolution
+        size_pix = thumbnail_half_width / map_res
+        pix = input_map.flux.sky2pix(
+            [source.dec.to(u.rad).value, source.ra.to(u.rad).value]
+        )
+
+        fit = GaussianFitParameters()
+        fit.failed = True
+
+        if (
+            pix[0] + size_pix > input_map.flux.shape[0]
+            or pix[1] + size_pix > input_map.flux.shape[1]
+            or pix[0] - size_pix < 0
+            or pix[1] - size_pix < 0
+        ):
+            log.warning(
+                f"{preamble}source_outside_map_bounds_after_pointing_correction",
+                source=source_name,
+            )
+            forced_source = MeasuredSource(
+                ra=source.ra,
+                dec=source.dec,
+                flux=source.flux,
+                source_id=source.source_id,
+                source_type=source.source_type,
+                instrument=input_map.instrument,
+                array=input_map.array,
+                frequency=get_frequency(input_map.frequency),
+                flags=source_flags,
+                crossmatches=[
+                    CrossMatch(
+                        ra=source.ra,
+                        dec=source.dec,
+                        observation_time=None,
+                        source_id=source.source_id,
+                        source_type=source.source_type,
+                        probability=1.0,
+                        catalog_name=source.catalog_name,
+                        flux=source.flux,
+                        angular_separation=None,
+                    )
+                ],
+            )
+            forced_source.fit_method = fit_method
+            forced_source.fit_failed = True
+            fit.failure_reason = "source_outside_map_bounds"
+            forced_source.fit_failure_reason = "source_outside_map_bounds"
+            log.warning(
+                f"{preamble}source_outside_map_bounds",
+                source=source_name,
+                thumb_size_pix=size_pix.value,
+            )
+            forced_source.fit_params = fit.model_dump()
+            fit_sources.append(forced_source)
+            continue
+
+        t_start, t_mean, t_end = input_map.get_pixel_times(pix)
+        forced_source = MeasuredSource(
+            ra=source.ra,
+            dec=source.dec,
+            flux=source.flux,
+            source_id=source.source_id,
+            source_type=source.source_type,
+            observation_start_time=t_start,
+            observation_mean_time=t_mean,
+            observation_end_time=t_end,
+            instrument=input_map.instrument,
+            array=input_map.array,
+            frequency=get_frequency(input_map.frequency),
+            flags=source_flags,
+            crossmatches=[
+                CrossMatch(
+                    ra=source.ra,
+                    dec=source.dec,
+                    observation_time=t_mean,
+                    source_id=source.source_id,
+                    source_type=source.source_type,
+                    probability=1.0,
+                    flux=source.flux,
+                    catalog_name=source.catalog_name,
+                    angular_separation=None,
+                )
+            ],
+        )
+
+        try:
+            forced_source.extract_thumbnail(
+                input_map,
+                thumb_width=thumbnail_half_width,
+                reproject_thumb=reproject_thumb,
+            )
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                f"{preamble}extract_thumbnail_failed", source=source_name, error=e
+            )
+            forced_source.fit_failed = True
+            forced_source.fit_failure_reason = "extract_thumbnail_failed"
+            fit_sources.append(forced_source)
+            continue
+
+        if np.any(np.isnan(forced_source.thumbnail)):
+            log.warning(f"{preamble}flux_thumb_has_nan", source=source_name)
+            forced_source.fit_failed = True
+            forced_source.fit_failure_reason = "flux_thumb_has_nan"
+            fit_sources.append(forced_source)
+            continue
+
+        fitter = LmfitGaussian2DFitter(
+            forced_source,
+            reprojected=reproject_thumb,
+            fwhm_guess=fwhm
+            if fwhm is not None
+            else get_fwhm(freq=input_map.frequency, arr=input_map.array),
+            force_center=forced_source.flux < flux_lim_fit_centroid
+            if forced_source.flux is not None
+            else False,
+            allowable_center_offset=allowable_center_offset,
+            debug=debug,
+            log=log,
+        )
+
+        fitter.initialize_model()
+        fit = fitter.fit()
+        if debug:
+            log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
+
+        forced_source.fit_method = fit_method
         forced_source.fit_failed = fit.failed
         forced_source.fit_failure_reason = fit.failure_reason
         forced_source.flux = fit.amplitude
