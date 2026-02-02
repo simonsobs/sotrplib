@@ -49,7 +49,7 @@ def test_gaussian_source_type():
 def test_powerlaw_source_type():
     position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
     flux = u.Quantity(1.0, "Jy")
-    time = datetime.datetime.now()
+    peak_time = datetime.datetime.now()
     alpha_rise = 1.5
     alpha_decay = -1.2
     smoothness = 1.0
@@ -57,7 +57,7 @@ def test_powerlaw_source_type():
 
     source = sim_sources.PowerLawTransientSimulatedSource(
         position=position,
-        peak_time=time,
+        peak_time=peak_time,
         peak_amplitude=flux,
         alpha_rise=alpha_rise,
         alpha_decay=alpha_decay,
@@ -66,19 +66,20 @@ def test_powerlaw_source_type():
     )
 
     # Peak flux as described - allow tolerance for numerical precision
-    assert u.isclose(source.flux(time=time), flux, rtol=0.001)
+    assert u.isclose(source.flux(time=peak_time), flux, rtol=0.001)
 
     # Use longer time offsets (multiples of t_ref) to clearly be in rise/decay regimes
     # Flux well before peak should be less (deep in rising phase)
-    assert source.flux(time=time - datetime.timedelta(days=2)) < source.flux(time=time)
+    assert source.flux(time=peak_time - 2 * t_ref) < source.flux(time=peak_time)
 
     # Flux well after peak should be less (deep in decaying phase)
-    assert source.flux(time=time + datetime.timedelta(days=2)) < source.flux(time=time)
+    assert source.flux(time=peak_time + 2 * t_ref) < source.flux(time=peak_time)
 
     # Verify the peak is actually near the maximum by sampling around it
-    sample_times = [time + datetime.timedelta(hours=h) for h in range(-24, 25, 6)]
+    sample_times = [peak_time + datetime.timedelta(hours=h) for h in range(-24, 25, 6)]
     fluxes = [source.flux(t) for t in sample_times]
-    peak_flux = source.flux(time)
+    peak_flux = source.flux(peak_time)
+
     # Peak should be within top few samples (allowing for numerical precision)
     assert peak_flux >= sorted(fluxes, reverse=True)[2]  # At least 3rd highest
 
@@ -88,9 +89,9 @@ def test_powerlaw_source_type():
     )
 
     # Position should be constant
-    assert source.position(time=time) == position
-    assert source.position(time=time - datetime.timedelta(days=1)) == position
-    assert source.position(time=time + datetime.timedelta(days=1)) == position
+    assert source.position(time=peak_time) == position
+    assert source.position(time=peak_time - t_ref) == position
+    assert source.position(time=peak_time + t_ref) == position
 
 
 def test_fixed_source_generation():
