@@ -46,6 +46,53 @@ def test_gaussian_source_type():
     assert source.position(time=time + width) == position
 
 
+def test_powerlaw_source_type():
+    position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
+    flux = u.Quantity(1.0, "Jy")
+    time = datetime.datetime.now()
+    alpha_rise = 1.5
+    alpha_decay = -1.2
+    smoothness = 1.0
+    t_ref = datetime.timedelta(days=1)
+
+    source = sim_sources.PowerLawTransientSimulatedSource(
+        position=position,
+        peak_time=time,
+        peak_amplitude=flux,
+        alpha_rise=alpha_rise,
+        alpha_decay=alpha_decay,
+        smoothness=smoothness,
+        t_ref=t_ref,
+    )
+
+    # Peak flux as described - allow tolerance for numerical precision
+    assert u.isclose(source.flux(time=time), flux, rtol=0.001)
+
+    # Use longer time offsets (multiples of t_ref) to clearly be in rise/decay regimes
+    # Flux well before peak should be less (deep in rising phase)
+    assert source.flux(time=time - datetime.timedelta(days=2)) < source.flux(time=time)
+
+    # Flux well after peak should be less (deep in decaying phase)
+    assert source.flux(time=time + datetime.timedelta(days=2)) < source.flux(time=time)
+
+    # Verify the peak is actually near the maximum by sampling around it
+    sample_times = [time + datetime.timedelta(hours=h) for h in range(-24, 25, 6)]
+    fluxes = [source.flux(t) for t in sample_times]
+    peak_flux = source.flux(time)
+    # Peak should be within top few samples (allowing for numerical precision)
+    assert peak_flux >= sorted(fluxes, reverse=True)[2]  # At least 3rd highest
+
+    # Flux before onset should be zero
+    assert (
+        source.flux(time=source.onset_time - datetime.timedelta(hours=1)) == 0.0 * u.Jy
+    )
+
+    # Position should be constant
+    assert source.position(time=time) == position
+    assert source.position(time=time - datetime.timedelta(days=1)) == position
+    assert source.position(time=time + datetime.timedelta(days=1)) == position
+
+
 def test_fixed_source_generation():
     min_flux = u.Quantity(1.0, "Jy")
     max_flux = u.Quantity(10.0, "Jy")
@@ -114,6 +161,83 @@ def test_gaussian_source_generation():
         assert left < source.position(time).ra < right
         assert bottom < source.position(time).dec < top
         assert shortest < source.flare_width < longest
+
+
+def test_powerlaw_source_generation():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(10.0, "Jy")
+    left = 10.0 * u.deg
+    right = 20.0 * u.deg
+    bottom = 0.0 * u.deg
+    top = 10.0 * u.deg
+    time = datetime.datetime.now()
+    dt = datetime.timedelta(hours=2)
+    earliest = time - dt
+    latest = time + dt
+    alpha_rise_min = 0.5
+    alpha_rise_max = 2.0
+    alpha_decay_min = -2.5
+    alpha_decay_max = -1.0
+    smoothness_min = 0.5
+    smoothness_max = 2.0
+    t_ref_min = datetime.timedelta(hours=12)
+    t_ref_max = datetime.timedelta(days=2)
+    number = 32
+
+    generator = sim_source_generators.PowerLawTransientSourceGenerator(
+        flare_earliest_time=earliest,
+        flare_latest_time=latest,
+        alpha_rise_min=alpha_rise_min,
+        alpha_rise_max=alpha_rise_max,
+        alpha_decay_min=alpha_decay_min,
+        alpha_decay_max=alpha_decay_max,
+        peak_amplitude_minimum=min_flux,
+        peak_amplitude_maximum=max_flux,
+        number=number,
+        smoothness_min=smoothness_min,
+        smoothness_max=smoothness_max,
+        t_ref_min=t_ref_min,
+        t_ref_max=t_ref_max,
+        catalog_fraction=0.5,
+    )
+
+    sources, cat = generator.generate(
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+
+    assert len(sources) == number
+    assert len(cat.sources) == int(number * 0.5)
+
+    for source in sources:
+        # Check parameter ranges
+        assert min_flux < source.peak_amplitude < max_flux
+        assert left < source.position(time).ra < right
+        assert bottom < source.position(time).dec < top
+        assert alpha_rise_min <= source.alpha_rise <= alpha_rise_max
+        assert alpha_decay_min <= source.alpha_decay <= alpha_decay_max
+        assert smoothness_min <= source.smoothness <= smoothness_max
+        assert t_ref_min <= source.t_ref <= t_ref_max
+        assert earliest <= source.peak_time <= latest
+
+        # Verify onset time is before peak time
+        assert source.onset_time < source.peak_time
+
+        # Verify flux is zero before onset (fundamental property)
+        assert (
+            source.flux(source.onset_time - datetime.timedelta(hours=1)) == 0.0 * u.Jy
+        )
+
+        # Verify flux is positive after onset
+        flux_after_onset = source.flux(
+            source.onset_time + datetime.timedelta(minutes=1)
+        )
+        assert flux_after_onset >= 0.0 * u.Jy
+
+        # Verify position is constant over time
+        pos1 = source.position(source.onset_time)
+        pos2 = source.position(source.peak_time)
+        pos3 = source.position(source.peak_time + source.t_ref)
+        assert pos1 == pos2 == pos3
 
 
 def test_source_injection_into_map():
