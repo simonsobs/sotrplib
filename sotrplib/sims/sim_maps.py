@@ -22,11 +22,12 @@ def make_enmap(
     width_dec: AstroPydanticQuantity[u.deg] = 1.0 * u.deg,
     resolution: AstroPydanticQuantity[u.arcmin] = 0.5 * u.arcmin,
     map_noise: AstroPydanticQuantity[u.Jy] = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """ """
     from pixell.enmap import geometry, zeros
 
+    log = log if log else get_logger()
     log = log.bind(func_name="make_enmap")
     if (width_ra <= 0 * u.deg) or (width_dec <= 0 * u.deg):
         log.error(
@@ -101,7 +102,7 @@ def make_noise_map(
     map_noise_Jy: AstroPydanticQuantity[u.Jy] = 0.01 * u.Jy,
     map_mean_Jy: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
     seed: int = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Create a noise map with the same shape and WCS as the input map.
@@ -119,6 +120,7 @@ def make_noise_map(
 
     from ..maps.maps import edge_map
 
+    log = log if log else get_logger()
     shape = imap.shape
     wcs = imap.wcs
     noise_map = enmap.zeros(shape, wcs=wcs)
@@ -409,7 +411,7 @@ def inject_random_sources(
     sim_params: dict,
     fwhm_arcmin: u.Quantity[u.arcmin] = 2.2 * u.arcmin,
     add_noise: bool = False,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Inject sources into a map using photutils.
@@ -425,6 +427,7 @@ def inject_random_sources(
     - add_noise: bool, if True, add sim_params['maps']['map_noise'] to the map.
         Assumes this is already injected since sim maps load this by default.
     """
+    log = log if log else get_logger()
     log = log.bind(func_name="inject_random_sources")
     if not sim_params:
         log.info("inject_random_sources.no_sim_params", sim_params=sim_params)
