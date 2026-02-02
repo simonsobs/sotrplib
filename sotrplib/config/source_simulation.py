@@ -10,6 +10,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.sims.sim_source_generators import (
     FixedSourceGenerator,
     GaussianTransientSourceGenerator,
+    PowerLawTransientSourceGenerator,
     SimulatedSourceGenerator,
     SOCatSourceGenerator,
 )
@@ -49,6 +50,10 @@ class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
 
     flare_width_shortest: timedelta
     flare_width_longest: timedelta
+    alpha_rise_min: float
+    alpha_rise_max: float
+    alpha_decay_min: float
+    alpha_decay_max: float
     peak_amplitude_minimum: AstroPydanticQuantity[u.Jy]
     peak_amplitude_maximum: AstroPydanticQuantity[u.Jy]
     number: int
@@ -99,8 +104,48 @@ class SOCatSourceGeneratorConfig(SourceSimulationConfig):
         )
 
 
+class PowerLawSourceGeneratorConfig(SourceSimulationConfig):
+    simulation_type: Literal["power_law"] = "power_law"
+    flare_earliest_time: AwareDatetime
+    flare_latest_time: AwareDatetime
+    peak_amplitude_minimum: AstroPydanticQuantity[u.Jy]
+    peak_amplitude_maximum: AstroPydanticQuantity[u.Jy]
+    alpha_rise_min: float = 1.0
+    alpha_rise_max: float = 3.0
+    alpha_decay_min: float = -3.0
+    alpha_decay_max: float = -1.0
+    number: int
+    smoothness_min: float = 1.0
+    smoothness_max: float = 1.0
+    t_ref_min: timedelta = timedelta(days=0.999)
+    t_ref_max: timedelta = timedelta(days=1.001)
+    catalog_fraction: float = 1.0
+
+    def to_simulator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> PowerLawTransientSourceGenerator:
+        return PowerLawTransientSourceGenerator(
+            flare_earliest_time=self.flare_earliest_time,
+            flare_latest_time=self.flare_latest_time,
+            peak_amplitude_minimum=self.peak_amplitude_minimum,
+            peak_amplitude_maximum=self.peak_amplitude_maximum,
+            alpha_rise_min=self.alpha_rise_min,
+            alpha_rise_max=self.alpha_rise_max,
+            alpha_decay_min=self.alpha_decay_min,
+            alpha_decay_max=self.alpha_decay_max,
+            number=self.number,
+            smoothness_min=self.smoothness_min,
+            smoothness_max=self.smoothness_max,
+            t_ref_min=self.t_ref_min,
+            t_ref_max=self.t_ref_max,
+            catalog_fraction=self.catalog_fraction,
+            log=log,
+        )
+
+
 AllSourceSimulationConfigTypes = (
     FixedSourceGeneratorConfig
     | GaussianTransientSourceGeneratorConfig
     | SOCatSourceGeneratorConfig
+    | PowerLawSourceGeneratorConfig
 )
