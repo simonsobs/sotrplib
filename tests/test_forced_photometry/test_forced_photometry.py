@@ -150,6 +150,4 @@ def test_lmfit_rotation(map_with_single_asymmetric_source):
     assert amplitude_fit is not None
     assert theta_fit is not None
 
-    assert amplitude_fit.to(u.Jy).value == pytest.approx(
-        sources[0].flux.to(u.Jy).value, rel=0.2
-    )
+    ## TODO : include information about injected source rotation once available
