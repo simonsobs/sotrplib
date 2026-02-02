@@ -7,6 +7,7 @@ from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pydantic import AwareDatetime
+from structlog.types import FilteringBoundLogger
 
 
 class SimulatedSource(ABC):
@@ -91,7 +92,7 @@ def generate_transients(
     flare_morphs: list = None,
     beam_params: list = None,
     uniform_on_sky=False,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Generate a list of simulated transient sources.
@@ -192,15 +193,22 @@ def generate_transients(
     ):
         raise ValueError("All input lists must be of the same length.")
 
-    # for i in range(len(positions)):
-    # transient = SimTransient(
-    #     position=(positions[i][0], positions[i][1]),
-    #     peak_amplitude=peak_amplitudes[i],
-    #     peak_time=peak_times[i],
-    #     flare_width=flare_widths[i],
-    #     flare_morph=flare_morphs[i],
-    #     beam_params=beam_params[i],
-    # )
-    # transients.append(transient)
+    for i in range(len(positions)):
+        if flare_morphs[i] == "Gaussian":
+            transient = GaussianTransientSimulatedSource(
+                position=SkyCoord(ra=positions[i][1], dec=positions[i][0]),
+                peak_amplitude=peak_amplitudes[i],
+                peak_time=peak_times[i],
+                flare_width=flare_widths[i],
+            )
+        elif flare_morphs[i] == "Fixed":
+            transient = FixedSimulatedSource(
+                position=SkyCoord(ra=positions[i][1], dec=positions[i][0]),
+                flux=peak_amplitudes[i],
+            )
+        else:
+            raise ValueError(f"Unsupported flare morphology: {flare_morphs[i]}")
 
-    # return transients
+        transients.append(transient)
+
+    return transients
