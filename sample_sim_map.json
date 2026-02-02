@@ -2,18 +2,18 @@
     "maps": [
         {
             "map_type": "simulated",
-            "observation_start": "2025-01-01",
-            "observation_end": "2025-01-02"
+            "observation_start": "2025-01-01T00:00:00Z",
+            "observation_end": "2025-01-02T00:00:00Z"
         },
         {
             "map_type": "simulated",
-            "observation_start": "2025-01-02",
-            "observation_end": "2025-01-03"
+            "observation_start": "2025-01-02T00:00:00Z",
+            "observation_end": "2025-01-03T00:00:00Z"
         },
         {
             "map_type": "simulated",
-            "observation_start": "2025-01-03",
-            "observation_end": "2025-01-04"
+            "observation_start": "2025-01-03T00:00:00Z",
+            "observation_end": "2025-01-04T00:00:00Z"
         }
     ],
     "source_simulators": [
@@ -22,8 +22,8 @@
             "number": 32,
             "peak_amplitude_minimum": "0.3 Jy",
             "peak_amplitude_maximum": "10.0 Jy",
-            "flare_earliest_time": "2025-01-01T00:00:00",
-            "flare_latest_time": "2025-01-03T00:00:00",
+            "flare_earliest_time": "2025-01-01T00:00:00Z",
+            "flare_latest_time": "2025-01-03T00:00:00Z",
             "flare_width_shortest": "P3D",
             "flare_width_longest": "P4D",
             "t_ref_min": "P0.5D",

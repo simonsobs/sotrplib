@@ -368,14 +368,23 @@ class PowerLawTransientSourceGenerator(SimulatedSourceGenerator):
         self.catalog_fraction = catalog_fraction
         self.log = log or get_logger()
 
-    def generate(self, box: tuple[SkyCoord] | None = None):
+    def generate(
+        self,
+        box: tuple[SkyCoord] | None = None,
+        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+    ):
         if box is None:
             box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
-        log = self.log.bind(box=box)
+        time_range = (
+            (self.flare_earliest_time, self.flare_latest_time)
+            if time_range is None
+            else time_range
+        )
+        log = self.log.bind(box=box, time_range=time_range, n=self.number)
         base = random.randint(0, 100000)
         log = log.bind(base_id=base)
 
