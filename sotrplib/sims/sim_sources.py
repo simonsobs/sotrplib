@@ -80,7 +80,7 @@ class PowerLawTransientSimulatedSource(SimulatedSource):
     def __init__(
         self,
         position: SkyCoord,
-        peak_time: datetime,
+        peak_time: AwareDatetime,
         peak_amplitude: u.Quantity,
         alpha_rise: float,
         alpha_decay: float,
@@ -128,10 +128,10 @@ class PowerLawTransientSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: datetime) -> SkyCoord:
+    def position(self, time: AwareDatetime) -> SkyCoord:
         return self._position
 
-    def flux(self, time: datetime) -> u.Quantity:
+    def flux(self, time: AwareDatetime) -> u.Quantity:
         # Return zero flux before onset time
         if time < self.onset_time:
             return 0.0 * self.peak_amplitude.unit
