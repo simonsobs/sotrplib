@@ -50,13 +50,15 @@ class SOCatWrapper:
                     # TBD read this from SOCat
                     frequency=90.0 * u.GHz,
                     catalog_name="mock",
-                    catalog_idx=socat_source.id,
+                    catalog_idx=socat_source.source_id,
                 )
             ],
         )
 
     def source_from_id(self, source_id) -> RegisteredSource:
-        return self._socat_source_to_registered(self.catalog.get_source(id=source_id))
+        return self._socat_source_to_registered(
+            self.catalog.get_source(source_id=source_id)
+        )
 
     def filter_source_list_to_within_map(
         self, mask_map: ProcessableMap, sources: list[RegisteredSource]

@@ -13,6 +13,7 @@ from astropy.coordinates import SkyCoord
 # be available just to import sotrplib).
 from mapcat.database import DepthOneMapTable, TimeDomainProcessingTable
 from mapcat.helper import settings as mapcat_settings
+from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -31,6 +32,9 @@ class MapCatDatabaseReader:
     frequency: str | None = None
     array: str | None = None
     number_to_read: int | None = 1
+    start_time: AwareDatetime | None = None
+    end_time: AwareDatetime | None = None
+    map_ids: list[int] | None = None
     box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
@@ -38,7 +42,10 @@ class MapCatDatabaseReader:
 
     def __init__(
         self,
-        number_to_read: int | None = 1,
+        number_to_read: int | None = None,
+        start_time: AwareDatetime | None = None,
+        end_time: AwareDatetime | None = None,
+        map_ids: list[int] | None = None,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
@@ -48,13 +55,15 @@ class MapCatDatabaseReader:
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
+        self.start_time = start_time
+        self.end_time = end_time
+        self.map_ids = map_ids or []
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
         self.intensity_units = intensity_units
         self.box = box
         self.rerun = rerun
-        self.map_ids = []
         self.log = log or get_logger()
 
     def map_list(self):
@@ -63,6 +72,7 @@ class MapCatDatabaseReader:
             db_url=mapcat_settings.database_name,
         )
         query = select(DepthOneMapTable)
+
         query = (
             query.where(DepthOneMapTable.frequency == self.frequency)
             if self.frequency
@@ -73,6 +83,18 @@ class MapCatDatabaseReader:
             if self.array
             else query
         )
+
+        if self.start_time is not None:
+            query = query.where(
+                DepthOneMapTable.stop_time >= self.start_time.timestamp()
+            )
+        if self.end_time is not None:
+            query = query.where(
+                DepthOneMapTable.start_time <= self.end_time.timestamp()
+            )
+
+        if self.map_ids:
+            query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
 
         ## Limit the number of maps to read
         ## but I now want to skip processed ones, so will do that below
