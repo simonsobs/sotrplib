@@ -171,6 +171,9 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     array: str | None = None
     instrument: str | None = None
     number_to_read: int | None = None  ## if None, all in database will be read
+    start_time: AwareDatetime | None = None
+    end_time: AwareDatetime | None = None
+    map_ids: list[int] | None = None
     box: list[AstroPydanticICRS] | None = None
     intensity_units: AstroPydanticUnit = u.Unit("K")
     rerun: bool = False
@@ -180,10 +183,13 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     ) -> Iterable[ProcessableMap]:
         return MapCatDatabaseReader(
             number_to_read=self.number_to_read,
+            start_time=self.start_time,
+            end_time=self.end_time,
             frequency=self.frequency,
             array=self.array,
             instrument=self.instrument,
             box=self.box,
+            map_ids=self.map_ids,
             intensity_units=self.intensity_units,
             rerun=self.rerun,
             log=log,
