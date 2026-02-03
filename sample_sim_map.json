@@ -1,21 +1,12 @@
 {
-    "maps": [
-        {
-            "map_type": "simulated",
-            "observation_start": "2025-01-01T00:00:00Z",
-            "observation_end": "2025-01-02T00:00:00Z"
-        },
-        {
-            "map_type": "simulated",
-            "observation_start": "2025-01-02T00:00:00Z",
-            "observation_end": "2025-01-03T00:00:00Z"
-        },
-        {
-            "map_type": "simulated",
-            "observation_start": "2025-01-03T00:00:00Z",
-            "observation_end": "2025-01-04T00:00:00Z"
-        }
-    ],
+    "maps": {
+        "map_generator_type": "sim_map_generator",
+        "observation_start": "2025-01-01T00:00:00Z",
+        "observation_end": "2025-01-20T00:00:00Z",
+        "observation_length": "P1D",
+        "frequency": "f090",
+        "array": "i6"
+    },
     "source_simulators": [
         {
             "simulation_type": "power_law",

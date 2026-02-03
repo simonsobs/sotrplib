@@ -3,12 +3,14 @@ Map configuration
 """
 
 from abc import ABC, abstractmethod
+from datetime import timedelta
 from pathlib import Path
 from typing import Iterable, Literal
 
 from astropy import units as u
 from astropydantic import AstroPydanticICRS, AstroPydanticQuantity, AstroPydanticUnit
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
@@ -165,6 +167,49 @@ class InverseVarianceMapConfig(MapConfig):
         )
 
 
+class SimulatedMapGeneratorConfig(MapGeneratorConfig):
+    map_generator_type: Literal["sim_map_generator"] = "sim_map_generator"
+    observation_start: AwareDatetime
+    observation_end: AwareDatetime
+    observation_length: timedelta | None = None
+    frequency: str = "f090"
+    array: str = "pa5"
+    simulation_parameters: SimulationParameters = Field(
+        default_factory=SimulationParameters
+    )
+    number_of_maps: int = 1
+
+    def to_generator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Iterable[ProcessableMap]:
+        if self.observation_length is not None:
+            total_duration = self.observation_end - self.observation_start
+            num_segments = total_duration // self.observation_length
+            self.number_of_maps = num_segments
+        dt = (self.observation_end - self.observation_start) / self.number_of_maps
+        out_maps = []
+        log = log or get_logger()
+        log.info(
+            f"Generating {self.number_of_maps} simulated maps",
+            observation_start=self.observation_start,
+            observation_end=self.observation_end,
+            observation_length=self.observation_length,
+            time_interval=dt,
+        )
+        for i in range(self.number_of_maps):
+            out_maps.append(
+                SimulatedMap(
+                    observation_start=self.observation_start + i * dt,
+                    observation_end=self.observation_start + (i + 1) * dt,
+                    frequency=self.frequency,
+                    array=self.array,
+                    simulation_parameters=self.simulation_parameters,
+                    log=log,
+                )
+            )
+        return out_maps
+
+
 class MapCatDatabaseConfig(MapGeneratorConfig):
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
     frequency: str | None = None
@@ -203,4 +248,6 @@ AllMapConfigTypes = (
     | InverseVarianceMapConfig
 )
 
-AllMapGeneratorConfigTypes = MapCatDatabaseConfig | list[AllMapConfigTypes]
+AllMapGeneratorConfigTypes = (
+    MapCatDatabaseConfig | SimulatedMapGeneratorConfig | list[AllMapConfigTypes]
+)

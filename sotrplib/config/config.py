@@ -119,7 +119,6 @@ class Settings(BaseSettings):
             wrapper_class=structlog.make_filtering_bound_logger(self.log_level),
         )
         log = structlog.get_logger()
-
         contents = {
             "maps": self.maps.to_generator(log=log)
             if not isinstance(self.maps, list)
