@@ -403,7 +403,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                 dec=source.position.dec,
                 frequency=90.0 * u.GHz,
                 flux=source.flux if source.flux is not None else u.Quantity(0.0, "Jy"),
-                source_id=str(source.id),
+                source_id=str(source.source_id),
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
@@ -412,7 +412,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                     CrossMatch(
                         ra=source.position.ra,
                         dec=source.position.dec,
-                        source_id=str(source.id),
+                        source_id=str(source.source_id),
                         catalog_name="socat",
                         alternate_names=[source.name] if source.name else [],
                     )
