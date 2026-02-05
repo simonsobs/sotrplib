@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     profile: bool = False
     "Enable pyinstrument profiling"
 
-    log_level: int | str = logging.INFO
+    log_level: int | str = logging.DEBUG
 
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(env_prefix="sotrp_", extra="ignore")
