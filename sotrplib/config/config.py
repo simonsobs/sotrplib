@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     profile: bool = False
     "Enable pyinstrument profiling"
 
-    loglevel: int | str = logging.INFO
+    log_level: int | str = logging.INFO
 
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(env_prefix="sotrp_", extra="ignore")
@@ -116,7 +116,7 @@ class Settings(BaseSettings):
 
     def to_dependencies(self) -> dict[str, Any]:
         structlog.configure(
-            wrapper_class=structlog.make_filtering_bound_logger(self.loglevel),
+            wrapper_class=structlog.make_filtering_bound_logger(self.log_level),
         )
         log = structlog.get_logger()
 
