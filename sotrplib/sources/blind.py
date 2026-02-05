@@ -41,10 +41,14 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         log: FilteringBoundLogger | None = None,
         parameters: BlindSearchParameters | None = None,
         pixel_mask: enmap.ndmap | None = None,
+        thumbnail_half_width: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(
+            u.Quantity(0.1, "deg")
+        ),
     ):
         self.log = log or get_logger()
         self.parameters = parameters if parameters else BlindSearchParameters()
         self.pixel_mask = pixel_mask
+        self.thumbnail_half_width = thumbnail_half_width
         self.log.info("sigma_clip_blind_search.initialized", parameters=self.parameters)
 
     def search(
@@ -75,7 +79,10 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         )
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
-            source.extract_thumbnail(input_map, reproject_thumb=True)
+            ## set thumbnail radius to 0.1 deg by default, but for large fwhm do 5*fwhm (i.e. for SAT it will be ~1.5 deg)
+            source.extract_thumbnail(
+                input_map, thumb_width=self.thumbnail_half_width, reproject_thumb=True
+            )
             if pointing_residuals:
                 source_pos = pointing_residuals.apply_offset_at_position(
                     SkyCoord(ra=source.ra, dec=source.dec)

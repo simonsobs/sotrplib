@@ -283,6 +283,7 @@ def inject_sources(
     observation_time: float | enmap.ndmap,
     freq: str = "f090",
     arr: str = None,
+    instrument: str = None,
     debug: bool = False,
     log: FilteringBoundLogger | None = None,
 ):
@@ -327,7 +328,7 @@ def inject_sources(
         raise ValueError("Input map must be a ProcessableMap or enmap.ndmap object")
 
     mapres = abs(wcs.wcs.cdelt[0]) * u.deg
-    fwhm = get_fwhm(freq, arr=arr)
+    fwhm = get_fwhm(freq, arr=arr, instrument=instrument)
     fwhm_pixels = (fwhm / mapres).value
 
     log.info("inject_sources.injecting_sources", n_sources=len(sources))
@@ -496,7 +497,9 @@ def inject_simulated_sources(
     catalog_sources += inject_random_sources(
         mapdata,
         sim_params,
-        fwhm_arcmin=get_fwhm(mapdata.frequency, arr=mapdata.array),
+        fwhm_arcmin=get_fwhm(
+            mapdata.frequency, arr=mapdata.array, instrument=mapdata.instrument
+        ),
         add_noise=False,
         log=log,
     )

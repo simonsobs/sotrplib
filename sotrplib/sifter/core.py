@@ -153,8 +153,8 @@ class DefaultSifter(SiftingProvider):
         self.ra_jitter = ra_jitter
         self.dec_jitter = dec_jitter
         self.cuts = cuts or {
-            "fwhm_ra": [0.5 * u.arcmin, 5.0 * u.arcmin],
-            "fwhm_dec": [0.5 * u.arcmin, 5.0 * u.arcmin],
+            "fwhm_ra": [0.2, 5.0],
+            "fwhm_dec": [0.2, 5.0],
             "snr": [5.0, np.inf],
         }
         self.crossmatch_with_gaia = crossmatch_with_gaia

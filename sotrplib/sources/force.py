@@ -146,7 +146,11 @@ class Scipy2DGaussianFitter(ForcedPhotometryProvider):
         catalogs: list[SourceCatalog],
         pointing_residuals: MapPointingOffset | None = None,
     ) -> list[MeasuredSource]:
-        fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
+        fwhm = get_fwhm(
+            freq=input_map.frequency,
+            arr=input_map.array,
+            instrument=input_map.instrument,
+        )
         source_list = list(
             itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
@@ -253,7 +257,11 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
     def force(
         self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
     ) -> list[MeasuredSource]:
-        fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
+        fwhm = get_fwhm(
+            freq=input_map.frequency,
+            arr=input_map.array,
+            instrument=input_map.instrument,
+        )
         ## get all forced photometry sources from catalogs
         source_list = list(
             itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
