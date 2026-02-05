@@ -2,10 +2,17 @@
 Command-line interface for sotrplib.
 """
 
+import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
+import structlog
+
 from sotrplib.config.config import Settings
+
+structlog.configure(
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+)
 
 
 def parse_args() -> ArgumentParser:
