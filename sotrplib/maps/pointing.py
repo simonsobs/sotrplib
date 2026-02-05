@@ -449,13 +449,13 @@ def save_model_maps(
     decmap, ramap = enmap.pix2sky(input_map.flux.shape, input_map.flux.wcs, pixmap)
 
     ra_offset_map = pointing_model.ra_model(
-        (ramap.flatten() * u.rad).to_value(u.deg),
-        (decmap.flatten() * u.rad).to_value(u.deg),
+        (ramap.flatten() * u.rad),
+        (decmap.flatten() * u.rad),
         data=pointing_data,
     ).to_value(u.arcsec)
     dec_offset_map = pointing_model.dec_model(
-        (ramap.flatten() * u.rad).to_value(u.deg),
-        (decmap.flatten() * u.rad).to_value(u.deg),
+        (ramap.flatten() * u.rad),
+        (decmap.flatten() * u.rad),
         data=pointing_data,
     ).to_value(u.arcsec)
 
