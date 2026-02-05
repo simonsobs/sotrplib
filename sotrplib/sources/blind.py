@@ -18,6 +18,7 @@ class EmptyBlindSearch(BlindSearchProvider):
         self,
         input_map: ProcessableMap,
         pointing_residuals: MapPointingOffset | None = None,
+        pointing_offset_data: PointingData | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         return [], []
 

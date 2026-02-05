@@ -188,7 +188,8 @@ class BaseRunner:
             pointing_sources=pointing_sources
         )
         self.profilable_task(save_model_maps)(
-            self.pointing_residual,
+            self.pointing_residual_model,
+            pointing_data,
             input_map,
             filename_prefix=f"pointing_residual_{input_map.map_id}",
         )

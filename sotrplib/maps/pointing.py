@@ -47,7 +47,9 @@ class MapPointingOffset(ABC):
         """Calculate the pointing offset based on the provided sources."""
         pass
 
-    def apply_offset_at_position(self, pos: SkyCoord, data: PointingData | None) -> SkyCoord:
+    def apply_offset_at_position(
+        self, pos: SkyCoord, data: PointingData | None
+    ) -> SkyCoord:
         """
         Apply inverse offsets to one or more SkyCoord positions.
 
@@ -62,8 +64,8 @@ class MapPointingOffset(ABC):
             New coordinates with the offsets removed.
         """
         ## returns an array of offsets, but only apply to single position.
-        dra = self.ra_model(pos.ra, pos.dec, data)[0]
-        ddec = self.dec_model(pos.ra, pos.dec, data)[0]
+        dra = self.ra_model(pos.ra, pos.dec, data)
+        ddec = self.dec_model(pos.ra, pos.dec, data)
 
         ## if offset > 5arcmin , warn and skip.
         if abs(dra) > 5 * u.arcmin or abs(ddec) > 5 * u.arcmin:
@@ -83,7 +85,9 @@ class MapPointingOffset(ABC):
         )
 
     @abstractmethod
-    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None) -> u.Quantity:
+    def ra_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None
+    ) -> u.Quantity:
         """
         Model function to compute RA offsets at given positions.
 
@@ -102,7 +106,9 @@ class MapPointingOffset(ABC):
         return
 
     @abstractmethod
-    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None) -> u.Quantity:
+    def dec_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None
+    ) -> u.Quantity:
         """
         Model function to compute dec offsets at given positions.
 
@@ -126,11 +132,15 @@ class EmptyPointingOffset(MapPointingOffset):
         # no need for a deepcopy as apply offset is a noop
         pass
 
-    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: None = None) -> u.Quantity:
-        return np.zeros_like(dec) * u.deg
+    def dec_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: None = None
+    ) -> u.Quantity:
+        return 0.0 * u.deg
 
-    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: None = None) -> u.Quantity:
-        return np.zeros_like(ra) * u.deg
+    def ra_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: None = None
+    ) -> u.Quantity:
+        return 0.0 * u.deg
 
 
 class ConstantPointingOffset(MapPointingOffset):
@@ -172,9 +182,7 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(snr) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_sources")
-            return ConstantPointingData(
-                ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg
-            )
+            return ConstantPointingData(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
 
         ra_offsets = [
             src.offset_ra
@@ -192,9 +200,7 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(ra_offsets) == 0 or len(dec_offsets) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_offsets")
-            return ConstantPointingData(
-                ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg
-            )
+            return ConstantPointingData(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
 
         # Compute median offsets where snr>min_snr
         ra_off_list = u.Quantity(
@@ -210,9 +216,7 @@ class ConstantPointingOffset(MapPointingOffset):
                 "pointing.ConstantPointingOffset.not_enough_sources_above_snr",
                 n_valid_sources=len(ra_off_list),
             )
-            return ConstantPointingData(
-                ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg
-            )
+            return ConstantPointingData(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
 
         mean_ra, median_ra, std_ra = sigma_clipped_stats(
             ra_off_list,
@@ -238,11 +242,15 @@ class ConstantPointingOffset(MapPointingOffset):
 
         return ConstantPointingData(ra_offset=ra_offset, dec_offset=dec_offset)
 
-    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData) -> u.Quantity:
-        return ra - data.ra_offset
+    def ra_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData
+    ) -> u.Quantity:
+        return data.ra_offset
 
-    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData) -> u.Quantity:
-        return dec - data.dec_offset
+    def dec_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData
+    ) -> u.Quantity:
+        return data.dec_offset
 
 
 class PolynomialPointingOffset(MapPointingOffset):
@@ -366,19 +374,27 @@ class PolynomialPointingOffset(MapPointingOffset):
             coeffs_dec=coeffs_dec,
         )
 
-    def model_fn(self, ra: u.Quantity, dec: u.Quantity, coeffs: np.ndarray) -> u.Quantity:
+    def model_fn(
+        self, ra: u.Quantity, dec: u.Quantity, coeffs: np.ndarray
+    ) -> u.Quantity:
         ra = np.atleast_1d(ra.to_value(u.deg))
         dec = np.atleast_1d(dec.to_value(u.deg))
         T = self._poly_terms(ra, dec)
         return (T @ coeffs) * u.deg
 
-    def ra_model(self, ra: u.Quantity, dec: u.Quantity, data: PolynomialPointingData) -> u.Quantity:
+    def ra_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: PolynomialPointingData
+    ) -> u.Quantity:
         return self.model_fn(ra, dec, data.coeffs_ra)
 
-    def dec_model(self, ra: u.Quantity, dec: u.Quantity, data: PolynomialPointingData) -> u.Quantity:
+    def dec_model(
+        self, ra: u.Quantity, dec: u.Quantity, data: PolynomialPointingData
+    ) -> u.Quantity:
         return self.model_fn(ra, dec, data.coeffs_dec)
 
-    def apply_offset_at_position(self, pos: SkyCoord, data: PolynomialPointingData) -> SkyCoord:
+    def apply_offset_at_position(
+        self, pos: SkyCoord, data: PolynomialPointingData
+    ) -> SkyCoord:
         ## returns an array of offsets, but only apply to single position.
         dra = self.ra_model(pos.ra, pos.dec, data)[0]
         ddec = self.dec_model(pos.ra, pos.dec, data)[0]
