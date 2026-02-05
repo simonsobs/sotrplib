@@ -179,8 +179,7 @@ def sift(
     map_freq: str | None = None,
     arr: str | None = None,
     cuts: dict = {
-        "fwhm_ra": [0.2, 5.0],
-        "fwhm_dec": [0.2, 5.0],
+        "fwhm": [0.2, 5.0],
         "snr": [5.0, np.inf],
     },
     crossmatch_with_gaia: bool = True,
@@ -236,10 +235,9 @@ def sift(
         map_freq, arr=arr, instrument=input_map.instrument if input_map else None
     )
     ## apply cuts in units of fwhm
-    if "fwhm_ra" in cuts:
-        cuts["fwhm_ra"] = [cuts["fwhm_ra"][0] * fwhm, cuts["fwhm_ra"][1] * fwhm]
-    if "fwhm_dec" in cuts:
-        cuts["fwhm_dec"] = [cuts["fwhm_dec"][0] * fwhm, cuts["fwhm_dec"][1] * fwhm]
+    if "fwhm" in cuts:
+        cuts["fwhm_ra"] = [cuts["fwhm"][0] * fwhm, cuts["fwhm"][1] * fwhm]
+        cuts["fwhm_dec"] = [cuts["fwhm"][0] * fwhm, cuts["fwhm"][1] * fwhm]
 
     ## log the parameters
     log.info(
@@ -430,7 +428,12 @@ def sift(
     return source_candidates, transient_candidates, noise_candidates
 
 
-def get_cut_decision(candidate: MeasuredSource, cuts: dict = {}, debug=False) -> bool:
+def get_cut_decision(
+    candidate: MeasuredSource,
+    cuts: dict = {},
+    debug: bool = False,
+    log: FilteringBoundLogger | None = None,
+) -> bool:
     """
     cuts contains dictionary with key values describing the cuts.
 
@@ -439,7 +442,7 @@ def get_cut_decision(candidate: MeasuredSource, cuts: dict = {}, debug=False) ->
     each cut key has [min,max] value on which to make cuts.
 
     for example,
-    if i want a source iwth measured fwhm >0.5 arcmin and less than 5 arcmin
+    if i want a source iwth measured fwhm >0.5  and less than 5 times nominal fwhm,
     cuts={'fwhm':[0.5,5.0]}
     cut = (candidate['fwhm']<cuts['fwhm'][0]) | (candidate['fwhm']>cuts['fwhm'][1])
 
@@ -448,14 +451,22 @@ def get_cut_decision(candidate: MeasuredSource, cuts: dict = {}, debug=False) ->
     True : cut source
     False : within ranges
     """
+    log = log if log else get_logger()
+    log = log.bind(func_name="get_cut_decision")
     cut = False
     for c in cuts.keys():
-        val = getattr(candidate, c)
+        val = getattr(candidate, c, None)
+        if val is None:
+            log.debug("get_cut_decision.missing_value", cut_name=c)
+            continue
         cut |= (val < cuts[c][0]) | (val > cuts[c][1])
         if debug and (val < cuts[c][0]) | (val > cuts[c][1]):
-            print(
-                "cut %s: %.2f < %.2f or %.2f > %.2f"
-                % (c, val, cuts[c][0], val, cuts[c][1])
+            log.debug(
+                "get_cut_decision.cut_made",
+                measured_value=val,
+                cut_name=c,
+                cut_min=cuts[c][0],
+                cut_max=cuts[c][1],
             )
     return cut
 
