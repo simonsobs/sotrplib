@@ -392,6 +392,13 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             sel=0 if len(intensity_shape) > 2 else None,
             box=enmap_box,
         )
+        if np.all(self.intensity == 0) or np.all(np.isnan(self.intensity)):
+            log.error(
+                "All intensity map values are zero or NaN, check your input map and box parameters."
+            )
+            raise ValueError(
+                "All intensity map values are zero or NaN, check your input map and box parameters."
+            )
         log.debug("intensity_ivar.intensity.read")
 
         # TODO: Set metadata from header e.g. frequency band.
