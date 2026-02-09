@@ -671,7 +671,7 @@ class RhoAndKappaMap(ProcessableMap):
         if self.box is not None:
             return self.box
 
-        shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
+        shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
         ebox = enmap.box(shape, wcs)
         bottom_left = SkyCoord(ebox[0][1] * u.rad, ebox[0][0] * u.rad)
         top_right = SkyCoord(ebox[1][1] * u.rad, ebox[1][0] * u.rad)
