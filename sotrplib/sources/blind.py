@@ -11,6 +11,7 @@ from sotrplib.maps.pointing import MapPointingOffset
 from sotrplib.sources.core import BlindSearchProvider
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.sources import MeasuredSource
+from sotrplib.utils.utils import get_fwhm
 
 
 class EmptyBlindSearch(BlindSearchProvider):
@@ -41,9 +42,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         log: FilteringBoundLogger | None = None,
         parameters: BlindSearchParameters | None = None,
         pixel_mask: enmap.ndmap | None = None,
-        thumbnail_half_width: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(
-            u.Quantity(0.1, "deg")
-        ),
+        thumbnail_half_width: AstroPydanticQuantity[u.deg] | None = None,
     ):
         self.log = log or get_logger()
         self.parameters = parameters if parameters else BlindSearchParameters()
@@ -77,6 +76,14 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             pixel_mask=self.pixel_mask,
             log=self.log,
         )
+
+        if self.thumbnail_half_width is None:
+            self.thumbnail_half_width = 5 * get_fwhm(
+                arr=input_map.array,
+                freq=input_map.frequency,
+                instrument=input_map.instrument,
+            )
+
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
             ## set thumbnail radius to 0.1 deg by default, but for large fwhm do 5*fwhm (i.e. for SAT it will be ~1.5 deg)
