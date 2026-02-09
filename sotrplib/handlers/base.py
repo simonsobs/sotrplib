@@ -126,16 +126,18 @@ class BaseRunner:
 
         # mapcat map list is not subscriptable so start with maximal bounding box
         bbox = [
-            SkyCoord(ra=359.999 * units.deg, dec=90.0 * units.deg),
-            SkyCoord(ra=0.0 * units.deg, dec=-90.0 * units.deg),
+            SkyCoord(ra=359.999 * units.deg, dec=89.9 * units.deg),
+            SkyCoord(ra=0.0 * units.deg, dec=-89.9 * units.deg),
         ]
         for input_map in self.maps:
             map_bbox = input_map.bbox
+
             left = min(bbox[0].ra, map_bbox[0].ra)
             bottom = min(bbox[0].dec, map_bbox[0].dec)
             right = max(bbox[1].ra, map_bbox[1].ra)
             top = max(bbox[1].dec, map_bbox[1].dec)
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+
         return bbox
 
     @property

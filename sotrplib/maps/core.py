@@ -222,15 +222,10 @@ class ProcessableMap(ABC):
             if (x := getattr(self, attribute, None)) is not None:
                 shape = x.shape[-2:]
                 wcs = x.wcs
-
-                bottom_left = wcs.array_index_to_world(0, 0)
-                top_right = wcs.array_index_to_world(shape[0], shape[1])
-
-                self.box = (
-                    bottom_left,
-                    top_right,
-                )
-
+                ebox = enmap.box(shape, wcs)
+                bottom_left = SkyCoord(ebox[0][1] * u.rad, ebox[0][0] * u.rad)
+                top_right = SkyCoord(ebox[1][1] * u.rad, ebox[1][0] * u.rad)
+                self.box = (bottom_left, top_right)
                 break
 
         return self.box
@@ -364,10 +359,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             return self.box
 
         shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
-
-        bottom_left = wcs.array_index_to_world(0, 0)
-        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
-
+        ebox = enmap.box(shape, wcs)
+        bottom_left = SkyCoord(ebox[0][1] * u.rad, ebox[0][0] * u.rad)
+        top_right = SkyCoord(ebox[1][1] * u.rad, ebox[1][0] * u.rad)
         self.box = (bottom_left, top_right)
         return self.box
 
@@ -677,11 +671,10 @@ class RhoAndKappaMap(ProcessableMap):
         if self.box is not None:
             return self.box
 
-        shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
-
-        bottom_left = wcs.array_index_to_world(0, 0)
-        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
-
+        shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
+        ebox = enmap.box(shape, wcs)
+        bottom_left = SkyCoord(ebox[0][1] * u.rad, ebox[0][0] * u.rad)
+        top_right = SkyCoord(ebox[1][1] * u.rad, ebox[1][0] * u.rad)
         self.box = (bottom_left, top_right)
         return self.box
 

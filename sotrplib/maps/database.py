@@ -115,6 +115,11 @@ class MapCatDatabaseReader:
                         map_id=result.map_id,
                     )
                     continue
+                self.log.info(
+                    "MapCatDatabaseReader.reading_map",
+                    map_id=result.map_id,
+                    map_path=result.map_path,
+                )
                 maps.append(
                     IntensityAndInverseVarianceMap(
                         intensity_filename=mapcat_settings.depth_one_parent
