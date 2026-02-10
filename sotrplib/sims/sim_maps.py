@@ -282,8 +282,8 @@ def inject_sources(
     sources: list[SimTransient],
     observation_time: float | enmap.ndmap,
     freq: str = "f090",
-    arr: str = None,
-    instrument: str = None,
+    arr: str | None = None,
+    instrument: str | None = None,
     debug: bool = False,
     log: FilteringBoundLogger | None = None,
 ):

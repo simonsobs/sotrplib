@@ -430,7 +430,7 @@ def sift(
 
 def get_cut_decision(
     candidate: MeasuredSource,
-    cuts: dict = {},
+    cuts: dict | None = None,
     debug: bool = False,
     log: FilteringBoundLogger | None = None,
 ) -> bool:
@@ -453,6 +453,9 @@ def get_cut_decision(
     """
     log = log if log else get_logger()
     log = log.bind(func_name="get_cut_decision")
+    if cuts is None:
+        return False
+
     cut = False
     for c in cuts.keys():
         val = getattr(candidate, c, None)
