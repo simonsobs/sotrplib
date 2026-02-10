@@ -77,12 +77,16 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             log=self.log,
         )
 
-        thumb_width = self.thumbnail_half_width or (
-            5
-            * get_fwhm(
-                arr=input_map.array,
-                freq=input_map.frequency,
-                instrument=input_map.instrument,
+        thumb_width = (
+            self.thumbnail_half_width
+            if self.thumbnail_half_width is not None
+            else (
+                5
+                * get_fwhm(
+                    arr=input_map.array,
+                    freq=input_map.frequency,
+                    instrument=input_map.instrument,
+                )
             )
         )
 

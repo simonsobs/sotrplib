@@ -274,3 +274,71 @@ def test_source_injection_blind_search():
     )
     found_sources, _ = blind_search.search(new_map)
     assert len(found_sources) == number
+
+
+def test_source_injection_blind_search_SAT():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(1.1, "Jy")
+    map_sim_params = maps.SimulationParameters()
+    left = map_sim_params.center_ra - map_sim_params.width_ra / 2
+    right = map_sim_params.center_ra + map_sim_params.width_ra / 2
+    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2
+    top = map_sim_params.center_dec + map_sim_params.width_dec / 2
+    map_sim_params.map_noise = u.Quantity(0.1, "Jy")
+    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+    number = 1
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=min_flux,
+        max_flux=max_flux,
+        number=number,
+        catalog_fraction=1.0,
+    )
+
+    sources, cat = generator.generate(
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+
+    start_obs = start_time
+    end_obs = start_time + datetime.timedelta(hours=2)
+    base_map = maps.SimulatedMap(
+        observation_start=start_obs,
+        observation_end=end_obs,
+        frequency="f090",
+        array=None,
+        instrument="SOSAT",
+        simulation_parameters=map_sim_params,
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+    )
+
+    base_map.build()
+    base_map.finalize()
+
+    fwhm = get_fwhm(
+        arr=base_map.array, freq=base_map.frequency, instrument=base_map.instrument
+    )
+
+    injector = source_injector.PhotutilsSourceInjector(gauss_fwhm=fwhm)
+    _, new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+
+    blind_search = SigmaClipBlindSearch(
+        parameters=BlindSearchParameters(
+            sigma_threshold=5.0,
+            minimum_separation=[1.5 * fwhm],
+            sigma_threshold_for_minimum_separation=[2.0],
+        ),
+        thumbnail_half_width=1 * u.deg,
+    )
+    found_sources, _ = blind_search.search(new_map)
+    assert len(found_sources) == number
+
+    blind_search = SigmaClipBlindSearch(
+        parameters=BlindSearchParameters(
+            sigma_threshold=5.0,
+            minimum_separation=[1.5 * fwhm],
+            sigma_threshold_for_minimum_separation=[2.0],
+            thumbnail_half_width=None,
+        ),
+    )
+    found_sources, _ = blind_search.search(new_map)
+    assert len(found_sources) == number
