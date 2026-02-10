@@ -277,6 +277,7 @@ def get_frequency(freq: str, arr: str = None, instrument: str | None = None):
     ## instrument can be SOLAT or SOSAT, defaults to SOLAT
     # Array not used yet, but could have per array/freq band centers
     ## from lat white paper https://arxiv.org/pdf/2503.00636
+    ## SAT info from https://arxiv.org/pdf/2405.05550
 
     frequency = {
         "f030": 30 * u.GHz,
@@ -294,6 +295,13 @@ def get_frequency(freq: str, arr: str = None, instrument: str | None = None):
             "f280": 280 * u.GHz,
         }
 
+    if freq not in frequency:
+        valid_freqs = ", ".join(sorted(frequency.keys()))
+        raise KeyError(
+            f"Unknown frequency '{freq}' for instrument '{instrument}'. "
+            f"Valid frequencies: {valid_freqs}"
+        )
+
     return frequency[freq]
 
 
@@ -301,6 +309,7 @@ def get_fwhm(freq: str, arr: str = None, instrument: str | None = None):
     ## instrument can be SOLAT or SOSAT , defaults to SOLAT
     # Array not used yet, but could have per array/freq fwhm
     ## from lat white paper https://arxiv.org/pdf/2503.00636
+    ## SAT info from https://arxiv.org/pdf/2405.05550
     fwhm = {
         "f030": 7.4 * u.arcmin,
         "f040": 5.1 * u.arcmin,
@@ -316,6 +325,12 @@ def get_fwhm(freq: str, arr: str = None, instrument: str | None = None):
             "f220": 13.5 * u.arcmin,
             "f280": 12.1 * u.arcmin,
         }
+    if freq not in fwhm:
+        valid_freqs = ", ".join(sorted(fwhm.keys()))
+        raise KeyError(
+            f"Unknown frequency '{freq}' for instrument '{instrument}'. "
+            f"Valid frequencies: {valid_freqs}"
+        )
 
     return fwhm[freq]
 

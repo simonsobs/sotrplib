@@ -77,18 +77,20 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             log=self.log,
         )
 
-        if self.thumbnail_half_width is None:
-            self.thumbnail_half_width = 5 * get_fwhm(
+        thumb_width = self.thumbnail_half_width or (
+            5
+            * get_fwhm(
                 arr=input_map.array,
                 freq=input_map.frequency,
                 instrument=input_map.instrument,
             )
+        )
 
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
             ## set thumbnail radius to 0.1 deg by default, but for large fwhm do 5*fwhm (i.e. for SAT it will be ~1.5 deg)
             source.extract_thumbnail(
-                input_map, thumb_width=self.thumbnail_half_width, reproject_thumb=True
+                input_map, thumb_width=thumb_width, reproject_thumb=True
             )
             if pointing_residuals:
                 source_pos = pointing_residuals.apply_offset_at_position(
