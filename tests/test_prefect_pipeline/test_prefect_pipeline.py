@@ -33,7 +33,7 @@ def test_basic_pipeline_scipy(
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,
-        pointing_residual=None,
+        pointing_residual_model=None,
         postprocessors=None,
         source_simulators=None,
         forced_photometry=Scipy2DGaussianFitter(),
