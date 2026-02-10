@@ -350,7 +350,6 @@ def matched_filter_depth1_map(
     ):
         # Get band-local versions of the map etc.
         bmap, bivar, bhit = [a[..., r.i1 : r.i2, :] for a in [imap, ivarmap, hit]]
-
         bny, _ = bmap.shape[-2:]
         if shift > 0:
             bS = ShiftMatrix(bmap.shape, bmap.wcs, info.profile)

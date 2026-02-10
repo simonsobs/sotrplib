@@ -83,7 +83,11 @@ def subtract_sources(
         src_model = make_model_source_map(
             input_map.flux,
             sources,
-            nominal_fwhm=get_fwhm(input_map.frequency),
+            nominal_fwhm=get_fwhm(
+                input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            ),
             matched_filtered=True,
             verbose=verbose,
             cuts=cuts,

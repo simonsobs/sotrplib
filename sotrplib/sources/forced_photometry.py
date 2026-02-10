@@ -507,7 +507,11 @@ def scipy_2d_gaussian_fit(
             reprojected=reproject_thumb,
             fwhm_guess=fwhm
             if fwhm is not None
-            else get_fwhm(freq=input_map.frequency, arr=input_map.array),
+            else get_fwhm(
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            ),
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
             else False,
