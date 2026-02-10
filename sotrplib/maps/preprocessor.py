@@ -132,12 +132,18 @@ class MatchedFilter(MapPreprocessor):
             imap=input_map.intensity * input_map.intensity_units.to(u.K),
             ivarmap=input_map.inverse_variance / input_map.intensity_units.to(u.K) ** 2,
             band_center=get_frequency(
-                input_map.frequency, instrument=input_map.instrument
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
             ),
             infofile=self.infofile,
             maskfile=self.maskfile,
             source_mask=input_map.mask,
-            beam_fwhm=get_fwhm(input_map.frequency, instrument=input_map.instrument),
+            beam_fwhm=get_fwhm(
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            ),
             beam1d=self.beam1d,
             shrink_holes=self.shrink_holes,
             apod_edge=self.apod_edge,
