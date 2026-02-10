@@ -14,7 +14,7 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import MapPointingOffset
+from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset, PointingData
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,
@@ -309,7 +309,8 @@ def scipy_2d_gaussian_fit(
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
     fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
-    pointing_residuals: MapPointingOffset | None = None,
+    pointing_residuals: MapPointingOffset | None = EmptyPointingOffset(),
+    pointing_offset_data: PointingData | None = None,
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     flags: dict = {},
     log: FilteringBoundLogger | None = None,
@@ -381,11 +382,10 @@ def scipy_2d_gaussian_fit(
                 source_flags.append(flag)
         ## apply pointing residuals to source position
         source_pos = SkyCoord(ra=source.ra, dec=source.dec)
-        source_pos = (
-            pointing_residuals.apply_offset_at_position(source_pos)
-            if pointing_residuals
-            else source_pos
-        )
+        if pointing_residuals is not None:
+            source_pos = pointing_residuals.apply_offset_at_position(
+                source_pos, data=pointing_offset_data
+            )
 
         source.ra = source_pos.ra
         source.dec = source_pos.dec
