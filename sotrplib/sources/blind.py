@@ -92,7 +92,6 @@ class SigmaClipBlindSearch(BlindSearchProvider):
 
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
-            ## set thumbnail radius to 0.1 deg by default, but for large fwhm do 5*fwhm (i.e. for SAT it will be ~1.5 deg)
             source.extract_thumbnail(
                 input_map, thumb_width=thumb_width, reproject_thumb=True
             )
