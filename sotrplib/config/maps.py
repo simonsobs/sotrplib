@@ -12,6 +12,7 @@ from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
+    FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     ProcessableMap,
     RhoAndKappaMap,
@@ -165,6 +166,37 @@ class InverseVarianceMapConfig(MapConfig):
         )
 
 
+class FluxAndSNRMapConfig(MapConfig):
+    map_type: Literal["flux_and_snr"] = "flux_and_snr"
+    flux_map_path: Path
+    snr_map_path: Path
+    time_map_path: Path | None = None
+    info_path: Path | None = None
+    frequency: str | None = "f090"
+    array: str | None = "pa5"
+    instrument: str | None = None
+    observation_start: AwareDatetime | None = None
+    observation_end: AwareDatetime | None = None
+    box: list[AstroPydanticICRS] | None = None
+    flux_units: AstroPydanticUnit = u.Unit("Jy")
+
+    def to_map(self, log: FilteringBoundLogger | None = None) -> FluxAndSNRMap:
+        return FluxAndSNRMap(
+            flux_filename=self.flux_map_path,
+            snr_filename=self.snr_map_path,
+            time_filename=self.time_map_path,
+            info_filename=self.info_path,
+            start_time=self.observation_start,
+            end_time=self.observation_end,
+            box=self.box,
+            frequency=self.frequency,
+            array=self.array,
+            instrument=self.instrument,
+            flux_units=self.flux_units,
+            log=log,
+        )
+
+
 class MapCatDatabaseConfig(MapGeneratorConfig):
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
     frequency: str | None = None
@@ -201,6 +233,7 @@ AllMapConfigTypes = (
     | SimulatedMapFromGeometryConfig
     | RhoKappaMapConfig
     | InverseVarianceMapConfig
+    | FluxAndSNRMapConfig
 )
 
 AllMapGeneratorConfigTypes = MapCatDatabaseConfig | list[AllMapConfigTypes]
