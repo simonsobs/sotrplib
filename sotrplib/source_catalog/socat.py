@@ -9,7 +9,6 @@ import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from pixell import utils as pixell_utils
-from pixell.wcsutils import fix_wcs
 from socat.client.settings import SOCatClientSettings
 from structlog.types import FilteringBoundLogger
 
@@ -68,17 +67,18 @@ class SOCatWrapper:
         """
         if len(sources) == 0:
             return []
-        coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
-        ## map may need to have wcs rotated into valid sky region.
-        mask_map.flux.wcs = fix_wcs(mask_map.flux.wcs)
-        y, x = mask_map.flux.wcs.world_to_pixel(coords)
-        nx, ny = mask_map.flux.shape
-        x, y = np.round(x).astype(int), np.round(y).astype(int)
-        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
-
-        result = np.zeros_like(x, dtype=bool)
-        result[inside] = np.nan_to_num(mask_map.flux[x[inside], y[inside]]).astype(bool)
-        return [sources[i] for i, valid in enumerate(result) if valid]
+        m = mask_map.flux
+        result = np.zeros(len(sources), dtype=bool)
+        inside = [
+            np.nan_to_num(
+                m.at(
+                    pos=np.array([[s.dec.to_value(u.rad)], [s.ra.to_value(u.rad)]]),
+                    mode="nn",
+                )
+            ).astype(bool)
+            for s in sources
+        ]
+        return [sources[i] for i in range(len(result)) if inside[i]]
 
     def get_forced_photometry_sources(
         self, minimum_flux: u.Quantity
