@@ -270,8 +270,6 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         source_list = list(
             itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
         )
-        print(source_list)
-        exit()
         ## select only those above min_flux for pointing fitting
         pointing_source_list = [
             source
