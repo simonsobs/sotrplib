@@ -160,6 +160,18 @@ Once the map objects are loaded, the pipeline handler then builds the maps and i
 
 The various other components of the pipeline are built in a similar manner, for example map preprocessing is built by configuring a list of `PreProcessor` objects, etc.
 
+The pipeline then runs as per your config, and the steps in the handler script.
+
+### Pipeline Outputs
+
+The current default is to output to pickle files because these are simply converted from the pydantic models transferred between the pipeline components in production mode.
+
+The output format can be found in `outputs/core.py`, and in the default case is the `PickleSerializer`.
+
+Essentially this is just dictionaries of lists of MeasuredSource objects (and InjectedSource objects in the case you're simulating sources).
+
+These MeasuredSource objects contain information about their measurement and even cutouts.
+
 
 ### Running with prefect
 
