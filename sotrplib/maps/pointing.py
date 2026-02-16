@@ -63,6 +63,8 @@ class MapPointingOffset(ABC):
         SkyCoord
             New coordinates with the offsets removed.
         """
+        if data is None:
+            return pos
         ## returns an array of offsets, but only apply to single position.
         dra = self.ra_model(pos.ra, pos.dec, data)
         ddec = self.dec_model(pos.ra, pos.dec, data)
