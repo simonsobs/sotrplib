@@ -167,10 +167,13 @@ cd {script_dir}
 source .venv/bin/activate
 
 export socat_client_client_type=pickle
-export socat_client_pickle_path=socat.pickle
+export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
+
+export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
+export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
 
 if [ ! -e "socat.pickle" ]; then
-    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits  -o socat.pickle
+    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
 fi
 
 """
@@ -205,7 +208,7 @@ def generate_config_json(
     "sso_catalogs": [
         {{
             "catalog_type": "sso",
-            "db_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "db_path": "./sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
         }}
     ],
     "pointing_provider": {{
@@ -227,7 +230,7 @@ def generate_config_json(
         }},
         {{
             "preprocessor_type": "matched_filter",
-            "beam1d": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/sotrplib/sotrplib/observatories/so/profile_{frequency}_1756699200_20000000000.txt",
+            "beam1d": "profile_{frequency}_1756699200_20000000000.txt",
             "band_height": "1 deg",
             "shrink_holes": "5 arcmin",
             "noisemask_lim": 0.1,

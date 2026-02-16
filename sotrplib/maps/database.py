@@ -115,6 +115,11 @@ class MapCatDatabaseReader:
                         map_id=result.map_id,
                     )
                     continue
+                ## workaround for failed mapcat generation
+                if result.mean_time_path is None:
+                    result.mean_time_path = (
+                        str(result.ivar_path).split("_ivar.fits")[0] + "_time.fits"
+                    )
                 maps.append(
                     IntensityAndInverseVarianceMap(
                         intensity_filename=mapcat_settings.depth_one_parent
