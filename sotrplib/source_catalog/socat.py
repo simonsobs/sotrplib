@@ -68,17 +68,15 @@ class SOCatWrapper:
         if len(sources) == 0:
             return []
         m = mask_map.flux
-        result = np.zeros(len(sources), dtype=bool)
-        inside = [
-            np.nan_to_num(
-                m.at(
-                    pos=np.array([[s.dec.to_value(u.rad)], [s.ra.to_value(u.rad)]]),
-                    mode="nn",
-                )
-            ).astype(bool)
-            for s in sources
-        ]
-        return [sources[i] for i in range(len(result)) if inside[i]]
+        poss = np.array(
+            [
+                [s.dec.to_value(u.rad) for s in sources],
+                [s.ra.to_value(u.rad) for s in sources],
+            ]
+        )
+        # Query the map once for all positions, convert to a 1D boolean mask.
+        inside = np.nan_to_num(m.at(poss, mode="nn")).astype(bool).ravel()
+        return [source for source, valid in zip(sources, inside) if valid]
 
     def get_forced_photometry_sources(
         self, minimum_flux: u.Quantity
