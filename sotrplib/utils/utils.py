@@ -277,7 +277,6 @@ def get_frequency(freq: str, arr: str = None, instrument: str | None = None):
     ## instrument can be SOLAT or SOSAT, defaults to SOLAT
     # Array not used yet, but could have per array/freq band centers
     ## from lat white paper https://arxiv.org/pdf/2503.00636
-    ## SAT info from https://arxiv.org/pdf/2405.05550
 
     frequency = {
         "f030": 30 * u.GHz,
