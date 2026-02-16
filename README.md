@@ -16,14 +16,17 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 pre-commit install
 ```
+If you don't have uv installed, you can install it with `pip install uv`.
+
 We use `ruff` for formatting. When you go to commit your code, it will automatically be 
 formatted thanks to the pre-commit hook.
 
 Tests are performed using `pytest`.
 
 ## extra required packages
+Any required packages should be listed in `pyproject.toml`
 
-see pyproject.toml
+If a package is missing, you can manually install it with `uv install [package]`.
 
 
 ## Setting up and Running the Pipeline
