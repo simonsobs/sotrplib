@@ -8,6 +8,7 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from pixell import enmap
+from pixell import utils as pixell_utils
 
 
 def radec_to_str_name(
@@ -536,3 +537,37 @@ def ctime_to_pos(
     ra = pos[1] * 180 / np.pi
 
     return ctime_map, ra, dec
+
+
+def fit_poss(rho, kappa, poss, rmax=8 * pixell_utils.arcmin, tol=1e-4, snmin=3):
+    """Given a set of fiducial src positions [{dec,ra},nsrc],
+    return a new set of positions measured from the local center-of-mass
+    Assumes scalar rho and kappa"""
+    from scipy import ndimage
+
+    ref = np.max(kappa)
+    if ref == 0:
+        ref = 1
+    snmap2 = rho**2 / np.maximum(kappa, ref * tol)
+    # label regions that are strong enough and close enough to the
+    # fiducial positions
+    mask = snmap2 > snmin**2
+    mask &= snmap2.distance_from(poss, rmax=rmax) < rmax
+    labels = enmap.samewcs(ndimage.label(mask)[0], rho)
+    del mask
+    # Figure out which labels correspond to which objects
+    label_inds = labels.at(poss, order=0)
+    good = label_inds > 0
+    # Compute the center-of mass position for the good labels
+    # For the bad ones, just return the original values
+    oposs = poss.copy()
+    if np.sum(good) > 0:
+        oposs[:, good] = snmap2.pix2sky(
+            np.array(ndimage.center_of_mass(snmap2, labels, label_inds[good])).T
+        )
+    del labels
+    osns = snmap2.at(oposs, order=1) ** 0.5
+    # for i in range(nsrc):
+    # dpos = pixell_utils.rewind(oposs[:,i]-poss[:,i])
+    # print("%3d %6.2f %8.3f %8.3f %8.3f %8.3f" % (i, osns[i], poss[1,i]/pixell_utils.degree, poss[0,i]/pixell_utils.degree, dpos[1]/pixell_utils.arcmin, dpos[0]/pixell_utils.arcmin))
+    return oposs, osns
