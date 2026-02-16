@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
+from sotrplib.utils.utils import get_fwhm
 
 
 def test_basic_pipeline_rhokappa(separate_map_set_1):
@@ -72,3 +73,24 @@ def test_basic_pipeline_ivar(separate_map_set_1):
     )
 
     runner.run()
+
+
+def test_basic_pipeline_instrument(separate_map_set_1):
+    """
+    Tests a complete setup of the basic pipeline run with input rho,kappa maps
+    """
+    paths = separate_map_set_1
+    input_map = RhoKappaMapConfig(
+        rho_map_path=paths["rho"],
+        kappa_map_path=paths["kappa"],
+        time_map_path=paths["time"],
+        observation_start=datetime.now(tz=timezone.utc),
+        observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        instrument="SOSAT",
+        array=None,
+        frequency="f090",
+    ).to_map()
+
+    assert get_fwhm(
+        arr=input_map.array, freq=input_map.frequency, instrument=input_map.instrument
+    ) == get_fwhm(freq="f090", instrument="SOSAT")

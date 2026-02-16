@@ -11,6 +11,7 @@ from sotrplib.maps.pointing import MapPointingOffset, PointingData
 from sotrplib.sources.core import BlindSearchProvider
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.sources import MeasuredSource
+from sotrplib.utils.utils import get_fwhm
 
 
 class EmptyBlindSearch(BlindSearchProvider):
@@ -42,10 +43,12 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         log: FilteringBoundLogger | None = None,
         parameters: BlindSearchParameters | None = None,
         pixel_mask: enmap.ndmap | None = None,
+        thumbnail_half_width: AstroPydanticQuantity[u.deg] | None = None,
     ):
         self.log = log or get_logger()
         self.parameters = parameters if parameters else BlindSearchParameters()
         self.pixel_mask = pixel_mask
+        self.thumbnail_half_width = thumbnail_half_width
         self.log.info("sigma_clip_blind_search.initialized", parameters=self.parameters)
 
     def search(
@@ -75,9 +78,25 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             pixel_mask=self.pixel_mask,
             log=self.log,
         )
+
+        thumb_width = (
+            self.thumbnail_half_width
+            if self.thumbnail_half_width is not None
+            else (
+                5
+                * get_fwhm(
+                    arr=input_map.array,
+                    freq=input_map.frequency,
+                    instrument=input_map.instrument,
+                )
+            )
+        )
+
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
-            source.extract_thumbnail(input_map, reproject_thumb=True)
+            source.extract_thumbnail(
+                input_map, thumb_width=thumb_width, reproject_thumb=True
+            )
             if pointing_residuals:
                 source_pos = pointing_residuals.apply_offset_at_position(
                     SkyCoord(ra=source.ra, dec=source.dec), data=pointing_offset_data

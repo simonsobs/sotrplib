@@ -273,9 +273,12 @@ def get_map_groups(
     return map_groups, map_group_time_range, time_bins
 
 
-def get_frequency(freq: str, arr: str = None):
+def get_frequency(freq: str, arr: str = None, instrument: str | None = None):
+    ## instrument can be SOLAT or SOSAT, defaults to SOLAT
     # Array not used yet, but could have per array/freq band centers
     ## from lat white paper https://arxiv.org/pdf/2503.00636
+    ## SAT info from https://arxiv.org/pdf/2405.05550
+
     frequency = {
         "f030": 30 * u.GHz,
         "f040": 40 * u.GHz,
@@ -284,13 +287,29 @@ def get_frequency(freq: str, arr: str = None):
         "f220": 220 * u.GHz,
         "f280": 280 * u.GHz,
     }
+    if instrument is not None and instrument.upper() == "SOSAT":
+        frequency = {
+            "f090": 93 * u.GHz,
+            "f150": 145 * u.GHz,
+            "f220": 225 * u.GHz,
+            "f280": 280 * u.GHz,
+        }
+
+    if freq not in frequency:
+        valid_freqs = ", ".join(sorted(frequency.keys()))
+        raise KeyError(
+            f"Unknown frequency '{freq}' for instrument '{instrument}'. "
+            f"Valid frequencies: {valid_freqs}"
+        )
 
     return frequency[freq]
 
 
-def get_fwhm(freq: str, arr: str = None):
+def get_fwhm(freq: str, arr: str = None, instrument: str | None = None):
+    ## instrument can be SOLAT or SOSAT , defaults to SOLAT
     # Array not used yet, but could have per array/freq fwhm
     ## from lat white paper https://arxiv.org/pdf/2503.00636
+    ## SAT info from https://arxiv.org/pdf/2405.05550
     fwhm = {
         "f030": 7.4 * u.arcmin,
         "f040": 5.1 * u.arcmin,
@@ -299,6 +318,19 @@ def get_fwhm(freq: str, arr: str = None):
         "f220": 1.0 * u.arcmin,
         "f280": 0.9 * u.arcmin,
     }
+    if instrument is not None and instrument.upper() == "SOSAT":
+        fwhm = {
+            "f090": 27.4 * u.arcmin,
+            "f150": 17.6 * u.arcmin,
+            "f220": 13.5 * u.arcmin,
+            "f280": 12.1 * u.arcmin,
+        }
+    if freq not in fwhm:
+        valid_freqs = ", ".join(sorted(fwhm.keys()))
+        raise KeyError(
+            f"Unknown frequency '{freq}' for instrument '{instrument}'. "
+            f"Valid frequencies: {valid_freqs}"
+        )
 
     return fwhm[freq]
 
@@ -353,6 +385,7 @@ def get_cut_radius(
     map_res_arcmin: float,
     arr: str,
     freq: str,
+    instrument: str | None = None,
     fwhm_arcmin: float = None,
     matched_filtered: bool = False,
     source_amplitudes: list = [],
@@ -381,7 +414,7 @@ def get_cut_radius(
     """
 
     if not fwhm_arcmin:
-        fwhm_arcmin = get_fwhm(freq, arr).to_value(u.arcmin)
+        fwhm_arcmin = get_fwhm(freq, arr, instrument=instrument).to_value(u.arcmin)
 
     ## I guess this is needed for filtering wings?
     mf_factor = 2**0.5 if matched_filtered else 1.0
