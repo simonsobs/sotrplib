@@ -793,6 +793,178 @@ class RhoAndKappaMap(ProcessableMap):
         super().finalize()
 
 
+class FluxAndSNRMap(ProcessableMap):
+    """
+    A set of FITS maps read from disk. Could be Depth 1, could
+    be monthly or weekly co-adds. Or something else!
+
+    box is tuple of skycoords: (bottom_left, top_right)
+    """
+
+    def __init__(
+        self,
+        flux_filename: Path,
+        snr_filename: Path,
+        start_time: AwareDatetime,
+        end_time: AwareDatetime,
+        box: tuple[SkyCoord, SkyCoord] | None = None,
+        time_filename: Path | None = None,
+        info_filename: Path | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
+        instrument: str | None = None,
+        flux_units: Unit = u.Jy,
+        mask: ndmap | None = None,
+        map_id: str | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.flux_filename = flux_filename
+        self.snr_filename = snr_filename
+        self.time_filename = time_filename
+        self.info_filename = info_filename
+        self.observation_start = start_time
+        self.observation_end = end_time
+        self.box = box
+        self.frequency = frequency
+        self.array = array
+        self.instrument = instrument
+        self.flux_units = flux_units
+        self.mask = mask
+        if map_id is not None:
+            self.map_id = map_id
+        self._hits = None
+        self.log = log or structlog.get_logger()
+
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        """
+        The bounding box of the map provided as sky coordinates.
+        Read from the flux map header.
+        """
+        if self.box is not None:
+            return self.box
+
+        shape, wcs = enmap.read_map_geometry(str(self.flux_filename))
+
+        bottom_left = wcs.array_index_to_world(0, 0)
+        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
+
+        self.box = (bottom_left, top_right)
+        return self.box
+
+    def build(self):
+        log = self.log.bind(flux_filename=self.flux_filename)
+        enmap_box = (
+            [
+                [self.box[0].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
+                [self.box[1].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
+            ]
+            if self.box is not None
+            else None
+        )
+        if enmap_box is not None:
+            if enmap_box[0][1] < enmap_box[1][1]:
+                enmap_box[1][1] -= 2 * np.pi
+        try:
+            self.flux = enmap.read_map(str(self.flux_filename), sel=0, box=enmap_box)
+            assert type(self.flux) is enmap.ndmap
+        except (IndexError, AttributeError, AssertionError):
+            # Flux map does not have Q, U
+            self.flux = enmap.read_map(str(self.flux_filename), box=enmap_box)
+
+        log = log.new(snr_filename=self.snr_filename)
+        try:
+            self.snr = enmap.read_map(str(self.snr_filename), sel=0, box=enmap_box)
+            assert type(self.snr) is enmap.ndmap
+        except (IndexError, AttributeError, AssertionError):
+            # SNR map does not have Q, U
+            self.snr = enmap.read_map(str(self.snr_filename), box=enmap_box)
+
+        self.map_resolution = u.Quantity(
+            abs(self.flux.wcs.wcs.cdelt[0]), self.flux.wcs.wcs.cunit[0]
+        )
+        if self.flux.shape != self.snr.shape:
+            raise ValueError("Flux and SNR maps must have the same shape")
+        log = log.new(time_filename=self.time_filename)
+        if self.time_filename is not None:
+            # TODO: Handle nuance that the start time is not included.
+            try:
+                time_map = enmap.read_map(str(self.time_filename), sel=0, box=enmap_box)
+                assert type(time_map) is enmap.ndmap
+            except (IndexError, AttributeError, AssertionError):
+                # Somehow time map requires sel=0
+                time_map = enmap.read_map(str(self.time_filename), box=enmap_box)
+        else:
+            time_map = None
+            log.debug("flux_snr.time.none")
+
+        self.time_first = time_map
+        self.time_last = time_map
+        self.time_mean = time_map
+
+        self.add_time_offset(self.observation_start)
+        self.observation_length = self.observation_end - self.observation_start
+        return
+
+    def add_time_offset(self, offset: timedelta | None = None):
+        """
+        Add a time offset to the time maps. Useful if you have a time map
+        that is relative to the start of the observation, and you want to
+        convert it to an absolute time map.
+
+        time maps are in unix time (seconds).
+
+        ACT time maps are stored in seconds since the start of the observation,
+        thus if you want absolute time you need to add the start time of the observation.
+        """
+        if offset is None:
+            from pixell.bunch import read as bunch_read
+
+            offset = (
+                datetime.fromtimestamp(
+                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
+                )
+                if self.info_filename is not None
+                else None
+            )
+        if offset is None:
+            self.log.warning("flux_snr.time_offset.none")
+            return
+        self.observation_start = offset
+        ## TODO: time_first, mean, end are same so this changes all.
+        ## this should be changed when we do something smarter.
+        if self.time_first is not None:
+            self.time_first[self.time_first > 0] += offset.timestamp()
+        if self.observation_end is None:
+            self.observation_end = datetime.fromtimestamp(
+                float(np.amax(self.time_last)), tz=timezone.utc
+            )
+
+    def get_pixel_times(self, pix: tuple[int, int]):
+        return super().get_pixel_times(pix)
+
+    def get_map_id(self):
+        return self.map_id or super().get_map_str_id()
+
+    def _compute_hits(self):
+        return (self.flux > 0).astype(np.int32)
+
+    def get_snr(self):
+        return self.snr
+
+    def get_flux(self):
+        return self.flux
+
+    def apply_mask(self):
+        return super().apply_mask()
+
+    def finalize(self):
+        self.snr = self.get_snr()
+        self.flux = self.get_flux()
+        self.apply_mask()
+        self.finalized = True
+
+
 class CoaddedRhoKappaMap(ProcessableMap):
     """
     A coadded rho/kappa map created from multiple observations.

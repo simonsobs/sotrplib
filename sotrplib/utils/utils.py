@@ -1,6 +1,5 @@
 import datetime
 import glob as glob
-import math
 import os
 import os.path as op
 from typing import Union
@@ -8,13 +7,8 @@ from typing import Union
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.table import Table
 from pixell import enmap
 from pixell import utils as pixell_utils
-from scipy import stats
-from scipy.ndimage import distance_transform_edt
-from scipy.optimize import curve_fit
-from tqdm import tqdm
 
 
 def radec_to_str_name(
@@ -437,115 +431,6 @@ def get_cut_radius(
     return radius_pix
 
 
-def obj_dist(mask, sources):
-    """returns catalog with distances from mask
-
-    Args:
-        mask: ndmap of mask
-        sources: np.array of sources [[dec, ra]] in deg
-
-    Returns:
-        array of pixel distances from mask for each object
-    """
-
-    dec = sources[:, 0]
-    ra = sources[:, 1]
-    dmap = enmap.enmap(distance_transform_edt(mask), mask.wcs)
-    coords_rad = np.deg2rad(np.array([dec, ra]))
-    ypix, xpix = enmap.sky2pix(dmap.shape, mask.wcs, coords_rad)
-    ps_dist = dmap[ypix.astype(int), xpix.astype(int)]  # lookup distance from mask
-
-    return ps_dist
-
-
-def init_mpi(arr, randomize=False):
-    """
-    init mpi and scatter array
-
-    Args:
-        arr:array to scatter
-        randomize:whether to randomize order before scattering
-
-    Returns:
-        chunks of array for each process
-    """
-
-    from mpi4py import MPI
-
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    size = comm.Get_size()
-
-    if rank == 0:
-        if randomize:
-            np.random.shuffle(arr)
-        chunks = np.array_split(arr, size)
-    else:
-        chunks = None
-    chunks = comm.scatter(chunks, root=0)
-
-    return comm, rank, size, chunks
-
-
-def consolidate_cols(dirs, colnames):
-    """
-    consolidate columns from different directories
-
-    Args:
-        dirs:directories to consolidate
-        colnames:column names to consolidate
-
-    Returns:
-        consolidated column with cat name and column
-    """
-
-    # init array for each colname given unless not a list
-    cols = {}
-    cols["cat"] = []
-    if type(colnames) is str:
-        cols[colnames] = []
-    else:
-        for col in colnames:
-            cols[col] = []
-
-    for subdir in tqdm(dirs):
-        # list files in directory
-        files = os.listdir(subdir)
-
-        # check if fits
-        files = [f for f in files if f.endswith(".fits")]
-
-        # Check if list is empty
-        if len(files) == 0:
-            continue
-
-        for f in files:
-            # Read table
-            t = Table.read(op.join(subdir, f))
-
-            # Check if table is empty
-            if len(t) == 0:
-                continue
-
-            # check if colname is in table
-            if type(colnames) is str:
-                if colnames in t.colnames:
-                    cols[colnames].append(t[colnames])
-            else:
-                for col in colnames:
-                    if col in t.colnames:
-                        cols[col].append(t[col])
-
-            # add cat name to every row
-            cols["cat"].append(np.repeat(op.join(subdir, f), len(t)))
-
-    # convert to array
-    for col in cols.keys():
-        cols[col] = np.concatenate(cols[col])
-
-    return cols
-
-
 def ra_pos(ra: u.Quantity[u.deg]):
     """converts ra to 0<ra<360
 
@@ -602,104 +487,6 @@ def angular_separation(
     return sep
 
 
-def fit_poss(rho, kappa, poss, rmax=8 * pixell_utils.arcmin, tol=1e-4, snmin=3):
-    """Given a set of fiducial src positions [{dec,ra},nsrc],
-    return a new set of positions measured from the local center-of-mass
-    Assumes scalar rho and kappa"""
-    from scipy import ndimage
-
-    ref = np.max(kappa)
-    if ref == 0:
-        ref = 1
-    snmap2 = rho**2 / np.maximum(kappa, ref * tol)
-    # label regions that are strong enough and close enough to the
-    # fiducial positions
-    mask = snmap2 > snmin**2
-    mask &= snmap2.distance_from(poss, rmax=rmax) < rmax
-    labels = enmap.samewcs(ndimage.label(mask)[0], rho)
-    del mask
-    # Figure out which labels correspond to which objects
-    label_inds = labels.at(poss, order=0)
-    good = label_inds > 0
-    # Compute the center-of mass position for the good labels
-    # For the bad ones, just return the original values
-    oposs = poss.copy()
-    if np.sum(good) > 0:
-        oposs[:, good] = snmap2.pix2sky(
-            np.array(ndimage.center_of_mass(snmap2, labels, label_inds[good])).T
-        )
-    del labels
-    osns = snmap2.at(oposs, order=1) ** 0.5
-    # for i in range(nsrc):
-    # dpos = pixell_utils.rewind(oposs[:,i]-poss[:,i])
-    # print("%3d %6.2f %8.3f %8.3f %8.3f %8.3f" % (i, osns[i], poss[1,i]/pixell_utils.degree, poss[0,i]/pixell_utils.degree, dpos[1]/pixell_utils.arcmin, dpos[0]/pixell_utils.arcmin))
-    return oposs, osns
-
-
-def extract_flux_thumbnail_from_file(
-    ra: float,
-    dec: float,
-    ctime: int,
-    freq: str,
-    arr: str = None,
-    mapdir: str = "/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1",
-    radius: float = 0.5,
-):
-    from ..maps.maps import kappa_clean
-
-    # Parse position
-    pos = np.deg2rad(np.array([dec, ra]))
-
-    # Create pixbox around source
-    subdir = str(ctime)[:5]
-    imap = f"{mapdir}/{subdir}/depth1_{ctime}_{arr}_{freq}_map.fits"
-    shape_full, wcs_full = enmap.read_map_geometry(imap)
-    pixbox = enmap.neighborhood_pixboxes(
-        shape_full, wcs_full, pos.T, radius * pixell_utils.degree
-    )
-
-    # Read in stamp maps
-    stamp_rho = enmap.read_map(
-        f"{mapdir}/{subdir}/depth1_{ctime}_{arr}_{freq}_rho.fits", pixbox=pixbox
-    )[0]
-    stamp_kappa = enmap.read_map(
-        f"{mapdir}/{subdir}/depth1_{ctime}_{arr}_{freq}_kappa.fits", pixbox=pixbox
-    )[0]
-    stamp_kappa = kappa_clean(
-        stamp_kappa,
-        stamp_rho,
-    )
-    flux = stamp_rho / stamp_kappa
-
-    return flux
-
-
-def find_map_ctime(ctime, mapdir="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1"):
-    """
-    Find map that contains ctime
-
-    Args:
-        ctime:ctime to find map for
-
-    Returns:
-        ctime of map
-    """
-
-    # Find subdirectory clostest to ctime
-    subdir = str(ctime)[:5]
-
-    # list possible map ctimes
-    maps = [f for f in os.listdir(op.join(mapdir, subdir)) if f.endswith("map.fits")]
-    ctimes = np.unique([int(f.split("_")[1]) for f in maps])
-
-    # find closest ctime that is less than ctime
-    ctimes = ctimes[ctimes < ctime]
-
-    ctime_map = ctimes[np.argmin(np.abs(ctimes - ctime))]
-
-    return ctime_map
-
-
 def ctime_to_pos(
     ctime: float,
     freq: str,
@@ -752,141 +539,35 @@ def ctime_to_pos(
     return ctime_map, ra, dec
 
 
-def radial_profile(data, center_pix, mask, bin_width_arcsec):
-    y, x = np.indices((data.shape))
-    r = (
-        np.sqrt((x - center_pix[0]) ** 2 + (y - center_pix[1]) ** 2)
-        * 30.0
-        / bin_width_arcsec
-    )
-    r = r.astype("int")
-    data_masked = data * mask
-    tbin = np.bincount(r.ravel(), data_masked.ravel())
-    nr = np.bincount(r.ravel(), mask.ravel())
-    radialprofile = tbin / nr
-    return radialprofile
+def fit_poss(rho, kappa, poss, rmax=8 * pixell_utils.arcmin, tol=1e-4, snmin=3):
+    """Given a set of fiducial src positions [{dec,ra},nsrc],
+    return a new set of positions measured from the local center-of-mass
+    Assumes scalar rho and kappa"""
+    from scipy import ndimage
 
-
-def calculate_alpha(data):
-    alpha = math.log(data[0, 1] / data[1, 1], data[0, 0] / data[1, 0])
-    A = data[0, 1] / (data[0, 0] ** alpha)
-    err = (
-        (data[0, 2] / (data[0, 1] * np.log(data[0, 0] / data[1, 0]))) ** 2.0
-        + (data[1, 2] / (data[1, 1] * np.log(data[0, 0] / data[1, 0]))) ** 2.0
-    ) ** 0.5
-    return A, alpha, err
-
-
-def get_spectra_index_general(flux_data):
-    """
-    calculate spectra index, flux_data[:,0] is freq in Hz, flux_data[:,1] is flux, flux_data[:,2] is dflux
-    """
-
-    def func(x, a, b):
-        y = a * x**b
-        return y
-
-    if flux_data.shape[0] > 2:
-        pars, cov = curve_fit(
-            f=func,
-            xdata=flux_data[:, 0],
-            ydata=flux_data[:, 1],
-            sigma=flux_data[:, 2],
-            absolute_sigma=True,
-            maxfev=5000,
+    ref = np.max(kappa)
+    if ref == 0:
+        ref = 1
+    snmap2 = rho**2 / np.maximum(kappa, ref * tol)
+    # label regions that are strong enough and close enough to the
+    # fiducial positions
+    mask = snmap2 > snmin**2
+    mask &= snmap2.distance_from(poss, rmax=rmax) < rmax
+    labels = enmap.samewcs(ndimage.label(mask)[0], rho)
+    del mask
+    # Figure out which labels correspond to which objects
+    label_inds = labels.at(poss, order=0)
+    good = label_inds > 0
+    # Compute the center-of mass position for the good labels
+    # For the bad ones, just return the original values
+    oposs = poss.copy()
+    if np.sum(good) > 0:
+        oposs[:, good] = snmap2.pix2sky(
+            np.array(ndimage.center_of_mass(snmap2, labels, label_inds[good])).T
         )
-        alpha = pars[1]
-        err = np.sqrt(cov[1, 1])
-    elif flux_data.shape[0] == 2:
-        amp, alpha, err = calculate_alpha(flux_data)
-    else:
-        alpha = 0.0
-        err = 0.0
-    return alpha, err
-
-
-def weightedmean(arr, err):
-    """
-    Calculate weighted mean of array
-    """
-    # If all errors are zero, return mean
-    if np.all(err == 0.0):
-        return np.mean(arr)
-    else:
-        # get rid of zero errors
-        arr = arr[err != 0.0]
-        err = err[err != 0.0]
-        return np.sum(arr / err**2.0) / np.sum(1 / err**2.0)
-
-
-def euclidean_variance(ra, dec, ra_data, dec_data):
-    """
-    Calculate variance of array
-    """
-    if len(ra_data) == 1:
-        return np.nan
-    count = 0
-    var = 0
-    for j in range(len(ra_data)):
-        var += (ra_data[j] - ra) ** 2.0 + (dec_data[j] - dec) ** 2.0
-        count += 1
-    var /= count - 1
-    return var**0.5
-
-
-def mjy2lum(flux, freq, dist, fluxerr=None):
-    """
-    Calculate luminosity
-
-    Args:
-        flux: flux in mJy
-        freq: frequency in GHz
-        dist: distance in pc
-        fluxerr: flux error in mJy
-
-    Returns:
-        luminosity in Watts
-        luminosity error in Watts if fluxerr provided
-    """
-    luminosity = 4 * np.pi * (dist * 3.086e16) ** 2.0 * flux * 1e-26 * freq * 1e9
-    if fluxerr is None:
-        return luminosity
-    else:
-        lum_err = luminosity * (fluxerr / flux)
-        return luminosity, lum_err
-
-
-def ctime2datetime(ctime):
-    """
-    Convert ctime to datetime
-
-    Args:
-        ctime: ctime to convert
-
-    Returns:
-        datetime
-    """
-    from datetime import datetime
-
-    return datetime.fromtimestamp(ctime)
-
-
-def datetime2ctime(dt):
-    """
-    Convert datetime to ctime
-
-    Args:
-        dt: datetime to convert
-
-    Returns:
-        ctime
-    """
-    from datetime import datetime
-
-    return datetime.timestamp(dt)
-
-
-def q(p, mu=0, std=1):
-    ## quantile?
-    c0 = stats.norm.cdf(0, loc=mu, scale=std)
-    return stats.norm.ppf(p * (1 - c0) + c0, loc=mu, scale=std)
+    del labels
+    osns = snmap2.at(oposs, order=1) ** 0.5
+    # for i in range(nsrc):
+    # dpos = pixell_utils.rewind(oposs[:,i]-poss[:,i])
+    # print("%3d %6.2f %8.3f %8.3f %8.3f %8.3f" % (i, osns[i], poss[1,i]/pixell_utils.degree, poss[0,i]/pixell_utils.degree, dpos[1]/pixell_utils.arcmin, dpos[0]/pixell_utils.arcmin))
+    return oposs, osns

@@ -153,6 +153,8 @@ class BaseRunner:
 
     def simulate_sources(self) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
+        if len(self.source_simulators) == 0:
+            return []
         all_simulated_sources = []
         bbox = self.bbox
         time_range = self.observation_time_range
