@@ -944,7 +944,7 @@ class FluxAndSNRMap(ProcessableMap):
         return super().get_pixel_times(pix)
 
     def get_map_id(self):
-        return self.__map_id or super().get_map_str_id()
+        return self.map_id or super().get_map_str_id()
 
     def _compute_hits(self):
         return (self.flux > 0).astype(np.int32)
