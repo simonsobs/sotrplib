@@ -839,7 +839,7 @@ class FluxAndSNRMap(ProcessableMap):
     def bbox(self) -> tuple[SkyCoord, SkyCoord]:
         """
         The bounding box of the map provided as sky coordinates.
-        Read from the rho map header.
+        Read from the flux map header.
         """
         if self.box is not None:
             return self.box
