@@ -27,7 +27,7 @@ class SOCatWrapper:
         self.log.info("socat.initialized")
 
     def add_source(self, source: RegisteredSource):
-        self.catalog.create(
+        self.catalog.create_source(
             position=SkyCoord(source.ra, source.dec),
             flux=source.flux if source.flux is not None else None,
             name=source.source_id,
@@ -163,11 +163,27 @@ class SOCat(SourceCatalog):
     def __init__(
         self,
         flux_lower_limit: u.Quantity = 0.03 * u.Jy,
+        additional_positions: list[SkyCoord] | None = None,
+        additional_fluxes: list[u.Quantity] | None = None,
+        additional_source_ids: list[str] | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or structlog.get_logger()
         self.core = SOCatWrapper(log=self.log)
         self.flux_lower_limit = flux_lower_limit
+        additional_sources = []
+        if additional_positions is not None:
+            for i, pos in enumerate(additional_positions):
+                f = additional_fluxes[i] if additional_fluxes is not None else None
+                sid = (
+                    additional_source_ids[i]
+                    if additional_source_ids is not None
+                    else None
+                )
+                additional_sources.append(
+                    RegisteredSource(ra=pos.ra, dec=pos.dec, flux=f, source_id=sid)
+                )
+            self.add_sources(additional_sources)
 
     def add_sources(self, sources: list[RegisteredSource]):
         for source in sources:
