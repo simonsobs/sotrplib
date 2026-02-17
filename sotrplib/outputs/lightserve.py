@@ -4,13 +4,14 @@ Output data directly to lightserve.
 
 import httpx
 from lightcurvedb.models.cutout import Cutout
-from lightcurvedb.models.flux import FluxMeasurement
+from lightcurvedb.models.flux import FluxMeasurementCreate
 from soauth.toolkit.client import SOAuth
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
+from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
@@ -49,11 +50,18 @@ class LightServeOutput(SourceOutput):
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         input_map: ProcessableMap,
+        pointing_sources: list[MeasuredSource] = [],  # for compatibility
+        injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         client = self.client()
 
         successful_uploads = 0
         total_uploads = 0
+
+        source_translations = client.get("/sources/").json()
+        socat_to_internal = {
+            st["socat_id"]: st["source_id"] for st in source_translations
+        }
 
         for source in forced_photometry_candidates + sifter_result.source_candidates:
             if not source.crossmatches:
@@ -64,12 +72,12 @@ class LightServeOutput(SourceOutput):
                 )
                 continue
 
-            fm = FluxMeasurement(
-                band_name="f090",
-                source_id=(source.crossmatches[0].source_id),
-                time=source.observation_mean_time.to_datetime().strftime(
-                    "%Y-%m-%dT%H:%M:%S.%fZ"
-                ),
+            fm = FluxMeasurementCreate(
+                frequency=90,
+                module="i1",
+                source_id=socat_to_internal[int(source.crossmatches[0].source_id)],
+                time=source.observation_mean_time.to_datetime()
+                or input_map.observation_time.to_datetime(),
                 ra=source.ra.to_value("deg"),
                 dec=source.dec.to_value("deg"),
                 ra_uncertainty=(
@@ -80,8 +88,8 @@ class LightServeOutput(SourceOutput):
                     if source.err_dec is not None
                     else 0.0
                 ),
-                i_flux=source.flux.to_value("Jy") if source.flux is not None else 0.0,
-                i_uncertainty=(
+                flux=source.flux.to_value("Jy") if source.flux is not None else 0.0,
+                flux_err=(
                     source.err_flux.to_value("Jy")
                     if source.err_flux is not None
                     else 0.0
@@ -94,12 +102,11 @@ class LightServeOutput(SourceOutput):
             cut = (
                 Cutout(
                     data=source.thumbnail.tolist(),
-                    time=source.observation_mean_time.to_datetime().strftime(
-                        "%Y-%m-%dT%H:%M:%S.%fZ"
-                    ),
+                    time=source.observation_mean_time.to_datetime()
+                    or input_map.observation_time.to_datetime(),
                     units=input_map.flux_units.to_string(),
-                    band_name="f090",
-                    flux_id=None,
+                    frequency=90,
+                    module="i1",
                 ).model_dump_json()
                 if source.thumbnail is not None
                 else "null"

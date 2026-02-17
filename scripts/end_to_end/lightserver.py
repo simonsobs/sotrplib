@@ -20,7 +20,10 @@ async def run_servers():
 if __name__ == "__main__":
     import os
 
-    with db(number=0):
-        with open("./port", "w") as f:
-            f.write(str(os.environ.get("LIGHTCURVEDB_POSTGRES_PORT", "5432")) + "\n")
+    with db(backend_type=os.environ.get("LIGHTCURVEDB_BACKEND_TYPE"), number=0):
+        if os.environ.get("LIGHTCURVEDB_BACKEND_TYPE") in ["postgres", "timescale"]:
+            with open("./port", "w") as f:
+                f.write(
+                    str(os.environ.get("LIGHTCURVEDB_POSTGRES_PORT", "5432")) + "\n"
+                )
         asyncio.run(run_servers())
