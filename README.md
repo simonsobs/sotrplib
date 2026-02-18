@@ -82,8 +82,8 @@ We call this `mapcat` (https://github.com/simonsobs/mapcat) and again have an in
 To ingest ACT depth1 maps into a mapcat sqlite db, you would run the script `actingest` after setting the relevant mapcat environment variables; 
 
 ```
-export MAPCAT_DEPTH_ONE_PARENT=[/path/to/depth1/map/top-level/]
-export MAPCAT_DATABASE_NAME=[\path\to\]mapcat.sqlite
+export MAPCAT_DEPTH_ONE_PARENT=/path/to/depth1/maps
+export MAPCAT_DATABASE_NAME=/path/to/mapcat.sqlite
 ```
 This tells the map catalog where to look for the maps and where the database lives. 
 
