@@ -16,7 +16,8 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 pre-commit install
 ```
-If you don't have uv installed, you can install it with `pip install uv`.
+If you don't have uv installed, you can install it with `pip install uv`, or
+just go ahead and use `pip install -e ".[dev]"`. 
 
 We use `ruff` for formatting. When you go to commit your code, it will automatically be 
 formatted thanks to the pre-commit hook.
@@ -26,7 +27,8 @@ Tests are performed using `pytest`.
 ## extra required packages
 Any required packages should be listed in `pyproject.toml`
 
-If a package is missing, you can manually install it with `uv install [package]`.
+If a package is missing, you can manually install it with `uv install [package]`. Please then report this on the GitHub
+[issue tracker](https://github.com/simonsobs/sotrplib/issues).
 
 
 ## Setting up and Running the Pipeline
@@ -87,15 +89,15 @@ This tells the map catalog where to look for the maps and where the database liv
 
 With the existance of a mapcat database, the pipeline can be configured to read from there via :
 
-```
+```json
 "maps": {
-            "map_generator_type": "mapcat_database",
-            "number_to_read": 1,
-            "instrument": "SOLAT",
-            "frequency": "f090",
-            "array": "i6",
-            "rerun": "True"
-        },
+  "map_generator_type": "mapcat_database",
+  "number_to_read": 1,
+  "instrument": "SOLAT",
+  "frequency": "f090",
+  "array": "i6",
+  "rerun": "True"
+},
 
 ```
 for example, which tells the runner to read in 1 map at f090, from array i6 and to rerun it if it has already been analyzed.
@@ -117,46 +119,56 @@ If the conversion sees a dictionary it knows to expect a map_generator, which, i
 
 Let's take the case of `sample_read_unfiltered_map.json`. Here we have 
 
-```
+```json
 "maps": [
-        {
-            "map_type": "inverse_variance",
-            "intensity_map_path": "./depth1_1538613353_pa5_f090_map.fits",
-            "weights_map_path": "./15386/depth1_1538613353_pa5_f090_ivar.fits",
-            "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
-            "frequency": "f090",
-            "band": "pa5",
-            "intensity_units": "K",
-            "box":[
-                    {
-                    "ra":{"value":138.52,"unit":"deg"},
-                    "dec":{"value":-13.095,"unit":"deg"}
-                    },
-                    {
-                    "ra":{"value":140.52,"unit":"deg"},
-                    "dec":{"value":-11.095,"unit":"deg"}
-                    }
-                ]
+  {
+    "map_type": "inverse_variance",
+    "intensity_map_path": "./depth1_1538613353_pa5_f090_map.fits",
+    "weights_map_path": "./15386/depth1_1538613353_pa5_f090_ivar.fits",
+    "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
+    "frequency": "f090",
+    "band": "pa5",
+    "intensity_units": "K",
+    "box": [
+      {
+        "ra": {
+          "value": 138.52,
+          "unit": "deg"
+        },
+        "dec": {
+          "value": -13.095,
+          "unit": "deg"
         }
-    ],
+      },
+      {
+        "ra": {
+          "value": 140.52,
+          "unit": "deg"
+        },
+        "dec": {
+          "value": -11.095,
+          "unit": "deg"
+        }
+      }
+    ]
+  }
+],
 
-```
 so we can see `map_type` is `inverse_variance`. Going to `config/maps.py`, you can find where map_type is inverse_variance; i.e. the `InverseVarianceMapConfig` class.
 You can see what the required / default arguments are and what the pipeline does when it converts that input `to_map` -- it creates a ProcessableMap class of subclass IntensityAndInverseVarianceMap.
 
 If you look at the other example, `sample_read_mapcat.json`, you will see 
 
-```
+```json
 "maps": {
-            "map_generator_type": "mapcat_database",
-            "number_to_read": 1,
-            "instrument": "SOLAT",
-            "frequency": "f090",
-            "array": "i6",
-            "rerun": "True"
-        },
-```
-which clearly shows not `map_type` but `map_generator_type`. This implies that it will generate maps from the source (which is listed as mapcat_databse here).
+  "map_generator_type": "mapcat_database",
+  "number_to_read": 1,
+  "instrument": "SOLAT",
+  "frequency": "f090",
+  "array": "i6",
+  "rerun": "True"
+},
+which clearly shows `map_generator_type` as the descriptor, not `map_type`. This implies that it will generate maps from the source (which is listed as mapcat_databse here).
 Checking `config/maps.py` we see the subclass with that map_generator_type is `MapCatDatabaseConfig` which returns a `MapCatDatabaseReader` instance; returning a list of map objects corresponding to what is configured.
 
 Once the map objects are loaded, the pipeline handler then builds the maps and injects them into the rest of the pipeline.
