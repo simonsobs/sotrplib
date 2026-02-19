@@ -1004,7 +1004,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.observation_start = observation_start
         self.observation_end = observation_end
         self.observation_length = observation_length
-        self.observation_time = 0.5 * (observation_start + observation_end)
+        self.observation_time = observation_end - 0.5 * observation_length
         self.box = box
         self.frequency = frequency
         self.array = array
