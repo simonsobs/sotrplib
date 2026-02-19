@@ -73,7 +73,9 @@ def profile_task(func: callable) -> callable:
         )
         return result
 
-    return task(wrapped, name=func.__name__, cache_result_in_memory=False, persist_result=False)
+    return task(
+        wrapped, name=func.__name__, cache_result_in_memory=False, persist_result=False
+    )
 
 
 class PrefectRunner(BaseRunner):

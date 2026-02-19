@@ -16,7 +16,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.source_catalog.solar_system_object_catalog import SolarSystemObjectCatalog
-from sotrplib.sources.sources import CrossMatch, MeasuredSource
+from sotrplib.sources.sources import MeasuredSource
 
 
 @dataclass
@@ -94,9 +94,7 @@ class SimpleCatalogSifter(SiftingProvider):
             )
 
             if matches:
-                source.crossmatches = [
-                    CrossMatch(source_id=m.source_id) for m in matches
-                ]
+                source.crossmatches = matches
                 log = log.bind(number_of_matches=len(matches))
                 log = log.info("sifter.simple.matched")
                 source_candidates.append(source)
