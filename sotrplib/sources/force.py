@@ -220,6 +220,7 @@ class Lmfit2DGaussianFitter(ForcedPhotometryProvider):
     allowable_center_offset: u.Quantity
     thumbnail_half_width: u.Quantity
     near_source_rel_flux_limit: float | None
+    pearsons_r_threshold: float | None
     log: FilteringBoundLogger
 
     def __init__(
@@ -229,6 +230,7 @@ class Lmfit2DGaussianFitter(ForcedPhotometryProvider):
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         near_source_rel_flux_limit: float | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+        pearsons_r_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.flux_limit_centroid = flux_limit_centroid
@@ -236,6 +238,7 @@ class Lmfit2DGaussianFitter(ForcedPhotometryProvider):
         self.thumbnail_half_width = thumbnail_half_width
         self.allowable_center_offset = allowable_center_offset
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
+        self.pearsons_r_threshold = pearsons_r_threshold
         self.log = log or get_logger()
 
     def force(
@@ -295,6 +298,7 @@ class Lmfit2DGaussianFitter(ForcedPhotometryProvider):
             reproject_thumb=self.reproject_thumbnails,
             pointing_residuals=pointing_residuals,
             allowable_center_offset=self.allowable_center_offset,
+            pearsons_r_threshold=self.pearsons_r_threshold,
             flags={"nearby_source": has_nearby_sources},
             log=self.log,
         )

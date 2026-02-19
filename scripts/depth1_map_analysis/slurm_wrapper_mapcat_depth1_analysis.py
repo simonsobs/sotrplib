@@ -260,7 +260,7 @@ def generate_config_json(
             "search_type": "photutils"
     }},
     "forced_photometry": {{
-        "photometry_type": "scipy",
+        "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "4 arcmin",

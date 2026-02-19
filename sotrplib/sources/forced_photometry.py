@@ -222,9 +222,9 @@ class Gaussian2DFitter:
                         -np.inf,
                         self.initial_guess[1] - allowable_center_offset_pixels[0],
                         self.initial_guess[2] - allowable_center_offset_pixels[1],
-                        -np.inf,
-                        -np.inf,
-                        -np.inf,
+                        0,
+                        0,
+                        0,
                         -np.inf,
                     ],
                     [
@@ -233,7 +233,7 @@ class Gaussian2DFitter:
                         self.initial_guess[2] + allowable_center_offset_pixels[1],
                         np.inf,
                         np.inf,
-                        np.inf,
+                        np.pi,
                         np.inf,
                     ],
                 )
@@ -428,7 +428,7 @@ class LmfitGaussian2DFitter:
 
         params["sigma_x"].set(min=0.0)
         params["sigma_y"].set(min=0.0)
-        params["theta"].set(min=-np.pi / 2, max=np.pi / 2)
+        params["theta"].set(min=0, max=np.pi)
 
         if self.debug:
             self.log.debug(
@@ -819,8 +819,10 @@ def lmfit_2d_gaussian_fit(
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
     fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
-    pointing_residuals: MapPointingOffset | None = None,
+    pointing_residuals: MapPointingOffset | None = EmptyPointingOffset(),
+    pointing_offset_data: PointingData | None = None,
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+    pearsons_r_threshold: float = 0.2,
     flags: dict = {},
     log: FilteringBoundLogger | None = None,
     debug: bool = False,
@@ -845,11 +847,10 @@ def lmfit_2d_gaussian_fit(
                 source_flags.append(flag)
 
         source_pos = SkyCoord(ra=source.ra, dec=source.dec)
-        source_pos = (
-            pointing_residuals.apply_offset_at_position(source_pos)
-            if pointing_residuals
-            else source_pos
-        )
+        if pointing_residuals is not None:
+            source_pos = pointing_residuals.apply_offset_at_position(
+                source_pos, data=pointing_offset_data
+            )
 
         source.ra = source_pos.ra
         source.dec = source_pos.dec
@@ -980,6 +981,13 @@ def lmfit_2d_gaussian_fit(
         fit = fitter.fit()
         if debug:
             log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
+        if (
+            pearsons_r_threshold is not None
+            and fit.goodness_of_fit is not None
+            and fit.goodness_of_fit < pearsons_r_threshold
+        ):
+            fit.failed = True
+            fit.failure_reason = "goodness_of_fit_below_threshold"
 
         forced_source.fit_method = fit_method
         forced_source.fit_failed = fit.failed

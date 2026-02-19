@@ -71,6 +71,7 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
     reproject_thumbnails: bool = False
     thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
     allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(1.0, "arcmin")
+    pearsons_r_threshold: float = 0.2
     near_source_rel_flux_limit: float = 1.0
 
     def to_forced_photometry(
@@ -82,6 +83,7 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
             thumbnail_half_width=self.thumbnail_half_width,
             allowable_center_offset=self.allowable_center_offset,
             near_source_rel_flux_limit=self.near_source_rel_flux_limit,
+            pearsons_r_threshold=self.pearsons_r_threshold,
             log=log,
         )
 
