@@ -246,6 +246,7 @@ class Lmfit2DGaussianFitter(ForcedPhotometryProvider):
         input_map: ProcessableMap,
         catalogs: list[SourceCatalog],
         pointing_residuals: MapPointingOffset | None = None,
+        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(freq=input_map.frequency, arr=input_map.array)
         source_list = list(
@@ -297,6 +298,7 @@ class Lmfit2DGaussianFitter(ForcedPhotometryProvider):
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
             pointing_residuals=pointing_residuals,
+            pointing_offset_data=pointing_offset_data,
             allowable_center_offset=self.allowable_center_offset,
             pearsons_r_threshold=self.pearsons_r_threshold,
             flags={"nearby_source": has_nearby_sources},
@@ -352,7 +354,11 @@ class Scipy2DGaussianPointingFitter(ForcedPhotometryProvider):
         self.log = log or get_logger()
 
     def force(
-        self, input_map: ProcessableMap, catalogs: list[SourceCatalog]
+        self,
+        input_map: ProcessableMap,
+        catalogs: list[SourceCatalog],
+        pointing_residuals: MapPointingOffset | None = None,
+        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(
             freq=input_map.frequency,
