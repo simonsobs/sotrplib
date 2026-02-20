@@ -94,14 +94,7 @@ def test_lmfit(map_with_single_source):
     results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
     assert results[0].crossmatches
     assert len(results) == 1
-    ntries = 10
-    if results[0].fit_failed:
-        while results[0].fit_failed and ntries > 0:
-            results = forced_photometry.force(
-                input_map=input_map, catalogs=[source_cat]
-            )
-            ntries -= 1
-
+    results = forced_photometry.force(input_map=input_map, catalogs=[source_cat])
     assert results[0].flux.to(u.Jy).value == pytest.approx(
         sources[0].flux.to(u.Jy).value, rel=2e-1
     )
