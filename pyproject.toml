@@ -10,6 +10,7 @@ dependencies = [
     "pixell",
     "numpy==1.26.4",
     "astropy",
+    "lmfit",
     "h5py",
     "pandas",
     "scipy",

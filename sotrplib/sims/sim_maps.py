@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 from astropy import units as u
@@ -8,7 +8,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sims.sim_sources import SimTransient
+from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.forced_photometry import (
     convert_catalog_to_registered_source_objects,
 )
@@ -279,7 +279,7 @@ def photutils_sim_n_sources(
 
 def inject_sources(
     imap: enmap.ndmap | ProcessableMap,
-    sources: list[SimTransient],
+    sources: list[SimulatedSource],
     observation_time: float | enmap.ndmap,
     freq: str = "f090",
     arr: str | None = None,
@@ -288,11 +288,11 @@ def inject_sources(
     log: FilteringBoundLogger | None = None,
 ):
     """
-    Inject a list of SimTransient objects into the input map.
+    Inject a list of SimulatedSource objects into the input map.
 
     Parameters:
     - imap: enmap.ndmap, the input map to inject sources into.
-    - sources: list of SimTransient objects.
+    - sources: list of SimulatedSource objects.
     - observation_time: float or enmap.ndmap, the time of the observation.
     - freq: str, the frequency of the observation.
     - arr: str, the array name (optional).
@@ -336,7 +336,8 @@ def inject_sources(
     removed_sources = {"not_flaring": 0, "out_of_bounds": 0}
     for source in tqdm(sources, desc="Injecting sources", disable=not debug):
         # Check if source is within the map bounds
-        ra, dec = source.ra, source.dec
+        source_position = source.position(observation_time)
+        ra, dec = source_position.ra, source_position.dec
         pix = sky2pix(shape, wcs, np.asarray([dec.to("rad").value, ra.to("rad").value]))
         if not (0 <= pix[0] < shape[-2] and 0 <= pix[1] < shape[-1]):
             removed_sources["out_of_bounds"] += 1
@@ -356,11 +357,21 @@ def inject_sources(
         else:
             source_obs_time = observation_time[int(pix[0]), int(pix[1])]
 
-        if abs(source.peak_time - source_obs_time) > 3 * source.flare_width:
-            removed_sources["not_flaring"] += 1
-            continue
-
-        flux = source.get_flux(source_obs_time)
+        if (
+            hasattr(source, "peak_time")
+            and hasattr(source, "flare_width")
+            and source.peak_time is not None
+            and source.flare_width is not None
+        ):
+            if (
+                abs(source.peak_time.timestamp() - source_obs_time)
+                > 3 * source.flare_width.total_seconds()
+            ):
+                removed_sources["not_flaring"] += 1
+                continue
+        ## flux requires an aware time, so convert the timestamp to a datetime with utc timezone
+        awaretime = datetime.fromtimestamp(source_obs_time, tz=timezone.utc)
+        flux = source.flux(awaretime)
 
         inj_source = MeasuredSource(
             ra=ra,

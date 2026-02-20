@@ -31,10 +31,10 @@ class FixedSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time):
+    def position(self, time: AwareDatetime | None = None) -> SkyCoord:
         return self._position
 
-    def flux(self, time):
+    def flux(self, time: AwareDatetime | None = None) -> u.Quantity:
         return self._flux
 
 
@@ -64,7 +64,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: AwareDatetime) -> SkyCoord:
+    def position(self, time: AwareDatetime | None = None) -> SkyCoord:
         return self._position
 
     def flux(self, time: AwareDatetime) -> u.Quantity:
