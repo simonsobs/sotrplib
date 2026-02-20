@@ -167,6 +167,7 @@ module load {soconda_version}
 
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
 cd {run_dir}
+source .venv/bin/activate
 
 """
     return slurm_header
