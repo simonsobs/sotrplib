@@ -372,6 +372,7 @@ def inject_sources(
         ## flux requires an aware time, so convert the timestamp to a datetime with utc timezone
         awaretime = datetime.fromtimestamp(source_obs_time, tz=timezone.utc)
         flux = source.flux(awaretime)
+
         inj_source = MeasuredSource(
             ra=ra,
             dec=dec,
