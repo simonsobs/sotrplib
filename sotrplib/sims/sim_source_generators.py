@@ -141,6 +141,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                         ra=positions[i][1],
                         dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
+                        catalog_idx=base + i,
                     )
                 ],
             )
@@ -283,6 +284,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                         ra=positions[i][1],
                         dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
+                        catalog_idx=base + i,
                     )
                 ],
             )

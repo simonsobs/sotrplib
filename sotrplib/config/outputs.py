@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 
+from lightcurvedb.config import Settings as LightcurveDBSettings
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
@@ -11,6 +12,7 @@ from sotrplib.outputs.core import (
     PickleSerializer,
     SourceOutput,
 )
+from sotrplib.outputs.lightcurvedb import LightcurveDBOutput
 from sotrplib.outputs.lightserve import LightServeOutput
 
 
@@ -61,9 +63,24 @@ class LightServeOutputConfig(OutputConfig):
         )
 
 
+class LightcurveDBOutputConfig(OutputConfig):
+    output_type: Literal["lightcurvedb"] = "lightcurvedb"
+    override_settings: dict | None = None
+    "Over-ride individual settings from the LightcurveDB environment variable setup."
+    upsert_sources: bool = False
+    "Upsert sources to LightcurveDB before outputting flux measuurements. Data is taken from the crossmatches."
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> SourceOutput:
+        settings = LightcurveDBSettings(**(self.override_settings or {}))
+        return LightcurveDBOutput(
+            settings=settings, upsert_sources=self.upsert_sources, log=log
+        )
+
+
 AllOutputConfigTypes = (
     PickleOutputConfig
     | JSONOutputConfig
     | CutoutImageOutputConfig
     | LightServeOutputConfig
+    | LightcurveDBOutputConfig
 )

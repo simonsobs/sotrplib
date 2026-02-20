@@ -434,6 +434,7 @@ def scipy_2d_gaussian_fit(
                         catalog_name=source.catalog_name,
                         flux=source.flux,
                         angular_separation=None,
+                        catalog_idx=i,  # TODO: Replace this with a unified ID scheme
                     )
                 ],
             )
@@ -476,6 +477,7 @@ def scipy_2d_gaussian_fit(
                     flux=source.flux,
                     catalog_name=source.catalog_name,
                     angular_separation=None,
+                    catalog_idx=i,  # TODO: Replace this with a unified ID scheme
                 )
             ],
         )
