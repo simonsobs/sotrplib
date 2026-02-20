@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 from astropy import units as u
@@ -363,8 +363,9 @@ def inject_sources(
         ):
             removed_sources["not_flaring"] += 1
             continue
-
-        flux = source.flux(source_obs_time)
+        ## flux requires an aware time, so convert the timestamp to a datetime with utc timezone
+        awaretime = datetime.fromtimestamp(source_obs_time, tz=timezone.utc)
+        flux = source.flux(awaretime)
 
         inj_source = MeasuredSource(
             ra=ra,

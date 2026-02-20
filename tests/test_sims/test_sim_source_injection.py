@@ -6,6 +6,7 @@ from structlog import get_logger
 
 from sotrplib.sims import (
     maps,
+    sim_maps,
     sim_source_generators,
     sim_sources,
     source_injector,
@@ -342,3 +343,47 @@ def test_source_injection_blind_search_SAT():
     )
     found_sources, _ = blind_search.search(new_map)
     assert len(found_sources) == number
+
+
+def test_sim_maps_inject_sources():
+    """Test the inject_sources method from sim_maps module."""
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(5.0, "Jy")
+    number = 8
+    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+
+    generator = sim_source_generators.GaussianTransientSourceGenerator(
+        flare_earliest_time=start_time - datetime.timedelta(hours=1),
+        flare_latest_time=start_time + datetime.timedelta(hours=1),
+        flare_width_shortest=datetime.timedelta(minutes=10),
+        flare_width_longest=datetime.timedelta(minutes=30),
+        peak_amplitude_minimum=min_flux,
+        peak_amplitude_maximum=max_flux,
+        number=number,
+        catalog_fraction=0.75,
+    )
+
+    base_map = maps.SimulatedMap(
+        observation_start=start_time,
+        observation_end=start_time + datetime.timedelta(hours=1),
+        frequency="f090",
+        array="pa5",
+        simulation_parameters=maps.SimulationParameters(
+            center_ra=50.0 * u.deg,
+            center_dec=0.0 * u.deg,
+            width_ra=5.0 * u.deg,
+            width_dec=5.0 * u.deg,
+        ),
+    )
+
+    base_map.build()
+    sources, _ = generator.generate(input_map=base_map)
+    timestamp = start_time.timestamp() + 30 * 60  # 30 minutes into the observation
+    injected_map, _ = sim_maps.inject_sources(
+        base_map, sources, observation_time=timestamp
+    )
+    injected_map.finalize()
+
+    assert injected_map is not None
+    assert injected_map.flux is not None
+    assert len(sources) == number
