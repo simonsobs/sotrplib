@@ -444,8 +444,8 @@ class LmFitGaussian2DFitter:
                 max=y0_guess + allowable_center_offset_pixels[1],
             )
 
-        params["sigma_x"].set(min=0.0)
-        params["sigma_y"].set(min=0.0)
+        params["sigma_x"].set(min=0.0, max=nx)
+        params["sigma_y"].set(min=0.0, max=ny)
         params["theta"].set(min=0, max=np.pi)
 
         if self.debug:
