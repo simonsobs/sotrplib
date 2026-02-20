@@ -153,7 +153,7 @@ Let's take the case of `sample_read_unfiltered_map.json`. Here we have
     ]
   }
 ],
-
+```
 so we can see `map_type` is `inverse_variance`. Going to `config/maps.py`, you can find where map_type is inverse_variance; i.e. the `InverseVarianceMapConfig` class.
 You can see what the required / default arguments are and what the pipeline does when it converts that input `to_map` -- it creates a ProcessableMap class of subclass IntensityAndInverseVarianceMap.
 
@@ -168,6 +168,7 @@ If you look at the other example, `sample_read_mapcat.json`, you will see
   "array": "i6",
   "rerun": "True"
 },
+```
 which clearly shows `map_generator_type` as the descriptor, not `map_type`. This implies that it will generate maps from the source (which is listed as mapcat_databse here).
 Checking `config/maps.py` we see the subclass with that map_generator_type is `MapCatDatabaseConfig` which returns a `MapCatDatabaseReader` instance; returning a list of map objects corresponding to what is configured.
 
