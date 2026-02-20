@@ -101,10 +101,10 @@ class Scipy2DGaussianPointingConfig(ForcedPhotometryConfig):
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
-    ) -> TwoDGaussianFitter:
+    ) -> TwoDGaussianPointingFitter:
         return TwoDGaussianPointingFitter(
             mode="scipy",
-            flux_limit_centroid=self.min_flux,
+            min_flux=self.min_flux,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
             allowable_center_offset=self.allowable_center_offset,
@@ -128,7 +128,7 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
     ) -> TwoDGaussianPointingFitter:
         return TwoDGaussianPointingFitter(
             mode="lmfit",
-            flux_limit_centroid=self.min_flux,
+            min_flux=self.min_flux,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
             allowable_center_offset=self.allowable_center_offset,
