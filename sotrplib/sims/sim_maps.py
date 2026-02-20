@@ -358,11 +358,17 @@ def inject_sources(
             source_obs_time = observation_time[int(pix[0]), int(pix[1])]
 
         if (
-            abs(source.peak_time.timestamp() - source_obs_time)
-            > 3 * source.flare_width.total_seconds()
+            hasattr(source, "peak_time")
+            and hasattr(source, "flare_width")
+            and source.peak_time is not None
+            and source.flare_width is not None
         ):
-            removed_sources["not_flaring"] += 1
-            continue
+            if (
+                abs(source.peak_time.timestamp() - source_obs_time)
+                > 3 * source.flare_width.total_seconds()
+            ):
+                removed_sources["not_flaring"] += 1
+                continue
         ## flux requires an aware time, so convert the timestamp to a datetime with utc timezone
         awaretime = datetime.fromtimestamp(source_obs_time, tz=timezone.utc)
         flux = source.flux(awaretime)
