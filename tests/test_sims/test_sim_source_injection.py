@@ -11,7 +11,7 @@ from sotrplib.sims import (
     source_injector,
 )
 from sotrplib.sources.blind import BlindSearchParameters, SigmaClipBlindSearch
-from sotrplib.sources.force import Scipy2DGaussianFitter
+from sotrplib.sources.force import Lmfit2DGaussianFitter
 from sotrplib.utils.utils import get_fwhm
 
 log = get_logger()
@@ -198,7 +198,7 @@ def test_source_injection_forced_photometry():
         gauss_fwhm=get_fwhm(base_map.frequency)
     )
     _, new_map = injector.inject(input_map=base_map, simulated_sources=sources)
-    phot = Scipy2DGaussianFitter(thumbnail_half_width=3 * u.arcmin)
+    phot = Lmfit2DGaussianFitter(thumbnail_half_width=4 * u.arcmin)
     forced_phot_results = phot.force(new_map, catalogs=[cat])
 
     assert len(forced_phot_results) == number
