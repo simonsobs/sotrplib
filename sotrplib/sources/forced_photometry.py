@@ -269,7 +269,7 @@ class Gaussian2DFitter:
         self.fit_params = GaussianFitParameters()
 
         if self.model is None:
-            self.log.error(f"{self.fit_model}_gaussian.model_not_available")
+            self.log.error(f"{self.model}_gaussian.model_not_available")
             self.fit_params.failed = True
             self.fit_params.failure_reason = "model_not_available"
             return self.fit_params
@@ -558,8 +558,8 @@ def gaussian_fit(
         nominal catalog position. Fits exceeding this offset may be rejected.
         The default is 1.0 arcmin.
     goodness_of_fit_threshold : float or None, optional
-        If not None, the minimum Pearson's r value for the fit to be considered successful.
-        If None, no r value cut is applied. The default is None.
+        If not None, the minimum R^2 value for the fit to be considered successful.
+        If None, no R^2 value cut is applied. The default is None.
     flags : dict, optional
         Dictionary mapping flag names (str) to boolean lists of length
         ``len(source_list)``. For each source, all flag names whose list entry
@@ -651,7 +651,6 @@ def gaussian_fit(
                 f"{preamble}source_outside_map_bounds_after_pointing_correction",
                 source=source_name,
             )
-            forced_source.fit_method = fit_method
             forced_source.fit_failed = True
             fit.failure_reason = "source_outside_map_bounds"
             forced_source.fit_failure_reason = "source_outside_map_bounds"

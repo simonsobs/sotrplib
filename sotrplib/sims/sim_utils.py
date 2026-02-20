@@ -318,7 +318,9 @@ def save_transients_to_db(
             (
                 pk.dumps(
                     (
-                        transient.position.dec.to(u.deg).value,
+                        transient.position.dec.to(
+                            u.deg
+                        ).value,  ## todo this needs to be fixed for new transinets which require positions.
                         transient.position.ra.to(u.deg).value,
                     )
                 ),
