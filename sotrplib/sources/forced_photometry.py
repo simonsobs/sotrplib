@@ -243,7 +243,7 @@ class Gaussian2DFitter:
             self.initial_guess["sigma_x"].set(min=0.0, max=nx)
             self.initial_guess["sigma_y"].set(min=0.0, max=ny)
             self.initial_guess["theta"].set(min=0, max=np.pi)
-        self.log.info(
+        self.log.debug(
             "Gaussian2DFitter.model_initialized",
             fit_method=self.fit_method,
             model=self.model,
