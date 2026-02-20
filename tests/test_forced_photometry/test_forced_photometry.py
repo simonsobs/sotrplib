@@ -4,9 +4,8 @@ from astropy import units as u
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
-    Lmfit2DGaussianFitter,
-    Scipy2DGaussianFitter,
     SimpleForcedPhotometry,
+    TwoDGaussianFitter,
 )
 
 ### sources returned from simulations need to be converted to registered sources
@@ -42,7 +41,9 @@ def test_empty_forced_photometry(map_with_single_source):
 
 def test_scipy_curve_fit(map_with_single_source):
     input_map, sources = map_with_single_source
-    forced_photometry = Scipy2DGaussianFitter(thumbnail_half_width=0.1 * u.deg)
+    forced_photometry = TwoDGaussianFitter(
+        mode="scipy", thumbnail_half_width=0.1 * u.deg
+    )
     source_cat = RegisteredSourceCatalog(sources=[])
     source_cat.add_sources(sources=sources)
     source_cat.valid_fluxes = [s.source_id for s in sources]
@@ -62,12 +63,12 @@ def test_scipy_curve_fit(map_with_single_source):
     )
     assert results[0].offset_ra.to(u.arcmin).value < 0.5
     assert results[0].offset_dec.to(u.arcmin).value < 0.5
-    assert results[0].fit_method == "2d_gaussian"
+    assert results[0].fit_method == "scipy_2d_gaussian"
 
 
 def test_source_offset(map_with_single_source):
     input_map, sources = map_with_single_source
-    forced_photometry = Scipy2DGaussianFitter(reproject_thumbnails=False)
+    forced_photometry = TwoDGaussianFitter(mode="scipy", reproject_thumbnails=False)
 
     ra_offset = 0.02 * u.deg
     new_sources = [x.model_copy() for x in sources]
@@ -86,7 +87,7 @@ def test_source_offset(map_with_single_source):
 
 def test_lmfit(map_with_single_source):
     input_map, sources = map_with_single_source
-    forced_photometry = Lmfit2DGaussianFitter()
+    forced_photometry = TwoDGaussianFitter(mode="lmfit")
     source_cat = RegisteredSourceCatalog(sources=[])
     source_cat.add_sources(sources=sources)
     source_cat.valid_fluxes = [s.source_id for s in sources]
@@ -106,12 +107,12 @@ def test_lmfit(map_with_single_source):
     )
     assert results[0].offset_ra.to(u.arcmin).value < 0.5
     assert results[0].offset_dec.to(u.arcmin).value < 0.5
-    assert results[0].fit_method == "2d_gaussian_lmfit"
+    assert results[0].fit_method == "lmfit_2d_gaussian"
 
 
 def test_lmfit_source_offset(map_with_single_source):
     input_map, sources = map_with_single_source
-    forced_photometry = Lmfit2DGaussianFitter(reproject_thumbnails=False)
+    forced_photometry = TwoDGaussianFitter(mode="lmfit", reproject_thumbnails=False)
 
     ra_offset = 0.02 * u.deg
     new_sources = [x.model_copy() for x in sources]
@@ -126,13 +127,15 @@ def test_lmfit_source_offset(map_with_single_source):
     assert results[0].offset_ra.to(u.arcmin).value == pytest.approx(
         ra_offset.to(u.arcmin).value, abs=0.5
     )
-    assert results[0].fit_method == "2d_gaussian_lmfit"
+    assert results[0].fit_method == "lmfit_2d_gaussian"
 
 
 def test_lmfit_rotation(map_with_single_asymmetric_source):
     input_map, sources = map_with_single_asymmetric_source
 
-    forced_photometry = Lmfit2DGaussianFitter(thumbnail_half_width=0.2 * u.deg)
+    forced_photometry = TwoDGaussianFitter(
+        mode="lmfit", thumbnail_half_width=0.2 * u.deg
+    )
     source_cat = RegisteredSourceCatalog(sources=[])
     source_cat.add_sources(sources=sources)
     source_cat.valid_fluxes = [s.source_id for s in sources]

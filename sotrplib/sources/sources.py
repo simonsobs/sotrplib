@@ -115,9 +115,13 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
-    fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline", "simulated"] = (
-        "2d_gaussian"
-    )
+    fit_method: Literal[
+        "scipy_2d_gaussian",
+        "lmfit_2d_gaussian",
+        "nearest_neighbor",
+        "spline",
+        "simulated",
+    ] = "lmfit_2d_gaussian"
     fit_params: dict | None = None
     fit_failed: bool = False
     fit_failure_reason: str | None = None

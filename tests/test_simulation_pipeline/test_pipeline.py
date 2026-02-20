@@ -10,10 +10,8 @@ from sotrplib.sifter.core import DefaultSifter, SimpleCatalogSifter
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
-from sotrplib.sources.force import Scipy2DGaussianFitter
-from sotrplib.sources.forced_photometry import (
-    scipy_2d_gaussian_fit,
-)
+from sotrplib.sources.force import TwoDGaussianFitter
+from sotrplib.sources.forced_photometry import gaussian_fit
 from sotrplib.sources.sources import RegisteredSource
 
 
@@ -30,7 +28,7 @@ def test_injected_sources_scipy(
     assert len(sources) > 0
 
     # See if we can recover them
-    forced_sources = scipy_2d_gaussian_fit(new_map, source_list=sources)
+    forced_sources = gaussian_fit(new_map, source_list=sources, fit_method="scipy")
 
     assert len(forced_sources) == len(sources)
 
@@ -56,7 +54,38 @@ def test_basic_pipeline_scipy(
         pointing_residual_model=None,
         postprocessors=None,
         source_simulators=None,
-        forced_photometry=Scipy2DGaussianFitter(),
+        forced_photometry=TwoDGaussianFitter(mode="scipy"),
+        source_subtractor=None,
+        blind_search=SigmaClipBlindSearch(),
+        sifter=DefaultSifter(),
+        outputs=[PickleSerializer(directory=tmp_path)],
+    )
+
+    runner.run()
+
+
+def test_basic_pipeline_lmfit(
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
+):
+    """
+    Tests a complete setup of the basic pipeline run.
+    """
+
+    new_map, sources = map_with_sources
+    source_cat = RegisteredSourceCatalog(sources=sources)
+
+    runner = PipelineRunner(
+        maps=[new_map, new_map],
+        map_coadder=None,
+        source_catalogs=[source_cat],
+        sso_catalogs=[],
+        source_injector=None,
+        preprocessors=None,
+        pointing_provider=None,
+        pointing_residual_model=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=TwoDGaussianFitter(mode="lmfit"),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),
