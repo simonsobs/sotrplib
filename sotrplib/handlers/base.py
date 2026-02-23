@@ -15,7 +15,7 @@ from sotrplib.maps.pointing import (
 )
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
-from sotrplib.outputs.core import SourceOutput
+from sotrplib.outputs.core import MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SiftingProvider
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
@@ -189,12 +189,19 @@ class BaseRunner:
         pointing_data = self.profilable_task(self.pointing_residual_model.get_offset)(
             pointing_sources=pointing_sources
         )
-        self.profilable_task(save_model_maps)(
-            self.pointing_residual_model,
-            pointing_data,
-            input_map,
-            filename_prefix=f"pointing_residual_{input_map.map_id}",
-        )
+
+        for o in self.outputs:
+            if (
+                issubclass(type(o), MapOutput)
+                and "pointing_residual_map" in o.field_ids
+            ):
+                self.profilable_task(save_model_maps)(
+                    self.pointing_residual_model,
+                    pointing_data,
+                    input_map,
+                    filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
+                )
+                break
         sso_sources = []
         for sso_catalog in self.sso_catalogs:
             sso_sources.extend(
@@ -229,13 +236,20 @@ class BaseRunner:
         )
 
         for output in self.outputs:
-            self.profilable_task(output.output)(
-                forced_photometry_candidates=forced_photometry_candidates,
-                sifter_result=sifter_result,
-                input_map=input_map,
-                pointing_sources=pointing_sources,
-                injected_sources=injected_sources,
-            )
+            ## check if super class of output is MapOutput or SourceOutput
+            if issubclass(type(output), SourceOutput):
+                self.profilable_task(output.output)(
+                    forced_photometry_candidates=forced_photometry_candidates,
+                    sifter_result=sifter_result,
+                    input_map=input_map,
+                    pointing_sources=pointing_sources,
+                    injected_sources=injected_sources,
+                )
+            elif issubclass(type(output), MapOutput):
+                self.profilable_task(output.output)(input_map=input_map)
+            else:
+                raise ValueError(f"Output {type(output)} is not a valid output type")
+
         if input_map._parent_database is not None:
             set_processing_end(input_map.map_id)
         return forced_photometry_candidates, sifter_result, input_map

@@ -375,7 +375,7 @@ def flat_field_using_photutils(
     mask: np.ndarray | None = None,
     sigmaclip: float = 5.0,
     log: FilteringBoundLogger | None = None,
-):
+) -> ProcessableMap:
     """
     use photutils.background.Background2D to calculate the rms in tiles.
     get the rms of the tiled snr map (i.e. the rms should be 1)
@@ -403,6 +403,24 @@ def flat_field_using_photutils(
         mapdata.flatfielded = True
     except Exception as e:
         log.error(f"flat_field_using_photutils.failed: {e}")
+
+    try:
+        background = Background2D(
+            mapdata.flux,
+            int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg)),
+            sigma_clip=sigmaclip,
+            bkg_estimator=StdBackgroundRMS(sigmaclip),
+            mask=mask,
+        )
+    except Exception as e:
+        log.error(f"flat_field_using_photutils.failed_noisemap: {e}")
+    ## store the rms map used for flatfielding.
+    ## need wcs of mesh which has pixel size of tilegrid.
+    bs = int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg))
+    mesh_template = enmap.downgrade(mapdata.snr, bs, inclusive=True)
+    bg_rms = background.background_rms_mesh
+    mask = background.npixels_mesh > 0
+    mapdata.flatfield_map = enmap.enmap(bg_rms * mask, mesh_template.wcs)
 
     return mapdata
 

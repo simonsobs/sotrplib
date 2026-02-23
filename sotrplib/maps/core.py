@@ -54,6 +54,9 @@ class ProcessableMap(ABC):
     mask: ndmap | None = None
     "A mask map indicating valid pixels as 1 and invalid pixels as 0"
 
+    flatfield_map: ndmap | None = None
+    "A flatfield map containing the local 2D background RMS used for flatfielding the map, if applicable."
+
     finalized: bool = False
     "Whether finalize has been called and ancillary maps can no longer be updated"
 
