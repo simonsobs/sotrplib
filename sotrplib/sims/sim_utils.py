@@ -2,13 +2,11 @@ import math
 
 import numpy as np
 from astropy import units as u
-from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 
@@ -278,107 +276,6 @@ def dec_lims_valid(
         return False
 
     return True
-
-
-def save_transients_to_db(
-    transients: list[SimulatedSource],
-    db_path: str,
-    log: FilteringBoundLogger | None = None,
-):
-    """
-    Save a list of SimulatedSource objects to a SQLite database.
-
-    Parameters:
-    - transients: List of SimulatedSource objects to save.
-    - db_path: Path to the SQLite database file.
-    """
-    import pickle as pk
-    import sqlite3
-
-    log = log or get_logger()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            position BLOB,
-            peak_amplitude REAL,
-            peak_time REAL,
-            flare_width REAL,
-            flare_morph TEXT,
-            beam_params BLOB
-        )
-    """)
-    for transient in transients:
-        cursor.execute(
-            """
-            INSERT INTO transients (position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (
-                pk.dumps(
-                    (
-                        transient.position.dec.to(
-                            u.deg
-                        ).value,  ## todo this needs to be fixed for new transinets which require positions.
-                        transient.position.ra.to(u.deg).value,
-                    )
-                ),
-                transient.peak_amplitude.to(u.Jy).value,
-                transient.peak_time,
-                transient.flare_width,
-                transient.flare_morph,
-                pk.dumps(transient.beam_params),
-            ),
-        )
-    conn.commit()
-    conn.close()
-
-
-def load_transients_from_db(
-    db_path,
-    log: FilteringBoundLogger | None = None,
-) -> list[SimulatedSource]:
-    """
-
-    ### DEPRECATED ? AF Jan 30 2026
-
-    Load a list of SimulatedSource objects from a SQLite database.
-
-    Parameters:
-    - db_path: Path to the SQLite database file.
-
-    Returns:
-    - List of SimulatedSource objects.
-    """
-    import pickle as pk
-    import sqlite3
-
-    log = log or get_logger()
-    if not db_path:
-        return []
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params FROM transients"
-    )
-    rows = cursor.fetchall()
-    conn.close()
-
-    transients = []
-    for row in rows:
-        position = pk.loads(row[0])
-        beam_params = pk.loads(row[5])
-        transient = SimulatedSource(
-            position=SkyCoord(ra=position[1] * u.deg, dec=position[0] * u.deg),
-            peak_amplitude=row[1] * u.Jy,
-            peak_time=row[2],
-            flare_width=row[3],
-            flare_morph=row[4],
-            beam_params=beam_params,
-        )
-        transients.append(transient)
-    return transients
 
 
 def load_config_yaml(
