@@ -138,7 +138,10 @@ class ScipyGaussian2DFitter:
 
         Forcing center removes the x0,y0 from the fit parameters.
         """
-
+        self.log.warning(
+            "ScipyGaussian2DFitter.deprecation_warning",
+            warning="Scipy curve fit is being deprecated in favor of lmfit, which provides better handling of parameter constraints and uncertainties. Consider switching to lmfit for improved fitting performance and reliability.",
+        )
         self.model = gaussian_2d
         ny, nx = self.source.thumbnail.shape
         # Define coordinate system centered at the image middle (i.e. the thumbnail center)
@@ -166,16 +169,6 @@ class ScipyGaussian2DFitter:
         theta_guess = 0
         offset_guess = 0
 
-        initial_guess = [
-            amplitude_guess,
-            x0_guess,
-            y0_guess,
-            sigma_guess[0],
-            sigma_guess[1],
-            theta_guess,
-            offset_guess,
-        ]
-
         ## if force center, fix the x0,y0 guesses by not varying them
         if self.force_center:
 
@@ -200,6 +193,15 @@ class ScipyGaussian2DFitter:
             ]
         else:
             gaussian_2d_model = gaussian_2d
+            initial_guess = [
+                amplitude_guess,
+                x0_guess,
+                y0_guess,
+                sigma_guess[0],
+                sigma_guess[1],
+                theta_guess,
+                offset_guess,
+            ]
 
         self.model = gaussian_2d_model
         self.initial_guess = initial_guess
@@ -415,16 +417,6 @@ class LmFitGaussian2DFitter:
         theta_guess = 0
         offset_guess = 0
 
-        initial_guess = [
-            amplitude_guess,
-            x0_guess,
-            y0_guess,
-            sigma_guess[0],
-            sigma_guess[1],
-            theta_guess,
-            offset_guess,
-        ]
-
         allowable_center_offset_pixels = self.allowable_center_offset.to(
             u.arcmin
         ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
@@ -467,7 +459,6 @@ class LmFitGaussian2DFitter:
         Set up and perform the 2D Gaussian fit using lmfit.
         """
         self.fit_params = GaussianFitParameters()
-
         if self.model is None:
             self.log.error("lmfit_2d_gaussian.lmfit_not_available")
             self.fit_params.failed = True
