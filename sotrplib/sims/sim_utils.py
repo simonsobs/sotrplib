@@ -7,7 +7,6 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sims.sim_sources import SimTransient
 from sotrplib.sources.sources import MeasuredSource
 
 
@@ -279,101 +278,9 @@ def dec_lims_valid(
     return True
 
 
-def save_transients_to_db(
-    transients: list[SimTransient],
-    db_path: str,
-    log: FilteringBoundLogger | None = None,
-):
-    """
-    Save a list of SimTransient objects to a SQLite database.
-
-    Parameters:
-    - transients: List of SimTransient objects to save.
-    - db_path: Path to the SQLite database file.
-    """
-    import pickle as pk
-    import sqlite3
-
-    log = log or get_logger()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            position BLOB,
-            peak_amplitude REAL,
-            peak_time REAL,
-            flare_width REAL,
-            flare_morph TEXT,
-            beam_params BLOB
-        )
-    """)
-    for transient in transients:
-        cursor.execute(
-            """
-            INSERT INTO transients (position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (
-                pk.dumps((transient.dec.to(u.deg).value, transient.ra.to(u.deg).value)),
-                transient.peak_amplitude.to(u.Jy).value,
-                transient.peak_time,
-                transient.flare_width,
-                transient.flare_morph,
-                pk.dumps(transient.beam_params),
-            ),
-        )
-    conn.commit()
-    conn.close()
-
-
-def load_transients_from_db(
-    db_path,
-    log=None,
-) -> list[SimTransient]:
-    """
-    Load a list of SimTransient objects from a SQLite database.
-
-    Parameters:
-    - db_path: Path to the SQLite database file.
-
-    Returns:
-    - List of SimTransient objects.
-    """
-    import pickle as pk
-    import sqlite3
-
-    from .sim_sources import SimTransient
-
-    if not db_path:
-        return []
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params FROM transients"
-    )
-    rows = cursor.fetchall()
-    conn.close()
-
-    transients = []
-    for row in rows:
-        position = pk.loads(row[0])
-        beam_params = pk.loads(row[5])
-        transient = SimTransient(
-            position=(position[0] * u.deg, position[1] * u.deg),
-            peak_amplitude=row[1] * u.Jy,
-            peak_time=row[2],
-            flare_width=row[3],
-            flare_morph=row[4],
-            beam_params=beam_params,
-        )
-        transients.append(transient)
-    return transients
-
-
 def load_config_yaml(
     config_path: str,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Load a configuration file in YAML format.
@@ -397,7 +304,7 @@ def load_config_yaml(
 
 def get_sim_map_group(
     sim_params,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     freq_arr_idx = (
         sim_params["array_info"]["arr"] + "_" + sim_params["array_info"]["freq"]
@@ -424,7 +331,7 @@ def make_2d_gaussian_model_param_table(
     nominal_fwhm: u.Quantity = 2.2 * u.arcmin,
     verbose: bool = False,
     cuts={},
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Create a 2D Gaussian model parameter table from the sources detected in the image.
@@ -434,6 +341,7 @@ def make_2d_gaussian_model_param_table(
     """
     from astropy.table import QTable
 
+    log = log or get_logger()
     log = log.bind(func_name="make_2d_gaussian_model_param_table")
     model_params = {
         "x_0": [],

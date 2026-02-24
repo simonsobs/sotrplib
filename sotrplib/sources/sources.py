@@ -97,6 +97,9 @@ class MeasuredSource(RegisteredSource):
     Since it's being measured, it is assumed to be a RegisteredSource which
     undergoes a particular forced photometry style flux measurement.
 
+    Simulated sources may also be stored in this class since we may wish to
+    recover, or "measure", the injected parameters.
+
     """
 
     snr: float | None = None
@@ -107,12 +110,18 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
-    measurement_type: Literal["forced", "blind"] = "forced"
+    measurement_type: Literal["forced", "blind", "simulated"] = "forced"
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
 
-    fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
+    fit_method: Literal[
+        "scipy_2d_gaussian",
+        "lmfit_2d_gaussian",
+        "nearest_neighbor",
+        "spline",
+        "simulated",
+    ] = "lmfit_2d_gaussian"
     fit_params: dict | None = None
     fit_failed: bool = False
     fit_failure_reason: str | None = None

@@ -11,7 +11,7 @@ from sotrplib.sims.maps import SimulatedMap
 from sotrplib.sims.sources.core import ProcessableMapWithSimulatedSources
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
-from sotrplib.sources.force import Scipy2DGaussianFitter
+from sotrplib.sources.force import TwoDGaussianFitter
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 
 
@@ -36,7 +36,40 @@ def test_basic_pipeline_scipy(
         pointing_residual_model=None,
         postprocessors=None,
         source_simulators=None,
-        forced_photometry=Scipy2DGaussianFitter(),
+        forced_photometry=TwoDGaussianFitter(mode="scipy"),
+        source_subtractor=None,
+        blind_search=SigmaClipBlindSearch(),
+        sifter=DefaultSifter(),
+        outputs=[PickleSerializer(directory=tmp_path)],
+    )
+
+    with prefect_test_harness():
+        result = runner.run()
+        _validate_pipeline_result(result, len(maps))
+
+
+def test_basic_pipeline_lmfit(
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
+):
+    """
+    Tests a complete setup of the basic pipeline run.
+    """
+
+    new_map, sources = map_with_sources
+    maps = [new_map, new_map]
+    source_cat = RegisteredSourceCatalog(sources=sources)
+    runner = PrefectRunner(
+        maps=maps,
+        map_coadder=None,
+        source_catalogs=[],
+        sso_catalogs=[],
+        source_injector=None,
+        preprocessors=None,
+        pointing_provider=None,
+        pointing_residual_model=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=TwoDGaussianFitter(mode="lmfit"),
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),

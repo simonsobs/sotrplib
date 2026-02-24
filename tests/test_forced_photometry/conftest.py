@@ -16,18 +16,18 @@ from sotrplib.sims.sources.core import (
 
 @pytest.fixture
 def empty_map():
-    map = SimulatedMap(
+    sim_map = SimulatedMap(
         observation_start=datetime.datetime.now(tz=datetime.UTC)
         - datetime.timedelta(days=1),
         observation_end=datetime.datetime.now(tz=datetime.UTC),
     )
 
-    map.build()
-    map.finalize()
+    sim_map.build()
+    sim_map.finalize()
 
-    assert map.finalized
+    assert sim_map.finalized
 
-    yield map
+    yield sim_map
 
 
 @pytest.fixture
@@ -56,6 +56,24 @@ def map_with_sources(empty_map):
         min_flux=u.Quantity(9.999, "Jy"),
         max_flux=u.Quantity(10.001, "Jy"),
         fwhm_uncertainty_frac=0.01,
+        fraction_return=1.0,
+    )
+
+    simulator = RandomSourceSimulation(parameters=parameters)
+
+    new_map, sources = simulator.simulate(input_map=empty_map)
+
+    yield new_map, sources
+
+
+@pytest.fixture
+def map_with_single_asymmetric_source(empty_map):
+    parameters = RandomSourceSimulationParameters(
+        n_sources=1,
+        # Use bright sources so we can guarantee recovery
+        min_flux=u.Quantity(0.9999, "Jy"),
+        max_flux=u.Quantity(1.0001, "Jy"),
+        fwhm_uncertainty_frac=0.5,
         fraction_return=1.0,
     )
 
