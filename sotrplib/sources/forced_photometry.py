@@ -91,17 +91,14 @@ def gaussian_2d_lmfit(
     return gaussian_2d((x, y), amplitude, x0, y0, sigma_x, sigma_y, theta, offset)
 
 
-class Gaussian2DFitter:
+class ScipyGaussian2DFitter:
     """
-    provide class for fitting a 2D gaussian to a source thumbnail.
+    provide class for fitting a 2D gaussian to a source thumbnail using Scipy's curve_fit.
 
     Parameters
     ----------
     source : MeasuredSource
         The source object containing the thumbnail to fit.
-    fit_method: str
-        The method to use for fitting the Gaussian. Options are "scipy" for
-        scipy.optimize.curve_fit or "lmfit" for the lmfit library. The default is "lmfit".
     fwhm_guess : AstroPydanticQuantity[u.arcmin], optional
         Initial guess for the FWHM of the Gaussian, by default u.Quantity(2.2, "arcmin")
     force_center : bool, optional
@@ -115,7 +112,6 @@ class Gaussian2DFitter:
     def __init__(
         self,
         source: MeasuredSource,
-        fit_method: str = "lmfit",
         fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
         force_center: bool = False,
         reprojected: bool = False,
@@ -131,7 +127,7 @@ class Gaussian2DFitter:
         self.force_center = force_center
         self.reprojected = reprojected
         self.allowable_center_offset = allowable_center_offset
-        self.fit_method = fit_method
+        self.fit_method = "scipy"
         self.model = None
 
     def initialize_model(self):
@@ -143,13 +139,8 @@ class Gaussian2DFitter:
         Forcing center removes the x0,y0 from the fit parameters.
         """
 
-        if self.fit_method == "lmfit":
-            self.model = lmfit.Model(gaussian_2d_lmfit, independent_vars=["x", "y"])
-        else:
-            self.model = gaussian_2d
-
+        self.model = gaussian_2d
         ny, nx = self.source.thumbnail.shape
-
         # Define coordinate system centered at the image middle (i.e. the thumbnail center)
         x = np.arange(nx) - (nx - 1) / 2
         y = np.arange(ny) - (ny - 1) / 2
@@ -158,6 +149,7 @@ class Gaussian2DFitter:
         self.Y = Y
         xy = (X.ravel(), Y.ravel())
         self.xy = xy
+
         # Initial guess for parameters
         amplitude_guess = self.source.thumbnail.max()
         y0_guess, x0_guess = np.unravel_index(
@@ -184,90 +176,49 @@ class Gaussian2DFitter:
             offset_guess,
         ]
 
-        allowable_center_offset_pixels = self.allowable_center_offset.to(
-            u.arcmin
-        ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
+        ## if force center, fix the x0,y0 guesses by not varying them
+        if self.force_center:
 
-        if self.fit_method == "scipy":
-            ## if force center, fix the x0,y0 guesses by not varying them
-            if self.force_center:
+            def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
+                return gaussian_2d(
+                    xy,
+                    amplitude,
+                    x0_guess,
+                    y0_guess,
+                    sigma_x,
+                    sigma_y,
+                    theta,
+                    offset,
+                )
 
-                def gaussian_2d_model(xy, amplitude, sigma_x, sigma_y, theta, offset):
-                    return gaussian_2d(
-                        xy,
-                        amplitude,
-                        x0_guess,
-                        y0_guess,
-                        sigma_x,
-                        sigma_y,
-                        theta,
-                        offset,
-                    )
-
-                initial_guess = [
-                    amplitude_guess,
-                    sigma_guess[0],
-                    sigma_guess[1],
-                    theta_guess,
-                    offset_guess,
-                ]
-            else:
-                gaussian_2d_model = gaussian_2d
-            self.model = gaussian_2d_model
-            self.initial_guess = initial_guess
-
+            initial_guess = [
+                amplitude_guess,
+                sigma_guess[0],
+                sigma_guess[1],
+                theta_guess,
+                offset_guess,
+            ]
         else:
-            self.initial_guess = self.model.make_params(
-                amplitude=amplitude_guess,
-                x0=x0_guess,
-                y0=y0_guess,
-                sigma_x=sigma_guess[0],
-                sigma_y=sigma_guess[1],
-                theta=theta_guess,
-                offset=offset_guess,
-            )
+            gaussian_2d_model = gaussian_2d
 
-            if self.force_center:
-                self.initial_guess["x0"].set(vary=False)
-                self.initial_guess["y0"].set(vary=False)
-            else:
-                self.initial_guess["x0"].set(
-                    min=x0_guess - allowable_center_offset_pixels[0],
-                    max=x0_guess + allowable_center_offset_pixels[0],
-                )
-                self.initial_guess["y0"].set(
-                    min=y0_guess - allowable_center_offset_pixels[1],
-                    max=y0_guess + allowable_center_offset_pixels[1],
-                )
+        self.model = gaussian_2d_model
+        self.initial_guess = initial_guess
 
-            self.initial_guess["sigma_x"].set(min=0.0, max=nx)
-            self.initial_guess["sigma_y"].set(min=0.0, max=ny)
-            self.initial_guess["theta"].set(min=0, max=np.pi)
         self.log.debug(
-            "Gaussian2DFitter.model_initialized",
+            "ScipyGaussian2DFitter.model_initialized",
             fit_method=self.fit_method,
             model=self.model,
             initial_guess=self.initial_guess,
         )
 
     def fit(self) -> GaussianFitParameters:
-        if self.fit_method == "scipy":
-            return self.fit_scipy()
-        elif self.fit_method == "lmfit":
-            return self.fit_lmfit()
-        else:
-            raise ValueError(f"Unsupported fit method: {self.fit_method}")
-
-    def fit_scipy(self) -> GaussianFitParameters:
         """
         Set up and perform the 2D Gaussian fit with Scipy's curve_fit
 
         sets the MeasuredSource fit_params attribute to the fit results.
 
         """
-
         self.fit_params = GaussianFitParameters()
-
         if self.model is None:
             self.log.error(f"{self.model}_gaussian.model_not_available")
             self.fit_params.failed = True
@@ -388,7 +339,130 @@ class Gaussian2DFitter:
         )
         return self.fit_params
 
-    def fit_lmfit(self) -> GaussianFitParameters:
+
+class LmFitGaussian2DFitter:
+    """
+    provide class for fitting a 2D gaussian to a source thumbnail using LmFit.
+
+    Parameters
+    ----------
+    source : MeasuredSource
+        The source object containing the thumbnail to fit.
+    fwhm_guess : AstroPydanticQuantity[u.arcmin], optional
+        Initial guess for the FWHM of the Gaussian, by default u.Quantity(2.2, "arcmin")
+    force_center : bool, optional
+        Whether to force the Gaussian center to be at the thumbnail center, by default False
+    reprojected : bool, optional
+        Whether the thumbnail was reprojected (affects RA offset sign), by default False
+    allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
+        Maximum allowable offset from the thumbnail center for the fit, by default u.Quantity(1.0, "arcmin")
+    """
+
+    def __init__(
+        self,
+        source: MeasuredSource,
+        fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
+        force_center: bool = False,
+        reprojected: bool = False,
+        allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
+            1.0, "arcmin"
+        ),
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.log = log or get_logger()
+        self.log = self.log.bind(func_name="Gaussian2DFitter")
+        self.source = source
+        self.fwhm_guess = fwhm_guess
+        self.force_center = force_center
+        self.reprojected = reprojected
+        self.allowable_center_offset = allowable_center_offset
+        self.fit_method = "lmfit"
+        self.model = None
+
+    def initialize_model(self):
+        """
+        Docstring for initialize_model
+
+        Initialize the 2D Gaussian model and initial parameter guess
+
+        Forcing center removes the x0,y0 from the fit parameters.
+        """
+        self.model = lmfit.Model(gaussian_2d_lmfit, independent_vars=["x", "y"])
+        ny, nx = self.source.thumbnail.shape
+
+        # Define coordinate system centered at the image middle (i.e. the thumbnail center)
+        x = np.arange(nx) - (nx - 1) / 2
+        y = np.arange(ny) - (ny - 1) / 2
+        X, Y = np.meshgrid(x, y)
+        self.X = X
+        self.Y = Y
+        xy = (X.ravel(), Y.ravel())
+        self.xy = xy
+
+        # Initial guess for parameters
+        amplitude_guess = self.source.thumbnail.max()
+        y0_guess, x0_guess = np.unravel_index(
+            np.argmax(self.source.thumbnail), self.source.thumbnail.shape
+        )
+        x0_guess -= (nx - 1) / 2
+        y0_guess -= (ny - 1) / 2
+
+        sigma_guess = (
+            self.fwhm_guess.to(u.arcmin).value
+            / abs(self.source.thumbnail_res.to(u.arcmin).value)
+            / 2.355
+        )  # Rough width estimate, in pixels
+        theta_guess = 0
+        offset_guess = 0
+
+        initial_guess = [
+            amplitude_guess,
+            x0_guess,
+            y0_guess,
+            sigma_guess[0],
+            sigma_guess[1],
+            theta_guess,
+            offset_guess,
+        ]
+
+        allowable_center_offset_pixels = self.allowable_center_offset.to(
+            u.arcmin
+        ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
+
+        self.initial_guess = self.model.make_params(
+            amplitude=amplitude_guess,
+            x0=x0_guess,
+            y0=y0_guess,
+            sigma_x=sigma_guess[0],
+            sigma_y=sigma_guess[1],
+            theta=theta_guess,
+            offset=offset_guess,
+        )
+
+        if self.force_center:
+            self.initial_guess["x0"].set(vary=False)
+            self.initial_guess["y0"].set(vary=False)
+        else:
+            self.initial_guess["x0"].set(
+                min=x0_guess - allowable_center_offset_pixels[0],
+                max=x0_guess + allowable_center_offset_pixels[0],
+            )
+            self.initial_guess["y0"].set(
+                min=y0_guess - allowable_center_offset_pixels[1],
+                max=y0_guess + allowable_center_offset_pixels[1],
+            )
+
+        self.initial_guess["sigma_x"].set(min=0.0, max=nx)
+        self.initial_guess["sigma_y"].set(min=0.0, max=ny)
+        self.initial_guess["theta"].set(min=0, max=np.pi)
+        self.log.debug(
+            "Gaussian2DFitter.model_initialized",
+            fit_method=self.fit_method,
+            model=self.model,
+            initial_guess=self.initial_guess,
+        )
+
+    def fit(self) -> GaussianFitParameters:
         """
         Set up and perform the 2D Gaussian fit using lmfit.
         """
@@ -691,9 +765,11 @@ def gaussian_fit(
             fit_sources.append(forced_source)
             continue
 
-        fitter = Gaussian2DFitter(
+        fitfunc = (
+            ScipyGaussian2DFitter if fit_method == "scipy" else LmFitGaussian2DFitter
+        )
+        fitter = fitfunc(
             forced_source,
-            fit_method=fit_method,
             reprojected=reproject_thumb,
             fwhm_guess=fwhm
             if fwhm is not None
