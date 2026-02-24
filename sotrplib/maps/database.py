@@ -64,9 +64,13 @@ class MapCatDatabaseReader:
         self.intensity_units = intensity_units
         self.box = box
         self.rerun = rerun
+        self._map_list = []
         self.log = log or get_logger()
 
     def map_list(self):
+        if self._map_list != []:
+            return self._map_list
+
         self.log.info(
             "MapCatDatabaseReader.connecting_to_db",
             db_url=mapcat_settings.database_name,
@@ -100,7 +104,6 @@ class MapCatDatabaseReader:
         ## but I now want to skip processed ones, so will do that below
         # query = query.limit(self.number_to_read)
         maps = []
-
         with mapcat_settings.session() as session:
             results = session.execute(query).scalars().all()
             self.log.info("MapCatDatabaseReader.found_maps", number_found=len(results))
@@ -148,7 +151,7 @@ class MapCatDatabaseReader:
                 set_processing_start(result.map_id, session=session)
                 if len(maps) >= self.number_to_read:
                     break
-
+        self._map_list = maps
         return maps
 
     def __iter__(self):
