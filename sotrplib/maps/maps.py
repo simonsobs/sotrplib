@@ -417,8 +417,8 @@ def flat_field_using_photutils(
         bs = int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg))
         mesh_template = enmap.downgrade(mapdata.snr, bs, inclusive=True)
         bg_rms = background.background_rms_mesh
-        mask = background.npixels_mesh > 0
-        mapdata.flatfield_map = enmap.enmap(bg_rms * mask, mesh_template.wcs)
+        valid_pix = background.npixels_mesh > 0
+        mapdata.flatfield_map = enmap.enmap(bg_rms * valid_pix, mesh_template.wcs)
     except Exception as e:
         log.error(f"flat_field_using_photutils.failed_noisemap: {e}")
 
