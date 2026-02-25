@@ -10,7 +10,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
@@ -22,7 +21,7 @@ class SourceOutput(ABC):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
+        map_id: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -47,7 +46,6 @@ class JSONSerializer(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -83,18 +81,18 @@ class PickleSerializer(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
+        map_id: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         filename = (
             self.directory
-            / f"{input_map.get_map_str_id()}_{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.pickle"
+            / f"{map_id}_{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.pickle"
         )
         with filename.open("wb") as handle:
             pickle.dump(
                 obj={
-                    "map_id": input_map.get_map_str_id(),
+                    "map_id": map_id,
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
                     "pointing_sources": pointing_sources,
@@ -120,7 +118,7 @@ class CutoutImageOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
+        map_id: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -130,7 +128,9 @@ class CutoutImageOutput(SourceOutput):
             if cutout is None:
                 continue
 
-            filename = self.directory / f"forced_photometry_{source.source_id}.png"
+            filename = (
+                self.directory / f"forced_photometry_{map_id}_{source.source_id}.png"
+            )
             plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 
         for ii, source in enumerate(
@@ -143,9 +143,9 @@ class CutoutImageOutput(SourceOutput):
 
             if source.crossmatches:
                 id = source.crossmatches[0].source_id
-                filename = self.directory / f"blind_search_matched_{id}.png"
+                filename = self.directory / f"blind_search_matched_{map_id}_{id}.png"
             else:
-                filename = self.directory / f"blind_search_{ii}.png"
+                filename = self.directory / f"blind_search_{map_id}_{ii}.png"
 
             plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 

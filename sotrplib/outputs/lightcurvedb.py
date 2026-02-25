@@ -13,7 +13,6 @@ from lightcurvedb.models.source import Source
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
@@ -229,7 +228,7 @@ class LightcurveDBOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
+        map_id: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -238,8 +237,7 @@ class LightcurveDBOutput(SourceOutput):
         successful_uploads = asyncio.run(
             self._flux_upload_flow(
                 forced_photometry_candidates,
-                map_time=input_map.observation_time,
-                map_id=input_map.map_id,
+                map_id=map_id,
             )
         )
 
