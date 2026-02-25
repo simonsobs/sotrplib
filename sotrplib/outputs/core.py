@@ -38,11 +38,7 @@ class SourceOutput(ABC):
 
 class MapOutput(ABC):
     @abstractmethod
-    def output(
-        self,
-        input_map: ProcessableMap,
-        field_ids: list[str],
-    ):
+    def output(self, input_map: ProcessableMap):
         """
         Output the map after postprocessing. This is for outputs that want to
         do something with the map itself, e.g. save it to disk.

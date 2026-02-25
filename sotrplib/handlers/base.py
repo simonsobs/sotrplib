@@ -190,6 +190,7 @@ class BaseRunner:
             pointing_sources=pointing_sources
         )
 
+        ## this is dumb and should be fixed.
         for o in self.outputs:
             if isinstance(o, MapOutput) and "pointing_residual_map" in o.field_ids:
                 self.profilable_task(save_model_maps)(
