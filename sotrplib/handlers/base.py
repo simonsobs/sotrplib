@@ -191,10 +191,7 @@ class BaseRunner:
         )
 
         for o in self.outputs:
-            if (
-                issubclass(type(o), MapOutput)
-                and "pointing_residual_map" in o.field_ids
-            ):
+            if isinstance(o, MapOutput) and "pointing_residual_map" in o.field_ids:
                 self.profilable_task(save_model_maps)(
                     self.pointing_residual_model,
                     pointing_data,
@@ -237,7 +234,7 @@ class BaseRunner:
 
         for output in self.outputs:
             ## check if super class of output is MapOutput or SourceOutput
-            if issubclass(type(output), SourceOutput):
+            if isinstance(output, SourceOutput):
                 self.profilable_task(output.output)(
                     forced_photometry_candidates=forced_photometry_candidates,
                     sifter_result=sifter_result,
@@ -245,7 +242,7 @@ class BaseRunner:
                     pointing_sources=pointing_sources,
                     injected_sources=injected_sources,
                 )
-            elif issubclass(type(output), MapOutput):
+            elif isinstance(output, MapOutput):
                 self.profilable_task(output.output)(input_map=input_map)
             else:
                 raise ValueError(f"Output {type(output)} is not a valid output type")
