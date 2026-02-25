@@ -195,6 +195,13 @@ class MapOutputSerializer(MapOutput):
         for field_id in self.field_ids:
             if hasattr(input_map, field_id):
                 map_to_save = getattr(input_map, field_id)
+                if map_to_save is None:
+                    log.error(
+                        "MapOutputSerializer.field_is_none",
+                        field_id=field_id,
+                        map_id=input_map.get_map_str_id(),
+                    )
+                    continue
                 filename = (
                     self.directory / f"{input_map.get_map_str_id()}_{field_id}.fits"
                 )
