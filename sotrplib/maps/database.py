@@ -64,11 +64,11 @@ class MapCatDatabaseReader:
         self.intensity_units = intensity_units
         self.box = box
         self.rerun = rerun
-        self._map_list = []
+        self._map_list = None
         self.log = log or get_logger()
 
     def map_list(self):
-        if self._map_list != []:
+        if self._map_list is not None:
             return self._map_list
 
         self.log.info(
