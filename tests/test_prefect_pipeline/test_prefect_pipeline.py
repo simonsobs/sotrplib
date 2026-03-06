@@ -8,7 +8,6 @@ from sotrplib.handlers.prefect import PrefectRunner
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SifterResult
 from sotrplib.sims.maps import SimulatedMap
-from sotrplib.sims.sources.core import ProcessableMapWithSimulatedSources
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
 from sotrplib.sources.force import TwoDGaussianFitter
@@ -28,7 +27,7 @@ def test_basic_pipeline_scipy(
     runner = PrefectRunner(
         maps=maps,
         map_coadder=None,
-        source_catalogs=[],
+        source_catalogs=[source_cat],
         sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
@@ -83,8 +82,6 @@ def test_basic_pipeline_lmfit(
 
 def _validate_pipeline_result(result, nmaps):
     assert len(result) == nmaps
-    print(result[0])
-    candidates, sifter_result, output_map = result[0]
+    candidates, sifter_result = result[0]
     assert all([isinstance(candidate, MeasuredSource) for candidate in candidates])
     assert isinstance(sifter_result, SifterResult)
-    assert isinstance(output_map, ProcessableMapWithSimulatedSources)

@@ -9,7 +9,6 @@ from soauth.toolkit.client import SOAuth
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
@@ -49,7 +48,7 @@ class LightServeOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
+        map_id: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -76,8 +75,7 @@ class LightServeOutput(SourceOutput):
                 frequency=90,
                 module="i1",
                 source_id=socat_to_internal[int(source.crossmatches[0].source_id)],
-                time=source.observation_mean_time.to_datetime()
-                or input_map.observation_time.to_datetime(),
+                time=source.observation_mean_time.to_datetime(),
                 ra=source.ra.to_value("deg"),
                 dec=source.dec.to_value("deg"),
                 ra_uncertainty=(
@@ -95,16 +93,15 @@ class LightServeOutput(SourceOutput):
                     else 0.0
                 ),
                 extra={
-                    "map_id": input_map.map_id,
+                    "map_id": map_id,
                 },
             ).model_dump_json()
 
             cut = (
                 Cutout(
                     data=source.thumbnail.tolist(),
-                    time=source.observation_mean_time.to_datetime()
-                    or input_map.observation_time.to_datetime(),
-                    units=input_map.flux_units.to_string(),
+                    time=source.observation_mean_time.to_datetime(),
+                    units=source.thumbnail_unit.to_string(),
                     frequency=90,
                     module="i1",
                 ).model_dump_json()
