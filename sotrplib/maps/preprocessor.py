@@ -214,7 +214,7 @@ class GalaxyMask(MapPreprocessor):
     def __init__(
         self,
         mask_path: Path = None,
-        mask_map: enmap.enmap | None = None,
+        mask_map: enmap.ndmap | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.mask_path = mask_path
