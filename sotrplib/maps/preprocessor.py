@@ -224,10 +224,10 @@ class GalaxyMask(MapPreprocessor):
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         log = self.log.bind(func="GalaxyMask.preprocess")
         if self.mask_map is None:
-            self.mask_map = enmap.read_map(self.mask_path)
+            self.mask_map = enmap.read_map(str(self.mask_path))
 
         galaxy_mask = mask_dustgal(
-            input_map.time_mean,
+            input_map.hits,
             galmask=self.mask_map,
             log=log,
         )
