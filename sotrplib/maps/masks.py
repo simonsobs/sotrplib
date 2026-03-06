@@ -9,8 +9,15 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
 
 
-def mask_dustgal(imap: enmap.ndmap, galmask: enmap.ndmap):
-    return enmap.extract(galmask, imap.shape, imap.wcs)
+def mask_dustgal(
+    imap: enmap.ndmap, galmask: enmap.ndmap, log: FilteringBoundLogger | None = None
+):
+    """Get a mask that masks out the dusty galaxy"""
+    log = log or structlog.get_logger()
+    log = log.bind(func="mask_dustgal")
+    masked_map = enmap.extract(galmask, imap.shape, imap.wcs)
+    log.info("mask_dustgal.completed", input_map_wcs=imap.wcs)
+    return masked_map
 
 
 def mask_planets(

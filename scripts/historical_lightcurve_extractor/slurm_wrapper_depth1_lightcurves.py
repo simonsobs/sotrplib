@@ -147,13 +147,14 @@ def get_timestamp(event_time):
     try:
         ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S.%f").timestamp()
     except ValueError:
-        ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S").timestamp()
+        try:
+            ts = datetime.datetime.fromisoformat(event_time).timestamp()
+        except ValueError:
+            ts = datetime.datetime.strptime(event_time, "%Y-%m-%d %H:%M:%S").timestamp()
     return ts
 
 
-def generate_slurm_header(
-    jobname, groupname, cpu_per_task, run_dir, slurm_out_dir, soconda_version
-):
+def generate_slurm_header(jobname, groupname, cpu_per_task, run_dir, slurm_out_dir):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
 #SBATCH -A {groupname}                    # group name, by default simonsobs
@@ -163,7 +164,6 @@ def generate_slurm_header(
 #SBATCH --mem-per-cpu=4G         # memory per cpu-core (4G is default)
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
-module load {soconda_version}
 
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
 cd {run_dir}
@@ -194,9 +194,6 @@ user_scratch = args.scratch_dir
 if not os.path.exists(user_scratch):
     os.mkdir(user_scratch)
 
-if not args.soconda_version:
-    args.soconda_version = get_soconda_module()
-
 if not args.out_dir:
     ## get random tmp dir
     import random
@@ -226,7 +223,6 @@ slurm_text = generate_slurm_header(
     str(args.ncores),
     args.run_dir if args.run_dir else os.getcwd(),
     args.slurm_out_dir,
-    args.soconda_version,
 )
 event_times = []
 if args.ps_csv is not None:
@@ -279,7 +275,6 @@ for i in tqdm(range(len(datelist))):
             str(args.ncores),
             args.run_dir if args.run_dir else os.getcwd(),
             args.slurm_out_dir,
-            args.soconda_version,
         )
 
 with open("%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w") as f:

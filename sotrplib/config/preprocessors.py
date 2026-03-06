@@ -9,6 +9,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.preprocessor import (
     EdgeMask,
+    GalaxyMask,
     KappaRhoCleaner,
     MapPreprocessor,
     MatchedFilter,
@@ -101,6 +102,20 @@ class EdgeMaskConfig(PreprocessorConfig):
         return EdgeMask(edge_width=self.edge_width, mask_on=self.mask_on, log=log)
 
 
+class GalaxyMaskConfig(PreprocessorConfig):
+    preprocessor_type: Literal["galaxy_mask"] = "galaxy_mask"
+    mask_path: Path | None = None
+
+    def to_preprocessor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> MapPreprocessor:
+        return GalaxyMask(mask_path=self.mask_path, log=log)
+
+
 AllPreprocessorConfigTypes = (
-    KappaRhoCleanerConfig | MatchedFilterConfig | EdgeMaskConfig | PlanetMaskConfig
+    KappaRhoCleanerConfig
+    | MatchedFilterConfig
+    | EdgeMaskConfig
+    | PlanetMaskConfig
+    | GalaxyMaskConfig
 )

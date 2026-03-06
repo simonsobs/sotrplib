@@ -11,6 +11,7 @@ from typing import Literal
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
+from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.filters.filters import matched_filter_depth1_map
@@ -19,7 +20,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
 )
 from sotrplib.maps.maps import clean_map, kappa_clean
-from sotrplib.maps.masks import mask_edge, mask_planets
+from sotrplib.maps.masks import mask_dustgal, mask_edge, mask_planets
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -204,4 +205,34 @@ class EdgeMask(MapPreprocessor):
         input_map.mask = edge_mask
         self.log.info("EdgeMask.preprocess completed")
 
+        return input_map
+
+
+class GalaxyMask(MapPreprocessor):
+    mask_path: Path
+
+    def __init__(
+        self,
+        mask_path: Path = None,
+        mask_map: enmap.enmap | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_path = mask_path
+        self.mask_map = mask_map
+        self.log = log or structlog.get_logger()
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(func="GalaxyMask.preprocess")
+        if self.mask_map is None:
+            self.mask_map = enmap.read_map(self.mask_path)
+
+        galaxy_mask = mask_dustgal(
+            input_map.time_mean,
+            galmask=self.mask_map,
+            log=log,
+        )
+        input_map.mask = (
+            input_map.mask * galaxy_mask if input_map.mask is not None else galaxy_mask
+        )
+        log.info("GalaxyMask.preprocess.completed")
         return input_map
