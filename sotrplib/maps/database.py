@@ -2,7 +2,7 @@
 Read maps from the map tracking database.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -38,6 +38,7 @@ class MapCatDatabaseReader:
     box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
+    stale_processing_time: timedelta = timedelta(hours=2)
     log: FilteringBoundLogger
 
     def __init__(
@@ -52,6 +53,7 @@ class MapCatDatabaseReader:
         box: tuple[SkyCoord, SkyCoord] | None = None,
         intensity_units: u.Unit = u.Unit("K"),
         rerun: bool = False,
+        stale_processing_time: timedelta = timedelta(hours=2),
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
@@ -65,6 +67,7 @@ class MapCatDatabaseReader:
         self.box = box
         self.rerun = rerun
         self._map_list = None
+        self.stale_processing_time = stale_processing_time
         self.log = log or get_logger()
 
     def map_list(self):
@@ -111,7 +114,9 @@ class MapCatDatabaseReader:
                 self.number_to_read = len(results)
             for result in results:
                 if not self.rerun and check_if_processed(
-                    result.map_id, session=session
+                    result.map_id,
+                    session=session,
+                    stale_limit=self.stale_processing_time,
                 ):
                     self.log.info(
                         "MapCatDatabaseReader.skipping_processed_map",
@@ -159,7 +164,11 @@ class MapCatDatabaseReader:
 
 
 def check_if_processed(
-    map_id: int, session=None, valid_statuses: list = ["completed", "processing"]
+    map_id: int,
+    session=None,
+    completed_status: str = "completed",
+    processing_status: str = "processing",
+    stale_limit=timedelta(hours=2),
 ) -> bool:
     ## session is mapcat_settings.session() whatever that is
     if session is None:
@@ -171,7 +180,12 @@ def check_if_processed(
     if session_results is None:
         return False
     for r in session_results:
-        if r.processing_status in valid_statuses:
+        if (r.processing_status == completed_status) | (
+            r.processing_status == processing_status
+        ) & (
+            (datetime.now(timezone.utc).timestamp() - r.processing_start)
+            < stale_limit.total_seconds()
+        ):
             return True
     return False
 

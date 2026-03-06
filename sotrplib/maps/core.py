@@ -53,7 +53,9 @@ class ProcessableMap(ABC):
     "The mean time at which each pixel was observed"
     mask: ndmap | None = None
     "A mask map indicating valid pixels as 1 and invalid pixels as 0"
-
+    sky_model: ndmap | None = None
+    "A model of the sky - either a coadd or a model built after measuring sources."
+    "Can be used for source subtraction."
     flatfield_map: ndmap | None = None
     "A flatfield map containing the local 2D background RMS used for flatfielding the map, if applicable."
 

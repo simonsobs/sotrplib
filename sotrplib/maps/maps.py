@@ -65,6 +65,7 @@ def subtract_sources(
     src_model: enmap.ndmap = None,
     verbose=False,
     cuts={},
+    inplace=False,
     log: FilteringBoundLogger | None = None,
 ):
     """
@@ -93,11 +94,22 @@ def subtract_sources(
             cuts=cuts,
             log=log,
         )
-    input_map.flux -= src_model / (input_map.flux_units.to(u.Jy))
-    log.info("subtract_sources.source_flux_subtracted")
-    ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
-    input_map.snr[abs(src_model) > 1e-8] = 0.0
-    log.info("subtract_sources.source_snr_masked")
+    if inplace:
+        input_map.flux -= src_model / (input_map.flux_units.to(u.Jy))
+        input_map.snr[abs(src_model) > 1e-8] = 0.0
+        log.info("subtract_sources.source_flux_subtracted")
+        ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
+        log.info("subtract_sources.source_snr_masked")
+    else:
+        if input_map.sky_model is None:
+            input_map.sky_model = enmap.enmap(
+                src_model / (input_map.flux_units.to(u.Jy)), wcs=input_map.flux.wcs
+            )
+        elif isinstance(input_map.sky_model, enmap.ndmap):
+            input_map.sky_model += enmap.enmap(
+                src_model / (input_map.flux_units.to(u.Jy)), wcs=input_map.flux.wcs
+            )
+
     return src_model
 
 
@@ -454,8 +466,8 @@ def make_model_source_map(
         log.warning("make_model_source_map.no_sources", num_sources=0)
         return imap
 
-    if matched_filtered:
-        nominal_fwhm *= np.sqrt(2)
+    # if matched_filtered:
+    #    nominal_fwhm *= np.sqrt(2)
 
     map_res = abs(imap.wcs.wcs.cdelt[0]) * u.deg
     log.bind(nominal_fwhm=nominal_fwhm, res=map_res)
