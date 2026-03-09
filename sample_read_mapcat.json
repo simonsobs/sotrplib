@@ -52,7 +52,7 @@
             "preprocessor_type": "kappa_rho"
         },
         {
-            "postprocessor_type": "edge_mask",
+            "preprocessor_type": "edge_mask",
             "mask_on": "kappa",
             "edge_width": "10.0 arcmin"
         }

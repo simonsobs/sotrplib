@@ -172,8 +172,6 @@ export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
 export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
 export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
 
-mapcatmigrate 
-
 if [ ! -e "socat.pickle" ]; then
     socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
 fi

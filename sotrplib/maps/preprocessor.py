@@ -213,7 +213,7 @@ class GalaxyMask(MapPreprocessor):
 
     def __init__(
         self,
-        mask_path: Path = None,
+        mask_path: Path | None = None,
         mask_map: enmap.ndmap | None = None,
         log: FilteringBoundLogger | None = None,
     ):
@@ -223,7 +223,14 @@ class GalaxyMask(MapPreprocessor):
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         log = self.log.bind(func="GalaxyMask.preprocess")
-        if self.mask_map is None:
+        if self.mask_map is None and self.mask_path is None:
+            log.error(
+                "GalaxyMask.preprocess.no_mask",
+                message="No mask provided for GalaxyMask preprocessor",
+            )
+            return input_map
+
+        if self.mask_map is None and self.mask_path is not None:
             self.mask_map = enmap.read_map(str(self.mask_path))
 
         galaxy_mask = mask_dustgal(
