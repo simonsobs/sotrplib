@@ -42,7 +42,7 @@
         },
         {
             "preprocessor_type":"galaxy_mask",
-            "mask_path": "/scratch/gpfs/SIMONSOBS/users/amfoster/act/ACT_coadd_maps/dr6v4_lensing_20240918_planck_galactic_mask_80.fits"
+            "mask_path": "./dr6v4_lensing_20240918_planck_galactic_mask_80.fits"
         },
         {
             "preprocessor_type": "matched_filter",

@@ -64,6 +64,9 @@ scripts/*/test*.py
 # any databases
 *sqlite
 
+# any map files
+*.fits
+
 # any ephemeris / orbital param files
 *.bsp
 *.txt
