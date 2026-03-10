@@ -62,11 +62,11 @@
        {
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
-            "tile_size": ".5 deg"
+            "tile_size": "0.5 deg"
         },
         {
             "postprocessor_type":"galaxy_mask",
-            "mask_path": "./mask_for_sources2019_plus_dust.fits"
+            "mask_path": "./act_dust_mask.fits"
         }
     ],
     "source_subtractor": {

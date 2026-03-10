@@ -231,6 +231,9 @@ def generate_config_json(
     }},
     "preprocessors": [
         {{
+            "preprocessor_type": "kappa_rho"
+        }},
+        {{
             "preprocessor_type": "edge_mask",
             "mask_on": "kappa",
             "edge_width": "10.0 arcmin"
