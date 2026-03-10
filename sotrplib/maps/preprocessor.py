@@ -214,11 +214,13 @@ class GalaxyMask(MapPreprocessor):
     def __init__(
         self,
         mask_path: Path | None = None,
+        invert: bool = False,
         mask_map: enmap.ndmap | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.mask_path = mask_path
         self.mask_map = mask_map
+        self.invert = invert
         self.log = log or structlog.get_logger()
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
@@ -238,8 +240,11 @@ class GalaxyMask(MapPreprocessor):
             galmask=self.mask_map,
             log=log,
         )
+        if self.invert:
+            galaxy_mask = 1 - galaxy_mask
         input_map.mask = (
             input_map.mask * galaxy_mask if input_map.mask is not None else galaxy_mask
         )
+
         log.info("GalaxyMask.preprocess.completed")
         return input_map

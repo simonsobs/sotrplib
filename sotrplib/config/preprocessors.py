@@ -105,11 +105,12 @@ class EdgeMaskConfig(PreprocessorConfig):
 class GalaxyMaskConfig(PreprocessorConfig):
     preprocessor_type: Literal["galaxy_mask"] = "galaxy_mask"
     mask_path: Path
+    invert: bool = False
 
     def to_preprocessor(
         self, log: FilteringBoundLogger | None = None
     ) -> MapPreprocessor:
-        return GalaxyMask(mask_path=self.mask_path, log=log)
+        return GalaxyMask(mask_path=self.mask_path, invert=self.invert, log=log)
 
 
 AllPreprocessorConfigTypes = (

@@ -5,6 +5,7 @@
             "instrument": "ACT",
             "frequency": "f090",
             "array": "pa5",
+            "intensity_units": "uK",
             "rerun": "True"
         },
     "source_catalogs": [
@@ -41,10 +42,6 @@
             "mask_radius": "15 arcmin"
         },
         {
-            "preprocessor_type":"galaxy_mask",
-            "mask_path": "./dr6v4_lensing_20240918_planck_galactic_mask_80.fits"
-        },
-        {
             "preprocessor_type": "matched_filter",
             "band_height": "1 deg",
             "shrink_holes": "5 arcmin",
@@ -66,6 +63,10 @@
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
             "tile_size": ".5 deg"
+        },
+        {
+            "postprocessor_type":"galaxy_mask",
+            "mask_path": "./mask_for_sources2019_plus_dust.fits"
         }
     ],
     "source_subtractor": {

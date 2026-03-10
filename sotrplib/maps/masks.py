@@ -15,7 +15,7 @@ def mask_dustgal(
     """Get a mask that masks out the dusty galaxy"""
     log = log or structlog.get_logger()
     log = log.bind(func="mask_dustgal")
-    masked_map = enmap.extract(galmask, imap.shape, imap.wcs)
+    masked_map = enmap.project(galmask, imap.shape, imap.wcs)
     log.info("mask_dustgal.completed", input_map_wcs=imap.wcs)
     return masked_map
 
