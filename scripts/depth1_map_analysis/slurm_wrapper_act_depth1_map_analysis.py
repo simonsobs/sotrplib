@@ -247,7 +247,7 @@ def generate_config_json(
         }},
         {{
             "postprocessor_type":"galaxy_mask",
-            "mask_path": "./mask_for_sources2019_plus_dust.fits"
+            "mask_path": "./act_dust_mask.fits"
         }}
     ],
     "source_subtractor": {{
