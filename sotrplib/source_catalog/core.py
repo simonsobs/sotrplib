@@ -6,10 +6,12 @@ from abc import ABC, abstractmethod
 from typing import Literal
 
 import numpy as np
+import structlog
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
@@ -92,22 +94,35 @@ class RegisteredSourceCatalog(SourceCatalog):
         )
 
     def get_sources_in_map(
-        self, input_map: ProcessableMap | None = None
+        self,
+        input_map: ProcessableMap | None = None,
+        log: FilteringBoundLogger | None = None,
     ) -> list[RegisteredSource]:
+        log = log or structlog.get_logger()
         if len(self.sources) == 0:
             return []
-        coords = SkyCoord(
-            ra=[s.ra for s in self.sources], dec=[s.dec for s in self.sources]
+        coords = np.array(
+            [
+                [s.dec.to_value(u.radian) for s in self.sources],
+                [s.ra.to_value(u.radian) for s in self.sources],
+            ]
         )
-        y, x = input_map.flux.wcs.world_to_pixel(coords)
-        nx, ny = input_map.flux.shape
-        x, y = np.round(x).astype(int), np.round(y).astype(int)
-        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
-        result = np.zeros_like(x, dtype=bool)
-        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
+        pixs = input_map.flux.sky2pix(coords)
+        inside = np.where(
+            np.all((pixs.T >= 0) & (pixs.T < input_map.flux.shape[-2:]), -1)
+        )[0]
+
+        if len(inside) == 0:
+            log.warning(
+                "get_sources_in_map.no_sources_in_map",
+                map_id=input_map.map_id,
+                wcs=input_map.flux.wcs,
+            )
+            return []
+        result = np.nan_to_num(input_map.flux.at(coords[:, inside], mode="nn")).astype(
             bool
         )
-        return [self.sources[i] for i, valid in enumerate(result) if valid]
+        return [self.sources[inside[i]] for i, valid in enumerate(result) if valid]
 
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None

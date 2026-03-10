@@ -111,23 +111,35 @@ class SOCatWrapper:
             self._socat_source_to_registered(socat_source=x) for x in sources_in_map
         ]
 
-    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        box = input_map.bbox
-        all_sources = self.get_sources_in_box(box=box)
+    def get_sources_in_map(
+        self, input_map: ProcessableMap, log: FilteringBoundLogger | None = None
+    ) -> list[RegisteredSource]:
+        log = self.log or structlog.get_logger()
+        all_sources = self.get_sources_in_box(box=None)
         if len(all_sources) == 0:
             return []
-        coords = SkyCoord(
-            ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
+        coords = np.array(
+            [
+                [s.dec.to_value(u.radian) for s in all_sources],
+                [s.ra.to_value(u.radian) for s in all_sources],
+            ]
         )
-        y, x = input_map.flux.wcs.world_to_pixel(coords)
-        nx, ny = input_map.flux.shape
-        x, y = np.round(x).astype(int), np.round(y).astype(int)
-        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
-        result = np.zeros_like(x, dtype=bool)
-        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
+        pixs = input_map.flux.sky2pix(coords)
+        inside = np.where(
+            np.all((pixs.T >= 0) & (pixs.T < input_map.flux.shape[-2:]), -1)
+        )[0]
+
+        if len(inside) == 0:
+            log.warning(
+                "get_sources_in_map.no_sources_in_map",
+                map_id=input_map.map_id,
+                wcs=input_map.flux.wcs,
+            )
+            return []
+        result = np.nan_to_num(input_map.flux.at(coords[:, inside], mode="nn")).astype(
             bool
         )
-        return [all_sources[i] for i, valid in enumerate(result) if valid]
+        return [all_sources[inside[i]] for i, valid in enumerate(result) if valid]
 
     def nearby_sources(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
