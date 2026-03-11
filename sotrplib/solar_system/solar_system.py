@@ -260,6 +260,8 @@ def get_sso_ephem_in_map(
     sso_ephems : dict
         Dictionary mapping object designations to their ephemerides .
     """
+    log = log or structlog.get_logger()
+    log = log.bind(function="solar_system.get_sso_ephem_in_map")
     time_range = [
         np.amin(input_map.time_first[input_map.time_first > 0]),
         np.nanmean(input_map.time_mean[input_map.time_first > 0]),
@@ -278,17 +280,28 @@ def get_sso_ephem_in_map(
     sso_not_in_map = []
     for sso in sso_ephems:
         sso_coords = sso_ephems[sso]["pos"]
-        y, x = input_map.flux.wcs.world_to_pixel(sso_coords)
-        nx, ny = input_map.flux.shape
-        x, y = np.round(x).astype(int), np.round(y).astype(int)
-        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
-        result = np.zeros_like(x, dtype=bool)
-        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
-            bool
+
+        coords = np.array(
+            [
+                [s.dec.to_value(u.radian) for s in sso_coords],
+                [s.ra.to_value(u.radian) for s in sso_coords],
+            ]
         )
-        if not np.any(result):
+        pixs = input_map.flux.sky2pix(coords)
+        inside = np.where(
+            np.all((pixs.T >= 0) & (pixs.T < input_map.flux.shape[-2:]), -1)
+        )[0]
+
+        if len(inside) == 0:
+            log.debug(
+                "get_sso_ephem_in_map.source_not_in_map",
+                sso=sso,
+            )
             sso_not_in_map.append(sso)
             continue
+        result = np.nan_to_num(input_map.flux.at(coords[:, inside], mode="nn")).astype(
+            bool
+        )
 
         if return_nearest:
             mean_pos = SkyCoord(
@@ -296,7 +309,8 @@ def get_sso_ephem_in_map(
                 dec=np.mean(sso_coords.dec[result]),
             )
             map_time_at_mean_pos = input_map.time_mean.at(
-                [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")]
+                [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")],
+                mode="nn",
             )
             nearest_idx = np.argmin(np.abs(interp_time_range - map_time_at_mean_pos))
         else:

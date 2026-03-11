@@ -125,7 +125,7 @@ P.add_argument(
 P.add_argument(
     "--ncores",
     action="store",
-    default=4,
+    default=12,
     type=int,
     help="Number of cores to request for each slurm job. ",
 )
@@ -133,7 +133,7 @@ P.add_argument(
 P.add_argument(
     "--nserial",
     action="store",
-    default=4,
+    default=8,
     type=int,
     help="Number of serial sets of `ncores` scripts to run per job. ",
 )
@@ -156,7 +156,7 @@ def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_ou
 #SBATCH --nodes=1                # node count
 #SBATCH --ntasks=1               # total number of tasks across all nodes
 #SBATCH --cpus-per-task={cpu_per_task}       # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH --mem-per-cpu=24G         # memory per cpu-core (4G is default)
+#SBATCH --mem-per-cpu=48G         # memory per cpu-core (4G is default)
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
 
@@ -168,10 +168,10 @@ cd {script_dir}
 source .venv/bin/activate
 
 export socat_client_client_type=pickle
-export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
+export socat_client_pickle_path=act_f090_wide_socat.pickle
 
 if [ ! -e "socat.pickle" ]; then
-    socat-act-fits -f catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
+    socat-act-fits -f act_catalog_f090_wide.fits  -o act_f090_wide_socat.pickle
 fi
 
 """
