@@ -37,8 +37,8 @@ def mask_planets(
     log = log.bind(func="mask_planets")
     ephem_times = mask_time if isinstance(mask_time, list) else [mask_time]
     planet_ephems = get_sso_ephems_at_time(
-        orbital_df=None,
-        time=ephem_times,
+        ephem_df=None,
+        sample_times=ephem_times,
         planets=planets,
         observer=create_observer(),
         log=log,

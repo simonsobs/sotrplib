@@ -120,7 +120,7 @@ def parse_batch_output(text, designations):
 
             # Convert datetime to Julian Date
             jd = Time(dt_utc, scale="utc").jd
-            delta = float(parts[8])
+            delta = float(parts[7])
 
             rows.append(
                 {

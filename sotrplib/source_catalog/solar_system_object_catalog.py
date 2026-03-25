@@ -9,10 +9,10 @@ from typing import Literal
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
-from skyfield.api import wgs84
+from pydantic import AwareDatetime
+from skyfield.toposlib import GeographicPosition
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -75,18 +75,18 @@ class SSOCat(SolarSystemObjectCatalog):
     db_path: str
     sso_ephems: dict
     catalog: list[RegisteredSource]
-    observer: wgs84.latlon
+    observer: GeographicPosition
     db: any
     radec_array: NDArray
-    start_time: Time | None
-    stop_time: Time | None
+    start_time: AwareDatetime | None
+    stop_time: AwareDatetime | None
 
     def __init__(
         self,
         db_path: str,
-        observer: wgs84.latlon,
-        start_time: Time | None = None,
-        stop_time: Time | None = None,
+        observer: GeographicPosition,
+        start_time: AwareDatetime | None = None,
+        stop_time: AwareDatetime | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.db_path = db_path

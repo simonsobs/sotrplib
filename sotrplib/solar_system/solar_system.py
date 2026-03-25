@@ -9,6 +9,7 @@ from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from skyfield.api import load, wgs84
 from skyfield.data import mpc
+from skyfield.toposlib import GeographicPosition
 from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
@@ -20,7 +21,7 @@ def create_observer(
     lat: u.Quantity[u.deg] = -22.96098 * u.deg,
     lon: u.Quantity[u.deg] = -67.7876 * u.deg,
     elev: u.Quantity[u.m] = 5180 * u.m,
-) -> wgs84.latlon:
+) -> GeographicPosition:
     """Create a Skyfield observer for the Simons Observatory LAT site."""
     return wgs84.latlon(
         lat.to_value(u.deg), lon.to_value(u.deg), elevation_m=elev.to_value(u.m)
@@ -148,8 +149,8 @@ def load_mpc_orbital_database(
 
 def load_jpl_ephem_database(
     ephem_file_path: str = "JPL_batched_ephemerides_2015-01-01_2025-01-01.parquet",
-    start_time: Time = Time("2025-01-01T00:00:00Z"),
-    stop_time: Time = Time("2030-01-01T00:00:00Z"),
+    start_time: datetime | Time = Time("2025-01-01T00:00:00Z"),
+    stop_time: datetime | Time = Time("2030-01-01T00:00:00Z"),
     log: FilteringBoundLogger | None = None,
 ) -> pd.DataFrame:
     """
@@ -157,33 +158,30 @@ def load_jpl_ephem_database(
     The ephemeris file is expected to have columns 'designation', 'julian_day', 'ra_deg', 'dec_deg', and optionally 'distance_au'.
     These files can be downloaded using the script `download_ephem_from_horizons.py` in the sotrplib repo.
     """
+    if isinstance(start_time, datetime):
+        start_time = Time(start_time)
+    if isinstance(stop_time, datetime):
+        stop_time = Time(stop_time)
+
     log = log or structlog.get_logger()
     log.info(
         "solar_system.load_jpl_ephem_database.loading_ephemerides",
-        ephem_file_path=ephem_file_path,
+        ephem_file_path=str(ephem_file_path),
         start_time=start_time.iso,
         stop_time=stop_time.iso,
     )
     df = pd.read_parquet(ephem_file_path)
+    ## just now to fix typo problem
+    df.drop("distance_au", axis=1, inplace=True)
     if start_time is not None:
-        start_jd = Time(pd.to_datetime(start_time)).jd
-    else:
-        start_jd = None
+        df = df[df["julian_day"].values >= start_time.jd]
 
     if stop_time is not None:
-        stop_jd = Time(pd.to_datetime(stop_time)).jd
-    else:
-        stop_jd = None
-
-    if start_jd is not None:
-        df = df[df["julian_day"].values >= start_jd]
-
-    if stop_jd is not None:
-        df = df[df["julian_day"].values <= stop_jd]
+        df = df[df["julian_day"].values <= stop_time.jd]
 
     log.info(
         "solar_system.load_jpl_ephem_database.ephemerides_loaded",
-        ephem_file_path=ephem_file_path,
+        ephem_file_path=str(ephem_file_path),
         start_time=start_time.iso,
         stop_time=stop_time.iso,
         n_ephemerides=len(np.unique(df["designation"])),
@@ -195,6 +193,7 @@ def interpolate_ephem(
     obj_df,
     target_jd: list[float] | float,
     window: u.Quantity = 0.5 * u.day,
+    min_points_for_interp: int = 4,
     log: FilteringBoundLogger | None = None,
 ) -> np.ndarray:
     """
@@ -205,6 +204,8 @@ def interpolate_ephem(
      Julian dates of desired times at which to interpolate.
     window : u.Quantity
      Days around target to include in spline interpolation
+    min_points_for_interp : int
+     Minimum number of ephem points within +-window required for interpolation
     log: FilteringBoundLogger
         Logger for logging information, by default None.
 
@@ -212,7 +213,7 @@ def interpolate_ephem(
         as SkyCoord objects.
 
 
-    expects ephemerides to be sampled such that there are at least 4 points within
+    expects ephemerides to be sampled such that there are at least `min_points_for_interp` points within
     +- window of each target_jd for the spline interpolation to work.
     If not, it will return NaNs for that target_jd and print a warning.
 
@@ -243,19 +244,22 @@ def interpolate_ephem(
             ephem_jd_range=(obj_df["julian_day"].min(), obj_df["julian_day"].max()),
         )
 
-    results = []
+    ras = []
+    decs = []
+    dists = []
     for tjd in target_jd:
-        subset = obj_df[np.abs(obj_df["julian_day"] - tjd) < window]
+        subset = obj_df[np.abs(obj_df["julian_day"] - tjd) < window.to_value(u.day)]
 
-        if len(subset) < 4:
-            results.append(
-                SkyCoord(ra=np.nan * u.deg, dec=np.nan * u.deg, frame="icrs")
-            )
+        if len(subset) < min_points_for_interp:
+            ras.append(np.nan)
+            decs.append(np.nan)
+            dists.append(None)
             log.warn(
                 "interpolate_ephem.too_few_interpolation_points",
                 target_jd=tjd,
                 n_points=len(subset),
-                window=window.to_value(u.day),
+                required_points=min_points_for_interp,
+                window=f"{window.to_value(u.day)} days",
             )
             continue
 
@@ -268,25 +272,24 @@ def interpolate_ephem(
         dec_spline = UnivariateSpline(t, dec, k=3, s=0)
         dist_spline = UnivariateSpline(t, dist, k=3, s=0) if dist is not None else None
 
-        ra_i = ra_spline(tjd)
-        dec_i = dec_spline(tjd)
-        dist_i = dist_spline(tjd) if dist_spline is not None else None
+        ras.append(ra_spline(tjd))
+        decs.append(dec_spline(tjd))
+        dists.append(dist_spline(tjd) if dist_spline is not None else None)
 
-        results.append(
-            SkyCoord(
-                ra=ra_i * u.deg,
-                dec=dec_i * u.deg,
-                distance=dist_i * u.au if dist_i is not None else None,
-                frame="icrs",
-            )
-        )
-
-    return np.array(results)
+    ras = np.array(ras)
+    decs = np.array(decs)
+    dists = np.array(dists) if any(d is not None for d in dists) else None
+    return SkyCoord(
+        ra=ras * u.deg,
+        dec=decs * u.deg,
+        distance=dists * u.au if dists is not None else None,
+        frame="icrs",
+    )
 
 
 def get_sso_ephems_at_time(
     ephem_df: pd.DataFrame,
-    sample_times: list | float,
+    sample_times: list[datetime] | datetime,
     planets: list[str] = [
         "Mercury",
         "Venus",
@@ -296,7 +299,7 @@ def get_sso_ephems_at_time(
         "Uranus",
         "Neptune",
     ],
-    observer: wgs84.latlon | None = None,
+    observer: GeographicPosition | None = None,
     log: FilteringBoundLogger | None = None,
 ) -> list[RegisteredSource]:
     """
@@ -304,26 +307,28 @@ def get_sso_ephems_at_time(
 
     """
     log = log or structlog.get_logger()
-    if isinstance(sample_times, (int, float)):
+    if isinstance(sample_times, datetime):
         sample_times = [sample_times]
-    time_jd = Time(sample_times, format="unix", scale="utc").jd
+    time_jd = Time(sample_times, format="datetime").jd
     sso_ephems = {}
-    unique_objs = ephem_df["designation"].unique()
-    log.info(
-        "solar_system.get_sso_ephems_at_time.starting_interpolation",
-        n_objects=len(unique_objs),
-        sample_times=sample_times,
-    )
-    for obj in unique_objs:
-        obj_df = ephem_df[ephem_df["designation"] == obj]
-        interp_pos = interpolate_ephem(obj_df, time_jd)
 
-        sso_ephems[obj] = {
-            "pos": interp_pos,
-            "time": np.array(
-                [datetime.fromtimestamp(s, tz=timezone.utc) for s in sample_times]
-            ),
-        }
+    if ephem_df is not None:
+        unique_objs = ephem_df["designation"].unique()
+        log.info(
+            "solar_system.get_sso_ephems_at_time.starting_interpolation",
+            n_objects=len(unique_objs),
+            sample_times=sample_times,
+        )
+        for obj in unique_objs:
+            obj_df = ephem_df[ephem_df["designation"] == obj]
+            interp_pos = interpolate_ephem(obj_df, time_jd)
+
+            sso_ephems[obj] = {
+                "pos": interp_pos,
+                "time": np.array(
+                    [datetime.fromtimestamp(s, tz=timezone.utc) for s in sample_times]
+                ),
+            }
 
     if planets:
         ts = load.timescale()
@@ -367,9 +372,20 @@ def get_sso_ephem_in_map(
     ephem_df: pd.DataFrame,
     interp_time_range: u.Quantity = 0.5 * u.day,
     interp_to: u.Quantity | None = 10 * u.min,
+    observer: GeographicPosition | None = None,
+    planets: list[str] = [
+        "Mercury",
+        "Venus",
+        "Mars",
+        "Jupiter",
+        "Saturn",
+        "Uranus",
+        "Neptune",
+    ],
     log: FilteringBoundLogger | None = None,
 ) -> list[RegisteredSource]:
-    """Get solar system objects that fall within the provided map.
+    """
+    Get solar system objects that fall within the provided map.
 
     Parameters
     ----------
@@ -383,6 +399,8 @@ def get_sso_ephem_in_map(
         Time range for interpolation, by default +- 0.5*u.day
     interp_to: u.Quantity, optional
         Interpolation sample rate for detecting if an asteroid is in the map.
+    observer: GeographicPosition, optional
+        Observer location for getting planet ephemerides. If None, ignores planets.
     log : FilteringBoundLogger, optional
         Logger for logging information, by default None.
 
@@ -391,16 +409,30 @@ def get_sso_ephem_in_map(
     sso_ephems : dict
         Dictionary mapping object designations to their ephemerides .
     """
+    log = log or structlog.get_logger()
+    log.info(
+        "solar_system.get_sso_ephem_in_map.initialize",
+        map_id=input_map.map_id,
+        interp_time_range=interp_time_range,
+        interp_to=interp_to,
+    )
     time_range = [
         np.amin(input_map.time_first[input_map.time_first > 0]),
         np.nanmean(input_map.time_mean[input_map.time_first > 0]),
-        np.nanmax(input_map.time_last),
+        float(np.nanmax(input_map.time_last)),
     ]
     time_jd = Time(time_range, format="unix", scale="utc").jd
     if interp_to is not None:
         time_jd = np.arange(
             np.min(time_jd), np.nanmax(time_jd), interp_to.to_value(u.day)
         )
+
+    log.info(
+        "solar_system.get_sso_ephem_in_map.starting_ephemeris_computation",
+        julian_dates=time_jd,
+        time_range=time_range,
+        time_interpolated="True" if interp_to is not None else "False",
+    )
 
     sso_ephems = {}
     unique_objs = ephem_df["designation"].unique()
@@ -409,7 +441,6 @@ def get_sso_ephem_in_map(
         interp_pos = interpolate_ephem(
             obj_df, time_jd, window=interp_time_range, log=log
         )
-
         y, x = input_map.flux.wcs.world_to_pixel(interp_pos)
         nx, ny = input_map.flux.shape
         x, y = np.round(x).astype(int), np.round(y).astype(int)
@@ -430,14 +461,38 @@ def get_sso_ephem_in_map(
         )
         nearest_pos = interpolate_ephem(
             obj_df,
-            Time([map_time_at_mean_pos], format="unix", scale="utc").jd,
+            Time(map_time_at_mean_pos, format="unix", scale="utc").jd,
             window=interp_time_range,
             log=log,
         )
-
         sso_ephems[obj] = {
             "pos": nearest_pos,
-            "time": datetime.fromtimestamp(map_time_at_mean_pos, tz=timezone.utc),
+            "time": datetime.fromtimestamp(
+                float(map_time_at_mean_pos), tz=timezone.utc
+            ),
         }
 
+    if planets and observer is not None:
+        planet_ephems = get_sso_ephems_at_time(
+            ephem_df=None,
+            sample_times=Time(time_range, format="unix", scale="utc").iso,
+            planets=planets,
+            observer=observer,
+            log=log,
+        )
+        for p in planets:
+            if p not in planet_ephems:
+                continue
+            pos = planet_ephems[p]["pos"]
+            y, x = input_map.flux.wcs.world_to_pixel(pos)
+            nx, ny = input_map.flux.shape
+            x, y = np.round(x).astype(int), np.round(y).astype(int)
+            inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+            if not np.any(inside):
+                continue
+
+            sso_ephems[p] = {
+                "pos": pos,
+                "time": planet_ephems[p]["time"],
+            }
     return sso_ephems
