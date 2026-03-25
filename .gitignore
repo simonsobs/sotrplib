@@ -63,6 +63,7 @@ scripts/*/test*.py
 
 # any databases
 *sqlite
+*parquet
 
 # any ephemeris / orbital param files
 *.bsp

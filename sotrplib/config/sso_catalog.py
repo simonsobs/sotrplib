@@ -2,7 +2,9 @@ from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.config.source_catalog import SourceCatalogConfig
 from sotrplib.source_catalog.solar_system_object_catalog import (
@@ -18,7 +20,12 @@ class SSOCatalogConfig(SourceCatalogConfig):
     observer_lon: AstroPydanticQuantity = -67.7876 * u.deg
     observer_elev: AstroPydanticQuantity = 5180 * u.m
 
-    def to_source_catalog(self, log=None) -> SolarSystemObjectCatalog:
+    def to_source_catalog(
+        self,
+        start_time: Time | None = None,
+        stop_time: Time | None = None,
+        log: FilteringBoundLogger | None = None,
+    ) -> SolarSystemObjectCatalog:
         from sotrplib.solar_system.solar_system import create_observer
 
         observer = create_observer(
@@ -30,6 +37,9 @@ class SSOCatalogConfig(SourceCatalogConfig):
         return SSOCat(
             db_path=self.db_path,
             observer=observer,
+            start_time=start_time,
+            stop_time=stop_time,
+            log=log,
         )
 
 

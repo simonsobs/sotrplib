@@ -9,14 +9,16 @@ from typing import Literal
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
 from skyfield.api import wgs84
+from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.solar_system.solar_system import (
     get_sso_ephem_in_map,
-    load_mpc_orbital_database,
+    load_jpl_ephem_database,
 )
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
 from sotrplib.utils.utils import angular_separation
@@ -76,15 +78,24 @@ class SSOCat(SolarSystemObjectCatalog):
     observer: wgs84.latlon
     db: any
     radec_array: NDArray
+    start_time: Time | None
+    stop_time: Time | None
 
     def __init__(
         self,
         db_path: str,
         observer: wgs84.latlon,
+        start_time: Time | None = None,
+        stop_time: Time | None = None,
+        log: FilteringBoundLogger | None = None,
     ):
         self.db_path = db_path
-        self.db = load_mpc_orbital_database(self.db_path)
         self.observer = observer
+        self.start_time = start_time
+        self.stop_time = stop_time
+        self.db = load_jpl_ephem_database(
+            self.db_path, start_time=self.start_time, stop_time=self.stop_time
+        )
         self.sso_ephems = {}
         self.catalog = []
 
@@ -92,7 +103,7 @@ class SSOCat(SolarSystemObjectCatalog):
         # Implementation to get sources in the map
         sso_in_map = get_sso_ephem_in_map(
             input_map,
-            orbital_df=self.db,
+            ephem_df=self.db,
             observer=self.observer,
         )
         if len(sso_in_map) == 0:
@@ -155,13 +166,13 @@ class SSOCat(SolarSystemObjectCatalog):
         from sotrplib.solar_system.solar_system import get_sso_ephems_at_time
 
         if source_ids is not None:
-            orbital_df = self.db[self.db["designation"].isin(source_ids)]
+            ephem_df = self.db[self.db["designation"].isin(source_ids)]
         else:
-            orbital_df = self.db
+            ephem_df = self.db
 
         sso_ephems = get_sso_ephems_at_time(
-            orbital_df,
-            time=times,
+            ephem_df,
+            sample_times=times,
             observer=self.observer,
         )
 
