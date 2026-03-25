@@ -71,3 +71,6 @@ scripts/*/test*.py
 
 # ipynb checkpoints
 .ipynb_checkpoints
+
+# any maps
+*.fits
