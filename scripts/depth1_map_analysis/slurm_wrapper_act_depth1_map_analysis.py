@@ -3,6 +3,7 @@ import os
 from getpass import getuser
 from glob import glob
 
+from astropy.time import Time
 from tqdm import tqdm
 
 USER = getuser()
@@ -189,6 +190,9 @@ def generate_config_json(
 ):
     kappa_map_file = mapfile.replace("_rho.fits", "_kappa.fits")
     time_map_file = mapfile.replace("_rho.fits", "_time.fits")
+    unix_time = int(mapfile.split("/")[-1].split("_")[1])
+    start_time = Time(unix_time - 3 * 86400, format="unix")
+    stop_time = Time(unix_time + 3 * 86400, format="unix")
     info_file = mapfile.replace("_rho.fits", "_info.hdf")
     freq = mapfile.split("_")[-2]
     arr = mapfile.split("_")[-3]
@@ -214,7 +218,9 @@ def generate_config_json(
     "sso_catalogs": [
         {{
             "catalog_type": "sso",
-            "db_path": "sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "db_path": "sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
+            "start_time": "{start_time.iso}Z",
+            "stop_time": "{stop_time.iso}Z"
         }}
     ],
     "pointing_provider": {{
