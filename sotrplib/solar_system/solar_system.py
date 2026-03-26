@@ -249,7 +249,7 @@ def interpolate_ephem(
         if len(subset) < min_points_for_interp:
             ras.append(np.nan)
             decs.append(np.nan)
-            dists.append(None)
+            dists.append(np.nan)
             log.warn(
                 "interpolate_ephem.too_few_interpolation_points",
                 target_jd=tjd,
@@ -262,23 +262,25 @@ def interpolate_ephem(
         t = subset["julian_day"].values
         ra = subset["ra_deg"].values
         dec = subset["dec_deg"].values
-        dist = subset["distance_au"].values if "distance_au" in subset.columns else None
+        dist = (
+            subset["distance_au"].values if "distance_au" in subset.columns else np.nan
+        )
 
         ra_spline = UnivariateSpline(t, ra, k=3, s=0)
         dec_spline = UnivariateSpline(t, dec, k=3, s=0)
-        dist_spline = UnivariateSpline(t, dist, k=3, s=0) if dist is not None else None
+        dist_spline = UnivariateSpline(t, dist, k=3, s=0)
 
         ras.append(ra_spline(tjd))
         decs.append(dec_spline(tjd))
-        dists.append(dist_spline(tjd) if dist_spline is not None else None)
+        dists.append(dist_spline(tjd))
 
     ras = np.array(ras)
     decs = np.array(decs)
-    dists = np.array(dists) if any(d is not None for d in dists) else None
+    dists = np.array(dists)
     return SkyCoord(
         ra=ras * u.deg,
         dec=decs * u.deg,
-        distance=dists * u.au if dists is not None else None,
+        distance=dists * u.au,
         frame="icrs",
     )
 
