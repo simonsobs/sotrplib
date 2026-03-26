@@ -1,47 +1,9 @@
 from datetime import datetime, timezone
 
-import pandas as pd
 import pytest
 from skyfield.api import load
 
 from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
-
-
-def test_get_sso_ephems_at_time_single(orbital_params):
-    orbital_df = pd.DataFrame(orbital_params)
-
-    # Define a single time
-    time = datetime(2025, 9, 15, 0, 0, tzinfo=timezone.utc)
-    # Define observer location
-    observer = create_observer()
-    # Call the function
-    sso_ephems = get_sso_ephems_at_time(orbital_df, time, observer)
-
-    # Check results
-    assert "(1) Ceres" in sso_ephems
-    assert "(2) Pallas" in sso_ephems
-    assert "pos" in sso_ephems["(1) Ceres"]
-    assert len(sso_ephems["(1) Ceres"]["pos"]) == 1
-
-
-def test_get_sso_ephems_at_time_multiple(orbital_params):
-    orbital_df = pd.DataFrame(orbital_params)
-
-    # Define a single time
-    time = [
-        datetime(2025, 9, 15, 0, 0, tzinfo=timezone.utc),
-        datetime(2025, 9, 16, 0, 0, tzinfo=timezone.utc),
-    ]
-    # Define observer location
-    observer = create_observer()
-    # Call the function
-    sso_ephems = get_sso_ephems_at_time(orbital_df, time, observer)
-
-    # Check results
-    assert "(1) Ceres" in sso_ephems
-    assert "(2) Pallas" in sso_ephems
-    assert "pos" in sso_ephems["(1) Ceres"]
-    assert len(sso_ephems["(1) Ceres"]["pos"]) == 2
 
 
 def test_planet_positions():
@@ -75,3 +37,16 @@ def test_planet_positions():
     assert ra.degrees[0] == pytest.approx(1.12167, abs=1e-4)
     assert dec.degrees[0] == pytest.approx(-1.00995, abs=1e-4)
     assert distance.km[0] == pytest.approx(4.3223260267e09, abs=1e4)
+
+
+def test_asteroid_positions(mock_jpl_ephem_db):
+    # Define times
+    times = [
+        datetime(2019, 4, 10, 4, 0, tzinfo=timezone.utc),
+    ]
+    sso_ephem = get_sso_ephems_at_time(mock_jpl_ephem_db, times)
+    sso = "1 Ceres"
+    # Check results according to JPL Horizons for 2019-04-10 04:00 UTC
+    assert sso_ephem[sso]["pos"].ra.degree[0] == pytest.approx(253.365458, abs=1e-4)
+    assert sso_ephem[sso]["pos"].dec.degree[0] == pytest.approx(-16.708611, abs=1e-4)
+    assert sso_ephem[sso]["pos"].distance.au[0] == pytest.approx(2.018541, abs=1e-5)

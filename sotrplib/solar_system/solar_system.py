@@ -318,12 +318,7 @@ def get_sso_ephems_at_time(
             obj_df = ephem_df[ephem_df["designation"] == obj]
             interp_pos = interpolate_ephem(obj_df, time_jd)
 
-            sso_ephems[obj] = {
-                "pos": interp_pos,
-                "time": np.array(
-                    [datetime.fromtimestamp(s, tz=timezone.utc) for s in sample_times]
-                ),
-            }
+            sso_ephems[obj] = {"pos": interp_pos, "time": sample_times}
 
     if planets:
         ts = load.timescale()
