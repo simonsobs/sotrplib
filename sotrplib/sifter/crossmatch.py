@@ -340,7 +340,7 @@ def sift(
         )
 
         is_cut = get_cut_decision(source_measurement, cuts, debug=debug)
-        print("cut decision for source %s: %s" % (source_string_name, is_cut))
+
         if isin_cat[source] and not is_cut:
             log.debug(
                 "sift.source_crossmatch",
@@ -463,8 +463,8 @@ def get_cut_decision(
         if val is None:
             log.debug("get_cut_decision.missing_value", cut_name=c)
             continue
+        ## this is stupid, but how i've decided to do it.
         if c == "observation_mean_time":
-            print(val, val.unix)
             val = val.unix
         cut |= (val < cuts[c][0]) | (val > cuts[c][1])
         if debug and (val < cuts[c][0]) | (val > cuts[c][1]):

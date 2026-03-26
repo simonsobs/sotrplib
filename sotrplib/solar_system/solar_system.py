@@ -385,8 +385,6 @@ def get_sso_ephem_in_map(
         Map to check for solar system objects.
     ephem_df : pd.DataFrame
         DataFrame containing ephemerides of solar system objects.
-    return_nearest : bool, optional
-        Whether to return the nearest ephemeris point, by default True.
     interp_time_range : u.Quantity, optional
         Time range for interpolation, by default +- 0.5*u.day
     interp_to: u.Quantity, optional
