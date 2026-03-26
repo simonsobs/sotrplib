@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 import astropy.units as u
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -88,7 +89,7 @@ def query_batch(designations, start, stop, max_retries=5):
     raise RuntimeError(f"Failed after {max_retries} retries")
 
 
-def parse_batch_output(text, designations):
+def parse_batch_output(text):
     rows = []
 
     current_obj = None
@@ -120,7 +121,7 @@ def parse_batch_output(text, designations):
 
             # Convert datetime to Julian Date
             jd = Time(dt_utc, scale="utc").jd
-            delta = float(parts[7])
+            delta = float(parts[7]) if len(parts) > 7 else np.nan
 
             rows.append(
                 {
@@ -155,7 +156,7 @@ def main(start, stop):
     for batch in tqdm(list(chunk(designations, 1))):
         text = query_batch(batch, start, stop)
         print(text.count("Target body name"))
-        df = parse_batch_output(text, batch)
+        df = parse_batch_output(text)
         table = pa.Table.from_pandas(df)
 
         if writer is None:

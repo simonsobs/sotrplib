@@ -78,7 +78,7 @@ class SSOCat(SolarSystemObjectCatalog):
     catalog: list[RegisteredSource]
     observer: GeographicPosition
     db: any
-    radec_array: NDArray
+    ra_dec_array: NDArray
     start_time: AwareDatetime | None
     stop_time: AwareDatetime | None
 

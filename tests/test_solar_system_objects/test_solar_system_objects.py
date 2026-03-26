@@ -44,7 +44,7 @@ def test_asteroid_positions(mock_jpl_ephem_db):
     times = [
         datetime(2019, 4, 10, 4, 0, tzinfo=timezone.utc),
     ]
-    sso_ephem = get_sso_ephems_at_time(mock_jpl_ephem_db, times)
+    sso_ephem = get_sso_ephems_at_time(mock_jpl_ephem_db, times, planets=[])
     sso = "1 Ceres"
     # Check results according to JPL Horizons for 2019-04-10 04:00 UTC
     assert sso_ephem[sso]["pos"].ra.degree[0] == pytest.approx(253.365458, abs=1e-4)

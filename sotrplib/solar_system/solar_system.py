@@ -148,8 +148,8 @@ def load_mpc_orbital_database(
 
 def load_jpl_ephem_database(
     ephem_file_path: str = "JPL_batched_ephemerides_2015-01-01_2025-01-01.parquet",
-    start_time: datetime | Time = Time("2025-01-01T00:00:00Z"),
-    stop_time: datetime | Time = Time("2030-01-01T00:00:00Z"),
+    start_time: datetime | Time | None = Time("2025-01-01T00:00:00Z"),
+    stop_time: datetime | Time | None = Time("2030-01-01T00:00:00Z"),
     log: FilteringBoundLogger | None = None,
 ) -> pd.DataFrame:
     """
@@ -166,8 +166,8 @@ def load_jpl_ephem_database(
     log.info(
         "solar_system.load_jpl_ephem_database.loading_ephemerides",
         ephem_file_path=str(ephem_file_path),
-        start_time=start_time.iso,
-        stop_time=stop_time.iso,
+        start_time=start_time.iso if start_time else None,
+        stop_time=stop_time.iso if stop_time else None,
     )
     df = pd.read_parquet(ephem_file_path)
     if start_time is not None:
@@ -177,8 +177,8 @@ def load_jpl_ephem_database(
     log.info(
         "solar_system.load_jpl_ephem_database.ephemerides_loaded",
         ephem_file_path=str(ephem_file_path),
-        start_time=start_time.iso,
-        stop_time=stop_time.iso,
+        start_time=start_time.iso if start_time else None,
+        stop_time=stop_time.iso if stop_time else None,
         n_ephemerides=len(np.unique(df["designation"])),
     )
     return df
