@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 from pixell import utils as pixell_utils
 from pydantic import AwareDatetime
 from skyfield.toposlib import GeographicPosition
+from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -96,6 +97,7 @@ class SSOCat(SolarSystemObjectCatalog):
         self.db = load_jpl_ephem_database(
             self.db_path, start_time=self.start_time, stop_time=self.stop_time
         )
+        self.log = log or get_logger()
         self.sso_ephems = {}
         self.catalog = []
 
@@ -110,27 +112,37 @@ class SSOCat(SolarSystemObjectCatalog):
             return []
         out_sources = []
         for sso in sso_in_map:
-            out_sources.append(
-                RegisteredSource(
-                    source_id=sso,
-                    source_type="sso",
-                    ra=sso_in_map[sso]["pos"].ra,
-                    dec=sso_in_map[sso]["pos"].dec,
-                    flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
-                    observation_mean_time=sso_in_map[sso]["time"],
-                    catalog_name="solar_system_catalog",
-                    crossmatches=[
-                        CrossMatch(
-                            ra=sso_in_map[sso]["pos"].ra,
-                            dec=sso_in_map[sso]["pos"].dec,
-                            flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
-                            source_type="sso",
-                            catalog_name="solar_system_catalog",
-                            source_id=sso,
-                        )
-                    ],
+            if not isinstance(sso_in_map[sso]["pos"], SkyCoord):
+                self.log.error(
+                    f"Expected position to be a SkyCoord, but got {type(sso_in_map[sso]['pos'])} for source {sso}.",
+                    position=sso_in_map[sso]["pos"],
                 )
-            )
+                continue
+            sso_ra = np.atleast_1d(sso_in_map[sso]["pos"].ra)
+            sso_dec = np.atleast_1d(sso_in_map[sso]["pos"].dec)
+            sso_time = np.atleast_1d(sso_in_map[sso]["time"])
+            for i in range(len(sso_ra)):
+                out_sources.append(
+                    RegisteredSource(
+                        source_id=sso,
+                        source_type="sso",
+                        ra=sso_ra[i],
+                        dec=sso_dec[i],
+                        flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
+                        observation_mean_time=sso_time[i],
+                        catalog_name="solar_system_catalog",
+                        crossmatches=[
+                            CrossMatch(
+                                ra=sso_ra[i],
+                                dec=sso_dec[i],
+                                flux=0.0 * u.mJy,  ## todo: supply estimated fluxes
+                                source_type="sso",
+                                catalog_name="solar_system_catalog",
+                                source_id=sso,
+                            )
+                        ],
+                    )
+                )
         self.sso_ephems = sso_in_map
         self.catalog = out_sources
         self.ra_dec_array = np.asarray(

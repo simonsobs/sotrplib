@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,6 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sources.sources import RegisteredSource
 
 
 def create_observer(
@@ -171,14 +170,10 @@ def load_jpl_ephem_database(
         stop_time=stop_time.iso,
     )
     df = pd.read_parquet(ephem_file_path)
-    ## just now to fix typo problem
-    df.drop("distance_au", axis=1, inplace=True)
     if start_time is not None:
         df = df[df["julian_day"].values >= start_time.jd]
-
     if stop_time is not None:
         df = df[df["julian_day"].values <= stop_time.jd]
-
     log.info(
         "solar_system.load_jpl_ephem_database.ephemerides_loaded",
         ephem_file_path=str(ephem_file_path),
@@ -195,7 +190,7 @@ def interpolate_ephem(
     window: u.Quantity = 0.5 * u.day,
     min_points_for_interp: int = 4,
     log: FilteringBoundLogger | None = None,
-) -> np.ndarray:
+) -> SkyCoord:
     """
     obj_df : pandas db
      database of ephemerides for an asteroid.
@@ -228,11 +223,12 @@ def interpolate_ephem(
         target_jd
     ):
         log.error(
-            "interpolate_ephem.no_target_jd_in_range",
+            "solar_system.interpolate_ephem.no_target_jd_in_range",
             target_jd_range=(min(target_jd), max(target_jd)),
             ephem_jd_range=(obj_df["julian_day"].min(), obj_df["julian_day"].max()),
+            sso=obj_df["designation"].iloc[0],
         )
-        return np.full((len(target_jd), 2), np.nan)
+        return SkyCoord(ra=np.nan * u.deg, dec=np.nan * u.deg, frame="icrs")
 
     if (
         min(target_jd) < obj_df["julian_day"].min()
@@ -301,14 +297,13 @@ def get_sso_ephems_at_time(
     ],
     observer: GeographicPosition | None = None,
     log: FilteringBoundLogger | None = None,
-) -> list[RegisteredSource]:
+) -> dict[str, dict[str, SkyCoord | datetime]]:
     """
     Get sso ephemeris positions at time(s) sample_times
 
     """
     log = log or structlog.get_logger()
-    if isinstance(sample_times, datetime):
-        sample_times = [sample_times]
+    sample_times = np.atleast_1d(sample_times)
     time_jd = Time(sample_times, format="datetime").jd
     sso_ephems = {}
 
@@ -383,7 +378,7 @@ def get_sso_ephem_in_map(
         "Neptune",
     ],
     log: FilteringBoundLogger | None = None,
-) -> list[RegisteredSource]:
+) -> dict[str, dict[str, SkyCoord | datetime]]:
     """
     Get solar system objects that fall within the provided map.
 
@@ -416,12 +411,9 @@ def get_sso_ephem_in_map(
         interp_time_range=interp_time_range,
         interp_to=interp_to,
     )
-    time_range = [
-        np.amin(input_map.time_first[input_map.time_first > 0]),
-        np.nanmean(input_map.time_mean[input_map.time_first > 0]),
-        float(np.nanmax(input_map.time_last)),
-    ]
-    time_jd = Time(time_range, format="unix", scale="utc").jd
+    time_range = [input_map.observation_start, input_map.observation_end]
+
+    time_jd = Time(time_range).jd
     if interp_to is not None:
         time_jd = np.arange(
             np.min(time_jd), np.nanmax(time_jd), interp_to.to_value(u.day)
@@ -451,14 +443,28 @@ def get_sso_ephem_in_map(
         )
         if not np.any(result):
             continue
-
         mean_pos = SkyCoord(
             ra=np.mean(interp_pos.ra[result]),
             dec=np.mean(interp_pos.dec[result]),
+            frame="icrs",
         )
+
         map_time_at_mean_pos = input_map.time_mean.at(
-            [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")]
+            [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")], mode="nn"
         )
+        if (
+            map_time_at_mean_pos > input_map.observation_end.timestamp()
+            or map_time_at_mean_pos < input_map.observation_start.timestamp()
+        ):
+            log.error(
+                "solar_system.get_sso_ephem_in_map.mean_pos_time_out_of_range",
+                object=obj,
+                mean_pos_time=map_time_at_mean_pos,
+                observation_time_range=(
+                    input_map.observation_start,
+                    input_map.observation_end,
+                ),
+            )
         nearest_pos = interpolate_ephem(
             obj_df,
             Time(map_time_at_mean_pos, format="unix", scale="utc").jd,
@@ -473,9 +479,17 @@ def get_sso_ephem_in_map(
         }
 
     if planets and observer is not None:
+        if input_map.observation_length > timedelta(days=1):
+            log.warn(
+                "solar_system.get_sso_ephem_in_map.planet_ephem",
+                observation_length=input_map.observation_length.to_value(u.day),
+                warning="Observation length is long, so planet ephemerides at the average time may be inaccurate.",
+            )
+        time_delta = (input_map.observation_end - input_map.observation_start) / 2
+        mean_time = input_map.observation_start + time_delta
         planet_ephems = get_sso_ephems_at_time(
             ephem_df=None,
-            sample_times=Time(time_range, format="unix", scale="utc").iso,
+            sample_times=mean_time,
             planets=planets,
             observer=observer,
             log=log,
