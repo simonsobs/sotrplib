@@ -1,26 +1,26 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
 import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from skyfield.api import load, wgs84
-from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
 from skyfield.data import mpc
+from skyfield.toposlib import GeographicPosition
 from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sources.sources import RegisteredSource
 
 
 def create_observer(
     lat: u.Quantity[u.deg] = -22.96098 * u.deg,
     lon: u.Quantity[u.deg] = -67.7876 * u.deg,
     elev: u.Quantity[u.m] = 5180 * u.m,
-) -> wgs84.latlon:
+) -> GeographicPosition:
     """Create a Skyfield observer for the Simons Observatory LAT site."""
     return wgs84.latlon(
         lat.to_value(u.deg), lon.to_value(u.deg), elevation_m=elev.to_value(u.m)
@@ -146,11 +146,148 @@ def load_mpc_orbital_database(
     return df
 
 
-def get_sso_ephems_at_time(
-    orbital_df: pd.DataFrame,
-    time: datetime | list[datetime],
-    observer: wgs84.latlon,
+def load_jpl_ephem_database(
+    ephem_file_path: str = "JPL_batched_ephemerides_2015-01-01_2025-01-01.parquet",
+    start_time: datetime | Time | None = Time("2025-01-01T00:00:00Z"),
+    stop_time: datetime | Time | None = Time("2030-01-01T00:00:00Z"),
     log: FilteringBoundLogger | None = None,
+) -> pd.DataFrame:
+    """
+    Load an ephemeris parquet file downloaded from JPL Horizons, and filter to the specified time range.
+    The ephemeris file is expected to have columns 'designation', 'julian_day', 'ra_deg', 'dec_deg', and optionally 'distance_au'.
+    These files can be downloaded using the script `download_ephem_from_horizons.py` in the sotrplib repo.
+    """
+    if isinstance(start_time, datetime):
+        start_time = Time(start_time)
+    if isinstance(stop_time, datetime):
+        stop_time = Time(stop_time)
+
+    log = log or structlog.get_logger()
+    log.info(
+        "solar_system.load_jpl_ephem_database.loading_ephemerides",
+        ephem_file_path=str(ephem_file_path),
+        start_time=start_time.iso if start_time else None,
+        stop_time=stop_time.iso if stop_time else None,
+    )
+    df = pd.read_parquet(ephem_file_path)
+    if start_time is not None:
+        df = df[df["julian_day"].values >= start_time.jd]
+    if stop_time is not None:
+        df = df[df["julian_day"].values <= stop_time.jd]
+    log.info(
+        "solar_system.load_jpl_ephem_database.ephemerides_loaded",
+        ephem_file_path=str(ephem_file_path),
+        start_time=start_time.iso if start_time else None,
+        stop_time=stop_time.iso if stop_time else None,
+        n_ephemerides=len(np.unique(df["designation"])),
+    )
+    return df
+
+
+def interpolate_ephem(
+    obj_df,
+    target_jd: list[float] | float,
+    window: u.Quantity = 0.5 * u.day,
+    min_points_for_interp: int = 4,
+    log: FilteringBoundLogger | None = None,
+) -> SkyCoord:
+    """
+    obj_df : pandas db
+     database of ephemerides for an asteroid.
+     must contain columns 'julian_day', 'ra_deg', 'dec_deg'
+    target_jd : list | float
+     Julian dates of desired times at which to interpolate.
+    window : u.Quantity
+     Days around target to include in spline interpolation
+    min_points_for_interp : int
+     Minimum number of ephem points within +-window required for interpolation
+    log: FilteringBoundLogger
+        Logger for logging information, by default None.
+
+    Returns: array of shape len(target_jd) with interpolated position
+        as SkyCoord objects.
+
+
+    expects ephemerides to be sampled such that there are at least `min_points_for_interp` points within
+    +- window of each target_jd for the spline interpolation to work.
+    If not, it will return NaNs for that target_jd and print a warning.
+
+    """
+    from scipy.interpolate import UnivariateSpline
+
+    log = log or structlog.get_logger()
+
+    target_jd = np.atleast_1d(target_jd)
+
+    if min(obj_df["julian_day"]) > max(target_jd) or max(obj_df["julian_day"]) < min(
+        target_jd
+    ):
+        log.error(
+            "solar_system.interpolate_ephem.no_target_jd_in_range",
+            target_jd_range=(min(target_jd), max(target_jd)),
+            ephem_jd_range=(obj_df["julian_day"].min(), obj_df["julian_day"].max()),
+            sso=obj_df["designation"].iloc[0],
+        )
+        return SkyCoord(ra=np.nan * u.deg, dec=np.nan * u.deg, frame="icrs")
+
+    if (
+        min(target_jd) < obj_df["julian_day"].min()
+        or max(target_jd) > obj_df["julian_day"].max()
+    ):
+        log.warn(
+            "interpolate_ephem.some_target_jd_out_of_range",
+            target_jd_range=(min(target_jd), max(target_jd)),
+            ephem_jd_range=(obj_df["julian_day"].min(), obj_df["julian_day"].max()),
+        )
+
+    ras = []
+    decs = []
+    dists = []
+    for tjd in target_jd:
+        subset = obj_df[np.abs(obj_df["julian_day"] - tjd) < window.to_value(u.day)]
+
+        if len(subset) < min_points_for_interp:
+            ras.append(np.nan)
+            decs.append(np.nan)
+            dists.append(np.nan)
+            log.warn(
+                "interpolate_ephem.too_few_interpolation_points",
+                target_jd=tjd,
+                n_points=len(subset),
+                required_points=min_points_for_interp,
+                window=f"{window.to_value(u.day)} days",
+            )
+            continue
+
+        t = subset["julian_day"].values
+        ra = subset["ra_deg"].values
+        dec = subset["dec_deg"].values
+        dist = (
+            subset["distance_au"].values if "distance_au" in subset.columns else np.nan
+        )
+
+        ra_spline = UnivariateSpline(t, ra, k=3, s=0)
+        dec_spline = UnivariateSpline(t, dec, k=3, s=0)
+        dist_spline = UnivariateSpline(t, dist, k=3, s=0)
+
+        ras.append(ra_spline(tjd))
+        decs.append(dec_spline(tjd))
+        dists.append(dist_spline(tjd))
+
+    ras = np.array(ras)
+    decs = np.array(decs)
+    dists = np.array(dists)
+    return SkyCoord(
+        ra=ras * u.deg,
+        dec=decs * u.deg,
+        distance=dists * u.au,
+        frame="icrs",
+    )
+
+
+def get_sso_ephems_at_time(
+    ephem_df: pd.DataFrame,
+    sample_times: list[datetime] | datetime,
     planets: list[str] = [
         "Mercury",
         "Venus",
@@ -160,73 +297,63 @@ def get_sso_ephems_at_time(
         "Uranus",
         "Neptune",
     ],
-) -> dict:
-    """Get ephemerides for solar system objects in the provided dataframe at the specified times.
+    observer: GeographicPosition | None = None,
+    log: FilteringBoundLogger | None = None,
+) -> dict[str, dict[str, SkyCoord | datetime]]:
+    """
+    Get sso ephemeris positions at time(s) sample_times
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing orbital parameters of solar system objects.
-    time : datetime | list[datetime]
-        Time at which to compute the ephemerides. Should be timezone-aware.
-    observer : wgs84.latlon
-        Observer location for ephemeris calculations.
-    log : FilteringBoundLogger, optional
-        Logger for logging information, by default None.
-    planets: list[str] = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"]
-        List of planet names to include in the ephemerides.
-
-    Returns
-    -------
-    dict[str, np.ndarray]
-        Dictionary mapping object designations to their ephemerides (Skyfield position objects).
-        These have ra, dec and distance.
     """
     log = log or structlog.get_logger()
-    log = log.bind(function="solar_system.get_sso_ephems_at_time")
-
-    ts = load.timescale()
-    skyfield_time = ts.from_datetimes(time if isinstance(time, list) else [time])
-
-    eph = load("de440s.bsp")
-    sun = eph["sun"]
-    earth = eph["earth"]
-    observer_topo = earth + observer
-
-    ## SSO orbits are sun-centric. Add sun position.
-    ## Compute the position of the observer on earth.
-    ## then combine to get the SSO position as seen by the observer.
-    ## see https://rhodesmill.org/skyfield/kepler-orbits.html
+    sample_times = np.atleast_1d(sample_times)
+    time_jd = Time(sample_times, format="datetime").jd
     sso_ephems = {}
-    if orbital_df is not None:
-        for sso in tqdm(orbital_df.iloc, desc="Computing SSO ephemerides"):
-            designation = sso["designation"]
-            sso_pos = sun + mpc.mpcorb_orbit(sso, ts, GM_SUN)
-            ra, dec, distance = observer_topo.at(skyfield_time).observe(sso_pos).radec()
 
-            sso_ephems[designation] = {}
-            sso_ephems[designation]["pos"] = SkyCoord(
-                ra=ra.degrees * u.deg, dec=dec.degrees * u.deg
-            )
-            sso_ephems[designation]["distance"] = distance.km * u.km
-    else:
-        log.warning(
-            "No orbital data provided; skipping SSO ephemerides computation for non-planets."
+    if ephem_df is not None:
+        unique_objs = ephem_df["designation"].unique()
+        log.info(
+            "solar_system.get_sso_ephems_at_time.starting_interpolation",
+            n_objects=len(unique_objs),
+            sample_times=sample_times,
         )
+        for obj in unique_objs:
+            obj_df = ephem_df[ephem_df["designation"] == obj]
+            interp_pos = interpolate_ephem(obj_df, time_jd)
 
-    for p in planets:
-        planet_eph = eph[f"{p} Barycenter"]
-        ra, dec, distance = observer_topo.at(skyfield_time).observe(planet_eph).radec()
-        sso_ephems[p] = {}
-        sso_ephems[p]["pos"] = SkyCoord(ra=ra.degrees * u.deg, dec=dec.degrees * u.deg)
-        sso_ephems[p]["distance"] = distance.km * u.km
+            sso_ephems[obj] = {"pos": interp_pos, "time": sample_times}
+
+    if planets:
+        ts = load.timescale()
+        skyfield_time = ts.from_datetimes(sample_times)
+        eph = load("de440s.bsp")
+        earth = eph["earth"]
+        observer = observer if observer else create_observer()
+        observer_topo = earth + observer
+        for p in planets:
+            planet_eph = eph[f"{p} Barycenter"]
+            ra, dec, distance = (
+                observer_topo.at(skyfield_time).observe(planet_eph).radec()
+            )
+            sso_ephems[p] = {}
+            sso_ephems[p]["pos"] = SkyCoord(
+                ra=ra.degrees * u.deg,
+                dec=dec.degrees * u.deg,
+                distance=distance.km * u.km,
+                frame="icrs",
+            )
+            sso_ephems[p]["time"] = np.array(
+                [
+                    datetime.fromtimestamp(
+                        t.utc_datetime().timestamp(), tz=timezone.utc
+                    )
+                    for t in skyfield_time
+                ]
+            )
 
     log.info(
         "solar_system.get_sso_ephems_at_time.ephemerides_computed",
         n_objects=len(sso_ephems),
-        time=time.isoformat()
-        if isinstance(time, datetime)
-        else [t.isoformat() for t in time],
+        time=sample_times,
     )
 
     return sso_ephems
@@ -234,24 +361,36 @@ def get_sso_ephems_at_time(
 
 def get_sso_ephem_in_map(
     input_map: ProcessableMap,
-    orbital_df: pd.DataFrame,
-    observer: wgs84.latlon,
-    interp_factor: int = 10,
-    return_nearest: bool = True,
+    ephem_df: pd.DataFrame,
+    interp_time_range: u.Quantity = 0.5 * u.day,
+    interp_to: u.Quantity | None = 10 * u.min,
+    observer: GeographicPosition | None = None,
+    planets: list[str] = [
+        "Mercury",
+        "Venus",
+        "Mars",
+        "Jupiter",
+        "Saturn",
+        "Uranus",
+        "Neptune",
+    ],
     log: FilteringBoundLogger | None = None,
-) -> list[RegisteredSource]:
-    """Get solar system objects that fall within the provided map.
+) -> dict[str, dict[str, SkyCoord | datetime]]:
+    """
+    Get solar system objects that fall within the provided map.
 
     Parameters
     ----------
     input_map : ProcessableMap
         Map to check for solar system objects.
-    orbital_df : pd.DataFrame
-        DataFrame containing orbital parameters of solar system objects.
-    observer : wgs84.latlon
-        Observer location for ephemeris calculations.
-    cross_match_radius : u.Quantity[u.arcmin], optional
-        Radius for cross-matching objects with the map, by default 5 * u.arcmin
+    ephem_df : pd.DataFrame
+        DataFrame containing ephemerides of solar system objects.
+    interp_time_range : u.Quantity, optional
+        Time range for interpolation, by default +- 0.5*u.day
+    interp_to: u.Quantity, optional
+        Interpolation sample rate for detecting if an asteroid is in the map.
+    observer: GeographicPosition, optional
+        Observer location for getting planet ephemerides. If None, ignores planets.
     log : FilteringBoundLogger, optional
         Logger for logging information, by default None.
 
@@ -261,73 +400,108 @@ def get_sso_ephem_in_map(
         Dictionary mapping object designations to their ephemerides .
     """
     log = log or structlog.get_logger()
-    log = log.bind(function="solar_system.get_sso_ephem_in_map")
-    time_range = [
-        np.amin(input_map.time_first[input_map.time_first > 0]),
-        np.nanmean(input_map.time_mean[input_map.time_first > 0]),
-        np.nanmax(input_map.time_last),
-    ]
-    x = np.arange(len(time_range))
-    x_new = np.linspace(0, len(time_range) - 1, int(interp_factor * len(time_range)))
-    interp_time_range = np.interp(x_new, x, time_range)
-
-    sso_ephems = get_sso_ephems_at_time(
-        orbital_df,
-        time=[datetime.fromtimestamp(t, tz=timezone.utc) for t in interp_time_range],
-        observer=observer,
-        log=log,
+    log.info(
+        "solar_system.get_sso_ephem_in_map.initialize",
+        map_id=input_map.map_id,
+        interp_time_range=interp_time_range,
+        interp_to=interp_to,
     )
-    sso_not_in_map = []
-    for sso in sso_ephems:
-        sso_coords = sso_ephems[sso]["pos"]
+    time_range = [input_map.observation_start, input_map.observation_end]
 
-        coords = np.array(
-            [
-                [s.dec.to_value(u.radian) for s in sso_coords],
-                [s.ra.to_value(u.radian) for s in sso_coords],
-            ]
+    time_jd = Time(time_range).jd
+    if interp_to is not None:
+        time_jd = np.arange(
+            np.min(time_jd), np.nanmax(time_jd), interp_to.to_value(u.day)
         )
-        pixs = input_map.flux.sky2pix(coords)
-        inside = np.where(
-            np.all((pixs.T >= 0) & (pixs.T < input_map.flux.shape[-2:]), -1)
-        )[0]
 
-        if len(inside) == 0:
-            log.debug(
-                "get_sso_ephem_in_map.source_not_in_map",
-                sso=sso,
-            )
-            sso_not_in_map.append(sso)
-            continue
-        result = np.nan_to_num(input_map.flux.at(coords[:, inside], mode="nn")).astype(
+    log.info(
+        "solar_system.get_sso_ephem_in_map.starting_ephemeris_computation",
+        julian_dates=time_jd,
+        time_range=time_range,
+        time_interpolated="True" if interp_to is not None else "False",
+    )
+
+    sso_ephems = {}
+    unique_objs = ephem_df["designation"].unique()
+    for obj in unique_objs:
+        obj_df = ephem_df[ephem_df["designation"] == obj]
+        interp_pos = interpolate_ephem(
+            obj_df, time_jd, window=interp_time_range, log=log
+        )
+        y, x = input_map.flux.wcs.world_to_pixel(interp_pos)
+        nx, ny = input_map.flux.shape
+        x, y = np.round(x).astype(int), np.round(y).astype(int)
+        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+        result = np.zeros_like(x, dtype=bool)
+        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
             bool
         )
-
-        if return_nearest:
-            mean_pos = SkyCoord(
-                ra=np.mean(sso_coords.ra[result]),
-                dec=np.mean(sso_coords.dec[result]),
-            )
-            map_time_at_mean_pos = input_map.time_mean.at(
-                [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")],
-                mode="nn",
-            )
-            nearest_idx = np.argmin(np.abs(interp_time_range - map_time_at_mean_pos))
-        else:
-            nearest_idx = result
-
-        sso_ephems[sso]["pos"] = sso_coords[nearest_idx]
-        sso_ephems[sso]["distance"] = sso_ephems[sso]["distance"][nearest_idx]
-        sso_ephems[sso]["time"] = (
-            datetime.fromtimestamp(interp_time_range[nearest_idx], tz=timezone.utc)
-            if isinstance(nearest_idx, (int, np.int64))
-            else [
-                datetime.fromtimestamp(interp_time_range[idx], tz=timezone.utc)
-                for idx in nearest_idx
-            ]
+        if not np.any(result):
+            continue
+        mean_pos = SkyCoord(
+            ra=np.mean(interp_pos.ra[result]),
+            dec=np.mean(interp_pos.dec[result]),
+            frame="icrs",
         )
 
-    for sso in sso_not_in_map:
-        del sso_ephems[sso]
+        map_time_at_mean_pos = input_map.time_mean.at(
+            [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")], mode="nn"
+        )
+        if (
+            map_time_at_mean_pos > input_map.observation_end.timestamp()
+            or map_time_at_mean_pos < input_map.observation_start.timestamp()
+        ):
+            log.error(
+                "solar_system.get_sso_ephem_in_map.mean_pos_time_out_of_range",
+                object=obj,
+                mean_pos_time=map_time_at_mean_pos,
+                observation_time_range=(
+                    input_map.observation_start,
+                    input_map.observation_end,
+                ),
+            )
+        nearest_pos = interpolate_ephem(
+            obj_df,
+            Time(map_time_at_mean_pos, format="unix", scale="utc").jd,
+            window=interp_time_range,
+            log=log,
+        )
+        sso_ephems[obj] = {
+            "pos": nearest_pos,
+            "time": datetime.fromtimestamp(
+                float(map_time_at_mean_pos), tz=timezone.utc
+            ),
+        }
 
+    if planets and observer is not None:
+        if input_map.observation_length > timedelta(days=1):
+            log.warn(
+                "solar_system.get_sso_ephem_in_map.planet_ephem",
+                observation_length=input_map.observation_length.to_value(u.day),
+                warning="Observation length is long, so planet ephemerides at the average time may be inaccurate.",
+            )
+        time_delta = (input_map.observation_end - input_map.observation_start) / 2
+        mean_time = input_map.observation_start + time_delta
+        planet_ephems = get_sso_ephems_at_time(
+            ephem_df=None,
+            sample_times=mean_time,
+            planets=planets,
+            observer=observer,
+            log=log,
+        )
+        for p in planets:
+            if p not in planet_ephems:
+                continue
+            pos = planet_ephems[p]["pos"]
+            y, x = input_map.flux.wcs.world_to_pixel(pos)
+            nx, ny = input_map.flux.shape
+            x, y = np.round(x).astype(int), np.round(y).astype(int)
+            inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
+            if not np.any(inside):
+                continue
+
+            sso_ephems[p] = {
+                "pos": pos,
+                "time": planet_ephems[p]["time"],
+            }
     return sso_ephems

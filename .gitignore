@@ -63,6 +63,7 @@ scripts/*/test*.py
 
 # any databases
 *sqlite
+*parquet
 
 # any map files
 *.fits
@@ -74,3 +75,6 @@ scripts/*/test*.py
 
 # ipynb checkpoints
 .ipynb_checkpoints
+
+# any maps
+*.fits

@@ -1,10 +1,13 @@
 import datetime
 import os
 
+import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from pixell import enmap
+
+np.random.seed(42)
 
 
 @pytest.fixture

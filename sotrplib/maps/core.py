@@ -717,7 +717,7 @@ class RhoAndKappaMap(ProcessableMap):
                 time_map = enmap.read_map(str(self.time_filename), sel=0, box=enmap_box)
                 assert type(time_map) is enmap.ndmap
             except (IndexError, AttributeError, AssertionError):
-                # Somehow time map requires sel=0
+                # if somehow time map requires sel=0
                 time_map = enmap.read_map(str(self.time_filename), box=enmap_box)
         else:
             time_map = None
