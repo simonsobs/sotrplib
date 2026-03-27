@@ -107,22 +107,18 @@ class RegisteredSourceCatalog(SourceCatalog):
                 [s.ra.to_value(u.radian) for s in self.sources],
             ]
         )
-        pixs = input_map.flux.sky2pix(coords)
-        inside = np.where(
-            np.all((pixs.T >= 0) & (pixs.T < input_map.flux.shape[-2:]), -1)
-        )[0]
+        fluxval = input_map.flux.at(coords, mode="nn")
+        inside = (np.isfinite(fluxval)) & (fluxval > 0.0)
 
-        if len(inside) == 0:
+        if not np.any(inside):
             log.warning(
                 "get_sources_in_map.no_sources_in_map",
                 map_id=input_map.map_id,
                 wcs=input_map.flux.wcs,
             )
             return []
-        result = np.nan_to_num(input_map.flux.at(coords[:, inside], mode="nn")).astype(
-            bool
-        )
-        return [self.sources[inside[i]] for i, valid in enumerate(result) if valid]
+
+        return self.sources[inside]
 
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
