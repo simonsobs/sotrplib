@@ -238,7 +238,7 @@ def generate_config_json(
     "preprocessors": [
         {{
             "preprocessor_type": "kappa_rho",
-            "cut_on": "kappa",
+            "cut_on": "median",
             "fraction": 0.4
         }},
         {{
