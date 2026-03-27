@@ -202,7 +202,9 @@ class EdgeMask(MapPreprocessor):
             return input_map
 
         edge_mask = mask_edge(imap=mask_map, pix_num=number_of_pixels)
-        input_map.mask = edge_mask
+        input_map.mask = (
+            edge_mask if input_map.mask is None else input_map.mask * edge_mask
+        )
         self.log.info("EdgeMask.preprocess completed")
 
         return input_map

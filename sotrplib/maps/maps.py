@@ -396,7 +396,7 @@ def flat_field_using_photutils(
             int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg)),
             sigma_clip=sigmaclip,
             bkg_estimator=StdBackgroundRMS(sigmaclip),
-            mask=mask,
+            mask=1.0 - mask if mask is not None else None,
         )
         relative_rms = background.background_rms / background.background_rms_median
         mapdata.snr /= relative_rms
