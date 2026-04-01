@@ -187,6 +187,11 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             source_positions = SkyCoord(
                 ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
             )
+            ## mask nan values; i.e. asteroids with no interpolated position.
+            source_positions = source_positions[
+                (np.isfinite(source_positions.ra.deg))
+                & (np.isfinite(source_positions.dec.deg))
+            ]
             source_fluxes = (
                 np.array([s.flux.to_value(u.Jy) for s in source_list]) * u.Jy
             )
