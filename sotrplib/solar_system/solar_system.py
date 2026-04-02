@@ -319,7 +319,15 @@ def get_sso_ephems_at_time(
         for obj in unique_objs:
             obj_df = ephem_df[ephem_df["designation"] == obj]
             interp_pos = interpolate_ephem(obj_df, time_jd)
-
+            if np.any(np.isnan(interp_pos["pos"].ra.value)) or np.any(
+                np.isnan(interp_pos["pos"].ra.value)
+            ):
+                log.error(
+                    "solar_system.get_sso_ephems_at_time.nan_in_pos",
+                    object=obj,
+                    pos=interp_pos["pos"],
+                )
+                continue
             sso_ephems[obj] = {"pos": interp_pos, "time": sample_times}
 
     if planets:
@@ -435,8 +443,8 @@ def get_sso_ephem_in_map(
         if not np.any(result):
             continue
         mean_pos = SkyCoord(
-            ra=np.mean(interp_pos.ra[result]),
-            dec=np.mean(interp_pos.dec[result]),
+            ra=np.nanmean(interp_pos.ra[result]),
+            dec=np.nanmean(interp_pos.dec[result]),
             frame="icrs",
         )
 
@@ -456,12 +464,21 @@ def get_sso_ephem_in_map(
                     input_map.observation_end,
                 ),
             )
+            continue
         nearest_pos = interpolate_ephem(
             obj_df,
             Time(map_time_at_mean_pos, format="unix", scale="utc").jd,
             window=interp_time_range,
             log=log,
         )
+        if np.isnan(nearest_pos.ra.value) or np.isnan(nearest_pos.dec.value):
+            log.error(
+                "solar_system.get_sso_ephem_in_map.nearest_pos_is_nan",
+                object=obj,
+                mean_pos_time=map_time_at_mean_pos,
+                nearest_pos=nearest_pos,
+            )
+            continue
         sso_ephems[obj] = {
             "pos": nearest_pos,
             "time": datetime.fromtimestamp(

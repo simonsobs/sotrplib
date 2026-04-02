@@ -704,7 +704,8 @@ def gaussian_fit(
                 )
             ],
         )
-
+        if np.any(np.isnan(pix)):
+            continue
         ## if outside the map; dont attempt to fit it.
         if (
             pix[0] + size_pix > input_map.flux.shape[0]

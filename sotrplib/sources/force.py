@@ -197,6 +197,8 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             )
             for i, fp_source in enumerate(source_list):
                 c = SkyCoord(ra=fp_source.ra, dec=fp_source.dec)
+                if not np.isfinite(c.ra.deg) or not np.isfinite(c.dec.deg):
+                    continue
                 neighboridx, neighbordist, _ = c.match_to_catalog_sky(
                     source_positions, nthneighbor=2
                 )
