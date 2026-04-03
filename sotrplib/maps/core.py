@@ -104,15 +104,6 @@ class ProcessableMap(ABC):
         """
         return
 
-    @property
-    def hits(self):
-        """
-        Lazily computed hits map.
-        """
-        if self._hits is None:
-            self._hits = self._compute_hits()
-        return self._hits
-
     @abstractmethod
     def _compute_hits(self):
         """
@@ -121,6 +112,29 @@ class ProcessableMap(ABC):
         raise NotImplementedError(
             "_compute_hits must be implemented by ProcessableMap subclass"
         )
+
+    @abstractmethod
+    def _core_filter_sources(self, source_positions: SkyCoord, bool_map: enmap.ndmap):
+        """
+        Core method for filtering sources. Must be implemented by ProcessableMap subclass.
+        Takes in a list of sources and a boolean map, and returns the list of sources within the valid pixels.
+        Bool map should have 1 or True in valid region and 0 or False in unobserved (or masked) region.
+        """
+        fvals = bool_map.at(
+            (source_positions.dec.to_value("rad"), source_positions.ra.to_value("rad")),
+            mode="nn",
+        )
+        result = (np.isfinite(fvals)) & (fvals > 0.0)
+        return result, source_positions[result]
+
+    @property
+    def hits(self):
+        """
+        Lazily computed hits map.
+        """
+        if self._hits is None:
+            self._hits = self._compute_hits()
+        return self._hits
 
     @property
     def noise(self):
@@ -476,6 +490,19 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def _compute_hits(self):
         return (self.inverse_variance > 0).astype(np.int32)
 
+    def filter_sources(self, source_positions: SkyCoord):
+        """
+        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+
+        """
+        bool_map = (self.inverse_variance > 0).astype(np.int32) & (
+            np.isfinite(self.inverse_variance)
+        )
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
+
     def get_map_id(self):
         return self.__map_id or super().get_map_str_id()
 
@@ -599,6 +626,17 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
+
+    def filter_sources(self, source_positions: SkyCoord):
+        """
+        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+
+        """
+        bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -779,6 +817,17 @@ class RhoAndKappaMap(ProcessableMap):
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
 
+    def filter_sources(self, source_positions: SkyCoord):
+        """
+        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+
+        """
+        bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
+
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.rho / np.sqrt(self.kappa)
@@ -954,6 +1003,17 @@ class FluxAndSNRMap(ProcessableMap):
     def _compute_hits(self):
         return (self.flux > 0).astype(np.int32)
 
+    def filter_sources(self, source_positions: SkyCoord):
+        """
+        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+
+        """
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
+
     def get_snr(self):
         return self.snr
 
@@ -1096,6 +1156,17 @@ class CoaddedRhoKappaMap(ProcessableMap):
 
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
+
+    def filter_sources(self, source_positions: SkyCoord):
+        """
+        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+
+        """
+        bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
