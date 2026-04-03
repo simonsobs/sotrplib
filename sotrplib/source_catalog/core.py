@@ -118,7 +118,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             )
             return []
 
-        return self.sources[inside]
+        return [self.sources[i] for i in np.where(inside)[0]]
 
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None

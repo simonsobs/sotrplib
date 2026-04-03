@@ -319,13 +319,13 @@ def get_sso_ephems_at_time(
         for obj in unique_objs:
             obj_df = ephem_df[ephem_df["designation"] == obj]
             interp_pos = interpolate_ephem(obj_df, time_jd)
-            if np.any(np.isnan(interp_pos["pos"].ra.value)) or np.any(
-                np.isnan(interp_pos["pos"].ra.value)
+            if np.any(np.isnan(interp_pos.ra.value)) or np.any(
+                np.isnan(interp_pos.dec.value)
             ):
                 log.error(
                     "solar_system.get_sso_ephems_at_time.nan_in_pos",
                     object=obj,
-                    pos=interp_pos["pos"],
+                    pos=interp_pos,
                 )
                 continue
             sso_ephems[obj] = {"pos": interp_pos, "time": sample_times}
