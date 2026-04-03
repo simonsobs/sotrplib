@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import structlog
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pydantic import BaseModel
@@ -62,6 +63,13 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
 
     def _compute_hits(self):
         return (abs(self.flux) > 0).astype(np.int32)
+
+    def filter_sources(self, source_positions: SkyCoord):
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)

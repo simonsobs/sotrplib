@@ -113,7 +113,6 @@ class ProcessableMap(ABC):
             "_compute_hits must be implemented by ProcessableMap subclass"
         )
 
-    @abstractmethod
     def _core_filter_sources(self, source_positions: SkyCoord, bool_map: enmap.ndmap):
         """
         Core method for filtering sources. Must be implemented by ProcessableMap subclass.
