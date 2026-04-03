@@ -19,7 +19,7 @@ from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
 from .map_coadding import AllMapCoadderConfigTypes, EmptyMapCoadderConfig
 from .maps import AllMapGeneratorConfigTypes
-from .outputs import AllOutputConfigTypes
+from .outputs import MapOutputConfigTypes, SourceOutputConfigTypes
 from .pointing_residual import (
     AllPointingResidualConfigTypes,
     EmptyPointingResidualConfig,
@@ -94,8 +94,11 @@ class Settings(BaseSettings):
     sifter: AllSifterConfigTypes = Field(default_factory=EmptySifterConfig)
     "Sifting settings"
 
-    outputs: list[AllOutputConfigTypes] = []
+    source_outputs: list[SourceOutputConfigTypes] = []
     "Source output settings"
+
+    map_outputs: list[MapOutputConfigTypes] = []
+    "Map output settings"
 
     runner: Literal["basic", "prefect"] = "basic"
     "Runner to use for the pipeline: 'basic' or 'prefect'"
@@ -143,7 +146,8 @@ class Settings(BaseSettings):
             "source_subtractor": self.source_subtractor.to_source_subtractor(log=log),
             "blind_search": self.blind_search.to_search_provider(log=log),
             "sifter": self.sifter.to_sifter(log=log),
-            "outputs": [x.to_output(log=log) for x in self.outputs],
+            "source_outputs": [x.to_output(log=log) for x in self.source_outputs],
+            "map_outputs": [x.to_output(log=log) for x in self.map_outputs],
         }
         return contents
 

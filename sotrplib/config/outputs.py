@@ -97,3 +97,12 @@ AllOutputConfigTypes = (
     | LightServeOutputConfig
     | LightcurveDBOutputConfig
 )
+
+SourceOutputConfigTypes = (
+    PickleOutputConfig
+    | JSONOutputConfig
+    | LightcurveDBOutputConfig
+    | LightServeOutputConfig
+)
+
+MapOutputConfigTypes = MapOutputConfig | CutoutImageOutputConfig

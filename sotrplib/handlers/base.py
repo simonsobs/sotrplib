@@ -49,7 +49,8 @@ class BaseRunner:
     source_subtractor: SourceSubtractor | None
     blind_search: BlindSearchProvider | None
     sifter: SiftingProvider | None
-    outputs: list[SourceOutput] | None
+    source_outputs: list[SourceOutput] | None
+    map_outputs: list[MapOutput] | None
     profile: bool = False
 
     def __init__(
@@ -68,7 +69,8 @@ class BaseRunner:
         source_subtractor: SourceSubtractor | None,
         blind_search: BlindSearchProvider | None,
         sifter: SiftingProvider | None,
-        outputs: list[SourceOutput] | None,
+        source_outputs: list[SourceOutput] | None,
+        map_outputs: list[MapOutput] | None,
         profile: bool = False,
     ):
         self.maps = maps
@@ -85,7 +87,8 @@ class BaseRunner:
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()
         self.sifter = sifter or EmptySifter()
-        self.outputs = outputs or []
+        self.source_outputs = source_outputs or []
+        self.map_outputs = map_outputs or []
         self.profile = profile
 
     @property
@@ -193,8 +196,8 @@ class BaseRunner:
         )
 
         ## this is dumb and should be fixed.
-        for o in self.outputs:
-            if isinstance(o, MapOutput) and "pointing_residual_map" in o.field_ids:
+        for o in self.map_outputs:
+            if "pointing_residual_map" in o.field_ids:
                 self.profilable_task(save_model_maps)(
                     self.pointing_residual_model,
                     pointing_data,
@@ -235,20 +238,17 @@ class BaseRunner:
             input_map=source_subtracted_map,
         )
 
-        for output in self.outputs:
-            ## check if super class of output is MapOutput or SourceOutput
-            if isinstance(output, SourceOutput):
-                self.profilable_task(output.output)(
-                    forced_photometry_candidates=forced_photometry_candidates,
-                    sifter_result=sifter_result,
-                    input_map=input_map,
-                    pointing_sources=pointing_sources,
-                    injected_sources=injected_sources,
-                )
-            elif isinstance(output, MapOutput):
-                self.profilable_task(output.output)(input_map=input_map)
-            else:
-                raise ValueError(f"Output {type(output)} is not a valid output type")
+        for output in self.source_outputs:
+            self.profilable_task(output.output)(
+                forced_photometry_candidates=forced_photometry_candidates,
+                sifter_result=sifter_result,
+                input_map=input_map,
+                pointing_sources=pointing_sources,
+                injected_sources=injected_sources,
+            )
+
+        for output in self.map_outputs:
+            self.profilable_task(output.output)(input_map=input_map)
 
         if input_map._parent_database is not None:
             set_processing_end(input_map.map_id)
