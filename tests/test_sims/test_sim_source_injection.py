@@ -164,10 +164,11 @@ def test_source_injection_forced_photometry():
     min_flux = u.Quantity(1.0, "Jy")
     max_flux = u.Quantity(1.1, "Jy")
     map_sim_params = maps.SimulationParameters()
-    left = map_sim_params.center_ra - map_sim_params.width_ra / 2
-    right = map_sim_params.center_ra + map_sim_params.width_ra / 2
-    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2
-    top = map_sim_params.center_dec + map_sim_params.width_dec / 2
+    ## not all the way to the edge to avoid edge effects in photometry
+    left = map_sim_params.center_ra - map_sim_params.width_ra / 2.5
+    right = map_sim_params.center_ra + map_sim_params.width_ra / 2.5
+    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
+    top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
     start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
     number = 10
@@ -220,10 +221,10 @@ def test_source_injection_blind_search():
     min_flux = u.Quantity(1.0, "Jy")
     max_flux = u.Quantity(1.1, "Jy")
     map_sim_params = maps.SimulationParameters()
-    left = map_sim_params.center_ra - map_sim_params.width_ra / 2
-    right = map_sim_params.center_ra + map_sim_params.width_ra / 2
-    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2
-    top = map_sim_params.center_dec + map_sim_params.width_dec / 2
+    left = map_sim_params.center_ra - map_sim_params.width_ra / 2.5
+    right = map_sim_params.center_ra + map_sim_params.width_ra / 2.5
+    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
+    top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
     start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
     number = 4
@@ -281,10 +282,10 @@ def test_source_injection_blind_search_SAT():
     min_flux = u.Quantity(1.0, "Jy")
     max_flux = u.Quantity(1.1, "Jy")
     map_sim_params = maps.SimulationParameters()
-    left = map_sim_params.center_ra - map_sim_params.width_ra / 2
-    right = map_sim_params.center_ra + map_sim_params.width_ra / 2
-    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2
-    top = map_sim_params.center_dec + map_sim_params.width_dec / 2
+    left = map_sim_params.center_ra - map_sim_params.width_ra / 2.5
+    right = map_sim_params.center_ra + map_sim_params.width_ra / 2.5
+    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
+    top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.1, "Jy")
     start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
     number = 1
