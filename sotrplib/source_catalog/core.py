@@ -101,15 +101,10 @@ class RegisteredSourceCatalog(SourceCatalog):
         log = log or structlog.get_logger()
         if len(self.sources) == 0:
             return []
-        coords = np.array(
-            [
-                [s.dec.to_value(u.radian) for s in self.sources],
-                [s.ra.to_value(u.radian) for s in self.sources],
-            ]
+        coords = SkyCoord(
+            ra=[s.ra for s in self.sources], dec=[s.dec for s in self.sources]
         )
-        fluxval = input_map.flux.at(coords, mode="nn")
-        inside = (np.isfinite(fluxval)) & (fluxval > 0.0)
-
+        inside, _ = input_map.filter_sources(coords)
         if not np.any(inside):
             log.warning(
                 "get_sources_in_map.no_sources_in_map",

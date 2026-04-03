@@ -436,10 +436,8 @@ def get_sso_ephem_in_map(
         interp_pos = interpolate_ephem(
             obj_df, time_jd, window=interp_time_range, log=log
         )
-        fvals = input_map.flux.at(
-            (interp_pos.dec.to_value("rad"), interp_pos.ra.to_value("rad")), mode="nn"
-        )
-        result = (np.isfinite(fvals)) & (fvals > 0.0)
+
+        result, _ = input_map.filter_sources(interp_pos)
         if not np.any(result):
             continue
         mean_pos = SkyCoord(
@@ -506,10 +504,7 @@ def get_sso_ephem_in_map(
             if p not in planet_ephems:
                 continue
             pos = planet_ephems[p]["pos"]
-            fvals = input_map.flux.at(
-                (pos.dec.to_value("rad"), pos.ra.to_value("rad")), mode="nn"
-            )
-            result = (np.isfinite(fvals)) & (fvals > 0.0)
+            result, _ = input_map.filter_sources(pos)
             if not np.any(result):
                 continue
             sso_ephems[p] = {
