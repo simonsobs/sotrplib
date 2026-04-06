@@ -262,17 +262,20 @@ def interpolate_ephem(
         t = subset["julian_day"].values
         ra = subset["ra_deg"].values
         dec = subset["dec_deg"].values
-        dist = (
-            subset["distance_au"].values if "distance_au" in subset.columns else np.nan
-        )
 
         ra_spline = UnivariateSpline(t, ra, k=3, s=0)
         dec_spline = UnivariateSpline(t, dec, k=3, s=0)
-        dist_spline = UnivariateSpline(t, dist, k=3, s=0)
+
+        has_distance = "distance_au" in subset.columns
+        if has_distance:
+            dist = subset["distance_au"].values
+        dist_spline = UnivariateSpline(t, dist, k=3, s=0) if has_distance else None
 
         ras.append(ra_spline(tjd))
         decs.append(dec_spline(tjd))
-        dists.append(dist_spline(tjd))
+        dists.append(
+            dist_spline(tjd) if has_distance else np.nan * np.ones_like(ra_spline(tjd))
+        )
 
     ras = np.array(ras)
     decs = np.array(decs)
