@@ -108,7 +108,7 @@ class SOCatWrapper:
     def get_sources_in_map(
         self, input_map: ProcessableMap, log: FilteringBoundLogger | None = None
     ) -> list[RegisteredSource]:
-        log = self.log or structlog.get_logger()
+        log = log or self.log or structlog.get_logger()
         all_sources = self.get_sources_in_box(box=None)
         if len(all_sources) == 0:
             return []
