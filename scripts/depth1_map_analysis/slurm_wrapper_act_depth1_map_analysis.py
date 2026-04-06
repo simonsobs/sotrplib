@@ -274,7 +274,7 @@ def generate_config_json(
     "sifter": {{
         "sifter_type": "default"
     }},
-    "outputs": [
+    "source_outputs": [
         {{
             "output_type": "pickle",
             "directory": "{output_dir}"
