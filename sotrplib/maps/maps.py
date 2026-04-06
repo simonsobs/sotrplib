@@ -393,8 +393,9 @@ def flat_field_using_photutils(
     get the rms of the tiled snr map (i.e. the rms should be 1)
     calculate the median.
     divide the snr map by the tiled rms / median.
-
     tilegrid is the size of the tile to use for the background estimation.
+    mask is a binary map of the same shape as the input map, where 1 indicates pixels to be masked
+    (i.e. not used for background estimation) and 0 indicates pixels to be used for background estimation.
     """
     from astropy.stats import SigmaClip
     from photutils.background import Background2D, StdBackgroundRMS
@@ -422,7 +423,7 @@ def flat_field_using_photutils(
             int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg)),
             sigma_clip=sigmaclip,
             bkg_estimator=StdBackgroundRMS(sigmaclip),
-            mask=mask,
+            mask=1.0 - mask if mask is not None else None,
         )
         ## store the rms map used for flatfielding.
         ## need wcs of mesh which has pixel size of tilegrid.
