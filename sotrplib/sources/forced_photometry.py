@@ -705,6 +705,13 @@ def gaussian_fit(
             ],
         )
         if np.any(np.isnan(pix)):
+            log.warning(
+                f"{preamble}source_position_has_nan_pix",
+                source=source_name,
+            )
+            forced_source.fit_failed = True
+            forced_source.fit_failure_reason = "source_position_has_nan_pix"
+            fit_sources.append(forced_source)
             continue
         ## if outside the map; dont attempt to fit it.
         if (
