@@ -96,9 +96,9 @@ def subtract_sources(
         )
     if inplace:
         input_map.flux -= src_model / (input_map.flux_units.to(u.Jy))
-        input_map.snr[abs(src_model) > 1e-8] = 0.0
         log.info("subtract_sources.source_flux_subtracted")
         ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
+        input_map.snr[abs(src_model) > 1e-8] = 0.0
         log.info("subtract_sources.source_snr_masked")
     else:
         if input_map.sky_model is None:
