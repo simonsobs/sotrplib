@@ -37,6 +37,8 @@ class SourceOutput(ABC):
 
 
 class MapOutput(ABC):
+    field_ids: list[str]
+
     @abstractmethod
     def output(self, input_map: ProcessableMap):
         """
