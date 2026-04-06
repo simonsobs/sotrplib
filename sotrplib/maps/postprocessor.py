@@ -100,12 +100,18 @@ class PhotutilsFlatFielder(MapPostprocessor):
         self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        if self.mask is not None:
-            self.mask = self.mask * input_map.mask
+        if self.mask is not None and input_map.mask is not None:
+            combined_mask = self.mask * input_map.mask
+        elif self.mask is not None:
+            combined_mask = self.mask
+        elif input_map.mask is not None:
+            combined_mask = input_map.mask
+        else:
+            combined_mask = None
         return flat_field_using_photutils(
             mapdata=input_map,
             tilegrid=self.tile_size,
-            mask=self.mask,
+            mask=combined_mask,
             sigmaclip=self.sigma_val,
             log=self.log,
         )
