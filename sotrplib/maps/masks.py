@@ -8,6 +8,12 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
 
+"""
+
+Masks are defined as 1 where valid, and 0 where masked, i.e. so that they can multiply maps to zero out masked pixels.
+
+"""
+
 
 def mask_dustgal(
     imap: enmap.ndmap, galmask: enmap.ndmap, log: FilteringBoundLogger | None = None

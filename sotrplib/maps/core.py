@@ -497,11 +497,14 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
 
         """
-        bool_map = (self.inverse_variance > 0).astype(np.int32) & (
-            np.isfinite(self.inverse_variance)
-        )
+        if self.finalized:
+            bool_map = (self.flux > 0).astype(np.int32) & (np.isfinite(self.flux))
+        else:
+            bool_map = (self.inverse_variance > 0).astype(np.int32) & (
+                np.isfinite(self.inverse_variance)
+            )
         if self.mask is not None:
-            bool_map *= self.mask
+            bool_map = bool_map & (self.mask > 0)
 
         return self._core_filter_sources(source_positions, bool_map)
 
@@ -531,6 +534,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
         super().finalize()
+        self.finalized = True
 
 
 class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
@@ -634,9 +638,12 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
 
         """
-        bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
+        if self.finalized:
+            bool_map = (self.flux > 0).astype(np.int32) & (np.isfinite(self.flux))
+        else:
+            bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
         if self.mask is not None:
-            bool_map *= self.mask
+            bool_map = bool_map & (self.mask > 0)
 
         return self._core_filter_sources(source_positions, bool_map)
 
@@ -662,6 +669,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
         super().finalize()
+        self.finalized = True
 
 
 class RhoAndKappaMap(ProcessableMap):
@@ -824,9 +832,12 @@ class RhoAndKappaMap(ProcessableMap):
         Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
 
         """
-        bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
+        if self.finalized:
+            bool_map = (self.flux > 0).astype(np.int32) & (np.isfinite(self.flux))
+        else:
+            bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
         if self.mask is not None:
-            bool_map *= self.mask
+            bool_map = bool_map & (self.mask > 0)
 
         return self._core_filter_sources(source_positions, bool_map)
 
@@ -847,6 +858,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
         super().finalize()
+        self.finalized = True
 
 
 class FluxAndSNRMap(ProcessableMap):
@@ -1012,7 +1024,7 @@ class FluxAndSNRMap(ProcessableMap):
         """
         bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
         if self.mask is not None:
-            bool_map *= self.mask
+            bool_map = bool_map & (self.mask > 0)
 
         return self._core_filter_sources(source_positions, bool_map)
 
