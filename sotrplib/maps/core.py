@@ -16,6 +16,7 @@ from pixell.enmap import ndmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.pointing import PointingModelCoefficients
 from sotrplib.maps.utils import pixell_map_union
 
 
@@ -66,6 +67,8 @@ class ProcessableMap(ABC):
     "The frequency band of the map, e.g. f090"
     array: str
     "The array/wafer that was used"
+    instrument: str | None = None
+    "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
     observation_length: timedelta
     "Total length of the observation"
@@ -79,10 +82,10 @@ class ProcessableMap(ABC):
     flux_units: Unit
     map_resolution: u.Quantity | None
 
-    instrument: str | None = None
-    "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
-
     box: tuple[SkyCoord, SkyCoord] | None = None
+
+    pointing_residual_model: PointingModelCoefficients | None = None
+    "A model of the pointing residuals for this map"
 
     _hits: ndmap | None = None
     "A hits map stating the number of times each pixel was observed"

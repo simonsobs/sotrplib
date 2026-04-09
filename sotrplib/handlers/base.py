@@ -8,11 +8,7 @@ from astropy.coordinates import SkyCoord
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.database import set_processing_end
 from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
-from sotrplib.maps.pointing import (
-    EmptyPointingOffset,
-    MapPointingOffset,
-    save_model_maps,
-)
+from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import MapOutput, SourceOutput
@@ -195,16 +191,6 @@ class BaseRunner:
             pointing_sources=pointing_sources
         )
 
-        ## this is dumb and should be fixed.
-        for o in self.map_outputs:
-            if "pointing_residual_map" in o.field_ids:
-                self.profilable_task(save_model_maps)(
-                    self.pointing_residual_model,
-                    pointing_data,
-                    input_map,
-                    filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
-                )
-                break
         sso_sources = []
         for sso_catalog in self.sso_catalogs:
             sso_sources.extend(
@@ -219,7 +205,6 @@ class BaseRunner:
             input_map=input_map,
             catalogs=self.source_catalogs + self.sso_catalogs,
             pointing_residuals=self.pointing_residual_model,
-            pointing_offset_data=pointing_data,
         )
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
@@ -229,7 +214,6 @@ class BaseRunner:
         blind_sources, _ = self.profilable_task(self.blind_search.search)(
             input_map=source_subtracted_map,
             pointing_residuals=self.pointing_residual_model,
-            pointing_offset_data=pointing_data,
         )
 
         sifter_result = self.profilable_task(self.sifter.sift)(

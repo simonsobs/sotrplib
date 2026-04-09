@@ -8,7 +8,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import MapPointingOffset, PointingData
+from sotrplib.maps.pointing import MapPointingOffset
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import gaussian_fit
@@ -32,7 +32,6 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
         input_map: ProcessableMap,
         catalogs: List[SourceCatalog],
         pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         return []
 
@@ -54,7 +53,6 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
         input_map: ProcessableMap,
         catalogs: List[SourceCatalog],
         pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
@@ -157,7 +155,6 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         input_map: ProcessableMap,
         catalogs: list[SourceCatalog],
         pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(
             freq=input_map.frequency,
@@ -224,7 +221,6 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
             pointing_residuals=pointing_residuals,
-            pointing_offset_data=pointing_offset_data,
             allowable_center_offset=self.allowable_center_offset,
             flags={"nearby_source": has_nearby_sources},
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
@@ -295,7 +291,6 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         input_map: ProcessableMap,
         catalogs: list[SourceCatalog],
         pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(
             freq=input_map.frequency,

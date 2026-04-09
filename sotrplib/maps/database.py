@@ -11,12 +11,18 @@ from astropy.coordinates import SkyCoord
 # connection; this only happens once, and we don't want it to
 # affect the import time of this module (or need a database to
 # be available just to import sotrplib).
-from mapcat.database import DepthOneMapTable, TimeDomainProcessingTable
+from mapcat.database import (
+    DepthOneMapTable,
+    PointingResidualTable,
+    TimeDomainProcessingTable,
+)
 from mapcat.helper import settings as mapcat_settings
 from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
+
+from sotrplib.maps.pointing import PointingModelCoefficients
 
 from .core import IntensityAndInverseVarianceMap
 
@@ -128,6 +134,12 @@ class MapCatDatabaseReader:
                     result.mean_time_path = (
                         str(result.ivar_path).split("_ivar.fits")[0] + "_time.fits"
                     )
+                pointing_residuals = select(PointingResidualTable).where(
+                    PointingResidualTable.map_id == result.map_id
+                )
+                pointing_residuals_result = (
+                    session.execute(pointing_residuals).scalars().one_or_none()
+                )
                 maps.append(
                     IntensityAndInverseVarianceMap(
                         intensity_filename=mapcat_settings.depth_one_parent
@@ -147,6 +159,7 @@ class MapCatDatabaseReader:
                         frequency=result.frequency,
                         array=result.tube_slot,
                         instrument=self.instrument,
+                        pointing_residual_model=pointing_residuals_result,
                         log=self.log,
                     )
                 )
@@ -226,6 +239,23 @@ def set_processing_end(map_id: int, session=None):
     for r in session_result:
         r.processing_end = datetime.now(timezone.utc).timestamp()
         r.processing_status = "completed"
+        session.add(r)
+        session.commit()
+    return
+
+
+def set_pointing_residual(
+    map_id: int, pointing_residual: PointingModelCoefficients, session=None
+):
+    if session is None:
+        session = mapcat_settings.session()
+    query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
+    session_result = session.execute(query).one_or_none()
+    if session_result is None:
+        session_result = [PointingResidualTable(map_id=map_id)]
+    for r in session_result:
+        r.ra_offset = pointing_residual.coeffs_ra
+        r.dec_offset = pointing_residual.coeffs_dec
         session.add(r)
         session.commit()
     return
