@@ -36,7 +36,8 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
         source_subtractor=None,
         blind_search=None,
         sifter=None,
-        outputs=[],
+        source_outputs=None,
+        map_outputs=None,
     )
 
     runner.run()
@@ -69,7 +70,8 @@ def test_basic_pipeline_ivar(separate_map_set_1):
         source_subtractor=None,
         blind_search=None,
         sifter=None,
-        outputs=[],
+        source_outputs=None,
+        map_outputs=None,
     )
 
     runner.run()

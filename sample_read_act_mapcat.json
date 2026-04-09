@@ -1,10 +1,11 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 1,
-            "instrument": "SOLAT",
+            "number_to_read": 3,
+            "instrument": "ACT",
             "frequency": "f090",
-            "array": "i6",
+            "array": "pa5",
+            "intensity_units": "uK",
             "rerun": "True"
         },
     "source_catalogs": [
@@ -20,7 +21,7 @@
         }
     ],
     "pointing_provider": {
-        "photometry_type": "scipy_pointing",
+        "photometry_type": "lmfit_pointing",
         "thumbnail_half_width": "6 arcmin",
         "min_flux": "0.3 Jy",
         "reproject_thumbnails": "True",
@@ -28,7 +29,7 @@
         "near_source_rel_flux_limit": 0.3
     },
     "pointing_residual": {
-        "pointing_residual_type": "polynomial",
+        "pointing_residual_type": "median",
         "min_snr": 5.0,
         "min_sources": 5,
         "sigma_clip_level": 3.0,
@@ -61,7 +62,11 @@
        {
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
-            "tile_size": ".5 deg"
+            "tile_size": "0.5 deg"
+        },
+        {
+            "postprocessor_type":"galaxy_mask",
+            "mask_path": "./act_dust_mask.fits"
         }
     ],
     "source_subtractor": {
@@ -71,7 +76,7 @@
             "search_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy",
+        "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "4 arcmin",
@@ -81,7 +86,7 @@
     "sifter": {
         "sifter_type": "default"
     },
-    "outputs": [
+    "source_outputs": [
         {
             "output_type": "pickle",
             "directory": "."

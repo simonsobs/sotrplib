@@ -58,7 +58,8 @@ def test_basic_pipeline_scipy(
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),
-        outputs=[PickleSerializer(directory=tmp_path)],
+        source_outputs=[PickleSerializer(directory=tmp_path)],
+        map_outputs=None,
     )
 
     runner.run()
@@ -89,7 +90,8 @@ def test_basic_pipeline_lmfit(
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),
-        outputs=[PickleSerializer(directory=tmp_path)],
+        source_outputs=[PickleSerializer(directory=tmp_path)],
+        map_outputs=None,
     )
 
     runner.run()

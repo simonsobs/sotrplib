@@ -11,6 +11,7 @@ from typing import Literal
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
+from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.filters.filters import matched_filter_depth1_map
@@ -19,7 +20,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
 )
 from sotrplib.maps.maps import clean_map, kappa_clean
-from sotrplib.maps.masks import mask_edge, mask_planets
+from sotrplib.maps.masks import mask_dustgal, mask_edge, mask_planets
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -201,7 +202,51 @@ class EdgeMask(MapPreprocessor):
             return input_map
 
         edge_mask = mask_edge(imap=mask_map, pix_num=number_of_pixels)
-        input_map.mask = edge_mask
+        input_map.mask = (
+            edge_mask if input_map.mask is None else input_map.mask * edge_mask
+        )
         self.log.info("EdgeMask.preprocess completed")
 
+        return input_map
+
+
+class GalaxyMask(MapPreprocessor):
+    mask_path: Path
+
+    def __init__(
+        self,
+        mask_path: Path | None = None,
+        invert: bool = False,
+        mask_map: enmap.ndmap | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_path = mask_path
+        self.mask_map = mask_map
+        self.invert = invert
+        self.log = log or structlog.get_logger()
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(func="GalaxyMask.preprocess")
+        if self.mask_map is None and self.mask_path is None:
+            log.error(
+                "GalaxyMask.preprocess.no_mask",
+                message="No mask provided for GalaxyMask preprocessor",
+            )
+            return input_map
+
+        if self.mask_map is None and self.mask_path is not None:
+            self.mask_map = enmap.read_map(str(self.mask_path))
+
+        galaxy_mask = mask_dustgal(
+            input_map.hits,
+            galmask=self.mask_map,
+            log=log,
+        )
+        if self.invert:
+            galaxy_mask = 1 - galaxy_mask
+        input_map.mask = (
+            input_map.mask * galaxy_mask if input_map.mask is not None else galaxy_mask
+        )
+
+        log.info("GalaxyMask.preprocess.completed")
         return input_map

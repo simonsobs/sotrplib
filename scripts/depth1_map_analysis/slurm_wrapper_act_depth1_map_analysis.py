@@ -1,6 +1,10 @@
 import argparse as ap
 import os
 from getpass import getuser
+from glob import glob
+
+from astropy.time import Time
+from tqdm import tqdm
 
 USER = getuser()
 
@@ -33,6 +37,12 @@ P.add_argument(
     type=float,
 )
 
+P.add_argument(
+    "--data-dir",
+    action="store",
+    default="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/",
+    help="Data directory, where the depth1 maps live.",
+)
 
 P.add_argument(
     "--sim-transients",
@@ -116,7 +126,7 @@ P.add_argument(
 P.add_argument(
     "--ncores",
     action="store",
-    default=4,
+    default=12,
     type=int,
     help="Number of cores to request for each slurm job. ",
 )
@@ -124,7 +134,7 @@ P.add_argument(
 P.add_argument(
     "--nserial",
     action="store",
-    default=1,
+    default=8,
     type=int,
     help="Number of serial sets of `ncores` scripts to run per job. ",
 )
@@ -133,16 +143,8 @@ P.add_argument(
     "--bands",
     action="store",
     nargs="+",
-    default=["f090", "f150", "f220", "f280"],
-    help="Bands to analyze, default is f090,f150,f220, f280 but can also include f030 or f040. ",
-)
-
-P.add_argument(
-    "--optics-tubes",
-    action="store",
-    nargs="+",
-    default=["i1", "i3", "i4", "i6", "c1", "i5"],
-    help="Optics tubes to analyze, default for nominal SO is i1,i3,i4,i6,c1,i5. ",
+    default=["f090", "f150", "f220"],
+    help="Bands to analyze, default is f090,f150,f220,f280.",
 )
 
 args = P.parse_args()
@@ -155,7 +157,7 @@ def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_ou
 #SBATCH --nodes=1                # node count
 #SBATCH --ntasks=1               # total number of tasks across all nodes
 #SBATCH --cpus-per-task={cpu_per_task}       # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH --mem-per-cpu=24G         # memory per cpu-core (4G is default)
+#SBATCH --mem-per-cpu=48G         # memory per cpu-core (4G is default)
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
 
@@ -167,13 +169,10 @@ cd {script_dir}
 source .venv/bin/activate
 
 export socat_client_client_type=pickle
-export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
-
-export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
-export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
+export socat_client_pickle_path=act_f090_wide_socat.pickle
 
 if [ ! -e "socat.pickle" ]; then
-    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
+    socat-act-fits -f act_catalog_f090_wide.fits  -o act_f090_wide_socat.pickle
 fi
 
 """
@@ -181,8 +180,7 @@ fi
 
 
 def generate_config_json(
-    frequency: str | None = None,
-    array: str | None = None,
+    mapfile,
     pointing_flux_threshold="0.3 Jy",
     flux_low_limit="0.01 Jy",
     thumbnail_half_width="0.2 deg",
@@ -190,15 +188,27 @@ def generate_config_json(
     min_pointing_sources=10,
     output_dir="./",
 ):
+    kappa_map_file = mapfile.replace("_rho.fits", "_kappa.fits")
+    time_map_file = mapfile.replace("_rho.fits", "_time.fits")
+    unix_time = int(mapfile.split("/")[-1].split("_")[1])
+    start_time = Time(unix_time - 3 * 86400, format="unix")
+    stop_time = Time(unix_time + 3 * 86400, format="unix")
+    info_file = mapfile.replace("_rho.fits", "_info.hdf")
+    freq = mapfile.split("_")[-2]
+    arr = mapfile.split("_")[-3]
     config_text = f"""{{
-    "maps": {{
-        "map_generator_type": "mapcat_database",
-        "number_to_read": 1000000,
-        "instrument": "SOLAT",
-        "frequency": "{frequency}",
-        "array": "{array}",
-        "rerun": "True"
-    }},
+    "maps": [
+        {{
+            "map_type": "filtered",
+            "rho_map_path": "{mapfile}",
+            "kappa_map_path": "{kappa_map_file}",
+            "time_map_path": "{time_map_file}",
+            "info_path": "{info_file}",
+            "frequency": "{freq}",
+            "array": "{arr}",
+            "flux_units": "mJy"
+        }}
+    ],
     "source_catalogs": [
         {{
             "catalog_type": "socat",
@@ -208,7 +218,9 @@ def generate_config_json(
     "sso_catalogs": [
         {{
             "catalog_type": "sso",
-            "db_path": "./sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "db_path": "sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
+            "start_time": "{start_time.iso}Z",
+            "stop_time": "{stop_time.iso}Z"
         }}
     ],
     "pointing_provider": {{
@@ -225,25 +237,14 @@ def generate_config_json(
     }},
     "preprocessors": [
         {{
-            "preprocessor_type": "planet_mask",
-            "mask_radius": "15 arcmin"
-        }},
-        {{
-            "preprocessor_type": "matched_filter",
-            "beam1d": "profile_{frequency}_1756699200_20000000000.txt",
-            "band_height": "1 deg",
-            "shrink_holes": "5 arcmin",
-            "noisemask_lim": 0.1,
-            "noisemask_radius": "10 arcmin",
-            "apod_holes": "10 arcmin"
-        }},
-        {{
-            "preprocessor_type": "kappa_rho"
+            "preprocessor_type": "kappa_rho",
+            "cut_on": "median",
+            "fraction": 0.4
         }},
         {{
             "preprocessor_type": "edge_mask",
-            "mask_on": "kappa",
-            "edge_width": "10.0 arcmin"
+            "mask_on": "rho",
+            "edge_width": "30.0 arcmin"
         }}
     ],
     "postprocessors": [
@@ -251,6 +252,10 @@ def generate_config_json(
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
             "tile_size": "0.5 deg"
+        }},
+        {{
+            "postprocessor_type":"galaxy_mask",
+            "mask_path": "./act_dust_mask.fits"
         }}
     ],
     "source_subtractor": {{
@@ -264,14 +269,12 @@ def generate_config_json(
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "4 arcmin",
-        "allowable_center_offset": "1.0 arcmin",
-        "near_source_rel_flux_limit": 1.0
+        "allowable_centroid_offset": "1.0 arcmin"
     }},
     "sifter": {{
-        "sifter_type": "default",
-        "min_match_radius": "5.0 arcmin"
+        "sifter_type": "default"
     }},
-    "outputs": [
+    "source_outputs": [
         {{
             "output_type": "pickle",
             "directory": "{output_dir}"
@@ -283,6 +286,18 @@ def generate_config_json(
 
 
 nserial = args.ncores * args.nserial
+
+datelist = []
+if not args.maps:
+    if len(args.date_dirs) == 0:
+        datelist = sorted(glob(args.data_dir + "*"))
+    elif len(args.date_dirs) == 1:
+        datelist = sorted(glob(args.data_dir + args.date_dirs[0]))
+    else:
+        for o in args.date_dirs:
+            datelist += sorted(glob(args.data_dir + o))
+
+print("There are ", len(datelist), " date directories total")
 
 ## make scratch output directory
 user_scratch = args.scratch_dir
@@ -312,35 +327,96 @@ if not os.path.exists(args.slurm_script_dir):
     os.mkdir(args.slurm_script_dir)
 
 n = 0
+slurm_text = generate_slurm_header(
+    str(n).zfill(4),
+    args.group_name,
+    str(args.ncores),
+    args.script_dir if args.script_dir else os.getcwd(),
+    args.slurm_out_dir,
+)
 
-
-for band in args.bands:
-    for tube in args.optics_tubes:
-        config_file = args.slurm_script_dir + f"{tube}_{band}_config.json"
-        with open(config_file, "w") as f:
-            f.write(
-                generate_config_json(
-                    frequency=band,
-                    array=tube,
-                    pointing_flux_threshold=args.pointing_flux_threshold,
-                    flux_low_limit=args.flux_threshold,
-                    thumbnail_half_width=args.thumbnail_radius,
-                    min_snr=args.snr_threshold,
-                    output_dir=args.out_dir,
-                )
+nmaps = 0
+for mapfile in args.maps:
+    obsid = mapfile.split("/")[-1].split("_")[1]
+    dateid = mapfile.split("/")[-2]
+    mapname = mapfile.split("/")[-1].replace(".fits", "")
+    config_file = args.slurm_script_dir + f"{mapname}_config.json"
+    with open(config_file, "w") as f:
+        f.write(
+            generate_config_json(
+                mapfile,
+                pointing_flux_threshold=args.pointing_flux_threshold,
+                flux_low_limit=args.flux_threshold,
+                thumbnail_half_width=args.thumbnail_radius,
+                min_snr=args.snr_threshold,
+                output_dir=args.out_dir,
             )
+        )
+    slurm_text += f"srun --overlap sotrp -c {config_file}  &\n sleep 1 \n"
+    nmaps += 1
+    if nmaps % args.ncores == 0 and nmaps > 0:
+        slurm_text += "wait\n"
+
+    if nmaps % nserial == 0 and nmaps > 0:
+        with open(
+            "%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w"
+        ) as f:
+            f.write(slurm_text)
+            f.write("wait")
+        n += 1
         slurm_text = generate_slurm_header(
-            f"sotrp_{tube}_{band}_depth1",
+            str(n).zfill(4),
             args.group_name,
             str(args.ncores),
             args.script_dir if args.script_dir else os.getcwd(),
             args.slurm_out_dir,
         )
-        slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_sotrp.log "
 
-        with open(f"{args.slurm_script_dir}/{tube}_{band}_sub.slurm", "w") as f:
-            f.write(slurm_text)
+for i in tqdm(range(len(datelist))):
+    date = datelist[i].split("/")[-1]
+    for band in args.bands:
+        globstr = args.data_dir + date + f"/depth1*{band}*_rho.fits"
+        mapfiles = sorted(glob(globstr))
+        for mapfile in sorted(mapfiles):
+            mapname = mapfile.split("/")[-1].replace(".fits", "")
+            config_file = args.slurm_script_dir + f"{mapname}_config.json"
+            with open(config_file, "w") as f:
+                f.write(
+                    generate_config_json(
+                        mapfile,
+                        pointing_flux_threshold=args.pointing_flux_threshold,
+                        flux_low_limit=args.flux_threshold,
+                        thumbnail_half_width=args.thumbnail_radius,
+                        min_snr=args.snr_threshold,
+                        output_dir=args.out_dir,
+                    )
+                )
+            slurm_text += (
+                f"srun --overlap sotrp -c {config_file} > {args.out_dir}{mapname}_sotrp.log "
+                f" &\n sleep 1 \n"
+            )
+            nmaps += 1
+            if nmaps % args.ncores == 0 and nmaps > 0:
+                slurm_text += "wait\n"
+            if nmaps % nserial == 0 and nmaps > 0:
+                with open(
+                    "%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w"
+                ) as f:
+                    f.write(slurm_text)
+                    f.write("wait")
+                n += 1
+                slurm_text = generate_slurm_header(
+                    str(n).zfill(4),
+                    args.group_name,
+                    str(args.ncores),
+                    args.script_dir if args.script_dir else os.getcwd(),
+                    args.slurm_out_dir,
+                )
 
+
+with open("%s/%s_sub.slurm" % (args.slurm_script_dir, str(n).zfill(4)), "w") as f:
+    f.write(slurm_text)
+    f.write("wait")
 
 print("#" * 50)
 print("Slurm scripts saved to :", args.slurm_script_dir)
