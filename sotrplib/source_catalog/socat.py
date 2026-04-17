@@ -24,7 +24,7 @@ class SOCatWrapper:
         self.log = log or structlog.get_logger()
         self.settings = SOCatClientSettings()
         self.catalog = self.settings.client
-        self.log.info("socat.initialized")
+        self.log.info("socat.initialized", client=self.catalog)
 
     def add_source(self, source: RegisteredSource):
         self.catalog.create_source(

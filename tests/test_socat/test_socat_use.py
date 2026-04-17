@@ -54,3 +54,28 @@ def test_socat_source_generator(socat_pickle):
     sources, _ = source_generator.generate()
 
     assert len(sources) == int(0.75 * 128)
+
+
+def test_socat_read_jpl(
+    socat_pickle,
+    jpl_catalog: str = "../sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
+):
+    """
+    Test that the socat read_jpl fixture works.
+    """
+
+    os.environ["socat_client_client_type"] = "pickle"
+    os.environ["socat_client_pickle_path"] = str(socat_pickle)
+
+    from sotrplib.source_catalog.socat import SOCat
+
+    cat = SOCat(flux_lower_limit=0.0 * u.Jy)
+
+    sources = cat.get_all_sources()
+
+    assert len(sources) == 128
+
+    cat.load_jpl_ephem_database(jpl_catalog)
+    sources = cat.get_all_sources()
+
+    assert len(sources) > 128

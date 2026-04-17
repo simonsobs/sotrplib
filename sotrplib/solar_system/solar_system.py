@@ -299,6 +299,7 @@ def get_sso_ephems_at_time(
         "Saturn",
         "Uranus",
         "Neptune",
+        "Pluto",
     ],
     observer: GeographicPosition | None = None,
     log: FilteringBoundLogger | None = None,
@@ -384,6 +385,7 @@ def get_sso_ephem_in_map(
         "Saturn",
         "Uranus",
         "Neptune",
+        "Pluto",
     ],
     log: FilteringBoundLogger | None = None,
 ) -> dict[str, dict[str, SkyCoord | datetime]]:
