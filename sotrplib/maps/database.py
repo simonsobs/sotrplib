@@ -86,6 +86,9 @@ class MapCatDatabaseReader:
         self.stale_processing_time = stale_processing_time
         self.log = log or get_logger()
 
+        self.validate_map_units()
+
+    def validate_map_units(self):
         if self.map_type not in ("intensity", "flux", "rhokappa"):
             raise ValueError(
                 f"map_type must be one of 'intensity','flux','rhokappa', got {self.map_type}"
@@ -138,9 +141,6 @@ class MapCatDatabaseReader:
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
 
-        ## Limit the number of maps to read
-        ## but I now want to skip processed ones, so will do that below
-        # query = query.limit(self.number_to_read)
         maps = []
         with mapcat_settings.session() as session:
             results = session.execute(query).scalars().all()
