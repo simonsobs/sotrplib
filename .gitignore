@@ -78,3 +78,6 @@ scripts/*/test*.py
 
 # any maps
 *.fits
+
+# environment configs
+run_act_prefect_env
