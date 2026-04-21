@@ -207,7 +207,8 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     end_time: AwareDatetime | None = None
     map_ids: list[int] | None = None
     box: list[AstroPydanticICRS] | None = None
-    intensity_units: AstroPydanticUnit = u.Unit("K")
+    map_units: AstroPydanticUnit = u.Unit("K")
+    map_type: Literal["intensity", "flux", "rhokappa"] = "intensity"
     rerun: bool = False
 
     def to_generator(
@@ -222,7 +223,8 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             instrument=self.instrument,
             box=self.box,
             map_ids=self.map_ids,
-            intensity_units=self.intensity_units,
+            map_units=self.map_units,
+            map_type=self.map_type,
             rerun=self.rerun,
             log=log,
         )
