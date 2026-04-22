@@ -18,6 +18,8 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.utils import pixell_map_union
 
+from .database import PointingModel
+
 
 class ProcessableMap(ABC):
     """
@@ -95,6 +97,8 @@ class ProcessableMap(ABC):
 
     _parent_database: Path | None = None
     "Path to the parent database for this map, if any"
+
+    _pointing_model: PointingModel | None = None
 
     @abstractmethod
     def build(self):
