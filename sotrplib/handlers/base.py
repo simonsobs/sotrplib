@@ -4,9 +4,10 @@ from typing import Iterable
 import numpy as np
 from astropy import units
 from astropy.coordinates import SkyCoord
+from mapcat.pointing.const import ConstantPointingModel
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.database import set_processing_end
+from sotrplib.maps.database import save_pointing_model, set_processing_end
 from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import (
     EmptyPointingOffset,
@@ -191,16 +192,22 @@ class BaseRunner:
             input_map=input_map, catalogs=self.source_catalogs
         )
 
-        pointing_data = self.profilable_task(self.pointing_residual_model.get_offset)(
-            pointing_sources=pointing_sources
-        )
+        cached = getattr(input_map, "pointing_model", None)
+        if isinstance(cached, ConstantPointingModel):
+            pointing_model = cached
+        else:
+            pointing_model = self.profilable_task(
+                self.pointing_residual_model.calculate_model
+            )(pointing_sources=pointing_sources)
+            if input_map._parent_database is not None:
+                save_pointing_model(input_map.map_id, pointing_model)
 
         ## this is dumb and should be fixed.
         for o in self.map_outputs:
             if "pointing_residual_map" in o.field_ids:
                 self.profilable_task(save_model_maps)(
                     self.pointing_residual_model,
-                    pointing_data,
+                    pointing_model,
                     input_map,
                     filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
                 )
@@ -218,8 +225,7 @@ class BaseRunner:
         )(
             input_map=input_map,
             catalogs=self.source_catalogs + self.sso_catalogs,
-            pointing_residuals=self.pointing_residual_model,
-            pointing_offset_data=pointing_data,
+            pointing_model=pointing_model,
         )
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
@@ -228,8 +234,7 @@ class BaseRunner:
 
         blind_sources, _ = self.profilable_task(self.blind_search.search)(
             input_map=source_subtracted_map,
-            pointing_residuals=self.pointing_residual_model,
-            pointing_offset_data=pointing_data,
+            pointing_model=pointing_model,
         )
 
         sifter_result = self.profilable_task(self.sifter.sift)(
@@ -243,8 +248,7 @@ class BaseRunner:
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
                 input_map=input_map,
-                pointing_sources=pointing_sources,
-                injected_sources=injected_sources,
+                pointing_model=pointing_model,
             )
 
         for output in self.map_outputs:

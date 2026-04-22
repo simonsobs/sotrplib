@@ -3,7 +3,7 @@ Dependencies for map pointing calculations. Sets MapPointingOffset object.
 These operations happen after forced photometry and before source subtraction.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 from typing import Literal
 
@@ -12,6 +12,7 @@ import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clip, sigma_clipped_stats
+from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
@@ -20,18 +21,12 @@ from sotrplib.sources.sources import RegisteredSource
 
 
 @dataclass
-class ConstantPointingData:
-    ra_offset: u.Quantity
-    dec_offset: u.Quantity
-
-
-@dataclass
 class PolynomialPointingData:
     coeffs_ra: np.ndarray
     coeffs_dec: np.ndarray
 
 
-PointingData = ConstantPointingData | PolynomialPointingData
+PointingModel = ConstantPointingModel | PolynomialPointingData
 
 
 class MapPointingOffset(ABC):
@@ -42,14 +37,13 @@ class MapPointingOffset(ABC):
     """
 
     pointing_sources: list[RegisteredSource] | None = None
+    pointing_model: PointingModel | None = None
 
-    def get_offset(self, pointing_sources: list[RegisteredSource] | None = None):
-        """Calculate the pointing offset based on the provided sources."""
+    def calculate_model(self, pointing_sources: list[RegisteredSource] | None = None):
+        """Calculate the pointing offset model based on the provided sources."""
         pass
 
-    def apply_offset_at_position(
-        self, pos: SkyCoord, data: PointingData | None
-    ) -> SkyCoord:
+    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
         """
         Apply inverse offsets to one or more SkyCoord positions.
 
@@ -63,86 +57,19 @@ class MapPointingOffset(ABC):
         SkyCoord
             New coordinates with the offsets removed.
         """
-        if data is None:
-            return pos
-        ## returns an array of offsets, but only apply to single position.
-        dra = self.ra_model(pos.ra, pos.dec, data)
-        ddec = self.dec_model(pos.ra, pos.dec, data)
-
-        ## if offset > 5arcmin , warn and skip.
-        if abs(dra) > 5 * u.arcmin or abs(ddec) > 5 * u.arcmin:
-            self.log.warn(
-                f"{self.__class__.__name__}.large_offset_warning",
-                ra=pos.ra,
-                dec=pos.dec,
-                dra=dra,
-                ddec=ddec,
-            )
+        if self.pointing_model is None:
             return pos
 
-        return SkyCoord(
-            ra=pos.ra - dra,
-            dec=pos.dec - ddec,
-            frame=pos.frame,
-        )
-
-    @abstractmethod
-    def ra_model(
-        self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None
-    ) -> u.Quantity:
-        """
-        Model function to compute RA offsets at given positions.
-
-        Parameters
-        ----------
-        ra : u.Quantity
-            Array of RA positions in degrees.
-        dec : u.Quantity
-            Array of Dec positions in degrees.
-
-        Returns
-        -------
-        u.Quantity
-            Array of RA offsets in degrees.
-        """
-        return
-
-    @abstractmethod
-    def dec_model(
-        self, ra: u.Quantity, dec: u.Quantity, data: PointingData | None = None
-    ) -> u.Quantity:
-        """
-        Model function to compute dec offsets at given positions.
-
-        Parameters
-        ----------
-        ra : u.Quantity
-            Array of RA positions in degrees.
-        dec : u.Quantity
-            Array of Dec positions in degrees.
-
-        Returns
-        -------
-        u.Quantity
-            Array of dec offsets in degrees.
-        """
-        return
+        return self.pointing_model.predict(pos)
 
 
 class EmptyPointingOffset(MapPointingOffset):
-    def get_offset(self, pointing_sources: list[RegisteredSource] | None = None):
+    def calculate_model(self, pointing_sources: list[RegisteredSource] | None = None):
         # no need for a deepcopy as apply offset is a noop
         pass
 
-    def dec_model(
-        self, ra: u.Quantity, dec: u.Quantity, data: None = None
-    ) -> u.Quantity:
-        return 0.0 * u.deg
-
-    def ra_model(
-        self, ra: u.Quantity, dec: u.Quantity, data: None = None
-    ) -> u.Quantity:
-        return 0.0 * u.deg
+    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
+        return pos
 
 
 class ConstantPointingOffset(MapPointingOffset):
@@ -164,10 +91,9 @@ class ConstantPointingOffset(MapPointingOffset):
         self.pointing_sources = pointing_sources or []
         self.log = log or structlog.get_logger()
 
-    def get_offset(
-        self,
-        pointing_sources: list[RegisteredSource] | None = None,
-    ) -> ConstantPointingData:
+    def calculate_model(
+        self, pointing_sources: list[RegisteredSource] | None = None
+    ) -> ConstantPointingModel:
         log = self.log or structlog.get_logger()
         log = log.bind(
             func="pointing.ConstantPointingOffset.get_offset",
@@ -184,7 +110,7 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(snr) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_sources")
-            return ConstantPointingData(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+            return ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
 
         ra_offsets = [
             src.offset_ra
@@ -202,7 +128,7 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(ra_offsets) == 0 or len(dec_offsets) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_offsets")
-            return ConstantPointingData(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+            return ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
 
         # Compute median offsets where snr>min_snr
         ra_off_list = u.Quantity(
@@ -218,7 +144,7 @@ class ConstantPointingOffset(MapPointingOffset):
                 "pointing.ConstantPointingOffset.not_enough_sources_above_snr",
                 n_valid_sources=len(ra_off_list),
             )
-            return ConstantPointingData(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+            return ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
 
         mean_ra, median_ra, std_ra = sigma_clipped_stats(
             ra_off_list,
@@ -242,17 +168,10 @@ class ConstantPointingOffset(MapPointingOffset):
             dec_offset_rms=f"{std_dec.to_value(u.arcsec):.1f} arcsec",
         )
 
-        return ConstantPointingData(ra_offset=ra_offset, dec_offset=dec_offset)
+        return ConstantPointingModel(ra_offset=ra_offset, dec_offset=dec_offset)
 
-    def ra_model(
-        self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData
-    ) -> u.Quantity:
-        return data.ra_offset
-
-    def dec_model(
-        self, ra: u.Quantity, dec: u.Quantity, data: ConstantPointingData
-    ) -> u.Quantity:
-        return data.dec_offset
+    def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
+        return super().apply_offset_at_position(pos)
 
 
 class PolynomialPointingOffset(MapPointingOffset):
@@ -282,10 +201,10 @@ class PolynomialPointingOffset(MapPointingOffset):
                 terms.append((x**i) * (y**j))
         return np.vstack(terms).T
 
-    def get_offset(
+    def calculate_model(
         self, pointing_sources: list[RegisteredSource] | None = None
     ) -> PolynomialPointingData:
-        log = self.log.bind(func="PolynomialPointingOffset.get_offset")
+        log = self.log.bind(func="PolynomialPointingOffset.calculate_model")
         pointing_sources = pointing_sources or self.pointing_sources
 
         # gather valid records
@@ -298,7 +217,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         ]
 
         if len(valid) == 0:
-            log.warn("PolynomialPointingOffset.no_valid_sources")
+            log.warn("PolynomialPointingOffset.calculate_model.no_valid_sources")
             n_terms = (self.poly_order + 1) * (self.poly_order + 2) // 2
             return PolynomialPointingData(
                 coeffs_ra=np.zeros(n_terms),
@@ -323,7 +242,7 @@ class PolynomialPointingOffset(MapPointingOffset):
 
         if len(ras) < self.min_num:
             log.warn(
-                "PolynomialPointingOffset.not_enough_sources_above_snr",
+                "PolynomialPointingOffset.calculate_model.not_enough_sources_above_snr",
                 n_valid_sources=len(ras),
             )
             n_terms = (self.poly_order + 1) * (self.poly_order + 2) // 2
@@ -363,7 +282,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         coeffs_dec, *_ = np.linalg.lstsq(Aw, yw, rcond=None)
 
         log.info(
-            "PolynomialPointingOffset.weighted_poly_fit",
+            "PolynomialPointingOffset.calculate_model.weighted_poly_fit",
             num_sources=len(ras),
             poly_order=self.poly_order,
             max_snr_weight=self.max_snr_weight,
@@ -404,7 +323,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         ## if offset > 5arcmin , warn and skip.
         if abs(dra) > 5 * u.arcmin or abs(ddec) > 5 * u.arcmin:
             self.log.warn(
-                "PolynomialPointingOffset.large_offset_warning",
+                "PolynomialPointingOffset.calculate_model.large_offset_warning",
                 ra=pos.ra,
                 dec=pos.dec,
                 dra=dra,
@@ -420,8 +339,7 @@ class PolynomialPointingOffset(MapPointingOffset):
 
 
 def save_model_maps(
-    pointing_model: MapPointingOffset,
-    pointing_data: PointingData | None,
+    pointing_model: PointingModel,
     input_map: ProcessableMap,
     filename_prefix: str,
     log: FilteringBoundLogger | None = None,
@@ -431,7 +349,7 @@ def save_model_maps(
 
     Parameters
     ----------
-    pointing_model : MapPointingOffset
+    pointing_model : PointingModel
         The pointing offset model to be saved.
     input_map : ProcessableMap
         The input map used to define the shape and WCS of the output maps.
@@ -451,14 +369,10 @@ def save_model_maps(
     decmap, ramap = enmap.pix2sky(input_map.flux.shape, input_map.flux.wcs, pixmap)
 
     ra_offset_map = pointing_model.ra_model(
-        (ramap.flatten() * u.rad),
-        (decmap.flatten() * u.rad),
-        data=pointing_data,
+        (ramap.flatten() * u.rad), (decmap.flatten() * u.rad)
     ).to_value(u.arcsec)
     dec_offset_map = pointing_model.dec_model(
-        (ramap.flatten() * u.rad),
-        (decmap.flatten() * u.rad),
-        data=pointing_data,
+        (ramap.flatten() * u.rad), (decmap.flatten() * u.rad)
     ).to_value(u.arcsec)
 
     ra_offset_map = enmap.enmap(

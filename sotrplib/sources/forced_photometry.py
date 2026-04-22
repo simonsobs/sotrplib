@@ -14,7 +14,7 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import EmptyPointingOffset, MapPointingOffset, PointingData
+from sotrplib.maps.pointing import PointingModel
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,
@@ -579,8 +579,7 @@ def gaussian_fit(
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
     fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
-    pointing_residuals: MapPointingOffset | None = EmptyPointingOffset(),
-    pointing_offset_data: PointingData | None = None,
+    pointing_model: PointingModel | None = None,
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     goodness_of_fit_threshold: float | None = None,
     flags: dict = {},
@@ -615,8 +614,8 @@ def gaussian_fit(
         If True, thumbnails are reprojected (e.g., to a local tangent-plane
         projection) before fitting. If False, thumbnails are extracted in the
         native projection. Defaults to False.
-    pointing_residuals : MapPointingOffset or None, optional
-        Optional pointing residuals to apply to the nominal source positions
+    pointing_model: PointingModel or None, optional
+        If provided, this model is used to apply pointing corrections to the source positions
         before cutting thumbnails and fitting.
     allowable_center_offset : astropy.units.Quantity, optional
         Maximum allowed offset between the fitted source position and the
@@ -659,10 +658,8 @@ def gaussian_fit(
                 source_flags.append(flag)
         ## apply pointing residuals to source position
         source_pos = SkyCoord(ra=source.ra, dec=source.dec)
-        if pointing_residuals is not None:
-            source_pos = pointing_residuals.apply_offset_at_position(
-                source_pos, data=pointing_offset_data
-            )
+        if pointing_model is not None:
+            source_pos = pointing_model.predict(source_pos)
 
         source.ra = source_pos.ra
         source.dec = source_pos.dec
