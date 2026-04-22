@@ -1,11 +1,12 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 3,
             "instrument": "ACT",
+            "map_type": "rhokappa",
+            "map_units": "mJy",
+            "start_time": "2019-06-10T00:00:00Z",
+            "end_time": "2019-06-10T12:00:00Z",
             "frequency": "f090",
-            "array": "pa5",
-            "intensity_units": "uK",
             "rerun": "True"
         },
     "source_catalogs": [
@@ -17,7 +18,9 @@
     "sso_catalogs": [
         {
             "catalog_type": "sso",
-            "db_path": "sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "db_path": "sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
+            "start_time": "2019-01-01T00:00:00Z",
+            "stop_time": "2019-10-20T00:00:00Z"
         }
     ],
     "pointing_provider": {
@@ -40,14 +43,6 @@
         {
             "preprocessor_type": "planet_mask",
             "mask_radius": "15 arcmin"
-        },
-        {
-            "preprocessor_type": "matched_filter",
-            "band_height": "1 deg",
-            "shrink_holes": "5 arcmin",
-            "noisemask_lim": 0.1,
-            "noisemask_radius": "10 arcmin",
-            "apod_holes": "10 arcmin"
         },
         {
             "preprocessor_type": "kappa_rho"

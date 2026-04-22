@@ -2,6 +2,7 @@
 Read maps from the map tracking database.
 """
 
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 
 from astropy import units as u
@@ -18,28 +19,20 @@ from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from .core import IntensityAndInverseVarianceMap
+from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
 
 
-class MapCatDatabaseReader:
+class MapCatDatabaseReader(ABC):
     """
-    Reader for maps from the map tracking database. Note that the
-    database connection is configured through the map catalog library
-    itself.
+    Base reader for maps from the map tracking database. Note that the
+    database connection is configured through the map catalog library itself.
+
+    Default is to read all arrays and frequencies for the past 1 day
+    by setting start_time to 1 day ago and end_time to now.
     """
 
-    instrument: str | None = None
-    frequency: str | None = None
-    array: str | None = None
-    number_to_read: int | None = 1
-    start_time: AwareDatetime | None = None
-    end_time: AwareDatetime | None = None
-    map_ids: list[int] | None = None
-    box: tuple[SkyCoord, SkyCoord] | None = None
-    intensity_units: u.Unit = u.Unit("K")
-    rerun: bool = False
-    stale_processing_time: timedelta = timedelta(hours=2)
-    log: FilteringBoundLogger
+    default_map_units: u.Unit
+    _valid_unit_equivalent: u.Unit
 
     def __init__(
         self,
@@ -51,33 +44,41 @@ class MapCatDatabaseReader:
         array: str | None = None,
         instrument: str | None = None,
         box: tuple[SkyCoord, SkyCoord] | None = None,
-        intensity_units: u.Unit = u.Unit("K"),
+        map_units: u.Unit | None = None,
         rerun: bool = False,
         stale_processing_time: timedelta = timedelta(hours=2),
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
-        self.start_time = start_time
-        self.end_time = end_time
+        self.start_time = (
+            start_time
+            if start_time is not None
+            else datetime.now(timezone.utc) - timedelta(days=1)
+        )
+        self.end_time = end_time if end_time is not None else datetime.now(timezone.utc)
         self.map_ids = map_ids or []
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
-        self.intensity_units = intensity_units
+        self.map_units = map_units if map_units is not None else self.default_map_units
         self.box = box
         self.rerun = rerun
         self._map_list = None
         self.stale_processing_time = stale_processing_time
         self.log = log or get_logger()
+        self._validate_units()
 
-    def map_list(self):
-        if self._map_list is not None:
-            return self._map_list
+    def _validate_units(self):
+        if not self.map_units.is_equivalent(self._valid_unit_equivalent):
+            raise ValueError(
+                f"map_units must be equivalent to {self._valid_unit_equivalent} for "
+                f"{type(self).__name__}, got {self.map_units}"
+            )
 
-        self.log.info(
-            "MapCatDatabaseReader.connecting_to_db",
-            db_url=mapcat_settings.database_name,
-        )
+    @abstractmethod
+    def _build_map(self, result): ...
+
+    def build_query(self):
         query = select(DepthOneMapTable)
 
         query = (
@@ -103,9 +104,19 @@ class MapCatDatabaseReader:
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
 
-        ## Limit the number of maps to read
-        ## but I now want to skip processed ones, so will do that below
-        # query = query.limit(self.number_to_read)
+        return query
+
+    def map_list(self):
+        if self._map_list is not None:
+            return self._map_list
+
+        self.log.info(
+            "MapCatDatabaseReader.connecting_to_db",
+            db_url=mapcat_settings.database_name,
+        )
+
+        query = self.build_query()
+
         maps = []
         with mapcat_settings.session() as session:
             results = session.execute(query).scalars().all()
@@ -123,37 +134,13 @@ class MapCatDatabaseReader:
                         map_id=result.map_id,
                     )
                     continue
-                ## workaround for failed mapcat generation
-                if result.mean_time_path is None:
-                    result.mean_time_path = (
-                        str(result.ivar_path).split("_ivar.fits")[0] + "_time.fits"
-                    )
-                maps.append(
-                    IntensityAndInverseVarianceMap(
-                        intensity_filename=mapcat_settings.depth_one_parent
-                        / result.map_path,
-                        inverse_variance_filename=mapcat_settings.depth_one_parent
-                        / result.ivar_path,
-                        time_filename=mapcat_settings.depth_one_parent
-                        / result.mean_time_path,
-                        start_time=datetime.fromtimestamp(
-                            result.start_time, tz=timezone.utc
-                        ),
-                        end_time=datetime.fromtimestamp(
-                            result.stop_time, tz=timezone.utc
-                        ),
-                        box=self.box,
-                        intensity_units=self.intensity_units,
-                        frequency=result.frequency,
-                        array=result.tube_slot,
-                        instrument=self.instrument,
-                        log=self.log,
-                    )
-                )
-                maps[-1].map_id = result.map_id
-                maps[-1]._parent_database = mapcat_settings.database_name
-                self.map_ids.append(result.map_id)
-                set_processing_start(result.map_id, session=session)
+
+                m = self._build_map(result)
+                m.map_id = result.map_id
+                m._parent_database = mapcat_settings.database_name
+                maps.append(m)
+                self.map_ids.append(m.map_id)
+                set_processing_start(m.map_id, session=session)
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
@@ -161,6 +148,73 @@ class MapCatDatabaseReader:
 
     def __iter__(self):
         return iter(self.map_list())
+
+
+class IntensityMapReader(MapCatDatabaseReader):
+    """Reader for intensity maps, yielding IntensityAndInverseVarianceMap objects."""
+
+    default_map_units = u.Unit("K")
+    _valid_unit_equivalent = u.K
+
+    def _build_map(self, result):
+        return IntensityAndInverseVarianceMap(
+            intensity_filename=mapcat_settings.depth_one_parent / result.map_path,
+            inverse_variance_filename=mapcat_settings.depth_one_parent
+            / result.ivar_path,
+            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
+            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            box=self.box,
+            intensity_units=self.map_units,
+            frequency=result.frequency,
+            array=result.tube_slot,
+            instrument=self.instrument,
+            log=self.log,
+        )
+
+
+class RhoKappaMapReader(MapCatDatabaseReader):
+    """Reader for rho/kappa maps, yielding RhoAndKappaMap objects."""
+
+    default_map_units = u.Unit("Jy")
+    _valid_unit_equivalent = u.Jy
+
+    def _build_map(self, result):
+        return RhoAndKappaMap(
+            rho_filename=mapcat_settings.depth_one_parent / result.rho_path,
+            kappa_filename=mapcat_settings.depth_one_parent / result.kappa_path,
+            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
+            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            box=self.box,
+            flux_units=self.map_units,
+            frequency=result.frequency,
+            array=result.tube_slot,
+            instrument=self.instrument,
+            log=self.log,
+        )
+
+
+class FluxMapReader(MapCatDatabaseReader):
+    """Reader for flux/SNR maps, yielding FluxAndSNRMap objects."""
+
+    default_map_units = u.Unit("Jy")
+    _valid_unit_equivalent = u.Jy
+
+    def _build_map(self, result):
+        return FluxAndSNRMap(
+            flux_filename=mapcat_settings.depth_one_parent / result.flux_path,
+            snr_filename=mapcat_settings.depth_one_parent / result.snr_path,
+            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
+            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            box=self.box,
+            flux_units=self.map_units,
+            frequency=result.frequency,
+            array=result.tube_slot,
+            instrument=self.instrument,
+            log=self.log,
+        )
 
 
 def check_if_processed(

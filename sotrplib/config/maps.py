@@ -17,7 +17,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
     RhoAndKappaMap,
 )
-from sotrplib.maps.database import MapCatDatabaseReader
+from sotrplib.maps.database import FluxMapReader, IntensityMapReader, RhoKappaMapReader
 from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
@@ -207,13 +207,19 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     end_time: AwareDatetime | None = None
     map_ids: list[int] | None = None
     box: list[AstroPydanticICRS] | None = None
-    intensity_units: AstroPydanticUnit = u.Unit("K")
+    map_units: AstroPydanticUnit = u.Unit("K")
+    map_type: Literal["intensity", "flux", "rhokappa"] = "intensity"
     rerun: bool = False
 
     def to_generator(
         self, log: FilteringBoundLogger | None = None
     ) -> Iterable[ProcessableMap]:
-        return MapCatDatabaseReader(
+        _reader_cls = {
+            "intensity": IntensityMapReader,
+            "rhokappa": RhoKappaMapReader,
+            "flux": FluxMapReader,
+        }[self.map_type]
+        return _reader_cls(
             number_to_read=self.number_to_read,
             start_time=self.start_time,
             end_time=self.end_time,
@@ -222,7 +228,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             instrument=self.instrument,
             box=self.box,
             map_ids=self.map_ids,
-            intensity_units=self.intensity_units,
+            map_units=self.map_units,
             rerun=self.rerun,
             log=log,
         )

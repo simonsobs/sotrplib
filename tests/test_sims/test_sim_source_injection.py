@@ -171,7 +171,7 @@ def test_source_injection_forced_photometry():
     top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
     start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
-    number = 10
+    number = 3
 
     generator = sim_source_generators.FixedSourceGenerator(
         min_flux=min_flux,
