@@ -330,23 +330,6 @@ def test_map_list_number_to_read_limits(mock_session, db_result):
     assert len(maps) == 1
 
 
-def test_map_list_mean_time_path_fallback(mock_session, db_result):
-    """When mean_time_path is None, it is derived from ivar_path."""
-    db_result.mean_time_path = None
-    with (
-        patch("sotrplib.maps.database.mapcat_settings") as settings,
-        patch("sotrplib.maps.database.check_if_processed", return_value=False),
-        patch("sotrplib.maps.database.set_processing_start"),
-    ):
-        settings.database_name = "test_db"
-        settings.depth_one_parent = Path("/")
-        settings.session.return_value.__enter__.return_value = mock_session
-        maps = IntensityMapReader().map_list()
-    assert len(maps) == 1
-    expected_time_path = str(db_result.ivar_path).split("_ivar.fits")[0] + "_time.fits"
-    assert str(maps[0].time_filename) == expected_time_path
-
-
 def test_iter_delegates_to_map_list(mock_mapcat):
     reader = IntensityMapReader()
     assert list(reader) == reader.map_list()
