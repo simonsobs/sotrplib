@@ -17,7 +17,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
     RhoAndKappaMap,
 )
-from sotrplib.maps.database import MapCatDatabaseReader
+from sotrplib.maps.database import FluxMapReader, IntensityMapReader, RhoKappaMapReader
 from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
@@ -214,7 +214,12 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     def to_generator(
         self, log: FilteringBoundLogger | None = None
     ) -> Iterable[ProcessableMap]:
-        return MapCatDatabaseReader(
+        _reader_cls = {
+            "intensity": IntensityMapReader,
+            "rhokappa": RhoKappaMapReader,
+            "flux": FluxMapReader,
+        }[self.map_type]
+        return _reader_cls(
             number_to_read=self.number_to_read,
             start_time=self.start_time,
             end_time=self.end_time,
@@ -224,7 +229,6 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             box=self.box,
             map_ids=self.map_ids,
             map_units=self.map_units,
-            map_type=self.map_type,
             rerun=self.rerun,
             log=log,
         )
