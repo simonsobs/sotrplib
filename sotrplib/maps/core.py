@@ -11,6 +11,7 @@ import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
 from astropy.units import Unit
+from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from pixell.enmap import ndmap
 from pydantic import AwareDatetime
@@ -18,7 +19,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.utils import pixell_map_union
 
-from .database import PointingModel
+PointingModel = ConstantPointingModel
 
 
 class ProcessableMap(ABC):

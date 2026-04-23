@@ -5,7 +5,7 @@ These operations happen after forced photometry and before source subtraction.
 
 from abc import ABC
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import structlog
@@ -16,7 +16,9 @@ from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import ProcessableMap
+if TYPE_CHECKING:
+    from sotrplib.maps.core import ProcessableMap
+
 from sotrplib.sources.sources import RegisteredSource
 
 

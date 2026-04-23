@@ -248,7 +248,8 @@ class BaseRunner:
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
                 input_map=input_map,
-                pointing_model=pointing_model,
+                pointing_sources=pointing_sources,
+                injected_sources=injected_sources,
             )
 
         for output in self.map_outputs:
