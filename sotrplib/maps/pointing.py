@@ -12,6 +12,7 @@ import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clip, sigma_clipped_stats
+from mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
@@ -95,13 +96,17 @@ class ConstantPointingOffset(MapPointingOffset):
 
     def calculate_model(
         self, pointing_sources: list[RegisteredSource] | None = None
-    ) -> ConstantPointingModel:
+    ) -> tuple[ConstantPointingModel, PointingModelStats]:
         log = self.log or structlog.get_logger()
         log = log.bind(
             func="pointing.ConstantPointingOffset.get_offset",
             min_snr=self.min_snr,
             min_num=self.min_num,
         )
+
+        model = ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+        stats = PointingModelStats()
+
         # Implementation of median offset calculation
         snr = [
             src.snr
@@ -112,7 +117,7 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(snr) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_sources")
-            return ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+            return model, stats
 
         ra_offsets = [
             src.offset_ra
@@ -130,7 +135,7 @@ class ConstantPointingOffset(MapPointingOffset):
         ]
         if len(ra_offsets) == 0 or len(dec_offsets) == 0:
             log.warn("pointing.ConstantPointingOffset.no_valid_offsets")
-            return ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+            return model, stats
 
         # Compute median offsets where snr>min_snr
         ra_off_list = u.Quantity(
@@ -146,7 +151,7 @@ class ConstantPointingOffset(MapPointingOffset):
                 "pointing.ConstantPointingOffset.not_enough_sources_above_snr",
                 n_valid_sources=len(ra_off_list),
             )
-            return ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg)
+            return model, stats
 
         mean_ra, median_ra, std_ra = sigma_clipped_stats(
             ra_off_list,
@@ -170,7 +175,15 @@ class ConstantPointingOffset(MapPointingOffset):
             dec_offset_rms=f"{std_dec.to_value(u.arcsec):.1f} arcsec",
         )
 
-        return ConstantPointingModel(ra_offset=ra_offset, dec_offset=dec_offset)
+        model = ConstantPointingModel(ra_offset=ra_offset, dec_offset=dec_offset)
+        stats = PointingModelStats(
+            mean_ra_offset=mean_ra,
+            mean_dec_offset=mean_dec,
+            stddev_ra_offset=std_ra,
+            stddev_dec_offset=std_dec,
+            n_sources=len(ra_off_list),
+        )
+        return model, stats
 
     def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
         return super().apply_offset_at_position(pos)
@@ -342,7 +355,7 @@ class PolynomialPointingOffset(MapPointingOffset):
 
 def save_model_maps(
     pointing_model: PointingModel,
-    input_map: ProcessableMap,
+    input_map: "ProcessableMap",
     filename_prefix: str,
     log: FilteringBoundLogger | None = None,
 ):

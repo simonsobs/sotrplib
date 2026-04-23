@@ -18,6 +18,7 @@ from mapcat.database import (
     TimeDomainProcessingTable,
 )
 from mapcat.helper import settings as mapcat_settings
+from mapcat.mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
 from pydantic import AwareDatetime
 from sqlmodel import select
@@ -296,7 +297,10 @@ def load_pointing_model(map_id: int, session=None) -> PointingModel | None:
 
 
 def save_pointing_model(
-    map_id: int, pointing_model: PointingModel, session=None
+    map_id: int,
+    pointing_model: PointingModel,
+    pointing_model_stats: PointingModelStats,
+    session=None,
 ) -> None:
     """Serialize a ConstantPointingModel to PointingResidualTable.
 
@@ -317,9 +321,14 @@ def save_pointing_model(
     query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
     result = session.execute(query).one_or_none()
     if result is None:
-        result = [PointingResidualTable(map_id=map_id, residual_model=model)]
+        result = [
+            PointingResidualTable(
+                map_id=map_id, residual_model=model, residual_stats=pointing_model_stats
+            )
+        ]
     for row in result:
         row.residual_model = model
+        row.residual_stats = pointing_model_stats
         session.add(row)
         session.commit()
 
