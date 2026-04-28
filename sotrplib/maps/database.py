@@ -20,6 +20,7 @@ from mapcat.database import (
 from mapcat.helper import settings as mapcat_settings
 from mapcat.mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
+from mapcat.pointing.poly import PolynomialPointingModel
 from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
@@ -289,10 +290,17 @@ def load_pointing_model(map_id: int, session=None) -> PointingModel | None:
     if result is None:
         return None
     for row in result:
-        return ConstantPointingModel(
-            ra_offset=row.residual_model.ra_offset,
-            dec_offset=row.residual_model.dec_offset,
-        )
+        if row.residual_model.model_type == "constant":
+            return ConstantPointingModel(
+                ra_offset=row.residual_model.ra_offset,
+                dec_offset=row.residual_model.dec_offset,
+            )
+        elif row.residual_model.model_type == "polynomial":
+            return PolynomialPointingModel(
+                poly_order=row.residual_model.poly_order,
+                ra_model_coefficients=row.residual_model.ra_model_coefficients,
+                dec_model_coefficients=row.residual_model.dec_model_coefficients,
+            )
     return None
 
 
