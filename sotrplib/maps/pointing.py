@@ -256,7 +256,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         mask_ra = ~dra_clipped.mask
         mask_dec = ~ddec_clipped.mask
 
-        masked = mask_ra | mask_dec
+        masked = ~mask_ra | ~mask_dec
         self.pointing_model = PolynomialPointingModel(poly_order=self.poly_order)
         meas_pos = SkyCoord(
             ra=ras[~masked] * u.deg, dec=decs[~masked] * u.deg, frame="icrs"

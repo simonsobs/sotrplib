@@ -315,17 +315,23 @@ def save_pointing_model(
     Non-constant pointing models are silently skipped; mapcat only supports
     ConstantPointingModel.
     """
-    if not isinstance(pointing_model, ConstantPointingModel):
-        raise NotImplementedError(
-            f"Only ConstantPointingModel is supported for saving to the database, got {type(pointing_model)}"
-        )
-        return
     if session is None:
         session = mapcat_settings.session()
-    model = ConstantPointingModel(
-        ra_offset=pointing_model.ra_offset,
-        dec_offset=pointing_model.dec_offset,
-    )
+    if isinstance(pointing_model, ConstantPointingModel):
+        model = ConstantPointingModel(
+            ra_offset=pointing_model.ra_offset,
+            dec_offset=pointing_model.dec_offset,
+        )
+    elif isinstance(pointing_model, PolynomialPointingModel):
+        model = PolynomialPointingModel(
+            poly_order=pointing_model.poly_order,
+            ra_model_coefficients=pointing_model.ra_model_coefficients,
+            dec_model_coefficients=pointing_model.dec_model_coefficients,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported pointing model type {type(pointing_model)} for saving to DB."
+        )
     query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
     result = session.execute(query).one_or_none()
     if result is None:

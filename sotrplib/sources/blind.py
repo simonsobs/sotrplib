@@ -1,6 +1,7 @@
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
-from mapcat.pointing.const import ConstantPointingModel
+from mapcat.pointing.base import PointingModelProtocol
 from pixell import enmap
 from pydantic import BaseModel
 from structlog import get_logger
@@ -17,7 +18,7 @@ class EmptyBlindSearch(BlindSearchProvider):
     def search(
         self,
         input_map: ProcessableMap,
-        pointing_model: ConstantPointingModel | None = None,
+        pointing_model: PointingModelProtocol | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         return [], []
 
@@ -52,7 +53,7 @@ class SigmaClipBlindSearch(BlindSearchProvider):
     def search(
         self,
         input_map: ProcessableMap,
-        pointing_model: ConstantPointingModel | None = None,
+        pointing_model: PointingModelProtocol | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         if not input_map.finalized:
             raise ValueError(
@@ -95,7 +96,9 @@ class SigmaClipBlindSearch(BlindSearchProvider):
                 input_map, thumb_width=thumb_width, reproject_thumb=True
             )
             if pointing_model:
-                source.ra = source.ra - pointing_model.ra_offset
-                source.dec = source.dec - pointing_model.dec_offset
+                pos = SkyCoord(ra=source.ra, dec=source.dec, frame="icrs")
+                corrected = pointing_model.predict(pos)
+                source.ra = corrected.ra
+                source.dec = corrected.dec
 
         return extracted_sources, []

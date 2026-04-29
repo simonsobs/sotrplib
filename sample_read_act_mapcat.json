@@ -5,7 +5,7 @@
             "map_type": "rhokappa",
             "map_units": "mJy",
             "start_time": "2019-06-10T00:00:00Z",
-            "end_time": "2019-06-10T12:00:00Z",
+            "end_time": "2019-06-10T10:00:00Z",
             "frequency": "f090",
             "rerun": "True"
         },
@@ -32,7 +32,7 @@
         "near_source_rel_flux_limit": 0.3
     },
     "pointing_residual": {
-        "pointing_residual_type": "median",
+        "pointing_residual_type": "polynomial",
         "min_snr": 5.0,
         "min_sources": 5,
         "sigma_clip_level": 3.0,
