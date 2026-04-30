@@ -35,7 +35,7 @@ class MapPointingOffset(ABC):
     pointing_sources: list[RegisteredSource] | None = None
     pointing_model: PointingModel | None = None
 
-    def calculate_model(self, pointing_sources: list[RegisteredSource] | None = None):
+    def build_model(self, pointing_sources: list[RegisteredSource] | None = None):
         """Calculate the pointing offset model based on the provided sources."""
         pass
 
@@ -60,7 +60,7 @@ class MapPointingOffset(ABC):
 
 
 class EmptyPointingOffset(MapPointingOffset):
-    def calculate_model(self, pointing_sources: list[RegisteredSource] | None = None):
+    def build_model(self, pointing_sources: list[RegisteredSource] | None = None):
         # no need for a deepcopy as apply offset is a noop
         pass
 
@@ -89,7 +89,7 @@ class ConstantPointingOffset(MapPointingOffset):
         self.pointing_stats = None
         self.log = log or structlog.get_logger()
 
-    def calculate_model(
+    def build_model(
         self, pointing_sources: list[RegisteredSource] | None = None
     ) -> tuple[ConstantPointingModel, PointingModelStats]:
         log = self.log or structlog.get_logger()
@@ -207,10 +207,10 @@ class PolynomialPointingOffset(MapPointingOffset):
         self.pointing_stats = None
         self.log = log or structlog.get_logger()
 
-    def calculate_model(
+    def build_model(
         self, pointing_sources: list[RegisteredSource] | None = None
     ) -> PolynomialPointingModel:
-        log = self.log.bind(func="PolynomialPointingOffset.calculate_model")
+        log = self.log.bind(func="PolynomialPointingOffset.build_model")
         pointing_sources = pointing_sources or self.pointing_sources
 
         # gather valid records
@@ -223,7 +223,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         ]
 
         if len(valid) == 0:
-            log.warn("PolynomialPointingOffset.calculate_model.no_valid_sources")
+            log.warn("PolynomialPointingOffset.build_model.no_valid_sources")
             self.pointing_model = None
             return None
 
@@ -245,7 +245,7 @@ class PolynomialPointingOffset(MapPointingOffset):
 
         if len(ras) < self.min_num:
             log.warn(
-                "PolynomialPointingOffset.calculate_model.not_enough_sources_above_snr",
+                "PolynomialPointingOffset.build_model.not_enough_sources_above_snr",
                 n_valid_sources=len(ras),
             )
             return None
@@ -266,10 +266,10 @@ class PolynomialPointingOffset(MapPointingOffset):
             dec=(decs[~masked] - ddec[~masked]) * u.deg,
             frame="icrs",
         )
-        self.pointing_model.calculate_model(meas_pos, exp_pos, weights=snr[~masked])
+        self.pointing_model.build_model(meas_pos, exp_pos, weights=snr[~masked])
 
         log.info(
-            "PolynomialPointingOffset.calculate_model.weighted_poly_fit",
+            "PolynomialPointingOffset.build_model.weighted_poly_fit",
             num_sources=len(ras),
             poly_order=self.poly_order,
             max_snr_weight=self.max_snr_weight,

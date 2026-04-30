@@ -197,7 +197,7 @@ class BaseRunner:
             pointing_model = cached
         else:
             pointing_model, pointing_model_stats = self.profilable_task(
-                self.pointing_residual_model.calculate_model
+                self.pointing_residual_model.build_model
             )(pointing_sources=pointing_sources)
             if input_map._parent_database is not None:
                 save_pointing_model(

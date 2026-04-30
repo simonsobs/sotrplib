@@ -33,7 +33,7 @@ def test_median_residual_empty(map_with_single_source):
     pointing_residual_generator = ConstantPointingOffset(
         min_num=5, min_snr=5, avg_method="median"
     )
-    _ = pointing_residual_generator.calculate_model(pointing_sources=[])
+    _ = pointing_residual_generator.build_model(pointing_sources=[])
     assert pointing_residual_generator.pointing_model is None
 
 
@@ -59,7 +59,7 @@ def test_median_residual_notenough_sources(map_with_single_source):
     pointing_residual_generator = ConstantPointingOffset(
         min_num=5, min_snr=5, avg_method="median"
     )
-    _ = pointing_residual_generator.calculate_model(pointing_sources=results)
+    _ = pointing_residual_generator.build_model(pointing_sources=results)
     assert pointing_residual_generator.pointing_model is None
 
 
@@ -86,7 +86,7 @@ def test_median_residual(map_with_sources):
     pointing_residual_generator = ConstantPointingOffset(
         min_num=5, min_snr=5, sigma_clip_level=3, avg_method="median"
     )
-    pointing_model, _ = pointing_residual_generator.calculate_model(
+    pointing_model, _ = pointing_residual_generator.build_model(
         pointing_sources=results
     )
 
@@ -115,7 +115,7 @@ def test_polynomial_pointing_not_enough_sources():
     """With fewer sources than min_num the model should be None."""
     sources = [_make_source(20.0, -1.0, 0.02, -0.03, 10.0)]
     fitter = PolynomialPointingOffset(min_snr=5, min_num=5, poly_order=1)
-    result = fitter.calculate_model(pointing_sources=sources)
+    result = fitter.build_model(pointing_sources=sources)
     assert result is None
     assert fitter.pointing_model is None
 
@@ -139,7 +139,7 @@ def test_polynomial_pointing_order1_constant_offset():
     ]
 
     fitter = PolynomialPointingOffset(min_snr=5, min_num=5, poly_order=1)
-    fitter.calculate_model(pointing_sources=sources)
+    fitter.build_model(pointing_sources=sources)
     assert fitter.pointing_model is not None
 
     for ra, dec in zip(ras, decs):
@@ -165,7 +165,7 @@ def test_polynomial_pointing_order1_linear_offset():
         sources.append(_make_source(ra, dec, ra_offset, dec_offset, snr=20.0))
 
     fitter = PolynomialPointingOffset(min_snr=5, min_num=5, poly_order=1)
-    fitter.calculate_model(pointing_sources=sources)
+    fitter.build_model(pointing_sources=sources)
     assert fitter.pointing_model is not None
 
     for ra, dec in zip(ras, decs):
@@ -200,7 +200,7 @@ def test_mean_residual(map_with_sources):
     pointing_residual_generator = ConstantPointingOffset(
         min_num=5, min_snr=5, avg_method="mean"
     )
-    pointing_model, _ = pointing_residual_generator.calculate_model(
+    pointing_model, _ = pointing_residual_generator.build_model(
         pointing_sources=results
     )
 
