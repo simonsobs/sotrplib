@@ -1,6 +1,8 @@
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from mapcat.pointing.base import PointingModelStats
+from mapcat.pointing.poly import PolynomialPointingModel
 
 from sotrplib.maps.pointing import ConstantPointingOffset, PolynomialPointingOffset
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
@@ -116,7 +118,7 @@ def test_polynomial_pointing_not_enough_sources():
     sources = [_make_source(20.0, -1.0, 0.02, -0.03, 10.0)]
     fitter = PolynomialPointingOffset(min_snr=5, min_num=5, poly_order=1)
     result = fitter.build_model(pointing_sources=sources)
-    assert result is None
+    assert result == (PolynomialPointingModel(poly_order=1), PointingModelStats())
     assert fitter.pointing_model is None
 
 

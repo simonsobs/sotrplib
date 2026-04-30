@@ -60,9 +60,13 @@ class MapPointingOffset(ABC):
 
 
 class EmptyPointingOffset(MapPointingOffset):
-    def build_model(self, pointing_sources: list[RegisteredSource] | None = None):
-        # no need for a deepcopy as apply offset is a noop
-        pass
+    def build_model(
+        self, pointing_sources: list[RegisteredSource] | None = None
+    ) -> tuple[ConstantPointingModel, PointingModelStats]:
+        return (
+            ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg),
+            PointingModelStats(),
+        )
 
     def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
         return pos
@@ -209,9 +213,12 @@ class PolynomialPointingOffset(MapPointingOffset):
 
     def build_model(
         self, pointing_sources: list[RegisteredSource] | None = None
-    ) -> PolynomialPointingModel:
+    ) -> tuple[PolynomialPointingModel, PointingModelStats]:
         log = self.log.bind(func="PolynomialPointingOffset.build_model")
         pointing_sources = pointing_sources or self.pointing_sources
+
+        model = PolynomialPointingModel(poly_order=self.poly_order)
+        stats = PointingModelStats()
 
         # gather valid records
         valid = [
@@ -225,7 +232,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         if len(valid) == 0:
             log.warn("PolynomialPointingOffset.build_model.no_valid_sources")
             self.pointing_model = None
-            return None
+            return model, stats
 
         ras = np.array([s.ra.to_value(u.deg) for s in valid])
         decs = np.array([s.dec.to_value(u.deg) for s in valid])
@@ -248,7 +255,7 @@ class PolynomialPointingOffset(MapPointingOffset):
                 "PolynomialPointingOffset.build_model.not_enough_sources_above_snr",
                 n_valid_sources=len(ras),
             )
-            return None
+            return model, stats
 
         # sigma clip independently
         dra_clipped = sigma_clip(dra, sigma=self.sigma_clip_level, masked=True)

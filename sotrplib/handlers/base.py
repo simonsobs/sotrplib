@@ -5,6 +5,7 @@ import numpy as np
 from astropy import units
 from astropy.coordinates import SkyCoord
 from mapcat.pointing.const import ConstantPointingModel
+from mapcat.pointing.poly import PolynomialPointingModel
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.database import save_pointing_model, set_processing_end
@@ -193,7 +194,7 @@ class BaseRunner:
         )
 
         cached = getattr(input_map, "pointing_model", None)
-        if isinstance(cached, ConstantPointingModel):
+        if isinstance(cached, ConstantPointingModel | PolynomialPointingModel):
             pointing_model = cached
         else:
             pointing_model, pointing_model_stats = self.profilable_task(
