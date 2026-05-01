@@ -67,16 +67,10 @@ class SOCatWrapper:
         """
         if len(sources) == 0:
             return []
-        m = mask_map.flux
-        poss = np.array(
-            [
-                [s.dec.to_value(u.rad) for s in sources],
-                [s.ra.to_value(u.rad) for s in sources],
-            ]
-        )
+        coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
         # Query the map once for all positions, convert to a 1D boolean mask.
-        inside = np.nan_to_num(m.at(poss, mode="nn")).astype(bool).ravel()
-        return [source for source, valid in zip(sources, inside) if valid]
+        inside, _ = mask_map.filter_sources(coords)
+        return [sources[i] for i in range(len(sources)) if inside[i]]
 
     def get_forced_photometry_sources(
         self, minimum_flux: u.Quantity
@@ -111,23 +105,26 @@ class SOCatWrapper:
             self._socat_source_to_registered(socat_source=x) for x in sources_in_map
         ]
 
-    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        box = input_map.bbox
-        all_sources = self.get_sources_in_box(box=box)
+    def get_sources_in_map(
+        self, input_map: ProcessableMap, log: FilteringBoundLogger | None = None
+    ) -> list[RegisteredSource]:
+        log = log or self.log or structlog.get_logger()
+        all_sources = self.get_sources_in_box(box=None)
         if len(all_sources) == 0:
             return []
         coords = SkyCoord(
             ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
         )
-        y, x = input_map.flux.wcs.world_to_pixel(coords)
-        nx, ny = input_map.flux.shape
-        x, y = np.round(x).astype(int), np.round(y).astype(int)
-        inside = (x >= 0) & (y >= 0) & (x < nx) & (y < ny)
-        result = np.zeros_like(x, dtype=bool)
-        result[inside] = np.nan_to_num(input_map.flux[x[inside], y[inside]]).astype(
-            bool
-        )
-        return [all_sources[i] for i, valid in enumerate(result) if valid]
+        inside, _ = input_map.filter_sources(coords)
+        if len(inside) == 0:
+            log.warning(
+                "get_sources_in_map.no_sources_in_map",
+                map_id=input_map.map_id,
+                wcs=input_map.flux.wcs,
+            )
+            return []
+
+        return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
     def nearby_sources(
         self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg

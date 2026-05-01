@@ -1,9 +1,13 @@
 import datetime
 import os
 
+import numpy as np
 import pytest
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from pixell import enmap
+
+np.random.seed(42)
 
 
 @pytest.fixture
@@ -48,16 +52,24 @@ def sim_transient_params():
 
 
 @pytest.fixture
-def dummy_source():
-    from sotrplib.sims.sim_sources import SimTransient
+def dummy_fixed_source():
+    from sotrplib.sims.sim_sources import FixedSimulatedSource
 
-    ds = SimTransient()
-    ds.ra = 1.1 * u.deg
-    ds.dec = -2.2 * u.deg
-    ds.flux = 1.0 * u.Jy
-    ds.peak_time = 0.0
-    ds.flare_width = 1.0
-    return ds
+    return FixedSimulatedSource(
+        position=SkyCoord(ra=1.1 * u.deg, dec=-2.2 * u.deg), flux=1.0 * u.Jy
+    )
+
+
+@pytest.fixture
+def dummy_gaussian_source():
+    from sotrplib.sims.sim_sources import GaussianTransientSimulatedSource
+
+    return GaussianTransientSimulatedSource(
+        position=SkyCoord(ra=1.1 * u.deg, dec=-2.2 * u.deg),
+        peak_amplitude=1.0 * u.Jy,
+        peak_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
+        flare_width=datetime.timedelta(days=1),
+    )
 
 
 def build_wcs(sim_map_params):

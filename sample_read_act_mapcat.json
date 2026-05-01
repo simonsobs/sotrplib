@@ -1,10 +1,12 @@
 {
     "maps": {
             "map_generator_type": "mapcat_database",
-            "number_to_read": 1,
-            "instrument": "SOLAT",
+            "instrument": "ACT",
+            "map_type": "rhokappa",
+            "map_units": "mJy",
+            "start_time": "2019-06-10T00:00:00Z",
+            "end_time": "2019-06-10T12:00:00Z",
             "frequency": "f090",
-            "array": "i6",
             "rerun": "True"
         },
     "source_catalogs": [
@@ -16,11 +18,13 @@
     "sso_catalogs": [
         {
             "catalog_type": "sso",
-            "db_path": "sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "db_path": "sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
+            "start_time": "2019-01-01T00:00:00Z",
+            "stop_time": "2019-10-20T00:00:00Z"
         }
     ],
     "pointing_provider": {
-        "photometry_type": "scipy_pointing",
+        "photometry_type": "lmfit_pointing",
         "thumbnail_half_width": "6 arcmin",
         "min_flux": "0.3 Jy",
         "reproject_thumbnails": "True",
@@ -28,7 +32,7 @@
         "near_source_rel_flux_limit": 0.3
     },
     "pointing_residual": {
-        "pointing_residual_type": "polynomial",
+        "pointing_residual_type": "median",
         "min_snr": 5.0,
         "min_sources": 5,
         "sigma_clip_level": 3.0,
@@ -39,14 +43,6 @@
         {
             "preprocessor_type": "planet_mask",
             "mask_radius": "15 arcmin"
-        },
-        {
-            "preprocessor_type": "matched_filter",
-            "band_height": "1 deg",
-            "shrink_holes": "5 arcmin",
-            "noisemask_lim": 0.1,
-            "noisemask_radius": "10 arcmin",
-            "apod_holes": "10 arcmin"
         },
         {
             "preprocessor_type": "kappa_rho"
@@ -61,7 +57,11 @@
        {
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
-            "tile_size": ".5 deg"
+            "tile_size": "0.5 deg"
+        },
+        {
+            "postprocessor_type":"galaxy_mask",
+            "mask_path": "./act_dust_mask.fits"
         }
     ],
     "source_subtractor": {
@@ -71,7 +71,7 @@
             "search_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy",
+        "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "4 arcmin",
@@ -81,7 +81,7 @@
     "sifter": {
         "sifter_type": "default"
     },
-    "outputs": [
+    "source_outputs": [
         {
             "output_type": "pickle",
             "directory": "."

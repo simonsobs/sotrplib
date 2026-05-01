@@ -63,6 +63,10 @@ scripts/*/test*.py
 
 # any databases
 *sqlite
+*parquet
+
+# any map files
+*.fits
 
 # any ephemeris / orbital param files
 *.bsp
@@ -71,3 +75,9 @@ scripts/*/test*.py
 
 # ipynb checkpoints
 .ipynb_checkpoints
+
+# any maps
+*.fits
+
+# environment configs
+run_act_prefect_env
