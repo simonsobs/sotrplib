@@ -25,7 +25,6 @@ def test_basic_pipeline_scipy(
     maps = [new_map, new_map]
     source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PrefectRunner(
-        maps=maps,
         map_coadder=None,
         source_catalogs=[source_cat],
         sso_catalogs=[],
@@ -44,7 +43,7 @@ def test_basic_pipeline_scipy(
     )
 
     with prefect_test_harness():
-        result = runner.run()
+        result = runner.run(maps)
         _validate_pipeline_result(result, len(maps))
 
 
@@ -59,7 +58,6 @@ def test_basic_pipeline_lmfit(
     maps = [new_map, new_map]
     source_cat = RegisteredSourceCatalog(sources=sources)
     runner = PrefectRunner(
-        maps=maps,
         map_coadder=None,
         source_catalogs=[],
         sso_catalogs=[],
@@ -78,7 +76,7 @@ def test_basic_pipeline_lmfit(
     )
 
     with prefect_test_harness():
-        result = runner.run()
+        result = runner.run(maps)
         _validate_pipeline_result(result, len(maps))
 
 

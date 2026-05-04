@@ -124,9 +124,6 @@ class Settings(BaseSettings):
         log = structlog.get_logger()
 
         contents = {
-            "maps": self.maps.to_generator(log=log)
-            if not isinstance(self.maps, list)
-            else [x.to_map(log=log) for x in self.maps],
             "map_coadder": self.map_coadder.to_coadder(log=log),
             "source_simulators": [
                 x.to_simulator(log=log) for x in self.source_simulators

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyinstrument
 import pytest
+import structlog
 from astropy.coordinates import SkyCoord
 
 from sotrplib.config.config import Settings
@@ -56,8 +57,16 @@ def calculate_separation(candidate: MeasuredSource) -> float:
 def main():
     config = Settings.from_file("regression.json")
     pipeline = config.to_runner()
+
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
+    )
+    log = structlog.get_logger()
+
+    maps = config.maps.to_generator(log=log)
+
     with pyinstrument.Profiler() as profiler:
-        results = pipeline.run()
+        results = pipeline.run(maps)
     profiler.write_html("profile.html")
     print(profiler.output_text(unicode=True, color=True))
     result = results[0]
