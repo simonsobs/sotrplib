@@ -63,7 +63,11 @@ def main():
     )
     log = structlog.get_logger()
 
-    maps = config.maps.to_generator(log=log)
+    maps = config.maps
+    if hasattr(maps, "to_generator"):
+        maps = maps.to_generator(log=log)
+    else:
+        maps = [mm.to_map(log=log) for mm in maps]
 
     with pyinstrument.Profiler() as profiler:
         results = pipeline.run(maps)
