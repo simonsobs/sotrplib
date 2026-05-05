@@ -264,14 +264,10 @@ class BaseRunner:
             self.profilable_task(set_processing_end)(input_map.map_id)
         return forced_photometry_candidates, sifter_result
 
-    def run(
-        self, maps: list[ProcessableMap]
-    ) -> tuple[list[list], list[object], list[ProcessableMap]]:
+    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
 
-    def _run(
-        self, maps: list[ProcessableMap]
-    ) -> tuple[list[list], list[object], list[ProcessableMap]]:
+    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
