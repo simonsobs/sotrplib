@@ -1,6 +1,7 @@
 """
 Tests running the pipeline under prefect with simulated data.
 """
+
 import datetime
 
 from astropy import units as u

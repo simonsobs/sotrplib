@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
+from itertools import combinations
 from typing import Iterable
 
 import numpy as np
+import uuid7
 from astropy import units
 from astropy.coordinates import SkyCoord
 from mapcat.pointing.const import ConstantPointingModel
@@ -275,6 +277,71 @@ class BaseRunner:
             self.profilable_task(set_processing_end)(input_map.map_id)
         return forced_photometry_candidates, sifter_result
 
+    def crossmatch_pair(
+        self, candidates: tuple[list], radius: float = 1.5
+    ) -> list[list[tuple]]:
+        from sotrplib.sifter.crossmatch import crossmatch_mask
+
+        positions = [
+            np.array([[src.dec.value, src.ra.value] for src in candidates])
+            for candidates in candidates
+        ]
+
+        # FIXME: use a better radius
+        found, matches = self.profilable_task(crossmatch_mask)(
+            *positions, radius=1.5, return_matches=True
+        )
+        return matches
+
+    def n_wise_crossmatch(
+        self, matches: list[list[tuple]], results: list[tuple], map_ids: list[str]
+    ) -> dict[str, list[tuple[str, str]]]:
+        # Compute which result indices each unique source appears in across all pairwise comparisons.
+        # Convert each pairwise match list to a dict {source_in_r1: source_in_r2}.
+        # combinations() guarantees pairs are ordered so all (0, r) pairs come first, seeding
+        # canonical keys from result 0 before any later pairs reference those sources.
+        n_results = len(results)
+        pair_indices = list(combinations(range(n_results), 2))
+        match_by_pair = {
+            pair: {i: j for match in match_list for i, j in match}
+            for match_list, pair in zip(matches, pair_indices)
+        }
+
+        # full_matches: canonical_key -> {result_idx: source_idx_in_that_result}
+        # node_to_key:  (result_idx, source_idx) -> canonical_key (inverted index)
+        full_matches: dict = {}
+        node_to_key: dict = {}
+        next_key = 0
+
+        for (r1, r2), d in match_by_pair.items():
+            for i, j in d.items():
+                k1 = node_to_key.get((r1, i))
+                k2 = node_to_key.get((r2, j))
+                if k1 is None and k2 is None:
+                    full_matches[next_key] = {r1: i, r2: j}
+                    node_to_key[(r1, i)] = node_to_key[(r2, j)] = next_key
+                    next_key += 1
+                elif k1 is None:
+                    full_matches[k2][r1] = i
+                    node_to_key[(r1, i)] = k2
+                elif k2 is None:
+                    full_matches[k1][r2] = j
+                    node_to_key[(r2, j)] = k1
+
+        output: dict[str, list[tuple[str, str]]] = {}
+        for indices_by_result in full_matches.values():
+            key = str(uuid7.create())
+            output[key] = [
+                (
+                    map_ids[r],
+                    results[r][1].transient_candidates[idx].measurement_id,
+                )
+                for r, idx in indices_by_result.items()
+            ]
+            for r, idx in indices_by_result.items():
+                results[r][1].transient_candidates[idx].source_id = key
+        return output, results
+
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
 
@@ -287,8 +354,19 @@ class BaseRunner:
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
-        return (
+        results = (
             self.basic_task(self.coadd_and_analyze_maps)
             .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )
+        matches = (
+            self.basic_task(self.crossmatch_pair)
+            .map(combinations([res[1].transient_candidates for res in results], 2))
+            .result()
+        )
+
+        cross_matches, results = self.profilable_task(self.n_wise_crossmatch)(
+            matches, results, [mm.map_id for mm in maps]
+        )
+
+        return results
