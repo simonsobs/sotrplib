@@ -38,7 +38,6 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
         observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
     ).to_map()
     runner = PipelineRunner(
-        maps=[input_map],
         map_coadder=None,
         source_catalogs=[],
         sso_catalogs=[],
@@ -56,7 +55,7 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
         map_outputs=None,
     )
 
-    runner.run()
+    runner.run([input_map])
 
 
 def test_basic_pipeline_ivar(separate_map_set_1):
@@ -72,7 +71,6 @@ def test_basic_pipeline_ivar(separate_map_set_1):
         observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
     ).to_map()
     runner = PipelineRunner(
-        maps=[input_map],
         map_coadder=None,
         source_catalogs=[],
         sso_catalogs=[],
@@ -90,7 +88,7 @@ def test_basic_pipeline_ivar(separate_map_set_1):
         map_outputs=None,
     )
 
-    runner.run()
+    runner.run([input_map])
 
 
 def test_basic_pipeline_instrument(separate_map_set_1):

@@ -56,7 +56,6 @@ class BaseRunner:
 
     def __init__(
         self,
-        maps: Iterable[ProcessableMap],
         map_coadder: MapCoadder | None,
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
@@ -74,7 +73,6 @@ class BaseRunner:
         map_outputs: list[MapOutput] | None,
         profile: bool = False,
     ):
-        self.maps = maps
         self.map_coadder = map_coadder or EmptyMapCoadder()
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
@@ -122,9 +120,11 @@ class BaseRunner:
 
         return output_map
 
-    @property
-    def bbox(self):
-        if not self.maps:
+    def coadd_maps(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
+        return self.map_coadder.coadd(input_maps)
+
+    def bbox(self, maps=None):
+        if not maps:
             return None
 
         # mapcat map list is not subscriptable so start with maximal bounding box
@@ -132,7 +132,7 @@ class BaseRunner:
             SkyCoord(ra=359.999 * units.deg, dec=90.0 * units.deg),
             SkyCoord(ra=0.0 * units.deg, dec=-90.0 * units.deg),
         ]
-        for input_map in self.maps:
+        for input_map in maps:
             map_bbox = input_map.bbox
             left = min(bbox[0].ra, map_bbox[0].ra)
             bottom = min(bbox[0].dec, map_bbox[0].dec)
@@ -141,26 +141,25 @@ class BaseRunner:
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
         return bbox
 
-    @property
-    def observation_time_range(self):
-        if not self.maps:
+    def observation_time_range(self, maps=None):
+        if not maps:
             return (None, None)
 
         start_time = datetime.max.replace(tzinfo=timezone.utc)
         end_time = datetime.min.replace(tzinfo=timezone.utc)
-        for input_map in self.maps:
+        for input_map in maps:
             start_time = min(input_map.observation_start, start_time)
             end_time = max(input_map.observation_end, end_time)
 
         return (start_time, end_time)
 
-    def simulate_sources(self) -> list[SimulatedSource]:
+    def simulate_sources(
+        self, bbox: list[SkyCoord], time_range: tuple[float]
+    ) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         if len(self.source_simulators) == 0:
             return []
         all_simulated_sources = []
-        bbox = self.bbox
-        time_range = self.observation_time_range
         for simulator in self.source_simulators:
             simulated_sources, catalog = self.profilable_task(simulator.generate)(
                 box=bbox,
@@ -265,18 +264,20 @@ class BaseRunner:
             self.profilable_task(set_processing_end)(input_map.map_id)
         return forced_photometry_candidates, sifter_result
 
-    def run(self) -> tuple[list[list[MeasuredSource]], list[SifterResult]]:
-        return self.flow(self._run)()
+    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+        return self.flow(self._run)(maps)
 
-    def _run(self) -> tuple[list[list[MeasuredSource]], list[SifterResult]]:
+    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
-        all_simulated_sources = self.basic_task(self.simulate_sources)()
-        self.map_sets = self.basic_task(self.map_coadder.group_maps)(self.maps)
+        bbox = self.bbox(maps)
+        time_range = self.observation_time_range(maps)
+        all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)
+        map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
         return (
             self.basic_task(self.coadd_and_analyze_maps)
-            .map(self.map_sets, self.unmapped(all_simulated_sources))
+            .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )
