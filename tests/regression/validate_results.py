@@ -61,7 +61,7 @@ def main():
     profiler.write_html("profile.html")
     print(profiler.output_text(unicode=True, color=True))
     result = results[0]
-    photometry, sifter_result, _ = result
+    photometry, sifter_result = result
 
     found = [candidate for candidate in photometry if not candidate.fit_failed]
     # some forced photometry candidates don't have offsets
