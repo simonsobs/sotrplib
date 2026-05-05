@@ -16,7 +16,7 @@ from sotrplib.maps.pointing import (
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import MapOutput, SourceOutput
-from sotrplib.sifter.core import EmptySifter, SiftingProvider, SifterResult
+from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
