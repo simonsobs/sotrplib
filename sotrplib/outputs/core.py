@@ -13,6 +13,7 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
