@@ -124,7 +124,6 @@ class BaseRunner:
         return self.map_coadder.coadd(input_maps)
 
     def bbox(self, maps=None):
-        print(maps)
         if not maps:
             return None
 
@@ -154,7 +153,9 @@ class BaseRunner:
 
         return (start_time, end_time)
 
-    def simulate_sources(self, bbox: list[SkyCoord], time_range: tuple[float]) -> list[SimulatedSource]:
+    def simulate_sources(
+        self, bbox: list[SkyCoord], time_range: tuple[float]
+    ) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         if len(self.source_simulators) == 0:
             return []
@@ -263,10 +264,14 @@ class BaseRunner:
             self.profilable_task(set_processing_end)(input_map.map_id)
         return forced_photometry_candidates, sifter_result
 
-    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object], list[ProcessableMap]]:
+    def run(
+        self, maps: list[ProcessableMap]
+    ) -> tuple[list[list], list[object], list[ProcessableMap]]:
         return self.flow(self._run)(maps)
 
-    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object], list[ProcessableMap]]:
+    def _run(
+        self, maps: list[ProcessableMap]
+    ) -> tuple[list[list], list[object], list[ProcessableMap]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
