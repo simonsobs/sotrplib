@@ -42,9 +42,9 @@ def test_basic_pipeline_scipy(
 
     new_map, sources = map_with_sources
     source_cat = RegisteredSourceCatalog(sources=sources)
+    maps = [new_map, new_map]
 
     runner = PipelineRunner(
-        maps=[new_map, new_map],
         map_coadder=None,
         source_catalogs=[source_cat],
         sso_catalogs=[],
@@ -62,7 +62,7 @@ def test_basic_pipeline_scipy(
         map_outputs=None,
     )
 
-    runner.run()
+    runner.run(maps)
 
 
 def test_basic_pipeline_lmfit(
@@ -74,9 +74,9 @@ def test_basic_pipeline_lmfit(
 
     new_map, sources = map_with_sources
     source_cat = RegisteredSourceCatalog(sources=sources)
+    maps = [new_map, new_map]
 
     runner = PipelineRunner(
-        maps=[new_map, new_map],
         map_coadder=None,
         source_catalogs=[source_cat],
         sso_catalogs=[],
@@ -94,7 +94,7 @@ def test_basic_pipeline_lmfit(
         map_outputs=None,
     )
 
-    runner.run()
+    runner.run(maps)
 
 
 def test_find_single_source_blind(
