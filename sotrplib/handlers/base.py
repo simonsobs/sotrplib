@@ -188,7 +188,10 @@ class BaseRunner:
     ) -> tuple[list[MeasuredSource], SifterResult]:
         input_map = self.profilable_task(self.build_map)(input_map)
 
-        self.profilable_task(input_map.finalize)()
+        if input_map is not None:
+            self.profilable_task(input_map.finalize)()
+        else:
+            return [], None
 
         injected_sources, input_map = self.profilable_task(self.source_injector.inject)(
             input_map=input_map, simulated_sources=simulated_sources
