@@ -18,7 +18,7 @@ from mapcat.database import (
     TimeDomainProcessingTable,
 )
 from mapcat.helper import settings as mapcat_settings
-from mapcat.mapcat.pointing.base import PointingModelStats
+from mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
 from pydantic import AwareDatetime
