@@ -19,8 +19,8 @@
         {
             "catalog_type": "sso",
             "db_path": "sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
-            "start_time": "2019-01-01T00:00:00Z",
-            "stop_time": "2019-10-20T00:00:00Z"
+            "start_time": "2019-06-09T00:00:00Z",
+            "stop_time": "2019-06-11T00:00:00Z"
         }
     ],
     "pointing_provider": {
