@@ -240,46 +240,44 @@ def interpolate_ephem(
             ephem_jd_range=(obj_df["julian_day"].min(), obj_df["julian_day"].max()),
         )
 
-    ras = []
-    decs = []
-    dists = []
-    for tjd in target_jd:
-        subset = obj_df[np.abs(obj_df["julian_day"] - tjd) < window.to_value(u.day)]
+    w = window.to_value(u.day)
+    subset = obj_df[
+        (obj_df["julian_day"] >= target_jd.min() - w)
+        & (obj_df["julian_day"] <= target_jd.max() + w)
+    ]
 
-        if len(subset) < min_points_for_interp:
-            ras.append(np.nan)
-            decs.append(np.nan)
-            dists.append(np.nan)
-            log.warn(
-                "interpolate_ephem.too_few_interpolation_points",
-                target_jd=tjd,
-                n_points=len(subset),
-                required_points=min_points_for_interp,
-                window=f"{window.to_value(u.day)} days",
-            )
-            continue
-
-        t = subset["julian_day"].values
-        ra = subset["ra_deg"].values
-        dec = subset["dec_deg"].values
-
-        ra_spline = UnivariateSpline(t, ra, k=3, s=0)
-        dec_spline = UnivariateSpline(t, dec, k=3, s=0)
-
-        has_distance = "distance_au" in subset.columns
-        if has_distance:
-            dist = subset["distance_au"].values
-        dist_spline = UnivariateSpline(t, dist, k=3, s=0) if has_distance else None
-
-        ras.append(ra_spline(tjd))
-        decs.append(dec_spline(tjd))
-        dists.append(
-            dist_spline(tjd) if has_distance else np.nan * np.ones_like(ra_spline(tjd))
+    if len(subset) < min_points_for_interp:
+        log.warn(
+            "interpolate_ephem.too_few_interpolation_points",
+            target_jd_range=(target_jd.min(), target_jd.max()),
+            n_points=len(subset),
+            required_points=min_points_for_interp,
+            window=f"{w} days",
+        )
+        return SkyCoord(
+            ra=np.full(len(target_jd), np.nan) * u.deg,
+            dec=np.full(len(target_jd), np.nan) * u.deg,
+            frame="icrs",
         )
 
-    ras = np.array(ras)
-    decs = np.array(decs)
-    dists = np.array(dists)
+    t = subset["julian_day"].values
+    ra = subset["ra_deg"].values
+    dec = subset["dec_deg"].values
+
+    ra_spline = UnivariateSpline(t, ra, k=3, s=0)
+    dec_spline = UnivariateSpline(t, dec, k=3, s=0)
+
+    has_distance = "distance_au" in subset.columns
+    dist_spline = (
+        UnivariateSpline(t, subset["distance_au"].values, k=3, s=0)
+        if has_distance
+        else None
+    )
+
+    ras = ra_spline(target_jd)
+    decs = dec_spline(target_jd)
+    dists = dist_spline(target_jd) if has_distance else np.full(len(target_jd), np.nan)
+
     return SkyCoord(
         ra=ras * u.deg,
         dec=decs * u.deg,
@@ -434,7 +432,7 @@ def get_sso_ephem_in_map(
 
     sso_ephems = {}
     unique_objs = ephem_df["designation"].unique()
-    for obj in unique_objs:
+    for obj in tqdm(unique_objs, desc="Checking solar system objects in map"):
         obj_df = ephem_df[ephem_df["designation"] == obj]
         interp_pos = interpolate_ephem(
             obj_df, time_jd, window=interp_time_range, log=log
