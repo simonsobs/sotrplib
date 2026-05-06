@@ -43,11 +43,25 @@ class GalaxyMask(MapPostprocessor):
         self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        enmap_box = (
+            [
+                [
+                    input_map.box[0].dec.to_value(u.rad),
+                    input_map.box[0].ra.to_value(u.rad),
+                ],
+                [
+                    input_map.box[1].dec.to_value(u.rad),
+                    input_map.box[1].ra.to_value(u.rad),
+                ],
+            ]
+            if input_map.box is not None
+            else None
+        )
         galaxy_mask = mask_dustgal(
             imap=input_map.flux,
             galmask=enmap.read_map(
                 fname=str(self.mask_path),
-                box=input_map.box,
+                box=enmap_box,
             ),
         )
         if self.invert:
