@@ -278,6 +278,22 @@ def interpolate_ephem(
     decs = dec_spline(target_jd)
     dists = dist_spline(target_jd) if has_distance else np.full(len(target_jd), np.nan)
 
+    # Per-target check: mask times that don't have enough nearby ephem points.
+    n_local = ((t >= target_jd[:, None] - w) & (t <= target_jd[:, None] + w)).sum(
+        axis=1
+    )
+    sparse = n_local < min_points_for_interp
+    if sparse.any():
+        log.warn(
+            "interpolate_ephem.too_few_interpolation_points",
+            n_sparse_targets=int(sparse.sum()),
+            required_points=min_points_for_interp,
+            window=f"{w} days",
+        )
+        ras[sparse] = np.nan
+        decs[sparse] = np.nan
+        dists[sparse] = np.nan
+
     return SkyCoord(
         ra=ras * u.deg,
         dec=decs * u.deg,
