@@ -310,10 +310,11 @@ def save_pointing_model(
     pointing_model_stats: PointingModelStats,
     session=None,
 ) -> None:
-    """Serialize a ConstantPointingModel to PointingResidualTable.
+    """
+    Serialize a PointingModel subclass to PointingResidualTable.
 
-    Non-constant pointing models are silently skipped; mapcat only supports
-    ConstantPointingModel.
+    Supports ``ConstantPointingModel`` and ``PolynomialPointingModel``.
+    Raises ``ValueError`` for unsupported pointing model types.
     """
     if session is None:
         session = mapcat_settings.session()
