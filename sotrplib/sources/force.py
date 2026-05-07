@@ -93,7 +93,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 
 
 class TwoDGaussianFitter(ForcedPhotometryProvider):
-    mode: Literal["scipy", "lmfit"] = "lmfit"
+    mode: Literal["lmfit"] = "lmfit"
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
     allowable_center_offset: u.Quantity
@@ -104,7 +104,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
     def __init__(
         self,
-        mode: Literal["scipy", "lmfit"] = "lmfit",
+        mode: Literal["lmfit"] = "lmfit",
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
@@ -117,9 +117,8 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         Initialize the GaussianFitter.
         Parameters
         ----------
-        mode : {"scipy", "lmfit"}, optional
-            The method to use for fitting the Gaussian. Options are "scipy" for
-            scipy.optimize.curve_fit or "lmfit" for the lmfit library. The default is "lmfit".
+        mode : {"lmfit"}, optional
+            The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
         flux_limit_centroid : astropy.units.Quantity, optional
             Minimum flux required to attempt centroid fitting (default: 0.3 Jy).
         reproject_thumbnails : bool, optional
@@ -231,7 +230,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
 
 class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
-    mode: Literal["scipy", "lmfit"] = "lmfit"
+    mode: Literal["lmfit"] = "lmfit"
     min_flux: u.Quantity
     reproject_thumbnails: bool
     thumbnail_half_width: u.Quantity
@@ -242,7 +241,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
 
     def __init__(
         self,
-        mode: Literal["scipy", "lmfit"] = "lmfit",
+        mode: Literal["lmfit"] = "lmfit",
         min_flux: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
@@ -252,12 +251,11 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         log: FilteringBoundLogger | None = None,
     ):
         """
-        Initialize the Scipy2DGaussianFitter.
+        Initialize the TwoDGaussianPointingFitter.
         Parameters
         ----------
-        mode : {"scipy", "lmfit"}, optional
-            The method to use for fitting the Gaussian. Options are "scipy" for
-            scipy.optimize.curve_fit or "lmfit" for the lmfit library. The default is "lmfit".
+        mode : {"lmfit"}, optional
+            The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
         min_flux : astropy.units.Quantity, optional
             Minimum flux required to attempt pointing fit (default: 0.3 Jy).
         reproject_thumbnails : bool, optional
