@@ -19,7 +19,7 @@ def test_created_map(empty_map: SimulatedMap):
     assert isinstance(empty_map, SimulatedMap)
 
 
-def test_injected_sources_scipy(
+def test_injected_sources_lmfit(
     map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
 ):
     new_map, sources = map_with_sources
@@ -28,41 +28,9 @@ def test_injected_sources_scipy(
     assert len(sources) > 0
 
     # See if we can recover them
-    forced_sources = gaussian_fit(new_map, source_list=sources, fit_method="scipy")
+    forced_sources = gaussian_fit(new_map, source_list=sources, fit_method="lmfit")
 
     assert len(forced_sources) == len(sources)
-
-
-def test_basic_pipeline_scipy(
-    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
-):
-    """
-    Tests a complete setup of the basic pipeline run.
-    """
-
-    new_map, sources = map_with_sources
-    source_cat = RegisteredSourceCatalog(sources=sources)
-    maps = [new_map, new_map]
-
-    runner = PipelineRunner(
-        map_coadder=None,
-        source_catalogs=[source_cat],
-        sso_catalogs=[],
-        source_injector=None,
-        preprocessors=None,
-        pointing_provider=None,
-        pointing_residual_model=None,
-        postprocessors=None,
-        source_simulators=None,
-        forced_photometry=TwoDGaussianFitter(mode="scipy"),
-        source_subtractor=None,
-        blind_search=SigmaClipBlindSearch(),
-        sifter=DefaultSifter(),
-        source_outputs=[PickleSerializer(directory=tmp_path)],
-        map_outputs=None,
-    )
-
-    runner.run(maps)
 
 
 def test_basic_pipeline_lmfit(

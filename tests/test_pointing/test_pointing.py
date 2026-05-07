@@ -16,7 +16,7 @@ from sotrplib.sources.sources import MeasuredSource
 def test_median_residual_empty(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = TwoDGaussianFitter(
-        mode="scipy",
+        mode="lmfit",
         flux_limit_centroid=0.1 * u.Jy,
         reproject_thumbnails=False,
         thumbnail_half_width=10.0 * u.arcmin,
@@ -42,7 +42,7 @@ def test_median_residual_empty(map_with_single_source):
 def test_median_residual_notenough_sources(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = TwoDGaussianFitter(
-        mode="scipy",
+        mode="lmfit",
         flux_limit_centroid=0.1 * u.Jy,
         reproject_thumbnails=False,
         thumbnail_half_width=10.0 * u.arcmin,
@@ -68,7 +68,7 @@ def test_median_residual_notenough_sources(map_with_single_source):
 def test_median_residual(map_with_sources):
     input_map, sources = map_with_sources
     pointing_fitter = TwoDGaussianPointingFitter(
-        mode="scipy",
+        mode="lmfit",
         min_flux=0.1 * u.Jy,
         reproject_thumbnails=True,
         thumbnail_half_width=10.0 * u.arcmin,
@@ -186,7 +186,7 @@ def test_polynomial_pointing_order1_linear_offset():
 def test_mean_residual(map_with_sources):
     input_map, sources = map_with_sources
     pointing_fitter = TwoDGaussianPointingFitter(
-        mode="scipy",
+        mode="lmfit",
         min_flux=0.1 * u.Jy,
         reproject_thumbnails=True,
         thumbnail_half_width=10.0 * u.arcmin,
