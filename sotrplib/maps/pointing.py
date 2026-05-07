@@ -37,7 +37,9 @@ class MapPointingOffset(ABC):
 
     def build_model(self, pointing_sources: list[RegisteredSource] | None = None):
         """Calculate the pointing offset model based on the provided sources."""
-        pass
+        raise NotImplementedError(
+            "MapPointingOffset.build_model must be implemented in subclasses."
+        )
 
     def apply_offset_at_position(self, pos: SkyCoord) -> SkyCoord:
         """
@@ -241,7 +243,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         snr = np.array([s.snr for s in valid])
 
         # SNR cut
-        mask = snr >= self.min_snr
+        mask = (snr >= self.min_snr) & (np.isfinite(snr))
         ras, decs, dra, ddec, snr = (
             ras[mask],
             decs[mask],
@@ -273,7 +275,13 @@ class PolynomialPointingOffset(MapPointingOffset):
             dec=(decs[~masked] - ddec[~masked]) * u.deg,
             frame="icrs",
         )
-        self.pointing_model.build_model(meas_pos, exp_pos, weights=snr[~masked])
+
+        if self.max_snr_weight is not None:
+            snr_weights = np.clip(snr[~masked], a_min=None, a_max=self.max_snr_weight)
+        else:
+            snr_weights = snr[~masked]
+
+        self.pointing_model.build_model(meas_pos, exp_pos, weights=snr_weights)
 
         log.info(
             "PolynomialPointingOffset.build_model.weighted_poly_fit",
