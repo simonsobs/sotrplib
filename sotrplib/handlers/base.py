@@ -207,7 +207,7 @@ class BaseRunner:
         )
 
         cached = getattr(input_map, "pointing_model", None)
-        if isinstance(cached, ConstantPointingModel | PolynomialPointingModel):
+        if isinstance(cached, (ConstantPointingModel | PolynomialPointingModel)):
             pointing_model = cached
         else:
             pointing_model, pointing_model_stats = self.profilable_task(
