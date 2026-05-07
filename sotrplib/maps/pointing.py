@@ -305,6 +305,7 @@ def save_model_maps(
     input_map: "ProcessableMap",
     filename_prefix: str,
     log: FilteringBoundLogger | None = None,
+    deprecated: bool = True,
 ):
     """
     Save the pointing offset model as maps for visualization.
@@ -322,9 +323,10 @@ def save_model_maps(
     """
     log = log or structlog.get_logger()
     log = log.bind(func="save_model_maps")
-
-    if isinstance(pointing_model, (ConstantPointingOffset, EmptyPointingOffset)):
-        log.warn("save_model_maps.Constant_or_EmptyModel.no_maps_saved")
+    if deprecated:
+        log.warn(
+            "DeprecationWarning: save_model_maps is deprecated. needs redesign for mapcat PointingModel interface."
+        )
         return
     pixmap = enmap.pixmap(input_map.flux.shape, wcs=input_map.flux.wcs)
 
