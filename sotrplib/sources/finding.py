@@ -94,9 +94,6 @@ def extract_sources(
 
     High snr pixels are returned by photutils and grouped into sources based on their
     significance and the minrad values.
-
-    Apply pointing offset correction to detected sources if pointing_residuals is supplied.
-
     """
     log = log or get_logger()
     log.bind(func_name="extract_sources")

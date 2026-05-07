@@ -11,12 +11,15 @@ import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
 from astropy.units import Unit
+from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from pixell.enmap import ndmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.utils import pixell_map_union
+
+PointingModel = ConstantPointingModel
 
 
 class ProcessableMap(ABC):
@@ -87,6 +90,8 @@ class ProcessableMap(ABC):
     _hits: ndmap | None = None
     "A hits map stating the number of times each pixel was observed"
 
+    _valid_pixel_mask_cache: ndmap | None = None
+
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
@@ -95,6 +100,8 @@ class ProcessableMap(ABC):
 
     _parent_database: Path | None = None
     "Path to the parent database for this map, if any"
+
+    _pointing_model: PointingModel | None = None
 
     @abstractmethod
     def build(self):
@@ -125,6 +132,23 @@ class ProcessableMap(ABC):
         )
         result = (np.isfinite(fvals)) & (fvals > 0.0)
         return result, source_positions[result]
+
+    @abstractmethod
+    def _compute_valid_pixel_mask(self) -> enmap.ndmap:
+        raise NotImplementedError(
+            "_compute_valid_pixel_mask must be implemented by ProcessableMap subclass"
+        )
+
+    def get_valid_pixel_mask(self) -> enmap.ndmap:
+        if self._valid_pixel_mask_cache is None:
+            self._valid_pixel_mask_cache = self._compute_valid_pixel_mask()
+        return self._valid_pixel_mask_cache
+
+    def filter_sources(self, source_positions: SkyCoord):
+        """
+        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+        """
+        return self._core_filter_sources(source_positions, self.get_valid_pixel_mask())
 
     @property
     def hits(self):
@@ -318,10 +342,13 @@ class ProcessableMap(ABC):
         Called just before source injection to ensure that the snr, flux, and
         time maps are available.
 
+        clear the cached valid pixel mask because the apply mask may change that.
+
         apply mask if present.
         """
         del self.rho
         del self.kappa
+        self._valid_pixel_mask_cache = None
         self.apply_mask()
         self.finalized = True
 
@@ -489,11 +516,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     def _compute_hits(self):
         return (self.inverse_variance > 0).astype(np.int32)
 
-    def filter_sources(self, source_positions: SkyCoord):
-        """
-        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
-
-        """
+    def _compute_valid_pixel_mask(self):
         if self.finalized:
             bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
         else:
@@ -502,8 +525,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             )
         if self.mask is not None:
             bool_map = bool_map & (self.mask > 0)
-
-        return self._core_filter_sources(source_positions, bool_map)
+        return bool_map
 
     def get_map_id(self):
         return self.__map_id or super().get_map_str_id()
@@ -629,19 +651,14 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
 
-    def filter_sources(self, source_positions: SkyCoord):
-        """
-        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
-
-        """
+    def _compute_valid_pixel_mask(self):
         if self.finalized:
             bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
         else:
             bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
         if self.mask is not None:
             bool_map = bool_map & (self.mask > 0)
-
-        return self._core_filter_sources(source_positions, bool_map)
+        return bool_map
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -822,19 +839,14 @@ class RhoAndKappaMap(ProcessableMap):
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
 
-    def filter_sources(self, source_positions: SkyCoord):
-        """
-        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
-
-        """
+    def _compute_valid_pixel_mask(self):
         if self.finalized:
             bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
         else:
             bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
         if self.mask is not None:
             bool_map = bool_map & (self.mask > 0)
-
-        return self._core_filter_sources(source_positions, bool_map)
+        return bool_map
 
     def get_snr(self):
         with np.errstate(divide="ignore"):
@@ -1011,16 +1023,11 @@ class FluxAndSNRMap(ProcessableMap):
     def _compute_hits(self):
         return (abs(self.flux) > 0).astype(np.int32)
 
-    def filter_sources(self, source_positions: SkyCoord):
-        """
-        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
-
-        """
+    def _compute_valid_pixel_mask(self):
         bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
         if self.mask is not None:
             bool_map = bool_map & (self.mask > 0)
-
-        return self._core_filter_sources(source_positions, bool_map)
+        return bool_map
 
     def get_snr(self):
         return self.snr
@@ -1165,16 +1172,11 @@ class CoaddedRhoKappaMap(ProcessableMap):
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
 
-    def filter_sources(self, source_positions: SkyCoord):
-        """
-        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
-
-        """
+    def _compute_valid_pixel_mask(self):
         bool_map = (self.kappa > 0).astype(np.int32) & (np.isfinite(self.kappa))
         if self.mask is not None:
             bool_map *= self.mask
-
-        return self._core_filter_sources(source_positions, bool_map)
+        return bool_map
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)

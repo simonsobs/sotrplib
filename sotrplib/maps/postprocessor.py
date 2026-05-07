@@ -5,6 +5,7 @@ the snr and flux arrays already exist.
 """
 
 from abc import ABC, abstractmethod
+from math import pi
 from pathlib import Path
 
 import structlog
@@ -43,11 +44,28 @@ class GalaxyMask(MapPostprocessor):
         self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        enmap_box = (
+            [
+                [
+                    input_map.box[0].dec.to_value(u.rad),
+                    input_map.box[0].ra.to_value(u.rad),
+                ],
+                [
+                    input_map.box[1].dec.to_value(u.rad),
+                    input_map.box[1].ra.to_value(u.rad),
+                ],
+            ]
+            if input_map.box is not None
+            else None
+        )
+        if enmap_box is not None:
+            if enmap_box[0][1] < enmap_box[1][1]:
+                enmap_box[1][1] -= 2 * pi
         galaxy_mask = mask_dustgal(
             imap=input_map.flux,
             galmask=enmap.read_map(
                 fname=str(self.mask_path),
-                box=input_map.box,
+                box=enmap_box,
             ),
         )
         if self.invert:

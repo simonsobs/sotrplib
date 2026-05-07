@@ -12,14 +12,22 @@ from astropy.coordinates import SkyCoord
 # connection; this only happens once, and we don't want it to
 # affect the import time of this module (or need a database to
 # be available just to import sotrplib).
-from mapcat.database import DepthOneMapTable, TimeDomainProcessingTable
+from mapcat.database import (
+    DepthOneMapTable,
+    PointingResidualTable,
+    TimeDomainProcessingTable,
+)
 from mapcat.helper import settings as mapcat_settings
+from mapcat.pointing.base import PointingModelStats
+from mapcat.pointing.const import ConstantPointingModel
+from mapcat.pointing.poly import PolynomialPointingModel
 from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
+from .pointing import PointingModel
 
 
 class MapCatDatabaseReader(ABC):
@@ -46,6 +54,7 @@ class MapCatDatabaseReader(ABC):
         box: tuple[SkyCoord, SkyCoord] | None = None,
         map_units: u.Unit | None = None,
         rerun: bool = False,
+        rerun_pointing_model: bool = False,
         stale_processing_time: timedelta = timedelta(hours=2),
         log: FilteringBoundLogger | None = None,
     ):
@@ -63,6 +72,7 @@ class MapCatDatabaseReader(ABC):
         self.map_units = map_units if map_units is not None else self.default_map_units
         self.box = box
         self.rerun = rerun
+        self.rerun_pointing_model = rerun_pointing_model
         self._map_list = None
         self.stale_processing_time = stale_processing_time
         self.log = log or get_logger()
@@ -138,6 +148,11 @@ class MapCatDatabaseReader(ABC):
                 m = self._build_map(result)
                 m.map_id = result.map_id
                 m._parent_database = mapcat_settings.database_name
+                m.pointing_model = (
+                    None
+                    if self.rerun_pointing_model
+                    else load_pointing_model(m.map_id, session=session)
+                )
                 maps.append(m)
                 self.map_ids.append(m.map_id)
                 set_processing_start(m.map_id, session=session)
@@ -263,6 +278,74 @@ def set_processing_start(map_id: int, session=None):
         session.add(r)
         session.commit()
     return
+
+
+def load_pointing_model(map_id: int, session=None) -> PointingModel | None:
+    """Load a pointing model from the DB for a given map, or None if not found."""
+    if session is None:
+        session = mapcat_settings.session()
+    query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
+    result = session.execute(query).one_or_none()
+
+    if result is None:
+        return None
+    for row in result:
+        if row.residual_model.model_type == "constant":
+            return ConstantPointingModel(
+                ra_offset=row.residual_model.ra_offset,
+                dec_offset=row.residual_model.dec_offset,
+            )
+        elif row.residual_model.model_type == "polynomial":
+            return PolynomialPointingModel(
+                poly_order=row.residual_model.poly_order,
+                ra_model_coefficients=row.residual_model.ra_model_coefficients,
+                dec_model_coefficients=row.residual_model.dec_model_coefficients,
+            )
+    return None
+
+
+def save_pointing_model(
+    map_id: int,
+    pointing_model: PointingModel,
+    pointing_model_stats: PointingModelStats,
+    session=None,
+) -> None:
+    """
+    Serialize a PointingModel subclass to PointingResidualTable.
+
+    Supports ``ConstantPointingModel`` and ``PolynomialPointingModel``.
+    Raises ``ValueError`` for unsupported pointing model types.
+    """
+    if session is None:
+        session = mapcat_settings.session()
+    if isinstance(pointing_model, ConstantPointingModel):
+        model = ConstantPointingModel(
+            ra_offset=pointing_model.ra_offset,
+            dec_offset=pointing_model.dec_offset,
+        )
+    elif isinstance(pointing_model, PolynomialPointingModel):
+        model = PolynomialPointingModel(
+            poly_order=pointing_model.poly_order,
+            ra_model_coefficients=pointing_model.ra_model_coefficients,
+            dec_model_coefficients=pointing_model.dec_model_coefficients,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported pointing model type {type(pointing_model)} for saving to DB."
+        )
+    query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
+    result = session.execute(query).one_or_none()
+    if result is None:
+        result = [
+            PointingResidualTable(
+                map_id=map_id, residual_model=model, residual_stats=pointing_model_stats
+            )
+        ]
+    for row in result:
+        row.residual_model = model
+        row.residual_stats = pointing_model_stats
+        session.add(row)
+        session.commit()
 
 
 def set_processing_end(map_id: int, session=None):

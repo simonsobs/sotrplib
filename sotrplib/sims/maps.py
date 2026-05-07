@@ -150,6 +150,12 @@ class SimulatedMap(ProcessableMap):
     def _compute_hits(self):
         return (abs(self.flux) > 0).astype(np.int32)
 
+    def _compute_valid_pixel_mask(self):
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map = bool_map & (self.mask > 0)
+        return bool_map
+
     def filter_sources(self, source_positions: SkyCoord):
         """
         Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
@@ -275,6 +281,12 @@ class SimulatedMapFromGeometry(ProcessableMap):
         log.debug("simulated_map.build.complete")
 
         return
+
+    def _compute_valid_pixel_mask(self):
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map = bool_map & (self.mask > 0)
+        return bool_map
 
     def filter_sources(self, source_positions: SkyCoord):
         bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))

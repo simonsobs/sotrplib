@@ -64,6 +64,12 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
     def _compute_hits(self):
         return (abs(self.flux) > 0).astype(np.int32)
 
+    def _compute_valid_pixel_mask(self):
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map = bool_map & (self.mask > 0)
+        return bool_map
+
     def filter_sources(self, source_positions: SkyCoord):
         bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
         if self.mask is not None:

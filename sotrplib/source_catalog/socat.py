@@ -70,6 +70,14 @@ class SOCatWrapper:
         coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
         # Query the map once for all positions, convert to a 1D boolean mask.
         inside, _ = mask_map.filter_sources(coords)
+        if not np.any(inside):
+            self.log.warning(
+                "filter_source_list_to_within_map.no_sources_in_map",
+                n_sources=len(sources),
+                map_id=mask_map.map_id,
+                wcs=mask_map.flux.wcs,
+            )
+
         return [sources[i] for i in range(len(sources)) if inside[i]]
 
     def get_forced_photometry_sources(

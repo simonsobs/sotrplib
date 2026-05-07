@@ -65,13 +65,17 @@ def subtract_sources(
     src_model: enmap.ndmap = None,
     verbose=False,
     cuts={},
-    inplace=False,
+    inplace=True,
     log: FilteringBoundLogger | None = None,
 ):
     """
     src_model is a simulated (model) map of the sources in the list.
     sources are fit using photutils, and are MeasuredSource
     objects with fwhm_ra, fwhm_dec, ra, dec, flux, and orientation
+
+    inplace subtracts the model from input_map.flux and sets the snr to 0 where the model is nonzero.
+    if inplace is False, then the model is saved to input_map.sky_model instead of being
+    subtracted from the flux map. This allows for the source model to be saved without modifying the original map.
     """
     log = log if log else structlog.get_logger()
     log.bind(func_name="subtract_sources")
@@ -93,24 +97,23 @@ def subtract_sources(
             verbose=verbose,
             cuts=cuts,
             log=log,
-        )
+        ) / (input_map.flux_units.to(u.Jy))
+
     if inplace:
-        input_map.flux -= src_model / (input_map.flux_units.to(u.Jy))
+        input_map.flux -= src_model
         log.info("subtract_sources.source_flux_subtracted")
         ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
         input_map.snr[abs(src_model) > 1e-8] = 0.0
         log.info("subtract_sources.source_snr_masked")
     else:
+        log.info("subtract_sources.saving_source_model")
         if input_map.sky_model is None:
-            input_map.sky_model = enmap.enmap(
-                src_model / (input_map.flux_units.to(u.Jy)), wcs=input_map.flux.wcs
-            )
+            input_map.sky_model = enmap.enmap(src_model, wcs=input_map.flux.wcs)
         elif isinstance(input_map.sky_model, enmap.ndmap):
-            input_map.sky_model += enmap.enmap(
-                src_model / (input_map.flux_units.to(u.Jy)), wcs=input_map.flux.wcs
-            )
+            input_map.sky_model += enmap.enmap(src_model, wcs=input_map.flux.wcs)
+        log.info("subtract_sources.source_model_saved")
 
-    return src_model
+    return input_map
 
 
 def kappa_clean(
