@@ -699,38 +699,39 @@ def crossmatch_position_and_flux(
 
 
 def n_wise_crossmatch(
-    matches: list[list[tuple]], results: list[tuple], map_ids: list[str]
+    matches: list[list[tuple]], candidates: list[list[MeasuredSource]]
 ) -> dict[str, list[tuple[str, str]]]:
-    n_results = len(results)
-    pair_indices = list(combinations(range(n_results), 2))
+    map_pairs = list(combinations(candidates.keys(), 2))
     match_by_pair = {
         pair: {i: j for match in match_list for i, j in match}
-        for match_list, pair in zip(matches, pair_indices)
+        for match_list, pair in zip(matches, map_pairs)
     }
 
     full_matches: dict = {}
     node_to_key: dict = {}
 
-    for (r1, r2), d in match_by_pair.items():
+    for (map_id_1, map_id_2), d in match_by_pair.items():
         for i, j in d.items():
-            k1 = node_to_key.get((r1, i))
-            k2 = node_to_key.get((r2, j))
+            k1 = node_to_key.get((map_id_1, i))
+            k2 = node_to_key.get((map_id_2, j))
             if k1 is None and k2 is None:
+                # this sources hasn't been seen before, assign a new ID
                 new_key = str(uuid7.create())
-                full_matches[new_key] = {r1: i, r2: j}
-                node_to_key[(r1, i)] = node_to_key[(r2, j)] = new_key
+                full_matches[new_key] = {map_id_1: i, map_id_2: j}
+                node_to_key[(map_id_1, i)] = new_key
+                node_to_key[(map_id_2, j)] = new_key
             elif k1 is None:
-                full_matches[k2][r1] = i
-                node_to_key[(r1, i)] = k2
+                full_matches[k2][map_id_1] = i
+                node_to_key[(map_id_1, i)] = k2
             elif k2 is None:
-                full_matches[k1][r2] = j
-                node_to_key[(r2, j)] = k1
+                full_matches[k1][map_id_2] = j
+                node_to_key[(map_id_2, j)] = k1
 
     output: dict[str, list[tuple[str, str]]] = {}
     for key, indices_by_result in full_matches.items():
         output[key] = []
-        for r, idx in indices_by_result.items():
-            results[r][1].transient_candidates[idx].source_id = key
-            measurement_id = results[r][1].transient_candidates[idx].measurement_id
-            output[key].append((map_ids[r], measurement_id))
-    return output, results
+        for map_id, idx in indices_by_result.items():
+            candidates[map_id][idx].source_id = key
+            measurement_id = candidates[map_id][idx].measurement_id
+            output[key].append((map_id, measurement_id))
+    return output

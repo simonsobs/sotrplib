@@ -20,7 +20,7 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
-from sotrplib.sifter.crossmatch import n_wise_crossmatch
+from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
@@ -280,8 +280,6 @@ class BaseRunner:
     def crossmatch_pair(
         self, candidates: tuple[list], radius: float = 1.5
     ) -> list[list[tuple]]:
-        from sotrplib.sifter.crossmatch import crossmatch_mask
-
         positions = np.array(
             [
                 np.array([[src.dec.value, src.ra.value] for src in sub_candidates])
@@ -314,14 +312,16 @@ class BaseRunner:
             .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )
+        all_transient_candidates = [res[1].transient_candidates for res in results]
         matches = (
             self.basic_task(self.crossmatch_pair)
-            .map(combinations([res[1].transient_candidates for res in results], 2))
+            .map(combinations(all_transient_candidates, 2))
             .result()
         )
 
-        cross_matches, results = self.profilable_task(n_wise_crossmatch)(
-            matches, results, [mm.map_id for mm in maps]
+        cross_matches = self.profilable_task(n_wise_crossmatch)(
+            matches,
+            dict(zip([mm[0].map_id for mm in map_sets], all_transient_candidates)),
         )
 
         return results
