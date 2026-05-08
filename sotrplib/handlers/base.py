@@ -282,14 +282,18 @@ class BaseRunner:
     ) -> list[list[tuple]]:
         from sotrplib.sifter.crossmatch import crossmatch_mask
 
-        positions = [
-            np.array([[src.dec.value, src.ra.value] for src in candidates])
-            for candidates in candidates
-        ]
+        positions = np.array(
+            [
+                np.array([[src.dec.value, src.ra.value] for src in sub_candidates])
+                for sub_candidates in candidates
+            ]
+        )
+        if positions.shape[1] == 0:
+            return []
 
         # FIXME: use a better radius
         found, matches = self.profilable_task(crossmatch_mask)(
-            *positions, radius=1.5, return_matches=True
+            *positions, radius=radius, return_matches=True
         )
         return matches
 
