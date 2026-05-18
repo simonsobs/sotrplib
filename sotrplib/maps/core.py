@@ -476,6 +476,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.time_mean = time_map
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
 
         return
 
@@ -586,6 +587,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             self.prefiltered_map.observation_end
             - self.prefiltered_map.observation_start
         )
+        self.observation_time = self.observation_start + self.observation_length / 2
         self.box = self.prefiltered_map.box
         self.frequency = self.prefiltered_map.frequency
         self.array = self.prefiltered_map.array
@@ -794,6 +796,7 @@ class RhoAndKappaMap(ProcessableMap):
 
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
         return
 
     def add_time_offset(self, offset: timedelta | None = None):
@@ -978,6 +981,7 @@ class FluxAndSNRMap(ProcessableMap):
 
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
         return
 
     def add_time_offset(self, offset: timedelta | None = None):
