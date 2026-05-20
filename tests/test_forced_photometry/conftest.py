@@ -3,16 +3,14 @@ Fixtures for the dependency-injected completely simulated pipeline.
 """
 
 import datetime
-from pathlib import Path
 
 import pytest
 from astropy import units as u
 from mapcat import alembic_location
-from pixell import enmap
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from sotrplib.outputs.core import MapOutputSerializer
+# from sotrplib.outputs.core import MapOutputSerializer
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.sims.sources.core import (
     RandomSourceSimulation,
@@ -120,9 +118,10 @@ def run_migration(database_path: str):
     command.upgrade(alembic_cfg, "head")
 
 
+"""
 @pytest.fixture(scope="session")
 def simmed_data_file(request, mapset_with_sources):
-    """
+    
     Fixture to download depth 1 maps for testing.
 
     Parameters
@@ -133,7 +132,7 @@ def simmed_data_file(request, mapset_with_sources):
     -------
     file_path : str
         Path to the downloaded file
-    """
+    
     mapset, sources = mapset_with_sources
 
     for i, cur_map in enumerate(mapset):
@@ -145,6 +144,7 @@ def simmed_data_file(request, mapset_with_sources):
         enmap.save_map(cur_map, file_path)  # Unsure what correct function is
 
     return cache_dir, sources
+"""
 
 
 @pytest.fixture(scope="session", autouse=True)
