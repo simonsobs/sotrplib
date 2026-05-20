@@ -3,6 +3,8 @@ Dependencies for map pointing calculations. Sets MapPointingOffset object.
 These operations happen after forced photometry and before source subtraction.
 """
 
+from __future__ import annotations
+
 from abc import ABC
 from typing import TYPE_CHECKING, Literal
 
@@ -20,7 +22,10 @@ from structlog.types import FilteringBoundLogger
 if TYPE_CHECKING:
     from sotrplib.maps.core import ProcessableMap
 
-from sotrplib.sources.sources import RegisteredSource
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sotrplib.sources.sources import RegisteredSource
 
 PointingModel = ConstantPointingModel | PolynomialPointingModel
 

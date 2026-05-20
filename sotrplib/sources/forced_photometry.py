@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import lmfit
 import numpy as np
@@ -13,7 +16,9 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import PointingModel
+
+if TYPE_CHECKING:
+    from sotrplib.maps.pointing import PointingModel
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,

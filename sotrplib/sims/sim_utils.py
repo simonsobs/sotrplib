@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy import units as u
@@ -7,7 +10,8 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import MeasuredSource
+if TYPE_CHECKING:
+    from sotrplib.sources.sources import MeasuredSource
 
 
 def generate_random_positions_in_map(

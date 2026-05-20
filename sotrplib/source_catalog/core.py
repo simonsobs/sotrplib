@@ -2,8 +2,10 @@
 Source catalog dependencies.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import structlog
@@ -14,7 +16,9 @@ from pixell import utils as pixell_utils
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sources.sources import CrossMatch, RegisteredSource
+
+if TYPE_CHECKING:
+    from sotrplib.sources.sources import CrossMatch, RegisteredSource
 from sotrplib.utils.utils import angular_separation, normalize_ra
 
 
