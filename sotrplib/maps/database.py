@@ -5,7 +5,7 @@ Read maps from the map tracking database.
 from datetime import datetime, timezone
 
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import ICRS, SkyCoord
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -13,6 +13,7 @@ from astropy.coordinates import SkyCoord
 # be available just to import sotrplib).
 from mapcat.database import DepthOneMapTable, TimeDomainProcessingTable
 from mapcat.helper import settings as mapcat_settings
+from mapcat.toolkit.update_sky_coverage import dec_to_index, ra_to_index
 from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
@@ -35,6 +36,7 @@ class MapCatDatabaseReader:
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
     map_ids: list[int] | None = None
+    sources: list[ICRS] | None = None
     box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
@@ -46,6 +48,7 @@ class MapCatDatabaseReader:
         start_time: AwareDatetime | None = None,
         end_time: AwareDatetime | None = None,
         map_ids: list[int] | None = None,
+        sources: list[ICRS] | None = None,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
@@ -58,6 +61,7 @@ class MapCatDatabaseReader:
         self.start_time = start_time
         self.end_time = end_time
         self.map_ids = map_ids or []
+        self.sources = sources or []
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
@@ -95,6 +99,25 @@ class MapCatDatabaseReader:
 
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
+
+        if self.sources:
+            for source in self.sources:
+                ra = source.ra.deg
+                dec = source.dec.deg
+
+                # These aren't covered since ICRS automatically wraps
+                # values back aground to 0-360 for RA and -90 to 90 for Dec.
+                if ra < 0 or ra > 360:  # pragma: no cover
+                    raise ValueError("RA must be between 0 and 360 degrees")
+                if dec < -90 or dec > 90:  # pragma: no cover
+                    raise ValueError("Dec must be between -90 and 90 degrees")
+
+                ra_idx = ra_to_index(ra)
+                dec_idx = dec_to_index(dec)
+
+                query = query.join(DepthOneMapTable.depth_one_sky_coverage).filter_by(
+                    x=ra_idx, y=dec_idx
+                )  # Is the repeated join necessary here? Or just the filter_by?
 
         ## Limit the number of maps to read
         ## but I now want to skip processed ones, so will do that below
