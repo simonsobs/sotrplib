@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 
 from astropy import units as u
-from astropy.coordinates import ICRS, SkyCoord
+from astropy.coordinates import SkyCoord
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -26,6 +26,8 @@ from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
+
+from sotrplib.sources.sources import RegisteredSource
 
 from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
 from .pointing import PointingModel
@@ -47,7 +49,7 @@ class MapCatDatabaseReader(ABC):
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
     map_ids: list[int] | None = None
-    sources: list[ICRS] | None = None
+    sources: list[RegisteredSource] | None = None
     box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
@@ -61,7 +63,7 @@ class MapCatDatabaseReader(ABC):
         start_time: AwareDatetime | None = None,
         end_time: AwareDatetime | None = None,
         map_ids: list[int] | None = None,
-        sources: list[ICRS] | None = None,
+        sources: list[RegisteredSource] | None = None,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
@@ -131,8 +133,8 @@ class MapCatDatabaseReader(ABC):
 
         if self.sources:
             for source in self.sources:
-                ra = source.ra.deg
-                dec = source.dec.deg
+                ra = source.ra.to(u.deg).value
+                dec = source.dec.to(u.deg).value
 
                 # These aren't covered since ICRS automatically wraps
                 # values back aground to 0-360 for RA and -90 to 90 for Dec.
