@@ -1,5 +1,5 @@
 """
-Use a 'mock' database using SOCat
+Use a SOCat database as a source catalog.
 """
 
 from typing import Literal
@@ -8,8 +8,11 @@ import numpy as np
 import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from pixell import utils as pixell_utils
 from socat.client.settings import SOCatClientSettings
+from socat.database import RegisteredMovingSourceTable
+from sqlalchemy import select
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -19,154 +22,19 @@ from sotrplib.utils.utils import angular_separation
 from .core import SourceCatalog
 
 
-class SOCatWrapper:
-    def __init__(self, log: FilteringBoundLogger | None = None):
-        self.log = log or structlog.get_logger()
-        self.settings = SOCatClientSettings()
-        self.catalog = self.settings.client
-        self.log.info("socat.initialized")
-
-    def add_source(self, source: RegisteredSource):
-        self.catalog.create_source(
-            position=SkyCoord(source.ra, source.dec),
-            flux=source.flux if source.flux is not None else None,
-            name=source.source_id,
-        )
-
-    def _socat_source_to_registered(self, socat_source) -> RegisteredSource:
-        return RegisteredSource(
-            ra=socat_source.position.ra,
-            dec=socat_source.position.dec,
-            flux=socat_source.flux
-            if hasattr(socat_source, "flux") and (socat_source.flux is not None)
-            else None,
-            source_id=socat_source.name,
-            crossmatches=[
-                CrossMatch(
-                    source_id=socat_source.name,
-                    probability=1.0,
-                    angular_separation=0.0 * u.deg,
-                    # TBD read this from SOCat
-                    frequency=90.0 * u.GHz,
-                    catalog_name="mock",
-                    catalog_idx=socat_source.source_id,
-                )
-            ],
-        )
-
-    def source_from_id(self, source_id) -> RegisteredSource:
-        return self._socat_source_to_registered(
-            self.catalog.get_source(source_id=source_id)
-        )
-
-    def filter_source_list_to_within_map(
-        self, mask_map: ProcessableMap, sources: list[RegisteredSource]
-    ) -> list[RegisteredSource]:
-        """
-        Given a list of sources, filter to only those within the input map.
-        """
-        if len(sources) == 0:
-            return []
-        coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
-        # Query the map once for all positions, convert to a 1D boolean mask.
-        inside, _ = mask_map.filter_sources(coords)
-        if not np.any(inside):
-            self.log.warning(
-                "filter_source_list_to_within_map.no_sources_in_map",
-                n_sources=len(sources),
-                map_id=mask_map.map_id,
-                wcs=mask_map.flux.wcs,
-            )
-
-        return [sources[i] for i in range(len(sources)) if inside[i]]
-
-    def get_forced_photometry_sources(
-        self, minimum_flux: u.Quantity
-    ) -> list[RegisteredSource]:
-        return [
-            self._socat_source_to_registered(x)
-            for x in self.catalog.get_forced_photometry_sources(
-                minimum_flux=minimum_flux
-            )
-        ]
-
-    ## TODO: need to update for boxes which need to be broken in two.
-    def get_sources_in_box(self, box: list[SkyCoord] | None = None):
-        self.log = self.log.bind(initial_box=box)
-        if box is None:
-            box = [
-                SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-            ]
-        if box[0].ra > box[1].ra and box[0].dec < box[1].dec:
-            ## 0 is lower left corner and 1 is upper right corner
-            ## ra increases to the left.
-            box = [box[1], box[0]]
-
-        sources_in_map = self.catalog.get_box(
-            lower_left=box[0],
-            upper_right=box[1],
-        )
-        self.log = self.log.bind(box=box, n_sources=len(sources_in_map))
-
-        return [
-            self._socat_source_to_registered(socat_source=x) for x in sources_in_map
-        ]
-
-    def get_sources_in_map(
-        self, input_map: ProcessableMap, log: FilteringBoundLogger | None = None
-    ) -> list[RegisteredSource]:
-        log = log or self.log or structlog.get_logger()
-        all_sources = self.get_sources_in_box(box=None)
-        if len(all_sources) == 0:
-            return []
-        coords = SkyCoord(
-            ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
-        )
-        inside, _ = input_map.filter_sources(coords)
-        if len(inside) == 0:
-            log.warning(
-                "get_sources_in_map.no_sources_in_map",
-                map_id=input_map.map_id,
-                wcs=input_map.flux.wcs,
-            )
-            return []
-
-        return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
-
-    def nearby_sources(
-        self, ra: u.Quantity, dec: u.Quantity, radius: u.Quantity = 0.1 * u.deg
-    ) -> list[RegisteredSource]:
-        rough_cut = self.get_sources_in_box(
-            box=[
-                SkyCoord(ra=ra - radius, dec=dec - radius),
-                SkyCoord(ra=ra + radius, dec=dec + radius),
-            ]
-        )
-
-        filtered = [
-            x for x in rough_cut if angular_separation(x.ra, ra, x.dec, dec) <= radius
-        ]
-
-        self.log.info(
-            "socat.nearby_sources",
-            rough=len(rough_cut),
-            final=len(filtered),
-            ra=ra,
-            dec=dec,
-            radius=radius,
-        )
-
-        return filtered
-
-
 class SOCat(SourceCatalog):
     """
-    A catalog implementation that uses the configured SOCat database.
+    A catalog implementation backed by the configured SOCat database.
+
+    Queries both fixed and solar-system-object (moving) sources. SSO queries
+    require t_min and t_max so that ephemeris points in the time window are
+    returned alongside static sources.
     """
 
     def __init__(
         self,
+        t_min: Time | None = None,
+        t_max: Time | None = None,
         flux_lower_limit: u.Quantity = 0.03 * u.Jy,
         additional_positions: list[SkyCoord] | None = None,
         additional_fluxes: list[u.Quantity] | None = None,
@@ -174,10 +42,14 @@ class SOCat(SourceCatalog):
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or structlog.get_logger()
-        self.core = SOCatWrapper(log=self.log)
+        self.catalog = SOCatClientSettings().client
+        self.t_min = t_min
+        self.t_max = t_max
         self.flux_lower_limit = flux_lower_limit
-        additional_sources = []
+        self.log.info("socat.initialized")
+
         if additional_positions is not None:
+            sources = []
             for i, pos in enumerate(additional_positions):
                 f = additional_fluxes[i] if additional_fluxes is not None else None
                 sid = (
@@ -185,37 +57,222 @@ class SOCat(SourceCatalog):
                     if additional_source_ids is not None
                     else None
                 )
-                additional_sources.append(
+                sources.append(
                     RegisteredSource(ra=pos.ra, dec=pos.dec, flux=f, source_id=sid)
                 )
-            self.add_sources(additional_sources)
+            self.add_sources(sources)
+
+    def _fixed_to_registered(self, source) -> RegisteredSource:
+        return RegisteredSource(
+            ra=source.position.ra,
+            dec=source.position.dec,
+            flux=source.flux if source.flux is not None else None,
+            source_id=source.name,
+            crossmatches=[
+                CrossMatch(
+                    source_id=source.name,
+                    probability=1.0,
+                    angular_separation=0.0 * u.deg,
+                    frequency=90.0 * u.GHz,
+                    catalog_name="socat",
+                    catalog_idx=source.source_id,
+                )
+            ],
+        )
+
+    def _ephem_to_registered(self, ephem) -> RegisteredSource:
+        return RegisteredSource(
+            ra=ephem.position.ra,
+            dec=ephem.position.dec,
+            flux=ephem.flux,
+            source_id=ephem.name,
+            source_type="sso",
+            observation_mean_time=ephem.time,
+            crossmatches=[
+                CrossMatch(
+                    source_id=ephem.name,
+                    source_type="sso",
+                    probability=1.0,
+                    angular_separation=0.0 * u.deg,
+                    catalog_name="socat",
+                    catalog_idx=ephem.ephem_id,
+                    observation_time=ephem.time,
+                )
+            ],
+        )
+
+    def _get_sso_in_box(
+        self, lower_left: SkyCoord, upper_right: SkyCoord
+    ) -> list[RegisteredSource]:
+        if self.t_min is None or self.t_max is None:
+            return []
+        with self.catalog.ephem._get_session() as session:
+            rows = (
+                session.execute(
+                    select(RegisteredMovingSourceTable).where(
+                        self.t_min.datetime <= RegisteredMovingSourceTable.time,
+                        RegisteredMovingSourceTable.time <= self.t_max.datetime,
+                        float(lower_left.ra.to_value("deg"))
+                        <= RegisteredMovingSourceTable.ra_deg,
+                        RegisteredMovingSourceTable.ra_deg
+                        <= float(upper_right.ra.to_value("deg")),
+                        float(lower_left.dec.to_value("deg"))
+                        <= RegisteredMovingSourceTable.dec_deg,
+                        RegisteredMovingSourceTable.dec_deg
+                        <= float(upper_right.dec.to_value("deg")),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return [self._ephem_to_registered(r.to_model()) for r in rows]
+
+    def _get_sso_at_time(
+        self, obs_time: Time, mask_map: ProcessableMap | None = None
+    ) -> list[RegisteredSource]:
+        """
+        For each SSO with a defined flux, return the ephemeris point closest to
+        obs_time within the catalog's t_min/t_max window.
+
+        If mask_map has a time_mean map, the initial position estimate is used to
+        look up the per-pixel observation time at that location, and the ephemeris
+        is re-evaluated at that more accurate time.
+        """
+        if self.t_min is None or self.t_max is None:
+            return []
+        with self.catalog.ephem._get_session() as session:
+            rows = (
+                session.execute(
+                    select(RegisteredMovingSourceTable).where(
+                        self.t_min.datetime <= RegisteredMovingSourceTable.time,
+                        RegisteredMovingSourceTable.time <= self.t_max.datetime,
+                        RegisteredMovingSourceTable.flux_mJy.isnot(None),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        if not rows:
+            return []
+
+        by_sso: dict[int, list] = {}
+        for row in rows:
+            by_sso.setdefault(row.sso_id, []).append(row)
+
+        def closest_row(sso_rows, t: Time):
+            dt = t.datetime
+            return min(sso_rows, key=lambda r: abs((r.time - dt).total_seconds()))
+
+        if mask_map is None or mask_map.time_mean is None:
+            return [
+                self._ephem_to_registered(closest_row(rows, obs_time).to_model())
+                for rows in by_sso.values()
+            ]
+
+        refined = []
+        for sso_rows in by_sso.values():
+            initial = closest_row(sso_rows, obs_time)
+            t_unix = mask_map.time_mean.at(
+                (np.deg2rad(initial.dec_deg), np.deg2rad(initial.ra_deg)),
+                mode="nn",
+            )
+            if np.isfinite(t_unix) and t_unix > 0:
+                pixel_time = Time(float(t_unix), format="unix")
+                best = closest_row(sso_rows, pixel_time)
+            else:
+                best = initial
+            refined.append(best)
+
+        return [self._ephem_to_registered(r.to_model()) for r in refined]
 
     def add_sources(self, sources: list[RegisteredSource]):
         for source in sources:
-            self.core.add_source(source=source)
+            self.catalog.create_source(
+                position=SkyCoord(source.ra, source.dec),
+                flux=source.flux,
+                name=source.source_id,
+            )
 
+    ## TODO: need to update for boxes which need to be broken in two.
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
-        return self.core.get_sources_in_box(box=box)
+        if box is None:
+            box = [
+                SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+            ]
+        if box[0].ra > box[1].ra and box[0].dec < box[1].dec:
+            box = [box[1], box[0]]
+
+        fixed = [
+            self._fixed_to_registered(s)
+            for s in self.catalog.get_box_fixed(lower_left=box[0], upper_right=box[1])
+        ]
+        ssos = self._get_sso_in_box(lower_left=box[0], upper_right=box[1])
+
+        self.log.debug(
+            "socat.get_sources_in_box",
+            box=box,
+            n_fixed=len(fixed),
+            n_sso=len(ssos),
+        )
+        return fixed + ssos
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        return self.core.get_sources_in_map(input_map=input_map)
+        all_sources = self.get_sources_in_box(box=None)
+        if not all_sources:
+            return []
+        coords = SkyCoord(
+            ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
+        )
+        inside, _ = input_map.filter_sources(coords)
+        if not np.any(inside):
+            self.log.warning(
+                "socat.get_sources_in_map.no_sources_in_map",
+                map_id=input_map.map_id,
+                wcs=input_map.flux.wcs,
+            )
+            return []
+        return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
     def get_all_sources(self) -> list[RegisteredSource]:
-        return self.core.get_sources_in_box(box=None)
+        return self.get_sources_in_box(box=None)
 
-    def forced_photometry_sources(self, mask_map: ProcessableMap):
-        base_source_list = self.core.get_forced_photometry_sources(
-            minimum_flux=self.flux_lower_limit
+    def forced_photometry_sources(
+        self, mask_map: ProcessableMap
+    ) -> list[RegisteredSource]:
+        obs_time = Time(mask_map.observation_time)
+        fixed = [
+            self._fixed_to_registered(s)
+            for s in self.catalog.get_forced_photometry_sources(
+                minimum_flux=self.flux_lower_limit
+            )
+        ]
+        ssos = self._get_sso_at_time(obs_time, mask_map=mask_map)
+        print(ssos)
+        sources = fixed + ssos
+        self.log.info(
+            "socat.forced_photometry_sources",
+            n_fixed=len(fixed),
+            n_ssos=len(ssos),
+            n_total=len(sources),
         )
-        return self.core.filter_source_list_to_within_map(
-            mask_map=mask_map,
-            sources=base_source_list,
-        )
+        if not sources:
+            return []
+        coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
+        inside, _ = mask_map.filter_sources(coords)
+        if not np.any(inside):
+            self.log.warning(
+                "socat.forced_photometry_sources.no_sources_in_map",
+                n_sources=len(sources),
+                map_id=mask_map.map_id,
+                wcs=mask_map.flux.wcs,
+            )
+        return [sources[i] for i in range(len(sources)) if inside[i]]
 
     def source_by_id(self, id) -> RegisteredSource:
-        return self.core.source_from_id(source_id=id)
+        return self._fixed_to_registered(self.catalog.get_source(source_id=id))
 
     def crossmatch(
         self,
@@ -224,18 +281,11 @@ class SOCat(SourceCatalog):
         radius: u.Quantity,
         method: Literal["closest", "all"],
     ) -> list[CrossMatch]:
-        """
-        Get sources within radius of the catalog.
-        """
-        ra_min = ra - 2.0 * radius
-        ra_max = ra + 2.0 * radius
-        dec_min = dec - 2.0 * radius
-        dec_max = dec + 2.0 * radius
         close_sources = self.get_sources_in_box(
             [
-                SkyCoord(ra=ra_min, dec=dec_min),
-                SkyCoord(ra=ra_max, dec=dec_max),
-            ],
+                SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
+                SkyCoord(ra=ra + 2.0 * radius, dec=dec + 2.0 * radius),
+            ]
         )
         ra_dec_array = np.asarray(
             [(x.ra.to("radian").value, x.dec.to("radian").value) for x in close_sources]
@@ -253,7 +303,8 @@ class SOCat(SourceCatalog):
         return [
             CrossMatch(
                 source_id=s.source_id,
-                probability=1.0 / len(sources),  ##TODO fix probability calculation
+                source_type=s.source_type,
+                probability=1.0 / len(sources),
                 angular_separation=angular_separation(s.ra, s.dec, ra, dec),
                 flux=s.flux,
                 err_flux=s.err_flux,
@@ -263,6 +314,7 @@ class SOCat(SourceCatalog):
                 alternate_names=s.alternate_names,
                 ra=s.ra,
                 dec=s.dec,
+                observation_time=s.observation_mean_time,
             )
             for y, s in enumerate(sources)
         ]
