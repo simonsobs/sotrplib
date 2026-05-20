@@ -9,6 +9,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.outputs.core import (
     CutoutImageOutput,
     JSONSerializer,
+    MapOutputSerializer,
     PickleSerializer,
     SourceOutput,
 )
@@ -38,6 +39,17 @@ class JSONOutputConfig(OutputConfig):
 
     def to_output(self, log: FilteringBoundLogger | None = None) -> JSONSerializer:
         return JSONSerializer(directory=self.directory)
+
+
+class MapOutputConfig(OutputConfig):
+    output_type: Literal["maps"] = "maps"
+    directory: Path
+    fields: list[str]
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> MapOutputSerializer:
+        return MapOutputSerializer(
+            directory=self.directory, field_ids=self.fields, log=log
+        )
 
 
 class CutoutImageOutputConfig(OutputConfig):
@@ -80,7 +92,17 @@ class LightcurveDBOutputConfig(OutputConfig):
 AllOutputConfigTypes = (
     PickleOutputConfig
     | JSONOutputConfig
+    | MapOutputConfig
     | CutoutImageOutputConfig
     | LightServeOutputConfig
     | LightcurveDBOutputConfig
 )
+
+SourceOutputConfigTypes = (
+    PickleOutputConfig
+    | JSONOutputConfig
+    | LightcurveDBOutputConfig
+    | LightServeOutputConfig
+)
+
+MapOutputConfigTypes = MapOutputConfig | CutoutImageOutputConfig

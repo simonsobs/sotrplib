@@ -151,8 +151,9 @@ class DefaultSifter(SiftingProvider):
         self.ra_jitter = ra_jitter
         self.dec_jitter = dec_jitter
         self.cuts = cuts or {
-            "fwhm": [0.2, 5.0],
+            "fwhm": [0.5, 2.5],
             "snr": [5.0, np.inf],
+            "observation_mean_time": [1, np.inf],
         }
         self.crossmatch_with_gaia = crossmatch_with_gaia
         self.crossmatch_with_million_quasar = crossmatch_with_million_quasar

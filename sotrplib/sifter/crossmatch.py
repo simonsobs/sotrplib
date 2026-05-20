@@ -181,6 +181,7 @@ def sift(
     cuts: dict = {
         "fwhm": [0.2, 5.0],
         "snr": [5.0, np.inf],
+        "observation_mean_time": [1, np.inf],
     },
     crossmatch_with_gaia: bool = True,
     crossmatch_with_million_quasar: bool = True,
@@ -462,6 +463,9 @@ def get_cut_decision(
         if val is None:
             log.debug("get_cut_decision.missing_value", cut_name=c)
             continue
+        ## this is stupid, but how i've decided to do it.
+        if c == "observation_mean_time":
+            val = val.unix
         cut |= (val < cuts[c][0]) | (val > cuts[c][1])
         if debug and (val < cuts[c][0]) | (val > cuts[c][1]):
             log.debug(

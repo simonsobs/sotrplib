@@ -4,9 +4,11 @@ from typing import Iterable
 import numpy as np
 from astropy import units
 from astropy.coordinates import SkyCoord
+from mapcat.pointing.const import ConstantPointingModel
+from mapcat.pointing.poly import PolynomialPointingModel
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.database import set_processing_end
+from sotrplib.maps.database import save_pointing_model, set_processing_end
 from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import (
     EmptyPointingOffset,
@@ -15,8 +17,8 @@ from sotrplib.maps.pointing import (
 )
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
-from sotrplib.outputs.core import SourceOutput
-from sotrplib.sifter.core import EmptySifter, SiftingProvider
+from sotrplib.outputs.core import MapOutput, SourceOutput
+from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
@@ -29,6 +31,7 @@ from sotrplib.sources.core import (
     ForcedPhotometryProvider,
 )
 from sotrplib.sources.force import EmptyForcedPhotometry
+from sotrplib.sources.sources import MeasuredSource
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 __all__ = ["BaseRunner"]
@@ -49,12 +52,12 @@ class BaseRunner:
     source_subtractor: SourceSubtractor | None
     blind_search: BlindSearchProvider | None
     sifter: SiftingProvider | None
-    outputs: list[SourceOutput] | None
+    source_outputs: list[SourceOutput] | None
+    map_outputs: list[MapOutput] | None
     profile: bool = False
 
     def __init__(
         self,
-        maps: Iterable[ProcessableMap],
         map_coadder: MapCoadder | None,
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
@@ -68,10 +71,10 @@ class BaseRunner:
         source_subtractor: SourceSubtractor | None,
         blind_search: BlindSearchProvider | None,
         sifter: SiftingProvider | None,
-        outputs: list[SourceOutput] | None,
+        source_outputs: list[SourceOutput] | None,
+        map_outputs: list[MapOutput] | None,
         profile: bool = False,
     ):
-        self.maps = maps
         self.map_coadder = map_coadder or EmptyMapCoadder()
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
@@ -85,7 +88,8 @@ class BaseRunner:
         self.source_subtractor = source_subtractor or EmptySourceSubtractor()
         self.blind_search = blind_search or EmptyBlindSearch()
         self.sifter = sifter or EmptySifter()
-        self.outputs = outputs or []
+        self.source_outputs = source_outputs or []
+        self.map_outputs = map_outputs or []
         self.profile = profile
 
     @property
@@ -108,6 +112,8 @@ class BaseRunner:
         self.profilable_task(input_map.build)()
         output_map = input_map
         if not np.any(output_map.hits > 0):
+            if input_map._parent_database is not None:
+                set_processing_end(input_map.map_id)
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -119,9 +125,8 @@ class BaseRunner:
     def coadd_maps(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
         return self.map_coadder.coadd(input_maps)
 
-    @property
-    def bbox(self):
-        if not self.maps:
+    def bbox(self, maps=None):
+        if not maps:
             return None
 
         # mapcat map list is not subscriptable so start with maximal bounding box
@@ -129,7 +134,7 @@ class BaseRunner:
             SkyCoord(ra=359.999 * units.deg, dec=90.0 * units.deg),
             SkyCoord(ra=0.0 * units.deg, dec=-90.0 * units.deg),
         ]
-        for input_map in self.maps:
+        for input_map in maps:
             map_bbox = input_map.bbox
             left = min(bbox[0].ra, map_bbox[0].ra)
             bottom = min(bbox[0].dec, map_bbox[0].dec)
@@ -138,26 +143,25 @@ class BaseRunner:
             bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
         return bbox
 
-    @property
-    def observation_time_range(self):
-        if not self.maps:
+    def observation_time_range(self, maps=None):
+        if not maps:
             return (None, None)
 
         start_time = datetime.max.replace(tzinfo=timezone.utc)
         end_time = datetime.min.replace(tzinfo=timezone.utc)
-        for input_map in self.maps:
+        for input_map in maps:
             start_time = min(input_map.observation_start, start_time)
             end_time = max(input_map.observation_end, end_time)
 
         return (start_time, end_time)
 
-    def simulate_sources(self) -> list[SimulatedSource]:
+    def simulate_sources(
+        self, bbox: list[SkyCoord], time_range: tuple[float]
+    ) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         if len(self.source_simulators) == 0:
             return []
         all_simulated_sources = []
-        bbox = self.bbox
-        time_range = self.observation_time_range
         for simulator in self.source_simulators:
             simulated_sources, catalog = self.profilable_task(simulator.generate)(
                 box=bbox,
@@ -168,10 +172,26 @@ class BaseRunner:
             self.source_catalogs.append(catalog)
         return all_simulated_sources
 
+    def coadd_and_analyze_maps(
+        self, maps: list[ProcessableMap], simulated_sources: list[SimulatedSource]
+    ) -> tuple[list[MeasuredSource], SifterResult]:
+        """
+        Coadd and analyze maps in a single task to avoid passing maps between processes.
+        """
+        coadded_map = self.profilable_task(self.map_coadder.coadd_maps)(maps)
+        return self.profilable_task(self.analyze_map)(
+            input_map=coadded_map, simulated_sources=simulated_sources
+        )
+
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
-    ) -> tuple[list, object, ProcessableMap]:
-        self.profilable_task(input_map.finalize)()
+    ) -> tuple[list[MeasuredSource], SifterResult]:
+        input_map = self.profilable_task(self.build_map)(input_map)
+
+        if input_map is not None:
+            self.profilable_task(input_map.finalize)()
+        else:
+            return [], None
 
         injected_sources, input_map = self.profilable_task(self.source_injector.inject)(
             input_map=input_map, simulated_sources=simulated_sources
@@ -186,15 +206,28 @@ class BaseRunner:
             input_map=input_map, catalogs=self.source_catalogs
         )
 
-        pointing_data = self.profilable_task(self.pointing_residual_model.get_offset)(
-            pointing_sources=pointing_sources
-        )
-        self.profilable_task(save_model_maps)(
-            self.pointing_residual_model,
-            pointing_data,
-            input_map,
-            filename_prefix=f"pointing_residual_{input_map.map_id}",
-        )
+        cached = getattr(input_map, "pointing_model", None)
+        if isinstance(cached, (ConstantPointingModel | PolynomialPointingModel)):
+            pointing_model = cached
+        else:
+            pointing_model, pointing_model_stats = self.profilable_task(
+                self.pointing_residual_model.build_model
+            )(pointing_sources=pointing_sources)
+            if input_map._parent_database is not None:
+                save_pointing_model(
+                    input_map.map_id, pointing_model, pointing_model_stats
+                )
+
+        ## this is dumb and should be fixed.
+        for o in self.map_outputs:
+            if "pointing_residual_map" in o.field_ids:
+                self.profilable_task(save_model_maps)(
+                    self.pointing_residual_model,
+                    pointing_model,
+                    input_map,
+                    filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
+                )
+                break
         sso_sources = []
         for sso_catalog in self.sso_catalogs:
             sso_sources.extend(
@@ -208,8 +241,7 @@ class BaseRunner:
         )(
             input_map=input_map,
             catalogs=self.source_catalogs + self.sso_catalogs,
-            pointing_residuals=self.pointing_residual_model,
-            pointing_offset_data=pointing_data,
+            pointing_model=pointing_model,
         )
 
         source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
@@ -218,8 +250,7 @@ class BaseRunner:
 
         blind_sources, _ = self.profilable_task(self.blind_search.search)(
             input_map=source_subtracted_map,
-            pointing_residuals=self.pointing_residual_model,
-            pointing_offset_data=pointing_data,
+            pointing_model=pointing_model,
         )
 
         sifter_result = self.profilable_task(self.sifter.sift)(
@@ -228,32 +259,36 @@ class BaseRunner:
             input_map=source_subtracted_map,
         )
 
-        for output in self.outputs:
+        for output in self.source_outputs:
             self.profilable_task(output.output)(
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
-                input_map=input_map,
+                map_id=input_map.map_id,
                 pointing_sources=pointing_sources,
                 injected_sources=injected_sources,
             )
+
+        for output in self.map_outputs:
+            self.profilable_task(output.output)(input_map=input_map)
+
         if input_map._parent_database is not None:
-            set_processing_end(input_map.map_id)
-        return forced_photometry_candidates, sifter_result, input_map
+            self.profilable_task(set_processing_end)(input_map.map_id)
+        return forced_photometry_candidates, sifter_result
 
-    def run(self) -> tuple[list[list], list[object], list[ProcessableMap]]:
-        return self.flow(self._run)()
+    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+        return self.flow(self._run)(maps)
 
-    def _run(self) -> tuple[list[list], list[object], list[ProcessableMap]]:
+    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
-        all_simulated_sources = self.basic_task(self.simulate_sources)()
-        self.maps = self.basic_task(self.build_map).map(self.maps).result()
-        self.maps = [m for m in self.maps if m is not None]
-        self.maps = self.coadd_maps(self.maps)
+        bbox = self.bbox(maps)
+        time_range = self.observation_time_range(maps)
+        all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)
+        map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
         return (
-            self.basic_task(self.analyze_map)
-            .map(self.maps, self.unmapped(all_simulated_sources))
+            self.basic_task(self.coadd_and_analyze_maps)
+            .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )

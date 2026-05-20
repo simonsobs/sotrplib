@@ -212,7 +212,7 @@ def generate_config_json(
         }}
     ],
     "pointing_provider": {{
-        "photometry_type": "scipy_pointing",
+        "photometry_type": "lmfit_pointing",
         "thumbnail_half_width": "{thumbnail_half_width}",
         "min_flux": "{pointing_flux_threshold}",
         "reproject_thumbnails": "True",

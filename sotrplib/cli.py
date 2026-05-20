@@ -38,4 +38,15 @@ def main():
     args = parse_args()
     config = Settings.from_file(args.config)
     pipeline = config.to_runner()
-    pipeline.run()
+
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
+    )
+    log = structlog.get_logger()
+
+    maps = config.maps.to_generator(log=log)
+
+    if maps is not None:
+        pipeline.run(maps)
+    else:
+        log.warning("No maps provided.")

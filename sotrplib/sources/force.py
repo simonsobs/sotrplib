@@ -8,7 +8,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import MapPointingOffset, PointingData
+from sotrplib.maps.pointing import PointingModel
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import gaussian_fit
@@ -31,8 +31,7 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
         self,
         input_map: ProcessableMap,
         catalogs: List[SourceCatalog],
-        pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
+        pointing_model: PointingModel | None = None,
     ) -> list[MeasuredSource]:
         return []
 
@@ -53,8 +52,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
         self,
         input_map: ProcessableMap,
         catalogs: List[SourceCatalog],
-        pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
+        pointing_model: PointingModel | None = None,
     ) -> list[MeasuredSource]:
         # Implement the single pixel forced photometry ("nn" is much faster than "spline")
         ## see https://github.com/simonsobs/pixell/blob/master/pixell/utils.py#L542
@@ -95,7 +93,7 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 
 
 class TwoDGaussianFitter(ForcedPhotometryProvider):
-    mode: Literal["scipy", "lmfit"] = "lmfit"
+    mode: Literal["lmfit"] = "lmfit"
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
     allowable_center_offset: u.Quantity
@@ -106,7 +104,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
     def __init__(
         self,
-        mode: Literal["scipy", "lmfit"] = "lmfit",
+        mode: Literal["lmfit"] = "lmfit",
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
@@ -119,9 +117,8 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         Initialize the GaussianFitter.
         Parameters
         ----------
-        mode : {"scipy", "lmfit"}, optional
-            The method to use for fitting the Gaussian. Options are "scipy" for
-            scipy.optimize.curve_fit or "lmfit" for the lmfit library. The default is "lmfit".
+        mode : {"lmfit"}, optional
+            The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
         flux_limit_centroid : astropy.units.Quantity, optional
             Minimum flux required to attempt centroid fitting (default: 0.3 Jy).
         reproject_thumbnails : bool, optional
@@ -156,8 +153,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         self,
         input_map: ProcessableMap,
         catalogs: list[SourceCatalog],
-        pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
+        pointing_model: PointingModel | None = None,
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(
             freq=input_map.frequency,
@@ -187,13 +183,20 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             source_positions = SkyCoord(
                 ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
             )
+            valid_positions = np.isfinite(source_positions.ra.deg) & np.isfinite(
+                source_positions.dec.deg
+            )
+            ## mask nan values; i.e. asteroids with no interpolated position.
+            source_positions = source_positions[valid_positions]
             source_fluxes = (
                 np.array([s.flux.to_value(u.Jy) for s in source_list]) * u.Jy
-            )
+            )[valid_positions]
             for i, fp_source in enumerate(source_list):
                 c = SkyCoord(ra=fp_source.ra, dec=fp_source.dec)
+                if not np.isfinite(c.ra.deg) or not np.isfinite(c.dec.deg):
+                    continue
                 neighboridx, neighbordist, _ = c.match_to_catalog_sky(
-                    source_positions, nthneighbor=2
+                    source_positions, nthneighbor=2 if len(source_list) > 2 else 1
                 )
                 nearby = neighbordist <= self.thumbnail_half_width * (2**-0.5)
                 brighter = (
@@ -216,8 +219,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
-            pointing_residuals=pointing_residuals,
-            pointing_offset_data=pointing_offset_data,
+            pointing_model=pointing_model,
             allowable_center_offset=self.allowable_center_offset,
             flags={"nearby_source": has_nearby_sources},
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
@@ -228,7 +230,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
 
 class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
-    mode: Literal["scipy", "lmfit"] = "lmfit"
+    mode: Literal["lmfit"] = "lmfit"
     min_flux: u.Quantity
     reproject_thumbnails: bool
     thumbnail_half_width: u.Quantity
@@ -239,7 +241,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
 
     def __init__(
         self,
-        mode: Literal["scipy", "lmfit"] = "lmfit",
+        mode: Literal["lmfit"] = "lmfit",
         min_flux: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
@@ -249,12 +251,11 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         log: FilteringBoundLogger | None = None,
     ):
         """
-        Initialize the Scipy2DGaussianFitter.
+        Initialize the TwoDGaussianPointingFitter.
         Parameters
         ----------
-        mode : {"scipy", "lmfit"}, optional
-            The method to use for fitting the Gaussian. Options are "scipy" for
-            scipy.optimize.curve_fit or "lmfit" for the lmfit library. The default is "lmfit".
+        mode : {"lmfit"}, optional
+            The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
         min_flux : astropy.units.Quantity, optional
             Minimum flux required to attempt pointing fit (default: 0.3 Jy).
         reproject_thumbnails : bool, optional
@@ -287,8 +288,6 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         self,
         input_map: ProcessableMap,
         catalogs: list[SourceCatalog],
-        pointing_residuals: MapPointingOffset | None = None,
-        pointing_offset_data: PointingData | None = None,
     ) -> list[MeasuredSource]:
         fwhm = get_fwhm(
             freq=input_map.frequency,

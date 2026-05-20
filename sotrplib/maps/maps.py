@@ -65,12 +65,17 @@ def subtract_sources(
     src_model: enmap.ndmap = None,
     verbose=False,
     cuts={},
+    inplace=True,
     log: FilteringBoundLogger | None = None,
 ):
     """
     src_model is a simulated (model) map of the sources in the list.
     sources are fit using photutils, and are MeasuredSource
     objects with fwhm_ra, fwhm_dec, ra, dec, flux, and orientation
+
+    inplace subtracts the model from input_map.flux and sets the snr to 0 where the model is nonzero.
+    if inplace is False, then the model is saved to input_map.sky_model instead of being
+    subtracted from the flux map. This allows for the source model to be saved without modifying the original map.
     """
     log = log if log else structlog.get_logger()
     log.bind(func_name="subtract_sources")
@@ -92,13 +97,23 @@ def subtract_sources(
             verbose=verbose,
             cuts=cuts,
             log=log,
-        )
-    input_map.flux -= src_model / (input_map.flux_units.to(u.Jy))
-    log.info("subtract_sources.source_flux_subtracted")
-    ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
-    input_map.snr[abs(src_model) > 1e-8] = 0.0
-    log.info("subtract_sources.source_snr_masked")
-    return src_model
+        ) / (input_map.flux_units.to(u.Jy))
+
+    if inplace:
+        input_map.flux -= src_model
+        log.info("subtract_sources.source_flux_subtracted")
+        ## TODO do we want to inject gaussian snr or is setting it to 0 kosher?
+        input_map.snr[abs(src_model) > 1e-8] = 0.0
+        log.info("subtract_sources.source_snr_masked")
+    else:
+        log.info("subtract_sources.saving_source_model")
+        if input_map.sky_model is None:
+            input_map.sky_model = enmap.enmap(src_model, wcs=input_map.flux.wcs)
+        elif isinstance(input_map.sky_model, enmap.ndmap):
+            input_map.sky_model += enmap.enmap(src_model, wcs=input_map.flux.wcs)
+        log.info("subtract_sources.source_model_saved")
+
+    return input_map
 
 
 def kappa_clean(
@@ -375,14 +390,15 @@ def flat_field_using_photutils(
     mask: np.ndarray | None = None,
     sigmaclip: float = 5.0,
     log: FilteringBoundLogger | None = None,
-):
+) -> ProcessableMap:
     """
     use photutils.background.Background2D to calculate the rms in tiles.
     get the rms of the tiled snr map (i.e. the rms should be 1)
     calculate the median.
     divide the snr map by the tiled rms / median.
-
     tilegrid is the size of the tile to use for the background estimation.
+    mask is a binary map of the same shape as the input map, where 1 indicates pixels to be masked
+    (i.e. not used for background estimation) and 0 indicates pixels to be used for background estimation.
     """
     from astropy.stats import SigmaClip
     from photutils.background import Background2D, StdBackgroundRMS
@@ -396,13 +412,31 @@ def flat_field_using_photutils(
             int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg)),
             sigma_clip=sigmaclip,
             bkg_estimator=StdBackgroundRMS(sigmaclip),
-            mask=mask,
+            mask=1.0 - mask if mask is not None else None,
         )
         relative_rms = background.background_rms / background.background_rms_median
         mapdata.snr /= relative_rms
         mapdata.flatfielded = True
     except Exception as e:
         log.error(f"flat_field_using_photutils.failed: {e}")
+
+    try:
+        background = Background2D(
+            mapdata.flux,
+            int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg)),
+            sigma_clip=sigmaclip,
+            bkg_estimator=StdBackgroundRMS(sigmaclip),
+            mask=1.0 - mask if mask is not None else None,
+        )
+        ## store the rms map used for flatfielding.
+        ## need wcs of mesh which has pixel size of tilegrid.
+        bs = int(tilegrid.to_value(u.deg) / mapdata.map_resolution.to_value(u.deg))
+        mesh_template = enmap.downgrade(mapdata.snr, bs, inclusive=True)
+        bg_rms = background.background_rms_mesh
+        valid_pix = background.npixels_mesh > 0
+        mapdata.flatfield_map = enmap.enmap(bg_rms * valid_pix, mesh_template.wcs)
+    except Exception as e:
+        log.error(f"flat_field_using_photutils.failed_noisemap: {e}")
 
     return mapdata
 
@@ -436,8 +470,8 @@ def make_model_source_map(
         log.warning("make_model_source_map.no_sources", num_sources=0)
         return imap
 
-    if matched_filtered:
-        nominal_fwhm *= np.sqrt(2)
+    # if matched_filtered:
+    #    nominal_fwhm *= np.sqrt(2)
 
     map_res = abs(imap.wcs.wcs.cdelt[0]) * u.deg
     log.bind(nominal_fwhm=nominal_fwhm, res=map_res)

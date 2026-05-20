@@ -4,6 +4,8 @@ Map testing
 
 import datetime
 import os
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -207,3 +209,50 @@ def overlapping_map_set_2(tmp_path, overlapping_map_params):
     yield map_paths
     for x in map_paths.values():
         os.unlink(x)
+
+
+@pytest.fixture
+def db_result(separate_map_set_1):
+    """Mock DepthOneMapTable row pointing at the tmp FITS files."""
+    paths = separate_map_set_1
+    r = MagicMock()
+    r.map_id = 42
+    r.map_path = paths["map"]
+    r.ivar_path = paths["ivar"]
+    r.rho_path = paths["rho"]
+    r.kappa_path = paths["kappa"]
+    # reuse rho/kappa as stand-ins for flux/snr (same shape, valid FITS)
+    r.flux_path = paths["rho"]
+    r.snr_path = paths["kappa"]
+    r.mean_time_path = paths["time"]
+    r.start_time = datetime.datetime.now(datetime.timezone.utc).timestamp() - 3600
+    r.stop_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    r.frequency = "f090"
+    r.tube_slot = "pa5"
+    return r
+
+
+@pytest.fixture
+def mock_session(db_result):
+    """Mock DB session returning one db_result row."""
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = [db_result]
+    return session
+
+
+@pytest.fixture
+def mock_mapcat(mock_session):
+    """
+    Patches mapcat_settings, check_if_processed, and set_processing_start so
+    that map_list() runs without a real database connection.
+    """
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_processed", return_value=False),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        # session() is used as a context manager; wire __enter__ to our mock
+        settings.session.return_value.__enter__.return_value = mock_session
+        yield settings

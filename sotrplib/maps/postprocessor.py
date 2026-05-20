@@ -5,6 +5,7 @@ the snr and flux arrays already exist.
 """
 
 from abc import ABC, abstractmethod
+from math import pi
 from pathlib import Path
 
 import structlog
@@ -28,19 +29,47 @@ class MapPostprocessor(ABC):
 
 
 class GalaxyMask(MapPostprocessor):
-    mask_filename: Path
+    mask_path: Path
+    invert: bool = False
+    log: FilteringBoundLogger | None = None
 
-    def __init__(self, mask_filename: Path):
-        self.mask_filename = mask_filename
+    def __init__(
+        self,
+        mask_path: Path,
+        invert: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_path = mask_path
+        self.invert = invert
+        self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        enmap_box = (
+            [
+                [
+                    input_map.box[0].dec.to_value(u.rad),
+                    input_map.box[0].ra.to_value(u.rad),
+                ],
+                [
+                    input_map.box[1].dec.to_value(u.rad),
+                    input_map.box[1].ra.to_value(u.rad),
+                ],
+            ]
+            if input_map.box is not None
+            else None
+        )
+        if enmap_box is not None:
+            if enmap_box[0][1] < enmap_box[1][1]:
+                enmap_box[1][1] -= 2 * pi
         galaxy_mask = mask_dustgal(
             imap=input_map.flux,
             galmask=enmap.read_map(
-                fname=self.mask_filename,
-                box=input_map.box,
+                fname=str(self.mask_path),
+                box=enmap_box,
             ),
         )
+        if self.invert:
+            galaxy_mask = 1 - galaxy_mask
 
         input_map.flux *= galaxy_mask
         input_map.snr *= galaxy_mask
@@ -89,10 +118,18 @@ class PhotutilsFlatFielder(MapPostprocessor):
         self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        if self.mask is not None and input_map.mask is not None:
+            combined_mask = self.mask * input_map.mask
+        elif self.mask is not None:
+            combined_mask = self.mask
+        elif input_map.mask is not None:
+            combined_mask = input_map.mask
+        else:
+            combined_mask = None
         return flat_field_using_photutils(
             mapdata=input_map,
             tilegrid=self.tile_size,
-            mask=self.mask,
+            mask=combined_mask,
             sigmaclip=self.sigma_val,
             log=self.log,
         )

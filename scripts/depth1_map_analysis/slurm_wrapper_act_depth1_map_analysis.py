@@ -3,6 +3,7 @@ import os
 from getpass import getuser
 from glob import glob
 
+from astropy.time import Time
 from tqdm import tqdm
 
 USER = getuser()
@@ -39,7 +40,7 @@ P.add_argument(
 P.add_argument(
     "--data-dir",
     action="store",
-    default="/scratch/gpfs/SIMONSOBS/users/amfoster/scratch/pipe-s0004_depth1/",
+    default="/scratch/gpfs/SIMONSOBS/so/maps/actpol/depth1/",
     help="Data directory, where the depth1 maps live.",
 )
 
@@ -52,7 +53,7 @@ P.add_argument(
 P.add_argument(
     "--pointing-flux-threshold",
     action="store",
-    default="0.25 Jy",
+    default="0.3 Jy",
     type=str,
     help="Flux threshold for pointing sources, json compatible quantity.",
 )
@@ -117,7 +118,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default="4 arcmin",
+    default="0.1 deg",
     type=str,
     help="Thumbnail radius (half-width of square map), json compatible quantity.",
 )
@@ -133,7 +134,7 @@ P.add_argument(
 P.add_argument(
     "--nserial",
     action="store",
-    default=12,
+    default=8,
     type=int,
     help="Number of serial sets of `ncores` scripts to run per job. ",
 )
@@ -143,7 +144,7 @@ P.add_argument(
     action="store",
     nargs="+",
     default=["f090", "f150", "f220"],
-    help="Bands to analyze, default is f090,f150,f220 but can also includ f030 or f040. ",
+    help="Bands to analyze, default is f090,f150,f220,f280.",
 )
 
 args = P.parse_args()
@@ -156,7 +157,7 @@ def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_ou
 #SBATCH --nodes=1                # node count
 #SBATCH --ntasks=1               # total number of tasks across all nodes
 #SBATCH --cpus-per-task={cpu_per_task}       # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH --mem-per-cpu=24G         # memory per cpu-core (4G is default)
+#SBATCH --mem-per-cpu=48G         # memory per cpu-core (4G is default)
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
 
@@ -166,6 +167,13 @@ export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
 cd {script_dir}
 
 source .venv/bin/activate
+
+export socat_client_client_type=pickle
+export socat_client_pickle_path=act_f090_wide_socat.pickle
+
+if [ ! -e "socat.pickle" ]; then
+    socat-act-fits -f act_catalog_f090_wide.fits  -o act_f090_wide_socat.pickle
+fi
 
 """
     return slurm_header
@@ -178,65 +186,76 @@ def generate_config_json(
     thumbnail_half_width="0.2 deg",
     min_snr=5.0,
     min_pointing_sources=10,
-    poly_order=1,
     output_dir="./",
 ):
-    ivar_map_file = mapfile.replace("_map.fits", "_ivar.fits")
-    time_map_file = mapfile.replace("_map.fits", "_time.fits")
-    info_file = mapfile.replace("_map.fits", "_info.hdf")
+    kappa_map_file = mapfile.replace("_rho.fits", "_kappa.fits")
+    time_map_file = mapfile.replace("_rho.fits", "_time.fits")
+    unix_time = int(mapfile.split("/")[-1].split("_")[1])
+    start_time = Time(unix_time - 3 * 86400, format="unix")
+    stop_time = Time(unix_time + 3 * 86400, format="unix")
+    info_file = mapfile.replace("_rho.fits", "_info.hdf")
     freq = mapfile.split("_")[-2]
     arr = mapfile.split("_")[-3]
     config_text = f"""{{
     "maps": [
         {{
-            "map_type": "inverse_variance",
-            "intensity_map_path": "{mapfile}",
-            "weights_map_path": "{ivar_map_file}",
+            "map_type": "filtered",
+            "rho_map_path": "{mapfile}",
+            "kappa_map_path": "{kappa_map_file}",
             "time_map_path": "{time_map_file}",
             "info_path": "{info_file}",
             "frequency": "{freq}",
             "array": "{arr}",
-            "intensity_units": "uK"
+            "flux_units": "mJy"
         }}
     ],
     "source_catalogs": [
         {{
-            "catalog_type": "websky",
-            "path": "/scratch/gpfs/SIMONSOBS/users/amfoster/so/pipe-s0004_depth1_sims/websky_cat_100_1mJy_infield.csv",
+            "catalog_type": "socat",
             "flux_lower_limit": "{flux_low_limit}"
+        }}
+    ],
+    "sso_catalogs": [
+        {{
+            "catalog_type": "sso",
+            "db_path": "sotrplib/solar_system/JPL_batched_ephemerides_2015-01-01_2023-01-01.parquet",
+            "start_time": "{start_time.iso}Z",
+            "stop_time": "{stop_time.iso}Z"
         }}
     ],
     "pointing_provider": {{
         "photometry_type": "lmfit_pointing",
         "thumbnail_half_width": "{thumbnail_half_width}",
         "min_flux": "{pointing_flux_threshold}",
-        "reproject_thumbnails": "True"
+        "reproject_thumbnails": "True",
+        "allowable_centroid_offset": "3.0 arcmin"
     }},
     "pointing_residual": {{
         "pointing_residual_type": "median",
         "min_snr": {min_snr},
-        "min_sources": {min_pointing_sources},
-        "sigma_clip_level": 3.0,
-        "polynomial_order": {poly_order}
+        "min_sources": {min_pointing_sources}
     }},
     "preprocessors": [
         {{
-            "preprocessor_type": "matched_filter"
-        }},
-        {{
-            "preprocessor_type": "kappa_rho"
+            "preprocessor_type": "kappa_rho",
+            "cut_on": "median",
+            "fraction": 0.4
         }},
         {{
             "preprocessor_type": "edge_mask",
-            "mask_on": "kappa",
-            "edge_width": "10.0 arcmin"
+            "mask_on": "rho",
+            "edge_width": "30.0 arcmin"
         }}
     ],
     "postprocessors": [
        {{
             "postprocessor_type": "flatfield",
             "sigma_val": 5.0,
-            "tile_size": "1.0 deg"
+            "tile_size": "0.5 deg"
+        }},
+        {{
+            "postprocessor_type":"galaxy_mask",
+            "mask_path": "./act_dust_mask.fits"
         }}
     ],
     "source_subtractor": {{
@@ -246,15 +265,16 @@ def generate_config_json(
             "search_type": "photutils"
     }},
     "forced_photometry": {{
-        "photometry_type": "scipy",
+        "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
-        "thumbnail_half_width": "{thumbnail_half_width}"
+        "thumbnail_half_width": "4 arcmin",
+        "allowable_centroid_offset": "1.0 arcmin"
     }},
     "sifter": {{
         "sifter_type": "default"
     }},
-    "outputs": [
+    "source_outputs": [
         {{
             "output_type": "pickle",
             "directory": "{output_dir}"
@@ -355,7 +375,7 @@ for mapfile in args.maps:
 for i in tqdm(range(len(datelist))):
     date = datelist[i].split("/")[-1]
     for band in args.bands:
-        globstr = args.data_dir + date + f"/depth1*{band}*_map.fits"
+        globstr = args.data_dir + date + f"/depth1*{band}*_rho.fits"
         mapfiles = sorted(glob(globstr))
         for mapfile in sorted(mapfiles):
             mapname = mapfile.split("/")[-1].replace(".fits", "")
