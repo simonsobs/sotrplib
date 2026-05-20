@@ -115,22 +115,17 @@ class IntensityAndInverseVarianceStacker(ForcedPhotometryStacker):
         )
 
     def get_maps(self):
-        if self.map_ids is None:
-            raise ValueError(
-                "Map IDs have not been loaded. Call get_coverage_maps() first."
-            )
         maps = []
         for cur_map_ids in self.map_ids:
             db_reader = IntensityMapReader(
                 number_to_read=None,
                 start_time=self.start_time,
                 end_time=self.end_time,
+                sources=self.sources,
                 freq=self.freq,
                 array=self.array,
                 map_ids=cur_map_ids,
-            )  # TODO: This is currently somewhat roundabout, as we use get_maps_by_coverage to
-            # get the depth one maps that include a given point source and then filter by time, when
-            # we should do both of those actions in one query.
+            )
 
             cur_maps = db_reader.map_list()
             maps.append([db_reader._build_map(m) for m in cur_maps])
@@ -204,16 +199,13 @@ class RhoKappaStacker(ForcedPhotometryStacker):
         )
 
     def get_maps(self):
-        if self.map_ids is None:
-            raise ValueError(
-                "Map IDs have not been loaded. Call get_coverage_maps() first."
-            )
         maps = []
         for cur_map_ids in self.map_ids:
             db_reader = RhoKappaMapReader(
                 number_to_read=None,
                 start_time=self.start_time,
                 end_time=self.end_time,
+                sources=self.sources,
                 freq=self.freq,
                 array=self.array,
                 map_ids=cur_map_ids,
@@ -269,16 +261,13 @@ class FluxAndSNRStacker(ForcedPhotometryStacker):
         )
 
     def get_maps(self):
-        if self.map_ids is None:
-            raise ValueError(
-                "Map IDs have not been loaded. Call get_coverage_maps() first."
-            )
         maps = []
         for cur_map_ids in self.map_ids:
             db_reader = FluxMapReader(
                 number_to_read=None,
                 start_time=self.start_time,
                 end_time=self.end_time,
+                sources=self.sources,
                 freq=self.freq,
                 array=self.array,
                 map_ids=cur_map_ids,
