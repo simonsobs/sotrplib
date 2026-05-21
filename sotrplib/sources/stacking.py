@@ -102,7 +102,7 @@ class IntensityAndInverseVarianceStacker(ForcedPhotometryStacker):
         stamps = []
         ivar_stamps = []
         for source, cur_map in zip(self.sources, self.filtered_maps):
-            rstamp = reproject.thumbnail(
+            rstamp = reproject.thumbnails(
                 cur_map.rho,
                 [
                     source.position.dec.to(u.rad).value,
@@ -111,7 +111,7 @@ class IntensityAndInverseVarianceStacker(ForcedPhotometryStacker):
                 r=thumb_width.to(u.rad).value,
                 res=cur_map.rho.map_resolution.to(u.rad).value,
             )
-            kstamp = reproject.thumbnail(
+            kstamp = reproject.thumbnails(
                 cur_map.kappa,
                 [
                     source.position.dec.to(u.rad).value,
@@ -158,27 +158,32 @@ class RhoKappaStacker(ForcedPhotometryStacker):
     def get_stamps(self, thumb_width=20 * u.rad):
         stamps = []
         ivar_stamps = []
-        for source, cur_map in zip(self.sources, self.maps):
-            rstamp = reproject.thumbnail(
-                cur_map.rho,
-                [
-                    source.position.dec.to(u.rad).value,
-                    source.position.ra.to(u.rad).value,
-                ],
-                r=thumb_width.to(u.rad).value,
-                res=cur_map.rho.map_resolution.to(u.rad).value,
-            )
-            kstamp = reproject.thumbnail(
-                cur_map.kappa,
-                [
-                    source.position.dec.to(u.rad).value,
-                    source.position.ra.to(u.rad).value,
-                ],
-                r=thumb_width.to(u.rad).value,
-                res=cur_map.kappa.map_resolution.to(u.rad).value,
-            )
-            stamps.append(rstamp / kstamp)
-            ivar_stamps.append(kstamp)
+        for source in self.sources:
+            cur_stamps = []
+            cur_ivar_stamps = []
+            for cur_map in self.maps:
+                rstamp = reproject.thumbnails(
+                    cur_map.rho,
+                    [
+                        source.position.dec.to(u.rad).value,
+                        source.position.ra.to(u.rad).value,
+                    ],
+                    r=thumb_width.to(u.rad).value,
+                    res=cur_map.rho.map_resolution.to(u.rad).value,
+                )
+                kstamp = reproject.thumbnails(
+                    cur_map.kappa,
+                    [
+                        source.position.dec.to(u.rad).value,
+                        source.position.ra.to(u.rad).value,
+                    ],
+                    r=thumb_width.to(u.rad).value,
+                    res=cur_map.kappa.map_resolution.to(u.rad).value,
+                )
+                cur_stamps.append(rstamp / kstamp)
+                cur_ivar_stamps.append(kstamp)
+            stamps.append(cur_stamps)
+            ivar_stamps.append(cur_ivar_stamps)
         self.stamps = stamps
         self.ivar_stamps = ivar_stamps
 
@@ -216,7 +221,7 @@ class FluxAndSNRStacker(ForcedPhotometryStacker):
         stamps = []
         ivar_stamps = []
         for source, cur_map in zip(self.sources, self.maps):
-            fstamp = reproject.thumbnail(
+            fstamp = reproject.thumbnails(
                 cur_map.flux,
                 [
                     source.position.dec.to(u.rad).value,
@@ -225,7 +230,7 @@ class FluxAndSNRStacker(ForcedPhotometryStacker):
                 r=thumb_width.to(u.rad).value,
                 res=cur_map.flux.map_resolution.to(u.rad).value,
             )
-            snr_stamp = reproject.thumbnail(
+            snr_stamp = reproject.thumbnails(
                 cur_map.snr,
                 [
                     source.position.dec.to(u.rad).value,
