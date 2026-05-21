@@ -15,6 +15,7 @@ from astropy.coordinates import SkyCoord
 from mapcat.database import (
     DepthOneMapTable,
     PointingResidualTable,
+    SkyCoverageTable,
     TimeDomainProcessingTable,
 )
 from mapcat.helper import settings as mapcat_settings
@@ -23,6 +24,7 @@ from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
 from mapcat.toolkit.update_sky_coverage import dec_to_index, ra_to_index
 from pydantic import AwareDatetime
+from sqlalchemy import tuple_
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -132,6 +134,7 @@ class MapCatDatabaseReader(ABC):
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
 
         if self.sources:
+            points = []
             for source in self.sources:
                 ra = source.ra.to(u.deg).value
                 dec = source.dec.to(u.deg).value
@@ -145,11 +148,11 @@ class MapCatDatabaseReader(ABC):
 
                 ra_idx = ra_to_index(ra)
                 dec_idx = dec_to_index(dec)
-
-                query = query.join(DepthOneMapTable.depth_one_sky_coverage).filter_by(
-                    x=ra_idx, y=dec_idx
-                )  # Is the repeated join necessary here? Or just the filter_by?
-
+                points.append((ra_idx, dec_idx))
+            points = set(points)
+            query = query.join(DepthOneMapTable.depth_one_sky_coverage).where(
+                tuple_(SkyCoverageTable.x, SkyCoverageTable.y).in_(points)
+            )
         return query
 
     def map_list(self):
