@@ -63,7 +63,7 @@ def generate_random_positions(
         if imap is not None:
             shape, wcs = imap.shape, imap.wcs
             dec_min, dec_max = enmap.box(shape, wcs)[:, 0] * u.rad
-            ra_min, ra_max = enmap.box(shape, wcs)[:, 1] * u.rad
+            ra_max, ra_min = enmap.box(shape, wcs)[:, 1] * u.rad
             ra_lims = (ra_min + edge_buffer, ra_max - edge_buffer)
             dec_lims = (dec_min + edge_buffer, dec_max - edge_buffer)
         else:
