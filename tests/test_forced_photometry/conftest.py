@@ -208,8 +208,6 @@ def database_sessionmaker(tmp_path_factory):
     # Run the migration on the database. This is blocking.
     run_migration(database_path)
 
-    database_url = f"sqlite:///{database_path}"
-
     os.environ["MAPCAT_DATABASE_NAME"] = str(database_path)
     os.environ["MAPCAT_DEPTH_ONE_PARENT"] = str(tmp_path / "depth_one_parent")
 
