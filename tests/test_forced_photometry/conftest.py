@@ -9,11 +9,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from mapcat import alembic_location
 from mapcat.database import DepthOneMapTable
 from pixell import enmap
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from sotrplib.sims import (
+    maps,
+    sim_source_generators,
+    source_injector,
+)
 
 # from sotrplib.outputs.core import MapOutputSerializer
 from sotrplib.sims.maps import SimulatedMap
@@ -21,6 +28,7 @@ from sotrplib.sims.sources.core import (
     RandomSourceSimulation,
     RandomSourceSimulationParameters,
 )
+from sotrplib.utils.utils import get_fwhm
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -37,25 +45,6 @@ def empty_map():
     assert sim_map.finalized
 
     yield sim_map
-
-
-@pytest.fixture(scope="session", autouse=True)
-def empty_map_list():
-    sim_maps = []
-    date_string = "2025-01-10 00:00:00"
-    format_code = "%Y-%m-%d %H:%M:%S"
-    start_time = datetime.datetime.strptime(date_string, format_code)
-    for i in range(10):
-        cur_time = start_time - datetime.timedelta(days=(i + 1))
-        sim_map = SimulatedMap(
-            observation_start=cur_time,
-            observation_end=cur_time + datetime.timedelta(days=1),
-        )
-
-        sim_map.build()
-        sim_maps.append(sim_map)
-
-    yield sim_maps
 
 
 @pytest.fixture
@@ -113,24 +102,51 @@ def map_with_single_asymmetric_source(empty_map):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def mapset_with_sources(empty_map_list):
-    # TODO: Temporally separate maps
-    parameters = RandomSourceSimulationParameters(
-        n_sources=5,
-        # Use bright sources so we can guarantee recovery
-        min_flux=u.Quantity(9.999, "Jy"),
-        max_flux=u.Quantity(10.001, "Jy"),
-        fwhm_uncertainty_frac=0.01,
-        fraction_return=1.0,
+def mapset_with_sources():
+    min_flux = u.Quantity(1.0, "Jy")
+    max_flux = u.Quantity(1.1, "Jy")
+    map_sim_params = maps.SimulationParameters()
+    ## not all the way to the edge to avoid edge effects in photometry
+    left = map_sim_params.center_ra - map_sim_params.width_ra / 2.5
+    right = map_sim_params.center_ra + map_sim_params.width_ra / 2.5
+    bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
+    top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
+    map_sim_params.map_noise = u.Quantity(0.001, "Jy")
+    start_time = datetime.datetime.fromisoformat("2025-01-01T00:00:00+00:00")
+    number = 3
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=min_flux,
+        max_flux=max_flux,
+        number=number,
+        catalog_fraction=1.0,
     )
 
-    simulator = RandomSourceSimulation(parameters=parameters)
-    maps = []
+    sources, _ = generator.generate(
+        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+    ret_maps = []
     for i in range(10):
-        new_map, sources = simulator.simulate(input_map=empty_map_list[i])
-        maps.append(new_map)
+        start_obs = start_time + datetime.timedelta(days=i)
+        end_obs = start_time + datetime.timedelta(hours=8)
+        base_map = maps.SimulatedMap(
+            observation_start=start_obs,
+            observation_end=end_obs,
+            frequency="f090",
+            array="pa5",
+            box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+        )
 
-    yield maps, sources
+        base_map.build()
+
+        injector = source_injector.PhotutilsSourceInjector(
+            gauss_fwhm=get_fwhm(base_map.frequency)
+        )
+        _, new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+        ret_maps.append(new_map)
+    for i, source in enumerate(sources):
+        sources[i] = source._to_registered_fixed()
+    yield ret_maps, sources
 
 
 @pytest.fixture(scope="session")
@@ -161,7 +177,7 @@ def create_test_maps(mapset_with_sources):
         map_name = Path("depth1_{tstamp}_{freq}".format(tstamp=tstamp, freq=freq))
         base = cached_dir / subdir / map_name
         base = str(base)
-        for map_type in ["map", "rho", "kappa", "time"]:
+        for map_type in ["map", "rho", "kappa", "time", "flux", "snr"]:
             cur_map_name = base + f"_{map_type}.fits"
             if map_type == "time":
                 imap = getattr(cur_map, "time_mean")
@@ -177,8 +193,10 @@ def create_test_maps(mapset_with_sources):
             map_path=base + "_map.fits",
             rho_path=base + "_rho.fits",
             kappa_path=base + "_kappa.fits",
+            flux_path=base + "_flux.fits",
+            snr_path=base + "_snr.fits",
             mean_time_path=base + "_time.fits",
-            tube_slot="OTi1",
+            tube_slot="pa5",
             frequency=freq,
             ctime=tstamp,
             start_time=int(np.min(cur_map.time_mean)),
