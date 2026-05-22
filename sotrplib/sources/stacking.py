@@ -1,21 +1,88 @@
 from abc import ABC
 
+import numpy as np
 from astropy import units as u
-from astropy.coordinates import ICRS
-from astropy.time import Time
-from mapcat.core import get_maps_by_coverage
-from mapcat.database import DepthOneMapTable
 from pixell import reproject
-from sqlalchemy.orm import Session
 
 from sotrplib.maps.core import (
-    MatchedFilteredIntensityAndInverseVarianceMap,
+    ProcessableMap,
+    RhoAndKappaMap,
 )
-from sotrplib.maps.database import FluxMapReader, IntensityMapReader, RhoKappaMapReader
-from sotrplib.maps.preprocessor import MatchedFilter
+from sotrplib.maps.database import (
+    FluxMapReader,
+    MapCatDatabaseReader,
+)
+from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.sources.sources import RegisteredSource
 
 
+class Stacker(ABC):
+    def __init__(
+        self,
+        reader: MapCatDatabaseReader,  # TODO: Support readers other than MapCatDatabaseReader
+        preprocessors: list[MapPreprocessor] | None = None,
+    ):
+        self.reader = reader
+        self.preprocessors = preprocessors or []
+
+    def _read_maps(self) -> list[RhoAndKappaMap]:
+        maps = self.reader.map_list()
+        for imap in maps:
+            imap.build()
+
+        if type(self.reader) is FluxMapReader:
+            for imap in maps:
+                imap.ivar = imap.flux / imap.snr
+                imap.kappa = imap.ivar
+                imap.rho = imap.flux * imap.kappa
+                imap = RhoAndKappaMap()
+
+        if self.preprocessors:
+            for imap in maps:
+                for preprocessor in self.preprocessors:
+                    imap = preprocessor.preprocess(imap)
+
+        if not np.all([type(imap) is RhoAndKappaMap for imap in maps]):
+            raise ValueError(
+                "Not all maps are of type RhoAndKappaMap. Check your applied Preprocessors."
+            )
+
+        return maps
+
+    def stamp(
+        self, sources: list[RegisteredSource], thumb_width=20 * u.arcmin
+    ) -> list[list[ProcessableMap]]:
+        stamps = []
+        ivar_stamps = []
+        for source in sources:
+            cur_stamps = []
+            cur_ivar_stamps = []
+            for cur_map in self._read_maps():
+                rstamp = reproject.thumbnails(
+                    cur_map.rho,
+                    [
+                        source.dec.to(u.rad).value,
+                        source.ra.to(u.rad).value,
+                    ],
+                    r=thumb_width.to(u.rad).value,
+                )
+                kstamp = reproject.thumbnails(
+                    cur_map.kappa,
+                    [
+                        source.dec.to(u.rad).value,
+                        source.ra.to(u.rad).value,
+                    ],
+                    r=thumb_width.to(u.rad).value,
+                )
+                cur_stamps.append(rstamp / kstamp)
+                cur_ivar_stamps.append(kstamp)
+            stamps.append(cur_stamps)
+            ivar_stamps.append(cur_ivar_stamps)
+
+        return stamps, ivar_stamps
+
+
+"""
 class ForcedPhotometryStacker(ABC):
     def __init__(
         self,
@@ -44,7 +111,6 @@ class ForcedPhotometryStacker(ABC):
             map_ids.append(cur_map_ids)
 
         self.map_ids = map_ids
-
 
 class IntensityIvarStacker(ForcedPhotometryStacker):
     def __init__(
@@ -78,25 +144,7 @@ class IntensityIvarStacker(ForcedPhotometryStacker):
         for imap in self.maps:
             imap.build()
 
-    def filter_maps(self):
-        if self.maps is None:
-            raise ValueError("Maps have not been loaded. Call get_maps() first.")
-        filtered_maps = []
-        preprocessor = MatchedFilter()
-        for imap in self.maps:
-            if imap is None or len(imap) == 0:
-                raise ValueError(
-                    "No maps found for source {source_id}.".format(
-                        source_id=imap.source_id
-                    )
-                )
 
-            filtered_map: MatchedFilteredIntensityAndInverseVarianceMap = (
-                preprocessor.preprocess(imap)
-            )
-            filtered_maps.append(filtered_map)
-
-        self.filtered_maps = filtered_maps
 
     def get_stamps(self, thumb_width=20 * u.arcmin):
         if self.filtered_maps is None:
@@ -255,3 +303,5 @@ class FluxSNRStacker(ForcedPhotometryStacker):
             ivar_stamps.append(cur_ivar_stamps)
         self.stamps = stamps
         self.ivar_stamps = ivar_stamps
+
+"""
