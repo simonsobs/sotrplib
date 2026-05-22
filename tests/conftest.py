@@ -8,6 +8,8 @@ from sotrplib.sims.source_injector import PhotutilsSourceInjector
 
 @pytest.fixture
 def fixed_source_map_builder():
+    """Build injected test maps while keeping sources away from map edges."""
+
     def _build(
         input_map,
         *,
@@ -24,14 +26,20 @@ def fixed_source_map_builder():
             number=n_sources,
             catalog_fraction=catalog_fraction,
         )
-        box = getattr(input_map, "bbox", None)
-        if box is not None:
-            box = [
-                SkyCoord(ra=box[0].ra + edge_buffer, dec=box[0].dec + edge_buffer),
-                SkyCoord(ra=box[1].ra - edge_buffer, dec=box[1].dec - edge_buffer),
+        buffered_box = getattr(input_map, "bbox", None)
+        if buffered_box is not None:
+            buffered_box = [
+                SkyCoord(
+                    ra=buffered_box[0].ra + edge_buffer,
+                    dec=buffered_box[0].dec + edge_buffer,
+                ),
+                SkyCoord(
+                    ra=buffered_box[1].ra - edge_buffer,
+                    dec=buffered_box[1].dec - edge_buffer,
+                ),
             ]
 
-        simulated_sources, catalog = generator.generate(box=box)
+        simulated_sources, catalog = generator.generate(box=buffered_box)
 
         injector = PhotutilsSourceInjector(
             fwhm_uncertainty_fraction=fwhm_uncertainty_fraction
