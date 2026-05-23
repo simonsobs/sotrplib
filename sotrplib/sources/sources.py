@@ -116,7 +116,6 @@ class MeasuredSource(RegisteredSource):
     array: str | None = None
 
     fit_method: Literal[
-        "scipy_2d_gaussian",
         "lmfit_2d_gaussian",
         "nearest_neighbor",
         "spline",
