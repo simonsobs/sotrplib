@@ -2,11 +2,15 @@
 Tests for the fully simulated pipeline setup.
 """
 
+from itertools import combinations
+
+import numpy as np
 from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SimpleCatalogSifter
+from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
@@ -93,6 +97,179 @@ def test_find_single_source_blind(
 
     assert len(res.source_candidates) == 1
     assert len(res.transient_candidates) == 0
+
+
+def test_crossmatch_transients(
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+):
+    """
+    Tests that we can find a set of sources that we just injected with
+    the blind search algorithm.
+    """
+    new_map, sources = map_with_sources
+
+    searcher = SigmaClipBlindSearch()
+
+    found_sources, _ = searcher.search(input_map=new_map)
+
+    assert len(found_sources) == len(sources)
+
+    # Check we can sift them out!
+    sifter = SimpleCatalogSifter(
+        radius=u.Quantity(30.0, "arcsec"),
+    )
+
+    res = sifter.sift(
+        sources=found_sources,
+        input_map=new_map,
+        catalogs=[],
+    )
+
+    assert len(res.source_candidates) == 0
+    assert len(res.transient_candidates) == len(sources)
+
+    transient_positions = np.array(
+        [[src.dec.value, src.ra.value] for src in res.transient_candidates]
+    )
+
+    all_positions = combinations([transient_positions] * 2, 2)
+
+    matches = [
+        crossmatch_mask(*positions, radius=1.5, return_matches=True)[1]
+        for positions in all_positions
+    ]
+
+    cross_matches = n_wise_crossmatch(
+        matches,
+        {"map_1": res.transient_candidates, "map_2": res.transient_candidates},
+    )
+    assert len(cross_matches) == len(sources)
+    # verify that the sources all match to their identical copies
+    for match in cross_matches.values():
+        assert match[0][1] == match[1][1]
+
+
+def test_crossmatch_transients_with_no_matches(
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+    second_map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+):
+    """
+    Tests that when we have two maps with different simulated sources,
+    we don't get any false-positive crossmatches.
+    """
+    new_map, _ = map_with_sources
+    other_map, _ = second_map_with_sources
+
+    searcher = SigmaClipBlindSearch()
+
+    found_sources, _ = searcher.search(input_map=new_map)
+    other_sources, _ = searcher.search(input_map=other_map)
+
+    # Check we can sift them out!
+    sifter = SimpleCatalogSifter(
+        radius=u.Quantity(30.0, "arcsec"),
+    )
+
+    res = sifter.sift(
+        sources=found_sources,
+        input_map=new_map,
+        catalogs=[],
+    )
+    other_res = sifter.sift(
+        sources=other_sources,
+        input_map=other_map,
+        catalogs=[],
+    )
+
+    assert len(res.source_candidates) == 0
+    assert len(other_res.source_candidates) == 0
+
+    transient_positions = np.array(
+        [[src.dec.value, src.ra.value] for src in res.transient_candidates]
+    )
+    other_positions = np.array(
+        [[src.dec.value, src.ra.value] for src in other_res.transient_candidates]
+    )
+
+    all_positions = combinations([transient_positions, other_positions], 2)
+
+    matches = [
+        crossmatch_mask(*positions, radius=1.5, return_matches=True)[1]
+        for positions in all_positions
+    ]
+
+    cross_matches = n_wise_crossmatch(
+        matches,
+        {"map_1": res.transient_candidates, "map_2": other_res.transient_candidates},
+    )
+    assert len(cross_matches) == 0
+
+
+def test_crossmatch_transients_with_partial_matches(
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+    second_map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+):
+    """
+    Tests that when we have two maps with different simulated sources,
+    we don't get any false-positive crossmatches.
+    """
+    new_map, _ = map_with_sources
+    other_map, _ = second_map_with_sources
+
+    searcher = SigmaClipBlindSearch()
+
+    found_sources, _ = searcher.search(input_map=new_map)
+    other_sources, _ = searcher.search(input_map=other_map)
+
+    # Check we can sift them out!
+    sifter = SimpleCatalogSifter(
+        radius=u.Quantity(30.0, "arcsec"),
+    )
+
+    res = sifter.sift(
+        sources=found_sources,
+        input_map=new_map,
+        catalogs=[],
+    )
+    other_res = sifter.sift(
+        sources=other_sources,
+        input_map=other_map,
+        catalogs=[],
+    )
+
+    assert len(res.source_candidates) == 0
+    assert len(other_res.source_candidates) == 0
+
+    transient_positions = np.array(
+        [[src.dec.value, src.ra.value] for src in res.transient_candidates]
+    )
+    other_positions = np.array(
+        [[src.dec.value, src.ra.value] for src in other_res.transient_candidates]
+    )
+
+    all_positions = combinations(
+        [transient_positions, transient_positions, other_positions], 2
+    )
+
+    matches = [
+        crossmatch_mask(*positions, radius=1.5, return_matches=True)[1]
+        for positions in all_positions
+    ]
+
+    cross_matches = n_wise_crossmatch(
+        matches,
+        {
+            "map_1": res.transient_candidates,
+            "map_2": res.transient_candidates,
+            "map_3": other_res.transient_candidates,
+        },
+    )
+    assert len(cross_matches) == 4
+    # verify that the sources all match to their identical copies
+    for match in cross_matches.values():
+        # verify match is only between the two identical sets of sources
+        assert len(match) == 2
+        assert match[0][1] == match[1][1]
 
 
 def test_find_sources_blind(
