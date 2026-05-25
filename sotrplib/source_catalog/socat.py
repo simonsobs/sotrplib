@@ -205,13 +205,13 @@ class SOCat(SourceCatalog):
         return sources
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        ## for now, just get all the sources and filter them.
+        sky_box = [
+            SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+            SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+        ]
         if self.t_min is not None and self.t_max is not None:
             t_eval = self.t_min + (self.t_max - self.t_min) / 2
-            ## for now, just get all the sources and filter them.
-            sky_box = [
-                SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-            ]
             all_sources = [
                 s
                 for s in (
