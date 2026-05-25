@@ -45,31 +45,40 @@ code in `sotrplib/config/config.py` and the relevant config files.
 
 ### Source Catalog (socat)
 
-We have implemented the source catalog as a mock version of `socat` (https://github.com/simonsobs/socat/).
-To make things work with an old ACT type catalog, socat includes a runnable script `socat-act-fits` which ingests the .fits file into a pickle file which can be converted into a mock socat object in the pipeline.
+We have implemented the source catalog using `socat` (https://github.com/simonsobs/socat/).
+To make things work with an ACT type catalog, socat includes a runnable script `socat-act-fits` which ingests the .fits file into a pickle file which can be converted into a mock socat object in the pipeline.
+One can also ingest solar system object ephemerides using a parquet file containing JPL horizons output. See socat documentation for this info.
 
-Thus to run the pipeline with an ACT source catalog, you first create the socat pickle file:
+You can also write custom ingest scripts as needed to load whatever relevant source catalogs you want.
 
-`socat-act-fits -f [act_catalog.fits] -o socat.pickle`
+To use socat as a proper database and ingest solar system objects, follow the instructions in the socat README.
+You'll want to set up the environment variables appropriately -- something like:
+```
+export socat_client_client_type=db
+export socat_model_database_name=socat.db
+```
 
-Then tell socat where to find it:
-
-`export socat_client_client_type=pickle`
-`export socat_client_pickle_path=socat.pickle`
-
-Setting the sotrplib config to use `socat` as one of it's source catalogs:
+Then in the config JSON file, the source catalogs list is just a single socat db:
 
 ```
-"source_catalogs": [
+    "source_catalogs": [
         {
             "catalog_type": "socat",
-            "flux_lower_limit": "0.01 Jy"
+            "flux_lower_limit": "0.1 Jy",
+            "t_min": "2019-01-01T00:00:00Z",
+            "t_max": "2019-12-30T12:00:00Z"
         }
     ],
 ```
-then generates a mock socat client given the info above.
 
-This source catalog can then be used for forced photometry, pointing, blind-search crossmatching, etc.
+This example shows that the source catalog is of type "socat" which means the system will 
+look for the environment variables to define the type and name of the catalog.
+The socat requires a `t_min` and `t_max` because it includes moving objects so we need to query 
+whether or not they're inside the maps.
+This `t_min`, `t_max` sets the limits on interpolating the positions of the objects, so make sure 
+the map time range(s) are contained within these times.
+`flux_lower_limit` sets the limit for querying forced photometry sources; thus if ingesting a 
+custom file it shoudl be sure to include a flux estimate for the source.
 
 ### Map Catalog (mapcat)
 
