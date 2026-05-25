@@ -840,7 +840,11 @@ class RhoAndKappaMap(ProcessableMap):
         return self.__map_id or super().get_map_str_id()
 
     def _compute_hits(self):
-        return (self.kappa > 0).astype(np.int32)
+        return (
+            (self.kappa > 0).astype(np.int32)
+            if not self.finalized
+            else (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        )
 
     def _compute_valid_pixel_mask(self):
         if self.finalized:
