@@ -123,6 +123,12 @@ class SOCat(SourceCatalog):
         return refined if refined is not None else initial
 
     def _sg_to_registered(self, sg, t: Time) -> RegisteredSource | None:
+        """
+        Convert an socat SourceGenerator output to a RegisteredSource, querying at time t.
+
+        sets the source type to "sso" if the source is a SolarSystemObject,
+        otherwise uses the source_type attribute if it exists, otherwise "unknown".
+        """
         try:
             sg.init_interp(ephem_cat=self.catalog.ephem)
             position, flux = sg.at_time(t=t)
@@ -210,12 +216,22 @@ class SOCat(SourceCatalog):
             SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
             SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
         ]
-        if self.t_min is not None and self.t_max is not None:
-            t_eval = self.t_min + (self.t_max - self.t_min) / 2
+
+        if self.t_min is None or self.t_max is None:
+            self.log.warning(
+                "socat.get_sources_in_map.invalid_time_range",
+                map_id=input_map.map_id,
+                observation_time=input_map.observation_time,
+                t_min=self.t_min,
+                t_max=self.t_max,
+            )
+            all_sources = self.get_sources_in_box(box=None)
+        else:
+            t_mid = self.t_min + (self.t_max - self.t_min) / 2
             all_sources = [
                 s
                 for s in (
-                    self._sg_to_registered_with_refinement(sg, t_eval, input_map)
+                    self._sg_to_registered_with_refinement(sg, t_mid, input_map)
                     for sg in self.catalog.sso.get_box(
                         lower_left=sky_box[0],
                         upper_right=sky_box[1],
@@ -227,13 +243,6 @@ class SOCat(SourceCatalog):
                 )
                 if s is not None
             ]
-        else:
-            self.log.warning(
-                "socat.get_sources_in_map.no_time_range",
-                map_id=input_map.map_id,
-                observation_time=input_map.observation_time,
-            )
-            all_sources = self.get_sources_in_box(box=None)
 
         if not all_sources:
             self.log.warning(
@@ -243,23 +252,21 @@ class SOCat(SourceCatalog):
                 wcs=input_map.flux.wcs,
             )
             return []
+
         coords = SkyCoord(
             ra=[s.ra for s in all_sources], dec=[s.dec for s in all_sources]
         )
-        self.log.info(
-            "socat.get_sources_in_map.sources_in_bounding_box",
-            bbox=sky_box,
-            map_id=input_map.map_id,
-            n_sources=len(all_sources),
-        )
+
         inside, _ = input_map.filter_sources(coords)
         if not np.any(inside):
             self.log.warning(
                 "socat.get_sources_in_map.no_sources_in_map",
                 map_id=input_map.map_id,
                 wcs=input_map.flux.wcs,
+                n_sources_in_bbox=len(all_sources),
             )
             return []
+
         return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
     def get_all_sources(self) -> list[RegisteredSource]:
@@ -268,17 +275,33 @@ class SOCat(SourceCatalog):
     def forced_photometry_sources(
         self, input_map: ProcessableMap, use_sso: bool = True
     ) -> list[RegisteredSource]:
+        """
+        Wrapper for socat's get_forced_photometry because it doesn't work with
+        ssos yet.
+        If times arent provided (or use_sso is False) then it just grabs the fixed sources.
+        Otherwise, grab all sources and filter them.
+        """
         obs_time = Time(input_map.observation_time)
-        self.log.bind(
+        log = self.log.bind(
             func="socat.forced_photometry_sources",
             obs_time=obs_time,
             t_min=self.t_min,
             t_max=self.t_max,
             use_sso=use_sso,
         )
-        if self.t_min is None or self.t_max is None or not use_sso:
-            self.log.info(
-                "socat.forced_photometry_sources.retrieving_sources_fixed_only"
+
+        if not use_sso:
+            log.info("socat.forced_photometry_sources.fixed_sources_only")
+            sources = [
+                self._fixed_to_registered(s)
+                for s in self.catalog.get_forced_photometry_sources(
+                    minimum_flux=self.flux_lower_limit
+                )
+            ]
+        elif self.t_min is None or self.t_max is None:
+            log.warning(
+                "socat.forced_photometry_sources.invalid_time_range",
+                map_id=input_map.map_id,
             )
             sources = [
                 self._fixed_to_registered(s)
@@ -287,7 +310,7 @@ class SOCat(SourceCatalog):
                 )
             ]
         else:
-            self.log.info("socat.forced_photometry_sources.retrieving_sources_with_sso")
+            log.info("socat.forced_photometry_sources.retrieving_sources_with_sso")
             candidates = self.get_sources_in_map(input_map)
             sources = [
                 s
@@ -297,13 +320,14 @@ class SOCat(SourceCatalog):
                 and s.flux >= self.flux_lower_limit
             ]
 
-        self.log.info("socat.forced_photometry_sources", n_sources=len(sources))
+        log.info("socat.forced_photometry_sources", n_sources=len(sources))
         if not sources:
             return []
+
         coords = SkyCoord(ra=[s.ra for s in sources], dec=[s.dec for s in sources])
         inside, _ = input_map.filter_sources(coords)
         if not np.any(inside):
-            self.log.warning(
+            log.warning(
                 "socat.forced_photometry_sources.no_sources_in_map",
                 n_sources=len(sources),
                 map_id=input_map.map_id,
