@@ -73,12 +73,13 @@ Then in the config JSON file, the source catalogs list is just a single socat db
 
 This example shows that the source catalog is of type "socat" which means the system will 
 look for the environment variables to define the type and name of the catalog.
-The socat requires a `t_min` and `t_max` because it includes moving objects so we need to query 
-whether or not they're inside the maps.
-This `t_min`, `t_max` sets the limits on interpolating the positions of the objects, so make sure 
-the map time range(s) are contained within these times.
+If you want socat to include/query solar system or other moving objects, you should provide
+`t_min` and `t_max` so the pipeline can determine whether those objects are inside the maps.
+These values set the limits on interpolating the positions of the objects, so make sure the
+map time range(s) are contained within these times. If `t_min` and `t_max` are omitted, socat
+can still be used for fixed sources, but moving-object queries will not be available.
 `flux_lower_limit` sets the limit for querying forced photometry sources; thus if ingesting a 
-custom file it shoudl be sure to include a flux estimate for the source.
+custom file it should be sure to include a flux estimate for the source.
 
 ### Map Catalog (mapcat)
 
