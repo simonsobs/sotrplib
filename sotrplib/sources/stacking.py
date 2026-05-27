@@ -2,10 +2,9 @@ from abc import ABC
 
 import numpy as np
 from astropy import units as u
-from pixell import reproject
+from pixell import enmap, reproject
 
 from sotrplib.maps.core import (
-    ProcessableMap,
     RhoAndKappaMap,
 )
 from sotrplib.maps.database import (
@@ -14,6 +13,31 @@ from sotrplib.maps.database import (
 )
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.sources.sources import RegisteredSource
+
+
+class Stamps:
+    """
+    Class to hold stamps, ivar stamps, and times for a single source.
+
+    Attributes:
+    -----------
+    stamps: list[enmap.ndmap]
+        List of stamps for the source.
+    ivar_stamps: list[enmap.ndmap]
+        List of ivar stamps for the source.
+    times: list[float]
+        List of times corresponding to each stamp.
+    """
+
+    def __init__(
+        self,
+        stamps: list[list[enmap.ndmap]],
+        ivar_stamps: list[list[enmap.ndmap]],
+        times: list[float],
+    ):
+        self.stamps = stamps
+        self.ivar_stamps = ivar_stamps
+        self.times = times
 
 
 class Stacker(ABC):
@@ -25,7 +49,7 @@ class Stacker(ABC):
         self.reader = reader
         self.preprocessors = preprocessors or []
 
-    def _read_maps(self) -> list[RhoAndKappaMap]:
+    def _read_maps(self) -> list[RhoAndKappaMap | FluxMapReader]:
         maps = self.reader.map_list()
         for imap in maps:
             imap.build()
@@ -35,28 +59,33 @@ class Stacker(ABC):
                 imap.ivar = imap.flux / imap.snr
                 imap.kappa = imap.ivar
                 imap.rho = imap.flux * imap.kappa
-                imap = RhoAndKappaMap()
 
         if self.preprocessors:
+            # Note preprocessors can change the type of the map, so we need to check the type after preprocessing
             for imap in maps:
                 for preprocessor in self.preprocessors:
                     imap = preprocessor.preprocess(imap)
 
-        if not np.all([type(imap) is RhoAndKappaMap for imap in maps]):
+        if not np.all(
+            [
+                type(imap) is RhoAndKappaMap or type(imap) is FluxMapReader
+                for imap in maps
+            ]
+        ):
             raise ValueError(
-                "Not all maps are of type RhoAndKappaMap. Check your applied Preprocessors."
+                "Not all maps are of type RhoAndKappaMap or FluxMapReader. Check your applied Preprocessors."
             )
 
         return maps
 
     def stamp(
         self, sources: list[RegisteredSource], thumb_width=20 * u.arcmin
-    ) -> list[list[ProcessableMap]]:
+    ) -> Stamps:
         stamps = []
-        ivar_stamps = []
         for source in sources:
             cur_stamps = []
             cur_ivar_stamps = []
+            cur_times = []
             for cur_map in self._read_maps():
                 rstamp = reproject.thumbnails(
                     cur_map.rho,
@@ -74,12 +103,24 @@ class Stacker(ABC):
                     ],
                     r=thumb_width.to(u.rad).value,
                 )
+                tstamp = reproject.thumbnails(
+                    cur_map.time_map,
+                    [
+                        source.dec.to(u.rad).value,
+                        source.ra.to(u.rad).value,
+                    ],
+                    r=thumb_width.to(u.rad).value,
+                )
+                time = tstamp.at([0, 0])
                 cur_stamps.append(rstamp / kstamp)
                 cur_ivar_stamps.append(kstamp)
-            stamps.append(cur_stamps)
-            ivar_stamps.append(cur_ivar_stamps)
+                cur_times.append(time)
 
-        return stamps, ivar_stamps
+            stamps.append(
+                Stamps(stamps=cur_stamps, ivar_stamps=cur_ivar_stamps, times=cur_times)
+            )
+
+        return stamps
 
 
 """
