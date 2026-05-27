@@ -6,6 +6,7 @@ from typing import Literal
 
 import numpy as np
 import structlog
+import tqdm
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
@@ -50,6 +51,8 @@ class SOCat(SourceCatalog):
             t_max=self.t_max,
             flux_lower_limit=self.flux_lower_limit,
         )
+
+        self._interp_cache: dict = {}
 
         if additional_positions is not None:
             sources = []
@@ -122,6 +125,19 @@ class SOCat(SourceCatalog):
         refined = self._sg_to_registered(sg, t)
         return refined if refined is not None else initial
 
+    def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
+        """Clear the interpolation cache and optionally update the time range."""
+        self._interp_cache.clear()
+        if t_min is not None:
+            self.t_min = t_min
+        if t_max is not None:
+            self.t_max = t_max
+        self.log.info(
+            "socat.refreshed",
+            t_min=self.t_min,
+            t_max=self.t_max,
+        )
+
     def _sg_to_registered(self, sg, t: Time) -> RegisteredSource | None:
         """
         Convert an socat SourceGenerator output to a RegisteredSource, querying at time t.
@@ -130,11 +146,18 @@ class SOCat(SourceCatalog):
         otherwise uses the source_type attribute if it exists, otherwise "unknown".
         """
         try:
-            sg.init_interp(ephem_cat=self.catalog.ephem)
+            is_sso = isinstance(sg.source, SolarSystemObject)
+            cache_key = (
+                f"sso:{sg.source.sso_id}" if is_sso else f"fixed:{sg.source.source_id}"
+            )
+            if cache_key not in self._interp_cache:
+                sg.init_interp(ephem_cat=self.catalog.ephem)
+                self._interp_cache[cache_key] = sg
+            else:
+                sg = self._interp_cache[cache_key]
             position, flux = sg.at_time(t=t)
         except (AttributeError, ValueError):
             return None
-        is_sso = isinstance(sg.source, SolarSystemObject)
         if is_sso:
             source_type = "sso"
         elif hasattr(sg.source, "source_type"):
@@ -228,18 +251,22 @@ class SOCat(SourceCatalog):
             all_sources = self.get_sources_in_box(box=None)
         else:
             t_mid = self.t_min + (self.t_max - self.t_min) / 2
+            if self._interp_cache:
+                source_generators = self._interp_cache.values()
+            else:
+                source_generators = self.catalog.sso.get_box(
+                    lower_left=sky_box[0],
+                    upper_right=sky_box[1],
+                    t_min=self.t_min,
+                    t_max=self.t_max,
+                    source_cat=self.catalog,
+                    ephem_cat=self.catalog.ephem,
+                )
             all_sources = [
                 s
                 for s in (
                     self._sg_to_registered_with_refinement(sg, t_mid, input_map)
-                    for sg in self.catalog.sso.get_box(
-                        lower_left=sky_box[0],
-                        upper_right=sky_box[1],
-                        t_min=self.t_min,
-                        t_max=self.t_max,
-                        source_cat=self.catalog,
-                        ephem_cat=self.catalog.ephem,
-                    )
+                    for sg in tqdm.tqdm(source_generators)
                 )
                 if s is not None
             ]
