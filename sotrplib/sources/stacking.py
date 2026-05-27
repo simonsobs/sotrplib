@@ -1,14 +1,12 @@
 from abc import ABC
 
-import numpy as np
 from astropy import units as u
 from pixell import enmap, reproject
 
 from sotrplib.maps.core import (
-    RhoAndKappaMap,
+    ProcessableMap,
 )
 from sotrplib.maps.database import (
-    FluxMapReader,
     MapCatDatabaseReader,
 )
 from sotrplib.maps.preprocessor import MapPreprocessor
@@ -21,8 +19,8 @@ class Stamps:
 
     Attributes:
     -----------
-    stamps: list[enmap.ndmap]
-        List of stamps for the source.
+    flux_stamps: list[enmap.ndmap]
+        List of flux stamps for the source.
     ivar_stamps: list[enmap.ndmap]
         List of ivar stamps for the source.
     times: list[float]
@@ -31,16 +29,36 @@ class Stamps:
 
     def __init__(
         self,
-        stamps: list[list[enmap.ndmap]],
+        flux_stamps: list[list[enmap.ndmap]],
         ivar_stamps: list[list[enmap.ndmap]],
         times: list[float],
     ):
-        self.stamps = stamps
+        self.flux_stamps = flux_stamps
         self.ivar_stamps = ivar_stamps
         self.times = times
 
 
 class Stacker(ABC):
+    """
+    Stacking class to handle the the creation of flux and ivar stamps for a list of sources.
+
+    Attributes:
+    -----------
+    reader: MapCatDatabaseReader
+        Reader to read maps from the database.
+    preprocessors: list[MapPreprocessor]
+        List of preprocessors to apply to the maps after reading and before stamping.
+    maps: list[ProcessableMap]
+        List of maps read from the database and preprocessed, ready for stamping. Starts as none and set by the _read_maps method.
+
+    Methods:
+    --------
+    _read_maps():
+        Reads maps from the database using the reader, applies preprocessors, and finalizes the maps for stamping.
+    stamp(sources: list[RegisteredSource], thumb_width=20*u.arcmin) -> Stamps:
+        Creates flux and ivar stamps for a list of sources.
+    """
+
     def __init__(
         self,
         reader: MapCatDatabaseReader,  # TODO: Support readers other than MapCatDatabaseReader
@@ -48,17 +66,12 @@ class Stacker(ABC):
     ):
         self.reader = reader
         self.preprocessors = preprocessors or []
+        self.maps = None
 
-    def _read_maps(self) -> list[RhoAndKappaMap | FluxMapReader]:
+    def _read_maps(self) -> list[ProcessableMap]:
         maps = self.reader.map_list()
         for imap in maps:
             imap.build()
-
-        if type(self.reader) is FluxMapReader:
-            for imap in maps:
-                imap.ivar = imap.flux / imap.snr
-                imap.kappa = imap.ivar
-                imap.rho = imap.flux * imap.kappa
 
         if self.preprocessors:
             # Note preprocessors can change the type of the map, so we need to check the type after preprocessing
@@ -66,17 +79,10 @@ class Stacker(ABC):
                 for preprocessor in self.preprocessors:
                     imap = preprocessor.preprocess(imap)
 
-        if not np.all(
-            [
-                type(imap) is RhoAndKappaMap or type(imap) is FluxMapReader
-                for imap in maps
-            ]
-        ):
-            raise ValueError(
-                "Not all maps are of type RhoAndKappaMap or FluxMapReader. Check your applied Preprocessors."
-            )
+        for imap in maps:
+            imap.finalize()
 
-        return maps
+        self.maps = maps
 
     def stamp(
         self, sources: list[RegisteredSource], thumb_width=20 * u.arcmin
@@ -86,241 +92,8 @@ class Stacker(ABC):
             cur_stamps = []
             cur_ivar_stamps = []
             cur_times = []
-            for cur_map in self._read_maps():
-                rstamp = reproject.thumbnails(
-                    cur_map.rho,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                kstamp = reproject.thumbnails(
-                    cur_map.kappa,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                tstamp = reproject.thumbnails(
-                    cur_map.time_map,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                time = tstamp.at([0, 0])
-                cur_stamps.append(rstamp / kstamp)
-                cur_ivar_stamps.append(kstamp)
-                cur_times.append(time)
-
-            stamps.append(
-                Stamps(stamps=cur_stamps, ivar_stamps=cur_ivar_stamps, times=cur_times)
-            )
-
-        return stamps
-
-
-"""
-class ForcedPhotometryStacker(ABC):
-    def __init__(
-        self,
-        sources: list[RegisteredSource],
-        start_time: Time,
-        end_time: Time,
-        freq: str,
-        array: str,
-    ):
-        if end_time < start_time:
-            raise ValueError("End time must be after start time.")
-        self.sources = sources
-        self.start_time = start_time
-        self.end_time = end_time
-        self.freq = freq
-        self.array = array
-
-    def get_coverage_maps(self, session: Session) -> None:
-        map_ids = []
-        for source in self.sources:
-            coord = ICRS(ra=source.position().ra, dec=source.position().dec)
-            cur_maps: list[DepthOneMapTable] = get_maps_by_coverage(
-                session=session, coord=coord
-            )
-            cur_map_ids = [m.map_id for m in cur_maps]
-            map_ids.append(cur_map_ids)
-
-        self.map_ids = map_ids
-
-class IntensityIvarStacker(ForcedPhotometryStacker):
-    def __init__(
-        self,
-        sources: list[RegisteredSource],
-        start_time: Time,
-        end_time: Time,
-        freq: str,
-        array: str,
-    ):
-        super().__init__(
-            sources=sources,
-            start_time=start_time,
-            end_time=end_time,
-            freq=freq,
-            array=array,
-        )
-
-    def get_maps(self):
-        db_reader = IntensityMapReader(
-            number_to_read=None,
-            start_time=self.start_time,
-            end_time=self.end_time,
-            sources=self.sources,
-            frequency=self.freq,
-            array=self.array,
-            rerun=True,
-        )
-
-        self.maps = db_reader.map_list()
-        for imap in self.maps:
-            imap.build()
-
-
-
-    def get_stamps(self, thumb_width=20 * u.arcmin):
-        if self.filtered_maps is None:
-            raise ValueError("Maps have not been filtered. Call filter_maps() first.")
-        stamps = []
-        ivar_stamps = []
-        for source in self.sources:
-            cur_stamps = []
-            cur_ivar_stamps = []
-            for cur_map in self.filtered_maps:
-                rstamp = reproject.thumbnails(
-                    cur_map.rho,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                kstamp = reproject.thumbnails(
-                    cur_map.kappa,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                cur_stamps.append(rstamp / kstamp)
-                cur_ivar_stamps.append(kstamp)
-            stamps.append(cur_stamps)
-            ivar_stamps.append(cur_ivar_stamps)
-        self.stamps = stamps
-        self.ivar_stamps = ivar_stamps
-
-
-class RhoKappaStacker(ForcedPhotometryStacker):
-    def __init__(
-        self,
-        sources: list[RegisteredSource],
-        start_time: Time,
-        end_time: Time,
-        freq: str,
-        array: str,
-    ):
-        super().__init__(
-            sources=sources,
-            start_time=start_time,
-            end_time=end_time,
-            freq=freq,
-            array=array,
-        )
-
-    def get_maps(self):
-        db_reader = RhoKappaMapReader(
-            number_to_read=None,
-            start_time=self.start_time,
-            end_time=self.end_time,
-            sources=self.sources,
-            frequency=self.freq,
-            array=self.array,
-            rerun=True,
-        )
-
-        self.maps = db_reader.map_list()
-        for imap in self.maps:
-            imap.build()
-
-    def get_stamps(self, thumb_width=20 * u.arcmin):
-        stamps = []
-        ivar_stamps = []
-        for source in self.sources:
-            cur_stamps = []
-            cur_ivar_stamps = []
-            for cur_map in self.maps:
-                rstamp = reproject.thumbnails(
-                    cur_map.rho,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                kstamp = reproject.thumbnails(
-                    cur_map.kappa,
-                    [
-                        source.dec.to(u.rad).value,
-                        source.ra.to(u.rad).value,
-                    ],
-                    r=thumb_width.to(u.rad).value,
-                )
-                cur_stamps.append(rstamp / kstamp)
-                cur_ivar_stamps.append(kstamp)
-            stamps.append(cur_stamps)
-            ivar_stamps.append(cur_ivar_stamps)
-        self.stamps = stamps
-        self.ivar_stamps = ivar_stamps
-
-
-class FluxSNRStacker(ForcedPhotometryStacker):
-    def __init__(
-        self,
-        sources: list[RegisteredSource],
-        start_time: Time,
-        end_time: Time,
-        freq: str,
-        array: str,
-    ):
-        super().__init__(
-            sources=sources,
-            start_time=start_time,
-            end_time=end_time,
-            freq=freq,
-            array=array,
-        )
-
-    def get_maps(self):
-        db_reader = FluxMapReader(
-            number_to_read=None,
-            start_time=self.start_time,
-            end_time=self.end_time,
-            sources=self.sources,
-            frequency=self.freq,
-            array=self.array,
-            rerun=True,
-        )
-
-        self.maps = db_reader.map_list()
-        for imap in self.maps:
-            imap.build()
-
-    def get_stamps(self, thumb_width=20 * u.arcmin):
-        stamps = []
-        ivar_stamps = []
-        for source in self.sources:
-            cur_stamps = []
-            cur_ivar_stamps = []
+            if self.maps is None:
+                self._read_maps()
             for cur_map in self.maps:
                 fstamp = reproject.thumbnails(
                     cur_map.flux,
@@ -330,7 +103,7 @@ class FluxSNRStacker(ForcedPhotometryStacker):
                     ],
                     r=thumb_width.to(u.rad).value,
                 )
-                snr_stamp = reproject.thumbnails(
+                snrstamp = reproject.thumbnails(
                     cur_map.snr,
                     [
                         source.dec.to(u.rad).value,
@@ -338,11 +111,23 @@ class FluxSNRStacker(ForcedPhotometryStacker):
                     ],
                     r=thumb_width.to(u.rad).value,
                 )
+                tstamp = reproject.thumbnails(
+                    cur_map.time_mean,
+                    [
+                        source.dec.to(u.rad).value,
+                        source.ra.to(u.rad).value,
+                    ],
+                    r=thumb_width.to(u.rad).value,
+                )
+                time = tstamp.at([0, 0])
                 cur_stamps.append(fstamp)
-                cur_ivar_stamps.append(fstamp / snr_stamp)
-            stamps.append(cur_stamps)
-            ivar_stamps.append(cur_ivar_stamps)
-        self.stamps = stamps
-        self.ivar_stamps = ivar_stamps
+                cur_ivar_stamps.append(fstamp / snrstamp)
+                cur_times.append(time)
 
-"""
+            stamps.append(
+                Stamps(
+                    flux_stamps=cur_stamps, ivar_stamps=cur_ivar_stamps, times=cur_times
+                )
+            )
+
+        return stamps
