@@ -313,37 +313,32 @@ class SOCat(SourceCatalog):
             SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
             SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
         ]
+        if input_map.observation_time is not None:
+            t_mid = Time(input_map.observation_time)
+        elif self.t_min is not None and self.t_max is not None:
+            t_mid = self.t_min + (self.t_max - self.t_min) / 2
+        else:
+            t_mid = None
 
-        if self.t_min is None or self.t_max is None:
-            self.log.warning(
-                "socat.get_sources_in_map.invalid_time_range",
-                map_id=input_map.map_id,
-                observation_time=input_map.observation_time,
+        if self._interp_cache:
+            source_generators = self._interp_cache.values()
+        else:
+            source_generators = self.catalog.sso.get_box(
+                lower_left=sky_box[0],
+                upper_right=sky_box[1],
                 t_min=self.t_min,
                 t_max=self.t_max,
+                source_cat=self.catalog,
+                ephem_cat=self.catalog.ephem,
             )
-            all_sources = self.get_sources_in_box(box=None)
-        else:
-            t_mid = self.t_min + (self.t_max - self.t_min) / 2
-            if self._interp_cache:
-                source_generators = self._interp_cache.values()
-            else:
-                source_generators = self.catalog.sso.get_box(
-                    lower_left=sky_box[0],
-                    upper_right=sky_box[1],
-                    t_min=self.t_min,
-                    t_max=self.t_max,
-                    source_cat=self.catalog,
-                    ephem_cat=self.catalog.ephem,
-                )
-            all_sources = [
-                s
-                for s in (
-                    self._sg_to_registered_with_refinement(sg, t_mid, input_map)
-                    for sg in tqdm.tqdm(source_generators)
-                )
-                if s is not None
-            ]
+        all_sources = [
+            s
+            for s in (
+                self._sg_to_registered_with_refinement(sg, t_mid, input_map)
+                for sg in tqdm.tqdm(source_generators)
+            )
+            if s is not None
+        ]
 
         if not all_sources:
             self.log.warning(
