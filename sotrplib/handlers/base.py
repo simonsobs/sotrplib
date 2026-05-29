@@ -278,6 +278,16 @@ class BaseRunner:
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
 
+    def _initialize_socat_time_ranges(self, t_start, t_end) -> None:
+        from astropy.time import Time, TimeDelta
+
+        padding = TimeDelta(1, format="jd")
+        t_min = Time(t_start) - padding
+        t_max = Time(t_end) + padding
+        for catalog in self.source_catalogs + self.sso_catalogs:
+            if hasattr(catalog, "set_time_range"):
+                catalog.set_time_range(t_min, t_max)
+
     def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
@@ -285,6 +295,9 @@ class BaseRunner:
         """
         bbox = self.bbox(maps)
         time_range = self.observation_time_range(maps)
+        t_start, t_end = time_range
+        if t_start is not None and t_end is not None:
+            self._initialize_socat_time_ranges(t_start, t_end)
         all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
         return (

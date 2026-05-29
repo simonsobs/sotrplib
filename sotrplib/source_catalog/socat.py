@@ -9,7 +9,7 @@ import structlog
 import tqdm
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from pixell import utils as pixell_utils
 from socat.client.settings import SOCatClientSettings
 from socat.database import SolarSystemObject
@@ -21,13 +21,19 @@ from sotrplib.utils.utils import angular_separation
 
 from .core import SourceCatalog
 
+_TIME_RANGE_PADDING = TimeDelta(1, format="jd")
+
 
 class SOCat(SourceCatalog):
     """
     A catalog backed by the configured SOCat database.
 
-    Queries both fixed and solar-system-object (moving) sources. SSO queries
-    require t_min and t_max so that ephemeris interpolation is bounded.
+    Queries both fixed and solar-system-object (moving) sources.
+    SSO queries require t_min and t_max so that ephemeris interpolation
+    is bounded.
+
+    t_min and t_max can be set manually or automatically generated from
+    the maps.
     """
 
     def __init__(
@@ -125,8 +131,73 @@ class SOCat(SourceCatalog):
         refined = self._sg_to_registered(sg, t)
         return refined if refined is not None else initial
 
+    def set_time_range(
+        self, t_min: Time, t_max: Time, time_padding: TimeDelta = _TIME_RANGE_PADDING
+    ) -> None:
+        """
+        Set the time range from the map database and clear the interpolation cache.
+        The time range is expanded by time_padding on either side to avoid edge effects.
+        """
+        self._refresh(t_min=t_min - time_padding, t_max=t_max + time_padding)
+
+    def _check_and_expand_for_map(self, input_map: ProcessableMap) -> None:
+        """
+        If the map's observation window falls outside [t_min, t_max], expand and refresh.
+        """
+        obs_start = Time(input_map.observation_start)
+        obs_end = Time(input_map.observation_end)
+        new_t_min = self.t_min
+        new_t_max = self.t_max
+        needs_refresh = False
+        if self.t_min is None or obs_start < self.t_min:
+            new_t_min = obs_start - _TIME_RANGE_PADDING
+            needs_refresh = True
+        if self.t_max is None or obs_end > self.t_max:
+            new_t_max = obs_end + _TIME_RANGE_PADDING
+            needs_refresh = True
+        if needs_refresh:
+            self.log.info(
+                "socat.expanding_time_range",
+                map_id=input_map.map_id,
+                old_t_min=self.t_min,
+                old_t_max=self.t_max,
+                new_t_min=new_t_min,
+                new_t_max=new_t_max,
+            )
+            self._refresh(t_min=new_t_min, t_max=new_t_max)
+
+    def _initialize_generators(self) -> None:
+        """Fetch all SSO generators for the current time range and pre-initialize interpolation."""
+        sky_box = [
+            SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+            SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+        ]
+        for sg in tqdm.tqdm(
+            self.catalog.sso.get_box(
+                lower_left=sky_box[0],
+                upper_right=sky_box[1],
+                t_min=self.t_min,
+                t_max=self.t_max,
+                source_cat=self.catalog,
+                ephem_cat=self.catalog.ephem,
+            ),
+            desc="socat: initializing SSO interpolation",
+        ):
+            is_sso = isinstance(sg.source, SolarSystemObject)
+            cache_key = (
+                f"sso:{sg.source.sso_id}" if is_sso else f"fixed:{sg.source.source_id}"
+            )
+            sg.init_interp(ephem_cat=self.catalog.ephem)
+            self._interp_cache[cache_key] = sg
+        self.log.info(
+            "socat.generators_initialized",
+            n_generators=len(self._interp_cache),
+            t_min=self.t_min,
+            t_max=self.t_max,
+        )
+
     def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
-        """Clear the interpolation cache and optionally update the time range."""
+        """Clear the interpolation cache, update the time range, and re-initialize generators."""
         self._interp_cache.clear()
         if t_min is not None:
             self.t_min = t_min
@@ -137,6 +208,8 @@ class SOCat(SourceCatalog):
             t_min=self.t_min,
             t_max=self.t_max,
         )
+        if self.t_min is not None and self.t_max is not None:
+            self._initialize_generators()
 
     def _sg_to_registered(self, sg, t: Time) -> RegisteredSource | None:
         """
@@ -234,6 +307,7 @@ class SOCat(SourceCatalog):
         return sources
 
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
+        self._check_and_expand_for_map(input_map)
         ## for now, just get all the sources and filter them.
         sky_box = [
             SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
