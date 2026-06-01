@@ -34,16 +34,17 @@ class SOCat(SourceCatalog):
 
     t_min and t_max can be set manually or automatically generated from
     the maps.
+
+    flux_lower_limit can be set to filter sources for forced photometry,
+    but if None, socat will return all monitored sources
+
     """
 
     def __init__(
         self,
         t_min: Time | None = None,
         t_max: Time | None = None,
-        flux_lower_limit: u.Quantity = 0.03 * u.Jy,
-        additional_positions: list[SkyCoord] | None = None,
-        additional_fluxes: list[u.Quantity] | None = None,
-        additional_source_ids: list[str] | None = None,
+        flux_lower_limit: u.Quantity | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or structlog.get_logger()
@@ -59,20 +60,6 @@ class SOCat(SourceCatalog):
         )
 
         self._interp_cache: dict = {}
-
-        if additional_positions is not None:
-            sources = []
-            for i, pos in enumerate(additional_positions):
-                f = additional_fluxes[i] if additional_fluxes is not None else None
-                sid = (
-                    additional_source_ids[i]
-                    if additional_source_ids is not None
-                    else None
-                )
-                sources.append(
-                    RegisteredSource(ra=pos.ra, dec=pos.dec, flux=f, source_id=sid)
-                )
-            self.add_sources(sources)
 
     def _fixed_to_registered(self, source) -> RegisteredSource:
         return RegisteredSource(
@@ -140,7 +127,7 @@ class SOCat(SourceCatalog):
         """
         self._refresh(t_min=t_min - time_padding, t_max=t_max + time_padding)
 
-    def _check_and_expand_for_map(self, input_map: ProcessableMap) -> None:
+    def _check_and_expand_interp_range(self, input_map: ProcessableMap) -> None:
         """
         If the map's observation window falls outside [t_min, t_max], expand and refresh.
         """
@@ -258,12 +245,13 @@ class SOCat(SourceCatalog):
             ],
         )
 
-    def add_sources(self, sources: list[RegisteredSource]):
+    def add_sources(self, sources: list[RegisteredSource], no_monitor: bool = False):
         for source in sources:
             self.catalog.create_source(
                 position=SkyCoord(source.ra, source.dec),
                 flux=source.flux,
                 name=source.source_id,
+                monitored=not no_monitor,
             )
 
     ## TODO: need to update for boxes which need to be broken in two.
@@ -306,8 +294,25 @@ class SOCat(SourceCatalog):
         self.log.debug("socat.get_sources_in_box", box=box, n_sources=len(sources))
         return sources
 
-    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        self._check_and_expand_for_map(input_map)
+    def get_sources_in_map(
+        self, input_map: ProcessableMap, monitored: bool = False
+    ) -> list[RegisteredSource]:
+        """
+        Get sources within the given map.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            The map for which to get sources.
+        monitored : bool
+            If True, only return sources that are listed as `monitored` in the catalog.
+
+        Returns
+        -------
+        list[RegisteredSource]
+            List of sources within the map.
+        """
+        self._check_and_expand_interp_range(input_map)
         ## for now, just get all the sources and filter them.
         sky_box = [
             SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
@@ -331,6 +336,9 @@ class SOCat(SourceCatalog):
                 source_cat=self.catalog,
                 ephem_cat=self.catalog.ephem,
             )
+        if monitored:
+            source_generators = [sg for sg in source_generators if sg.source.monitored]
+
         all_sources = [
             s
             for s in (
@@ -407,13 +415,13 @@ class SOCat(SourceCatalog):
             ]
         else:
             log.info("socat.forced_photometry_sources.retrieving_sources_with_sso")
-            candidates = self.get_sources_in_map(input_map)
+            candidates = self.get_sources_in_map(input_map, monitored=True)
             sources = [
                 s
                 for s in candidates
                 if s is not None
-                and s.flux is not None
-                and s.flux >= self.flux_lower_limit
+                and (s.flux is not None or self.flux_lower_limit is None)
+                and (self.flux_lower_limit is None or s.flux >= self.flux_lower_limit)
             ]
 
         log.info("socat.forced_photometry_sources", n_sources=len(sources))
