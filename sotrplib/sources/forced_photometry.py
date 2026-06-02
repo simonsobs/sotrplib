@@ -16,15 +16,15 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-
-if TYPE_CHECKING:
-    from sotrplib.maps.pointing import PointingModel
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,
     RegisteredSource,
 )
 from sotrplib.utils.utils import get_frequency, get_fwhm
+
+if TYPE_CHECKING:
+    from sotrplib.maps.pointing import PointingModel
 
 
 class GaussianFitParameters(BaseModel):

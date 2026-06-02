@@ -1,5 +1,6 @@
 from abc import ABC
 
+import numpy as np
 from astropy import units as u
 from pixell import enmap, reproject
 
@@ -29,8 +30,8 @@ class Stamps:
 
     def __init__(
         self,
-        flux_stamps: list[list[enmap.ndmap]],
-        ivar_stamps: list[list[enmap.ndmap]],
+        flux_stamps: list[enmap.ndmap],
+        ivar_stamps: list[enmap.ndmap],
         times: list[float],
     ):
         self.flux_stamps = flux_stamps
@@ -66,35 +67,27 @@ class Stacker(ABC):
     ):
         self.reader = reader
         self.preprocessors = preprocessors or []
-        self.maps = None
+        self.maps = self.reader.map_list()
 
-    def _read_maps(self) -> list[ProcessableMap]:
-        maps = self.reader.map_list()
-        for imap in maps:
-            imap.build()
+    def _read_map(self, imap: ProcessableMap) -> ProcessableMap:
+        imap.build()
 
         if self.preprocessors:
             # Note preprocessors can change the type of the map, so we need to check the type after preprocessing
-            for imap in maps:
-                for preprocessor in self.preprocessors:
-                    imap = preprocessor.preprocess(imap)
+            for preprocessor in self.preprocessors:
+                imap = preprocessor.preprocess(imap)
 
-        for imap in maps:
-            imap.finalize()
+        imap.finalize()
 
-        self.maps = maps
+        return imap
 
     def stamp(
         self, sources: list[RegisteredSource], thumb_width=20 * u.arcmin
     ) -> Stamps:
-        stamps = []
-        for source in sources:
-            cur_stamps = []
-            cur_ivar_stamps = []
-            cur_times = []
-            if self.maps is None:
-                self._read_maps()
-            for cur_map in self.maps:
+        stamps = np.empty((len(sources), 3, len(self.maps)), dtype=object)
+        for j, cur_map in enumerate(self.maps):
+            cur_map = self._read_map(cur_map)
+            for i, source in enumerate(sources):
                 fstamp = reproject.thumbnails(
                     cur_map.flux,
                     [
@@ -120,14 +113,19 @@ class Stacker(ABC):
                     r=thumb_width.to(u.rad).value,
                 )
                 time = tstamp.at([0, 0])
-                cur_stamps.append(fstamp)
-                cur_ivar_stamps.append(fstamp / snrstamp)
-                cur_times.append(time)
+                stamps[i, 0, j] = fstamp
+                stamps[i, 1, j] = (snrstamp / fstamp) ** 2
+                stamps[i, 2, j] = time
 
-            stamps.append(
-                Stamps(
-                    flux_stamps=cur_stamps, ivar_stamps=cur_ivar_stamps, times=cur_times
-                )
+        stamps_list = []
+
+        for i in range(len(stamps)):
+            cur_stamps = stamps[i, 0, :].tolist()
+            cur_ivar_stamps = stamps[i, 1, :].tolist()
+            cur_times = stamps[i, 2, :].tolist()
+            stamp = Stamps(
+                flux_stamps=cur_stamps, ivar_stamps=cur_ivar_stamps, times=cur_times
             )
+            stamps_list.append(stamp)
 
-        return stamps
+        return stamps_list

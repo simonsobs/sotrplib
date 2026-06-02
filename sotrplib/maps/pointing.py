@@ -3,8 +3,6 @@ Dependencies for map pointing calculations. Sets MapPointingOffset object.
 These operations happen after forced photometry and before source subtraction.
 """
 
-from __future__ import annotations
-
 from abc import ABC
 from typing import TYPE_CHECKING, Literal
 
@@ -21,11 +19,8 @@ from structlog.types import FilteringBoundLogger
 
 if TYPE_CHECKING:
     from sotrplib.maps.core import ProcessableMap
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
     from sotrplib.sources.sources import RegisteredSource
+
 
 PointingModel = ConstantPointingModel | PolynomialPointingModel
 
@@ -37,10 +32,10 @@ class MapPointingOffset(ABC):
     the inverse offsets to recover true positions.
     """
 
-    pointing_sources: list[RegisteredSource] | None = None
+    pointing_sources: list["RegisteredSource"] | None = None
     pointing_model: PointingModel | None = None
 
-    def build_model(self, pointing_sources: list[RegisteredSource] | None = None):
+    def build_model(self, pointing_sources: list["RegisteredSource"] | None = None):
         """Calculate the pointing offset model based on the provided sources."""
         raise NotImplementedError(
             "MapPointingOffset.build_model must be implemented in subclasses."
@@ -68,7 +63,7 @@ class MapPointingOffset(ABC):
 
 class EmptyPointingOffset(MapPointingOffset):
     def build_model(
-        self, pointing_sources: list[RegisteredSource] | None = None
+        self, pointing_sources: list["RegisteredSource"] | None = None
     ) -> tuple[ConstantPointingModel, PointingModelStats]:
         return (
             ConstantPointingModel(ra_offset=0.0 * u.deg, dec_offset=0.0 * u.deg),
@@ -85,7 +80,7 @@ class ConstantPointingOffset(MapPointingOffset):
         min_snr: float = 5.0,
         min_num: int = 5,
         sigma_clip_level: float = 3.0,
-        pointing_sources: list[RegisteredSource] | None = None,
+        pointing_sources: list["RegisteredSource"] | None = None,
         avg_method: Literal["mean", "median"] = "mean",
         log: FilteringBoundLogger | None = None,
     ):
@@ -101,7 +96,7 @@ class ConstantPointingOffset(MapPointingOffset):
         self.log = log or structlog.get_logger()
 
     def build_model(
-        self, pointing_sources: list[RegisteredSource] | None = None
+        self, pointing_sources: list["RegisteredSource"] | None = None
     ) -> tuple[ConstantPointingModel, PointingModelStats]:
         log = self.log or structlog.get_logger()
         log = log.bind(
@@ -203,7 +198,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         min_snr: float = 5.0,
         min_num: int = 5,
         sigma_clip_level: float = 3.0,
-        pointing_sources: list[RegisteredSource] | None = None,
+        pointing_sources: list["RegisteredSource"] | None = None,
         poly_order: int = 3,
         max_snr_weight: float = 100.0,
         log: FilteringBoundLogger | None = None,
@@ -219,7 +214,7 @@ class PolynomialPointingOffset(MapPointingOffset):
         self.log = log or structlog.get_logger()
 
     def build_model(
-        self, pointing_sources: list[RegisteredSource] | None = None
+        self, pointing_sources: list["RegisteredSource"] | None = None
     ) -> tuple[PolynomialPointingModel, PointingModelStats]:
         log = self.log.bind(func="PolynomialPointingOffset.build_model")
         pointing_sources = pointing_sources or self.pointing_sources
