@@ -71,43 +71,8 @@ class LightServeOutput(SourceOutput):
                 )
                 continue
 
-            fm = FluxMeasurementCreate(
-                frequency=90,
-                module="i1",
-                source_id=socat_to_internal[int(source.crossmatches[0].source_id)],
-                time=source.observation_mean_time.to_datetime(),
-                ra=source.ra.to_value("deg"),
-                dec=source.dec.to_value("deg"),
-                ra_uncertainty=(
-                    source.err_ra.to_value("deg") if source.err_ra is not None else 0.0
-                ),
-                dec_uncertainty=(
-                    source.err_dec.to_value("deg")
-                    if source.err_dec is not None
-                    else 0.0
-                ),
-                flux=source.flux.to_value("Jy") if source.flux is not None else 0.0,
-                flux_err=(
-                    source.err_flux.to_value("Jy")
-                    if source.err_flux is not None
-                    else 0.0
-                ),
-                extra={
-                    "map_id": map_id,
-                },
-            ).model_dump_json()
-
-            cut = (
-                Cutout(
-                    data=source.thumbnail.tolist(),
-                    time=source.observation_mean_time.to_datetime(),
-                    units=source.thumbnail_unit.to_string(),
-                    frequency=90,
-                    module="i1",
-                ).model_dump_json()
-                if source.thumbnail is not None
-                else "null"
-            )
+            fm = source.to_flux_measurement().model_dump_json()
+            cut = source.to_cutout().model_dump_json()
 
             response = client.put(
                 "/observations/",

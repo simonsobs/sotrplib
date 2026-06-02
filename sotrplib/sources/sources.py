@@ -4,10 +4,13 @@ import numpy as np
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
+from lightcurvedb.models.cutout import Cutout
+from lightcurvedb.models.flux import FluxMeasurement
 from numpydantic import NDArray
 from pixell import reproject
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
+from uuid_extension import uuid7
 
 from sotrplib.maps.core import ProcessableMap
 
@@ -102,6 +105,8 @@ class MeasuredSource(RegisteredSource):
 
     """
 
+    measurement_id: uuid7 = Field(default_factory=uuid7)
+
     snr: float | None = None
     offset_ra: AstroPydanticQuantity[u.deg] | None = None
     offset_dec: AstroPydanticQuantity[u.deg] | None = None
@@ -168,7 +173,40 @@ class MeasuredSource(RegisteredSource):
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)
 
+    def to_flux_measurement(self) -> FluxMeasurement:
+        """
+        Convert the MeasuredSource to a FluxMeasurement object for lightcurvedb.
+        """
+
+        return FluxMeasurement(
+            measurement_id=self.measurement_id,
+            frequency=int(self.frequency.to_value(u.GHz)),
+            module=f"{self.instrument or 'unknown'}_{self.array or 'unknown'}",
+            source_id=self.source_id,
+            time=self.observation_mean_time.to_datetime(),
+            ra=self.ra.to_value(u.deg),
+            dec=self.dec.to_value(u.deg),
+            ra_uncertainty=self.err_ra.to_value(u.deg) if self.err_ra else 0.0,
+            dec_uncertainty=self.err_dec.to_value(u.deg) if self.err_dec else 0.0,
+            flux=self.flux.to(u.mJy).value if self.flux else None,
+            flux_uncertainty=self.err_flux.to(u.mJy).value if self.err_flux else None,
+        )
+
+    def to_cutout(self) -> Cutout:
+        """
+        Convert the MeasuredSource's thumbnail to a Cutout object for lightcurvedb.
+        """
+
+        return Cutout(
+            measurement_id=self.measurement_id,
+            data=self.thumbnail.tolist(),
+            time=self.observation_mean_time.to_datetime(),
+            units=self.thumbnail_unit.to_string(),
+            frequency=int(self.frequency.to_value(u.GHz)),
+            module=f"{self.instrument or 'unknown'}_{self.array or 'unknown'}",
+            source_id=self.source_id,
+        )
+
     def __repr__(self):
-        # Use vars(self) to get all attributes except thumbnail
-        attrs = {k: v for k, v in vars(self).items() if k != "thumbnail"}
+        attrs = self.model_dump(exclude={"thumbnail"})
         return f"{self.__class__.__name__}({attrs})"
