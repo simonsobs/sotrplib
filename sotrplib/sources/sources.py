@@ -2,6 +2,7 @@ from typing import Literal, Optional
 
 import numpy as np
 import structlog
+import uuid7
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from lightcurvedb.models.cutout import Cutout
@@ -10,7 +11,6 @@ from numpydantic import NDArray
 from pixell import reproject
 from pydantic import BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
-from uuid_extension import uuid7
 
 from sotrplib.maps.core import ProcessableMap
 
@@ -105,7 +105,7 @@ class MeasuredSource(RegisteredSource):
 
     """
 
-    measurement_id: uuid7 = Field(default_factory=uuid7)
+    measurement_id: uuid7.UUID = Field(default_factory=uuid7.create)
 
     snr: float | None = None
     offset_ra: AstroPydanticQuantity[u.deg] | None = None
