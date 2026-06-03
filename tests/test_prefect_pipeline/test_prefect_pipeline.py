@@ -9,6 +9,7 @@ from prefect.testing.utilities import prefect_test_harness
 
 from sotrplib.handlers.prefect import PrefectRunner
 from sotrplib.outputs.core import PickleSerializer
+from sotrplib.outputs.parquet import ParquetOutput
 from sotrplib.sifter.core import DefaultSifter, SifterResult
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.sims.sim_source_generators import FixedSourceGenerator
@@ -49,7 +50,10 @@ def test_basic_pipeline(tmp_path, fit_mode: str):
         source_subtractor=None,
         blind_search=SigmaClipBlindSearch(),
         sifter=DefaultSifter(),
-        source_outputs=[PickleSerializer(directory=tmp_path)],
+        source_outputs=[
+            PickleSerializer(directory=tmp_path),
+            ParquetOutput(directory=tmp_path),
+        ],
         map_outputs=None,
     )
 

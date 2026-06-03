@@ -10,6 +10,7 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 from astropy.units import Unit
 from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
@@ -70,13 +71,13 @@ class ProcessableMap(ABC):
     array: str
     "The array/wafer that was used"
 
-    observation_length: timedelta
+    observation_length: TimeDelta
     "Total length of the observation"
-    observation_start: AwareDatetime
+    observation_start: Time
     "Start time of the observation"
-    observation_end: AwareDatetime
+    observation_end: Time
     "End time of the observation"
-    observation_time: AwareDatetime
+    observation_time: Time
     "Rough 'middle' time of the observation"
 
     flux_units: Unit
@@ -304,25 +305,27 @@ class ProcessableMap(ABC):
             f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(self, pix: tuple[int, int]) -> tuple[Time, Time, Time]:
         """
         Given a pixel in the map, return the observation start, mean and end time of that pixel.
         """
         x, y = int(pix[0]), int(pix[1])
 
         t_start = (
-            self.time_first[x, y]
+            Time(self.time_first[x, y], format="unix")
             if self.time_first is not None
             else self.observation_start
         )
         t_mean = (
-            self.time_mean[x, y]
+            Time(self.time_mean[x, y], format="unix")
             if self.time_mean is not None
             else (self.observation_end - self.observation_start) / 2
             + self.observation_start
         )
         t_end = (
-            self.time_last[x, y] if self.time_last is not None else self.observation_end
+            Time(self.time_last[x, y], format="unix")
+            if self.time_last is not None
+            else self.observation_end
         )
         return t_start, t_mean, t_end
 

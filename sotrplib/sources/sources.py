@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import numpy as np
@@ -116,7 +117,6 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
     measurement_type: Literal["forced", "blind", "simulated"] = "forced"
-    measurement_id: str | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
@@ -178,18 +178,28 @@ class MeasuredSource(RegisteredSource):
         Convert the MeasuredSource to a FluxMeasurement object for lightcurvedb.
         """
 
+        self.source_id = uuid7.create()
+
         return FluxMeasurement(
             measurement_id=self.measurement_id,
             frequency=int(self.frequency.to_value(u.GHz)),
             module=f"{self.instrument or 'unknown'}_{self.array or 'unknown'}",
             source_id=self.source_id,
-            time=self.observation_mean_time.to_datetime(),
+            time=self.observation_mean_time.to_datetime()
+            if self.observation_mean_time is not None
+            else datetime.now(tz=timezone.utc),
             ra=self.ra.to_value(u.deg),
             dec=self.dec.to_value(u.deg),
-            ra_uncertainty=self.err_ra.to_value(u.deg) if self.err_ra else 0.0,
-            dec_uncertainty=self.err_dec.to_value(u.deg) if self.err_dec else 0.0,
-            flux=self.flux.to(u.mJy).value if self.flux else None,
-            flux_uncertainty=self.err_flux.to(u.mJy).value if self.err_flux else None,
+            ra_uncertainty=self.err_ra.to_value(u.deg)
+            if self.err_ra is not None
+            else 0.0,
+            dec_uncertainty=self.err_dec.to_value(u.deg)
+            if self.err_dec is not None
+            else 0.0,
+            flux=self.flux.to(u.mJy).value if self.flux is not None else 0.0,
+            flux_err=self.err_flux.to(u.mJy).value
+            if self.err_flux is not None
+            else 0.0,
         )
 
     def to_cutout(self) -> Cutout:
@@ -200,7 +210,9 @@ class MeasuredSource(RegisteredSource):
         return Cutout(
             measurement_id=self.measurement_id,
             data=self.thumbnail.tolist(),
-            time=self.observation_mean_time.to_datetime(),
+            time=self.observation_mean_time.to_datetime()
+            if self.observation_mean_time is not None
+            else datetime.now(tz=timezone.utc),
             units=self.thumbnail_unit.to_string(),
             frequency=int(self.frequency.to_value(u.GHz)),
             module=f"{self.instrument or 'unknown'}_{self.array or 'unknown'}",

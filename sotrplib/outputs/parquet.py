@@ -11,8 +11,8 @@ import pandas as pd
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
+from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
@@ -26,24 +26,24 @@ class ParquetOutput(SourceOutput):
 
     def __init__(
         self,
-        storage_path: Path,
+        directory: Path,
         log: FilteringBoundLogger | None = None,
     ):
-        self.storage_path = storage_path
+        self.directory = directory
         self.log = log or get_logger()
 
-        if not self.storage_path.exists():
+        if not self.directory.exists():
             self.log.warning(
                 "parquet_output.storage_path_does_not_exist",
-                path=str(self.storage_path),
+                path=str(self.directory),
             )
-            self.storage_path.mkdir(parents=True, exist_ok=True)
+            self.directory.mkdir(parents=True, exist_ok=True)
 
     def _filename(
         self, source_type: Literal["forced", "source", "transient", "noise"]
     ) -> Path:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        return self.storage_path / f"sotrplib_{timestamp}_{source_type}.parquet"
+        return self.directory / f"sotrplib_{timestamp}_{source_type}.parquet"
 
     def _serialize_to_file(
         self,
@@ -55,7 +55,25 @@ class ParquetOutput(SourceOutput):
         """
 
         data = [x.to_flux_measurement().model_dump() for x in sources]
+
+        if not data:
+            self.log.info(
+                "parquet_output.no_sources_to_write",
+                source_type=source_type,
+            )
+            return
+
         df = pd.DataFrame(data)
+        # Convert any UUID frames to strings for parquet compatibility
+        for col in df.columns:
+            if (
+                df[col].dtype == "object"
+                and df[col].apply(lambda x: hasattr(x, "hex")).any()
+            ):
+                df[col] = df[col].apply(
+                    lambda x: x.hex if hasattr(x, "hex") else str(x)
+                )
+
         df.set_index("measurement_id", inplace=True)
         filename = self._filename(source_type)
         df.to_parquet(filename)
@@ -70,7 +88,9 @@ class ParquetOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        input_map: ProcessableMap,
+        map_id: str,
+        pointing_sources: list[MeasuredSource] = [],  # for compatibility
+        injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         """
         Output to the filename specified in _filename. The format
