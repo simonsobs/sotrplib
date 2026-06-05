@@ -8,7 +8,7 @@ from uuid import UUID
 
 from lightcurvedb.config import Settings as LightcurveDBSettings
 from lightcurvedb.models.cutout import Cutout
-from lightcurvedb.models.flux import FluxMeasurementCreate
+from lightcurvedb.models.flux import FluxMeasurement
 from lightcurvedb.models.source import Source
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -89,7 +89,7 @@ class LightcurveDBOutput(SourceOutput):
         socat_to_internal: dict[int, UUID],
         map_time: datetime.datetime,
         map_id: str | None = None,
-    ) -> tuple[FluxMeasurementCreate, Cutout] | None:
+    ) -> tuple[FluxMeasurement, Cutout] | None:
         if not input_measurement.crossmatches:
             self.log.warning(
                 "lightcurvedb.output.skipping_source_no_crossmatch",
@@ -102,7 +102,7 @@ class LightcurveDBOutput(SourceOutput):
             int(input_measurement.crossmatches[0].catalog_idx)
         )
 
-        fm = FluxMeasurementCreate(
+        fm = FluxMeasurement(
             frequency=90,
             module="i1",
             source_id=source_id,
@@ -171,7 +171,7 @@ class LightcurveDBOutput(SourceOutput):
         socat_to_internal: dict[int, UUID],
         map_time: datetime.datetime,
         map_id: str | None = None,
-    ) -> tuple[list[FluxMeasurementCreate], list[Cutout]]:
+    ) -> tuple[list[FluxMeasurement], list[Cutout]]:
         flux_measurements = []
         cutouts = []
 
@@ -188,7 +188,7 @@ class LightcurveDBOutput(SourceOutput):
 
     async def _upload_sources(
         self,
-        flux_measurements: list[FluxMeasurementCreate],
+        flux_measurements: list[FluxMeasurement],
         cutouts: list[Cutout],
     ) -> int:
         async with self.settings.backend as backend:

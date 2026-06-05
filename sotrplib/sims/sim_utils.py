@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy import units as u
@@ -7,7 +10,8 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sources.sources import MeasuredSource
+if TYPE_CHECKING:
+    from sotrplib.sources.sources import MeasuredSource
 
 
 def generate_random_positions_in_map(
@@ -63,7 +67,7 @@ def generate_random_positions(
         if imap is not None:
             shape, wcs = imap.shape, imap.wcs
             dec_min, dec_max = enmap.box(shape, wcs)[:, 0] * u.rad
-            ra_min, ra_max = enmap.box(shape, wcs)[:, 1] * u.rad
+            ra_max, ra_min = enmap.box(shape, wcs)[:, 1] * u.rad
             ra_lims = (ra_min + edge_buffer, ra_max - edge_buffer)
             dec_lims = (dec_min + edge_buffer, dec_max - edge_buffer)
         else:

@@ -385,7 +385,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
-        sources = socat_client.get_box(lower_left=box[0], upper_right=box[1])
+        sources = socat_client.get_box_fixed(lower_left=box[0], upper_right=box[1])
         random.shuffle(sources)
 
         number_of_sources = len(sources)

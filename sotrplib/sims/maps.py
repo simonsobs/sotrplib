@@ -6,7 +6,6 @@ import structlog
 from astropy.coordinates import SkyCoord
 from astropy.units import Quantity
 from astropydantic import AstroPydanticQuantity
-from numpy.typing import ArrayLike
 from pixell import enmap
 from pydantic import AwareDatetime, BaseModel
 from structlog.types import FilteringBoundLogger
@@ -39,7 +38,7 @@ class SimulatedMap(ProcessableMap):
         array: str | None = None,
         instrument: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
-        box: ArrayLike | None = None,
+        box: tuple[SkyCoord, SkyCoord] | None = None,
         include_half_pixel_offset: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
@@ -56,8 +55,8 @@ class SimulatedMap(ProcessableMap):
             The array that this map represents.
         simulation_parameters: SimulationParameters, optional
             Parameters for the simulation. If None, defaults will be used.
-        box: np.ndarray, optional
-            Optional sky box to simulate in. Otherwise covers the whole sky.
+        box: tuple[SkyCoord, SkyCoord], optional
+            Optional sky box to simulate in. By default set via simulation_parameters.
         include_half_pixel_offset: bool, False
             Include the half-pixel offset in pixell constructors.
         log: FilteringBoundLogger, optional
@@ -77,8 +76,10 @@ class SimulatedMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self):
-        return [
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        if self.box is not None:
+            return self.box
+        self.box = (
             SkyCoord(
                 ra=self.simulation_parameters.center_ra
                 - self.simulation_parameters.width_ra,
@@ -91,7 +92,8 @@ class SimulatedMap(ProcessableMap):
                 dec=self.simulation_parameters.center_dec
                 + self.simulation_parameters.width_dec,
             ),
-        ]
+        )
+        return self.box
 
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
@@ -229,6 +231,17 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         self.observation_length = end_time - start_time
         self.log = log or structlog.get_logger()
+
+    @property
+    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+        if self.box is not None:
+            return self.box
+        shape, wcs = enmap.read_map_geometry(str(self.geometry_source_map))
+        self.box = (
+            wcs.array_index_to_world(0, 0),
+            wcs.array_index_to_world(shape[-2], shape[-1]),
+        )
+        return self.box
 
     def build(self):
         log = self.log.bind(geometry_source_map=self.geometry_source_map)

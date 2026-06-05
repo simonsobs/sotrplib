@@ -19,7 +19,9 @@ from sotrplib.maps.core import (
     MatchedFilteredIntensityAndInverseVarianceMap,
     ProcessableMap,
 )
-from sotrplib.maps.maps import clean_map, kappa_clean
+
+# avoid importing maps at module import time to prevent circular imports;
+# import inside methods where needed
 from sotrplib.maps.masks import mask_dustgal, mask_edge, mask_planets
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
@@ -78,6 +80,8 @@ class KappaRhoCleaner(MapPreprocessor):
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         # TODO: Figure out what warnings this raises
+        from sotrplib.maps.maps import clean_map, kappa_clean
+
         input_map.kappa = kappa_clean(kappa=input_map.kappa, rho=input_map.rho)
         input_map.rho = clean_map(
             imap=input_map.rho,

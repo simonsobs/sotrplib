@@ -9,6 +9,8 @@ from pixell import enmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.sources.sources import RegisteredSource
+
 
 class SimulatedSource(ABC):
     @abstractmethod
@@ -17,6 +19,12 @@ class SimulatedSource(ABC):
 
     @abstractmethod
     def flux(self, time: AwareDatetime) -> u.Quantity:
+        return
+
+    @abstractmethod
+    def _to_registered_fixed(
+        self, time: AwareDatetime, frequency: AstroPydanticQuantity[u.GHz] | None = None
+    ) -> RegisteredSource:
         return
 
 
@@ -36,6 +44,18 @@ class FixedSimulatedSource(SimulatedSource):
 
     def flux(self, time: AwareDatetime | None = None) -> u.Quantity:
         return self._flux
+
+    def _to_registered_fixed(
+        self,
+        time: AwareDatetime | None = None,
+        frequency: AstroPydanticQuantity[u.GHz] | None = None,
+    ) -> RegisteredSource:
+        return RegisteredSource(
+            ra=self.position(time).ra,
+            dec=self.position(time).dec,
+            flux=self.flux(time),
+            frequency=frequency,
+        )
 
 
 class GaussianTransientSimulatedSource(SimulatedSource):
@@ -74,6 +94,18 @@ class GaussianTransientSimulatedSource(SimulatedSource):
         exponent = delta_time / sigma
 
         return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
+
+    def _to_registered_fixed(
+        self,
+        time: AwareDatetime | None = None,
+        frequency: AstroPydanticQuantity[u.GHz] | None = None,
+    ) -> RegisteredSource:
+        return RegisteredSource(
+            ra=self.position(time).ra,
+            dec=self.position(time).dec,
+            flux=self.flux(time),
+            frequency=frequency,
+        )
 
 
 class SimTransient:

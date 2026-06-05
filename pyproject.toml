@@ -27,7 +27,7 @@ dependencies = [
     "skyfield",
     "astropydantic",
     "numpydantic",
-    "mapcat>=0.2.3",
+    "mapcat @ git+https://github.com/simonsobs/mapcat",
     "pyinstrument",
     "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
     "soauth",

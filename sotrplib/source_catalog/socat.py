@@ -103,7 +103,7 @@ class SOCatWrapper:
             ## ra increases to the left.
             box = [box[1], box[0]]
 
-        sources_in_map = self.catalog.get_box(
+        sources_in_map = self.catalog.get_box_fixed(
             lower_left=box[0],
             upper_right=box[1],
         )
