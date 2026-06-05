@@ -333,8 +333,8 @@ class TransientSourceSimulation(SourceSimulation):
                 self.parameters.max_flux.to_value("Jy"),
             ),
             peak_times=(
-                input_map.observation_start.timestamp(),
-                input_map.observation_end.timestamp(),
+                input_map.observation_start.unix,
+                input_map.observation_end.unix,
             ),
             flare_widths=(
                 self.parameters.min_width.to_value("d"),

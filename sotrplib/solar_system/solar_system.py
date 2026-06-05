@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -467,8 +467,8 @@ def get_sso_ephem_in_map(
             [mean_pos.dec.to_value("rad"), mean_pos.ra.to_value("rad")], mode="nn"
         )
         if (
-            map_time_at_mean_pos > input_map.observation_end.timestamp()
-            or map_time_at_mean_pos < input_map.observation_start.timestamp()
+            map_time_at_mean_pos > input_map.observation_end.unix
+            or map_time_at_mean_pos < input_map.observation_start.unix
         ):
             log.error(
                 "solar_system.get_sso_ephem_in_map.mean_pos_time_out_of_range",
@@ -496,23 +496,21 @@ def get_sso_ephem_in_map(
             continue
         sso_ephems[obj] = {
             "pos": nearest_pos,
-            "time": datetime.fromtimestamp(
-                float(map_time_at_mean_pos), tz=timezone.utc
-            ),
+            "time": Time(float(map_time_at_mean_pos), format="unix"),
         }
 
     if planets and observer is not None:
-        if input_map.observation_length > timedelta(days=1):
+        if input_map.observation_length.to_value("jd") > 1.0:
             log.warn(
                 "solar_system.get_sso_ephem_in_map.planet_ephem",
-                observation_length=input_map.observation_length.to_value(u.day),
+                observation_length=input_map.observation_length.to_value("jd"),
                 warning="Observation length is long, so planet ephemerides at the average time may be inaccurate.",
             )
         time_delta = (input_map.observation_end - input_map.observation_start) / 2
         mean_time = input_map.observation_start + time_delta
         planet_ephems = get_sso_ephems_at_time(
             ephem_df=None,
-            sample_times=mean_time,
+            sample_times=mean_time.to_datetime(timezone=timezone.utc),
             planets=planets,
             observer=observer,
             log=log,

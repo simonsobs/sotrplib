@@ -9,9 +9,9 @@ from typing import Literal
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from numpy.typing import NDArray
 from pixell import utils as pixell_utils
-from pydantic import AwareDatetime
 from skyfield.toposlib import GeographicPosition
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -79,15 +79,15 @@ class SSOCat(SolarSystemObjectCatalog):
     observer: GeographicPosition
     db: any
     ra_dec_array: NDArray
-    start_time: AwareDatetime | None
-    stop_time: AwareDatetime | None
+    start_time: Time | None
+    stop_time: Time | None
 
     def __init__(
         self,
         db_path: str,
         observer: GeographicPosition,
-        start_time: AwareDatetime | None = None,
-        stop_time: AwareDatetime | None = None,
+        start_time: Time | None = None,
+        stop_time: Time | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.db_path = db_path

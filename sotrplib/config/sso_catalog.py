@@ -2,8 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
-from pydantic import AwareDatetime
+from astropydantic import AstroPydanticQuantity, AstroPydanticTime
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.config.source_catalog import SourceCatalogConfig
@@ -19,8 +18,8 @@ class SSOCatalogConfig(SourceCatalogConfig):
     observer_lat: AstroPydanticQuantity = -22.96098 * u.deg
     observer_lon: AstroPydanticQuantity = -67.7876 * u.deg
     observer_elev: AstroPydanticQuantity = 5180 * u.m
-    start_time: AwareDatetime | None = None
-    stop_time: AwareDatetime | None = None
+    start_time: AstroPydanticTime | None = None
+    stop_time: AstroPydanticTime | None = None
 
     def to_source_catalog(
         self,

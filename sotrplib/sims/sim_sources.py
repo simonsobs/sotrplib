@@ -4,19 +4,19 @@ from datetime import timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
-from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
 
 class SimulatedSource(ABC):
     @abstractmethod
-    def position(self, time: AwareDatetime) -> SkyCoord:
+    def position(self, time: Time) -> SkyCoord:
         return
 
     @abstractmethod
-    def flux(self, time: AwareDatetime) -> u.Quantity:
+    def flux(self, time: Time) -> u.Quantity:
         return
 
 
@@ -31,10 +31,10 @@ class FixedSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: AwareDatetime | None = None) -> SkyCoord:
+    def position(self, time: Time | None = None) -> SkyCoord:
         return self._position
 
-    def flux(self, time: AwareDatetime | None = None) -> u.Quantity:
+    def flux(self, time: Time | None = None) -> u.Quantity:
         return self._flux
 
 
@@ -42,7 +42,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
     def __init__(
         self,
         position: SkyCoord,
-        peak_time: AwareDatetime,
+        peak_time: Time,
         flare_width: timedelta,
         peak_amplitude: u.Quantity = 0.0 * u.Jy,
     ):
@@ -64,14 +64,15 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: AwareDatetime | None = None) -> SkyCoord:
+    def position(self, time: Time | None = None) -> SkyCoord:
         return self._position
 
-    def flux(self, time: AwareDatetime) -> u.Quantity:
-        delta_time = time - self.peak_time
-
-        sigma = self.flare_width / (2.0 * math.sqrt(2.0 * math.log(2.0)))
-        exponent = delta_time / sigma
+    def flux(self, time: Time) -> u.Quantity:
+        delta_s = (time - self.peak_time).to_value("s")
+        sigma_s = self.flare_width.total_seconds() / (
+            2.0 * math.sqrt(2.0 * math.log(2.0))
+        )
+        exponent = delta_s / sigma_s
 
         return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
 

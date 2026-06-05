@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
-
 import numpy as np
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
@@ -75,15 +74,15 @@ def make_enmap(
 
 def make_time_map(
     imap: enmap.ndmap,
-    start_time: datetime,
-    end_time: datetime,
+    start_time: Time,
+    end_time: Time,
 ) -> enmap.ndmap:
     """
     A simple time map simulation where each pixel is observed at a unique time.
     """
     shape = imap.shape
-    start_timestamp = start_time.timestamp()
-    end_timestamp = end_time.timestamp()
+    start_timestamp = start_time.unix
+    end_timestamp = end_time.unix
 
     time_offset_y = (end_timestamp - start_timestamp) / shape[1]
 
@@ -364,14 +363,12 @@ def inject_sources(
             and source.flare_width is not None
         ):
             if (
-                abs(source.peak_time.timestamp() - source_obs_time)
+                abs(source.peak_time.unix - source_obs_time)
                 > 3 * source.flare_width.total_seconds()
             ):
                 removed_sources["not_flaring"] += 1
                 continue
-        ## flux requires an aware time, so convert the timestamp to a datetime with utc timezone
-        awaretime = datetime.fromtimestamp(source_obs_time, tz=timezone.utc)
-        flux = source.flux(awaretime)
+        flux = source.flux(Time(source_obs_time, format="unix"))
 
         inj_source = MeasuredSource(
             ra=ra,

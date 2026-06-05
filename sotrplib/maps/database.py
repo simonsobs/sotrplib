@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -21,7 +22,6 @@ from mapcat.helper import settings as mapcat_settings
 from mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
-from pydantic import AwareDatetime
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -45,8 +45,8 @@ class MapCatDatabaseReader(ABC):
     def __init__(
         self,
         number_to_read: int | None = None,
-        start_time: AwareDatetime | None = None,
-        end_time: AwareDatetime | None = None,
+        start_time: Time | None = None,
+        end_time: Time | None = None,
         map_ids: list[int] | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -62,9 +62,9 @@ class MapCatDatabaseReader(ABC):
         self.start_time = (
             start_time
             if start_time is not None
-            else datetime.now(timezone.utc) - timedelta(days=1)
+            else Time.now() - TimeDelta(1, format="jd")
         )
-        self.end_time = end_time if end_time is not None else datetime.now(timezone.utc)
+        self.end_time = end_time if end_time is not None else Time.now()
         self.map_ids = map_ids or []
         self.frequency = frequency
         self.array = array
@@ -103,13 +103,9 @@ class MapCatDatabaseReader(ABC):
         )
 
         if self.start_time is not None:
-            query = query.where(
-                DepthOneMapTable.stop_time >= self.start_time.timestamp()
-            )
+            query = query.where(DepthOneMapTable.stop_time >= self.start_time.unix)
         if self.end_time is not None:
-            query = query.where(
-                DepthOneMapTable.start_time <= self.end_time.timestamp()
-            )
+            query = query.where(DepthOneMapTable.start_time <= self.end_time.unix)
 
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
@@ -177,8 +173,8 @@ class IntensityMapReader(MapCatDatabaseReader):
             inverse_variance_filename=mapcat_settings.depth_one_parent
             / result.ivar_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
             box=self.box,
             intensity_units=self.map_units,
             frequency=result.frequency,
@@ -199,8 +195,8 @@ class RhoKappaMapReader(MapCatDatabaseReader):
             rho_filename=mapcat_settings.depth_one_parent / result.rho_path,
             kappa_filename=mapcat_settings.depth_one_parent / result.kappa_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
             box=self.box,
             flux_units=self.map_units,
             frequency=result.frequency,
@@ -221,8 +217,8 @@ class FluxMapReader(MapCatDatabaseReader):
             flux_filename=mapcat_settings.depth_one_parent / result.flux_path,
             snr_filename=mapcat_settings.depth_one_parent / result.snr_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
             box=self.box,
             flux_units=self.map_units,
             frequency=result.frequency,

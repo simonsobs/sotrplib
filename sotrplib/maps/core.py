@@ -3,18 +3,17 @@ Core map objects.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import astropy.units as u
 import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 from astropy.units import Unit
 from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from pixell.enmap import ndmap
-from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.utils import pixell_map_union
@@ -70,13 +69,13 @@ class ProcessableMap(ABC):
     array: str
     "The array/wafer that was used"
 
-    observation_length: timedelta
+    observation_length: TimeDelta
     "Total length of the observation"
-    observation_start: AwareDatetime
+    observation_start: Time
     "Start time of the observation"
-    observation_end: AwareDatetime
+    observation_end: Time
     "End time of the observation"
-    observation_time: AwareDatetime
+    observation_time: Time
     "Rough 'middle' time of the observation"
 
     flux_units: Unit
@@ -300,29 +299,30 @@ class ProcessableMap(ABC):
         """
         Get a string identifier for the map, useful for logging.
         """
-        return (
-            f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
-        )
+        return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
 
     def get_pixel_times(self, pix: tuple[int, int]):
         """
-        Given a pixel in the map, return the observation start, mean and end time of that pixel.
+        Given a pixel in the map, return the observation start, mean and end time of that pixel
+        as astropy Time objects.
         """
         x, y = int(pix[0]), int(pix[1])
 
         t_start = (
-            self.time_first[x, y]
+            Time(float(self.time_first[x, y]), format="unix")
             if self.time_first is not None
             else self.observation_start
         )
         t_mean = (
-            self.time_mean[x, y]
+            Time(float(self.time_mean[x, y]), format="unix")
             if self.time_mean is not None
-            else (self.observation_end - self.observation_start) / 2
-            + self.observation_start
+            else self.observation_start
+            + (self.observation_end - self.observation_start) / 2
         )
         t_end = (
-            self.time_last[x, y] if self.time_last is not None else self.observation_end
+            Time(float(self.time_last[x, y]), format="unix")
+            if self.time_last is not None
+            else self.observation_end
         )
         return t_start, t_mean, t_end
 
@@ -365,8 +365,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self,
         intensity_filename: Path,
         inverse_variance_filename: Path,
-        start_time: AwareDatetime,
-        end_time: AwareDatetime,
+        start_time: Time,
+        end_time: Time,
         box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
@@ -479,7 +479,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
         return
 
-    def add_time_offset(self, offset: timedelta):
+    def add_time_offset(self, offset: Time | None):
         """
         Add a time offset to the time maps. Useful if you have a time map
         that is relative to the start of the observation, and you want to
@@ -494,9 +494,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             from pixell.bunch import read as bunch_read
 
             offset = (
-                datetime.fromtimestamp(
-                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
-                )
+                Time(bunch_read(str(self.info_filename)).t, format="unix")
                 if self.info_filename is not None
                 else None
             )
@@ -507,11 +505,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
-            self.time_first[self.time_first > 0] += offset.timestamp()
+            self.time_first[self.time_first > 0] += offset.unix
         if self.observation_end is None:
-            self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_last)), tz=timezone.utc
-            )
+            self.observation_end = Time(float(np.amax(self.time_last)), format="unix")
 
     def _compute_hits(self):
         return (self.inverse_variance > 0).astype(np.int32)
@@ -614,7 +610,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     def get_map_id(self):
         return self.__map_id or super().get_map_str_id()
 
-    def add_time_offset(self, offset: timedelta):
+    def add_time_offset(self, offset: Time | None):
         """
         Add a time offset to the time maps. Useful if you have a time map
         that is relative to the start of the observation, and you want to
@@ -629,9 +625,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             from pixell.bunch import read as bunch_read
 
             offset = (
-                datetime.fromtimestamp(
-                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
-                )
+                Time(bunch_read(str(self.info_filename)).t, format="unix")
                 if self.info_filename is not None
                 else None
             )
@@ -642,11 +636,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
-            self.time_first[self.time_first > 0] += offset.timestamp()
+            self.time_first[self.time_first > 0] += offset.unix
         if self.observation_end is None:
-            self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_last)), tz=timezone.utc
-            )
+            self.observation_end = Time(float(np.amax(self.time_last)), format="unix")
 
     def _compute_hits(self):
         return (self.kappa > 0).astype(np.int32)
@@ -696,8 +688,8 @@ class RhoAndKappaMap(ProcessableMap):
         self,
         rho_filename: Path,
         kappa_filename: Path,
-        start_time: AwareDatetime,
-        end_time: AwareDatetime,
+        start_time: Time,
+        end_time: Time,
         box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
@@ -796,7 +788,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.observation_length = self.observation_end - self.observation_start
         return
 
-    def add_time_offset(self, offset: timedelta | None = None):
+    def add_time_offset(self, offset: Time | None = None):
         """
         Add a time offset to the time maps. Useful if you have a time map
         that is relative to the start of the observation, and you want to
@@ -811,9 +803,7 @@ class RhoAndKappaMap(ProcessableMap):
             from pixell.bunch import read as bunch_read
 
             offset = (
-                datetime.fromtimestamp(
-                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
-                )
+                Time(bunch_read(str(self.info_filename)).t, format="unix")
                 if self.info_filename is not None
                 else None
             )
@@ -824,11 +814,9 @@ class RhoAndKappaMap(ProcessableMap):
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
-            self.time_first[self.time_first > 0] += offset.timestamp()
+            self.time_first[self.time_first > 0] += offset.unix
         if self.observation_end is None:
-            self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_last)), tz=timezone.utc
-            )
+            self.observation_end = Time(float(np.amax(self.time_last)), format="unix")
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
@@ -879,8 +867,8 @@ class FluxAndSNRMap(ProcessableMap):
         self,
         flux_filename: Path,
         snr_filename: Path,
-        start_time: AwareDatetime,
-        end_time: AwareDatetime,
+        start_time: Time,
+        end_time: Time,
         box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
@@ -980,7 +968,7 @@ class FluxAndSNRMap(ProcessableMap):
         self.observation_length = self.observation_end - self.observation_start
         return
 
-    def add_time_offset(self, offset: timedelta | None = None):
+    def add_time_offset(self, offset: Time | None = None):
         """
         Add a time offset to the time maps. Useful if you have a time map
         that is relative to the start of the observation, and you want to
@@ -995,9 +983,7 @@ class FluxAndSNRMap(ProcessableMap):
             from pixell.bunch import read as bunch_read
 
             offset = (
-                datetime.fromtimestamp(
-                    bunch_read(str(self.info_filename)).t, tz=timezone.utc
-                )
+                Time(bunch_read(str(self.info_filename)).t, format="unix")
                 if self.info_filename is not None
                 else None
             )
@@ -1008,11 +994,9 @@ class FluxAndSNRMap(ProcessableMap):
         ## TODO: time_first, mean, end are same so this changes all.
         ## this should be changed when we do something smarter.
         if self.time_first is not None:
-            self.time_first[self.time_first > 0] += offset.timestamp()
+            self.time_first[self.time_first > 0] += offset.unix
         if self.observation_end is None:
-            self.observation_end = datetime.fromtimestamp(
-                float(np.amax(self.time_last)), tz=timezone.utc
-            )
+            self.observation_end = Time(float(np.amax(self.time_last)), format="unix")
 
     def get_pixel_times(self, pix: tuple[int, int]):
         return super().get_pixel_times(pix)
@@ -1058,12 +1042,12 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self,
         rho: ndmap,
         kappa: ndmap,
-        observation_start: AwareDatetime,
-        observation_end: AwareDatetime,
+        observation_start: Time,
+        observation_end: Time,
         time_first: ndmap | None = None,
         time_mean: ndmap | None = None,
         time_last: ndmap | None = None,
-        observation_length: timedelta | None = None,
+        observation_length: TimeDelta | None = None,
         box: tuple[SkyCoord, SkyCoord] | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -1109,16 +1093,16 @@ class CoaddedRhoKappaMap(ProcessableMap):
         """
         log = self.log or structlog.get_logger()
 
-        self.observation_start = (
-            new_map.observation_start
-            if self.observation_start is None
-            else min(self.observation_start, new_map.observation_start)
-        )
-        self.observation_end = (
-            new_map.observation_end
-            if self.observation_end is None
-            else max(self.observation_end, new_map.observation_end)
-        )
+        if (
+            self.observation_start is None
+            or new_map.observation_start < self.observation_start
+        ):
+            self.observation_start = new_map.observation_start
+        if (
+            self.observation_end is None
+            or new_map.observation_end > self.observation_end
+        ):
+            self.observation_end = new_map.observation_end
         time_delta = new_map.observation_end - new_map.observation_start
         mid_time = new_map.observation_start + (time_delta / 2)
         self.input_map_times.append(mid_time)

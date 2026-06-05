@@ -2,12 +2,12 @@
 Tests the map I/O
 """
 
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
@@ -34,8 +34,8 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
         rho_map_path=paths["rho"],
         kappa_map_path=paths["kappa"],
         time_map_path=paths["time"],
-        observation_start=datetime.now(tz=timezone.utc),
-        observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        observation_start=Time.now(),
+        observation_end=Time.now() + TimeDelta(3600, format="sec"),
     ).to_map()
     runner = PipelineRunner(
         map_coadder=None,
@@ -67,8 +67,8 @@ def test_basic_pipeline_ivar(separate_map_set_1):
         intensity_map_path=paths["map"],
         weights_map_path=paths["ivar"],
         time_map_path=paths["time"],
-        observation_start=datetime.now(tz=timezone.utc),
-        observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        observation_start=Time.now(),
+        observation_end=Time.now() + TimeDelta(3600, format="sec"),
     ).to_map()
     runner = PipelineRunner(
         map_coadder=None,
@@ -100,8 +100,8 @@ def test_basic_pipeline_instrument(separate_map_set_1):
         rho_map_path=paths["rho"],
         kappa_map_path=paths["kappa"],
         time_map_path=paths["time"],
-        observation_start=datetime.now(tz=timezone.utc),
-        observation_end=datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        observation_start=Time.now(),
+        observation_end=Time.now() + TimeDelta(3600, format="sec"),
         instrument="SOSAT",
         array=None,
         frequency="f090",
@@ -129,8 +129,8 @@ def db_result(separate_map_set_1):
     r.flux_path = paths["rho"]
     r.snr_path = paths["kappa"]
     r.mean_time_path = paths["time"]
-    r.start_time = datetime.now(timezone.utc).timestamp() - 3600
-    r.stop_time = datetime.now(timezone.utc).timestamp()
+    r.start_time = Time.now().unix - 3600
+    r.stop_time = Time.now().unix
     r.frequency = "f090"
     r.tube_slot = "pa5"
     return r

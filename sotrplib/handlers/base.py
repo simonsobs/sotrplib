@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from itertools import combinations
 from typing import Iterable
 
@@ -149,11 +148,13 @@ class BaseRunner:
         if not maps:
             return (None, None)
 
-        start_time = datetime.max.replace(tzinfo=timezone.utc)
-        end_time = datetime.min.replace(tzinfo=timezone.utc)
+        start_time = None
+        end_time = None
         for input_map in maps:
-            start_time = min(input_map.observation_start, start_time)
-            end_time = max(input_map.observation_end, end_time)
+            if start_time is None or input_map.observation_start < start_time:
+                start_time = input_map.observation_start
+            if end_time is None or input_map.observation_end > end_time:
+                end_time = input_map.observation_end
 
         return (start_time, end_time)
 
