@@ -12,6 +12,7 @@ from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
 from pixell import utils as pixell_utils
 from socat.client.settings import SOCatClientSettings
+from socat.core import SourceGenerator
 from socat.database import SolarSystemObject
 from structlog.types import FilteringBoundLogger
 
@@ -59,26 +60,9 @@ class SOCat(SourceCatalog):
             flux_lower_limit=self.flux_lower_limit,
         )
 
-        self._interp_cache: dict = {}
+        self._source_generators: list[SourceGenerator] | None = None
 
-    def _fixed_to_registered(self, source) -> RegisteredSource:
-        return RegisteredSource(
-            ra=source.position.ra,
-            dec=source.position.dec,
-            flux=source.flux,
-            source_id=source.name,
-            crossmatches=[
-                CrossMatch(
-                    source_id=source.name,
-                    probability=1.0,
-                    angular_separation=0.0 * u.deg,
-                    frequency=90.0 * u.GHz,
-                    catalog_name="socat",
-                    catalog_idx=source.source_id,
-                )
-            ],
-        )
-
+    ## todo - move this to maps or something, since it's not really catalog specific.
     def _get_obs_time(
         self, position: SkyCoord, input_map: ProcessableMap
     ) -> Time | None:
@@ -94,10 +78,52 @@ class SOCat(SourceCatalog):
         except (IndexError, ValueError):
             return None
 
-    def _sg_to_registered_with_refinement(
-        self, sg, t_initial: Time, input_map: ProcessableMap
+    def _sg_to_registered(
+        self, sg: SourceGenerator, t: Time
     ) -> RegisteredSource | None:
         """
+        Convert an socat SourceGenerator output to a RegisteredSource, querying at time t.
+
+        sets the source type to "sso" if the source is a SolarSystemObject,
+        otherwise uses the source_type attribute if it exists, otherwise "unknown".
+        """
+        try:
+            is_sso = isinstance(sg.source, SolarSystemObject)
+            position, flux = sg.at_time(t=t)
+        except (AttributeError, ValueError):
+            return None
+        if is_sso:
+            source_type = "sso"
+        elif hasattr(sg.source, "source_type"):
+            source_type = sg.source.source_type
+        else:
+            source_type = "unknown"
+        catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
+        return RegisteredSource(
+            ra=position.ra,
+            dec=position.dec,
+            flux=flux,
+            source_id=sg.source.name,
+            source_type=source_type,
+            observation_mean_time=t,
+            crossmatches=[
+                CrossMatch(
+                    source_id=sg.source.name,
+                    source_type=source_type,
+                    probability=1.0,
+                    angular_separation=0.0 * u.deg,
+                    catalog_name="socat",
+                    catalog_idx=catalog_idx,
+                    observation_time=t,
+                )
+            ],
+        )
+
+    def _sg_to_registered_with_refinement(
+        self, sg: SourceGenerator, t_initial: Time, input_map: ProcessableMap
+    ) -> RegisteredSource | None:
+        """
+        convert a SourceGenerator to a RegisteredSource, refining the position using the map's per-pixel time if it's an SSO.
         Two-step SSO position: initial position query at t_initial, then refined at per-pixel time.
 
         For a moving source, we query the position at the mid point of the observation,
@@ -153,144 +179,84 @@ class SOCat(SourceCatalog):
             )
             self._refresh(t_min=new_t_min, t_max=new_t_max)
 
-    def _initialize_generators(self) -> None:
-        """Fetch all SSO generators for the current time range and pre-initialize interpolation."""
-        sky_box = [
-            SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-            SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-        ]
-        for sg in tqdm.tqdm(
-            self.catalog.sso.get_box(
-                lower_left=sky_box[0],
-                upper_right=sky_box[1],
+    def _initialize_generators(self, box: list[SkyCoord] | None = None) -> None:
+        """Fetch SourceGenerators for the full sky at the current time range and cache them."""
+        self._source_generators = list(
+            self.catalog.get_box(
+                lower_left=box[0]
+                if box is not None
+                else SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                upper_right=box[1]
+                if box is not None
+                else SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
                 t_min=self.t_min,
                 t_max=self.t_max,
-                source_cat=self.catalog,
-                ephem_cat=self.catalog.ephem,
-            ),
-            desc="socat: initializing SSO interpolation",
-        ):
-            is_sso = isinstance(sg.source, SolarSystemObject)
-            cache_key = (
-                f"sso:{sg.source.sso_id}" if is_sso else f"fixed:{sg.source.source_id}"
             )
-            sg.init_interp(ephem_cat=self.catalog.ephem)
-            self._interp_cache[cache_key] = sg
+        )
         self.log.info(
             "socat.generators_initialized",
-            n_generators=len(self._interp_cache),
+            n_generators=len(self._source_generators),
             t_min=self.t_min,
             t_max=self.t_max,
         )
 
+    def _get_source_generators(
+        self, box: list[SkyCoord] | None
+    ) -> list[SourceGenerator]:
+        """Return cached SourceGenerators, fetching from DB if the cache is stale."""
+        if self._source_generators is None:
+            if box is None:
+                box = [
+                    SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                    SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+                ]
+            if self.t_min is None or self.t_max is None:
+                self.log.warning("socat.get_source_generators.no_time_range")
+                return []
+            self._initialize_generators(box=box)
+        return self._source_generators
+
     def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
-        """Clear the interpolation cache, update the time range, and re-initialize generators."""
-        self._interp_cache.clear()
+        """Update the time range and invalidate the SourceGenerator cache."""
         if t_min is not None:
             self.t_min = t_min
         if t_max is not None:
             self.t_max = t_max
+        self._source_generators = None
+        self._get_source_generators(
+            box=None
+        )  # pre-fetch generators for the new time range
         self.log.info(
             "socat.refreshed",
             t_min=self.t_min,
             t_max=self.t_max,
         )
-        if self.t_min is not None and self.t_max is not None:
-            self._initialize_generators()
 
-    def _sg_to_registered(self, sg, t: Time) -> RegisteredSource | None:
-        """
-        Convert an socat SourceGenerator output to a RegisteredSource, querying at time t.
-
-        sets the source type to "sso" if the source is a SolarSystemObject,
-        otherwise uses the source_type attribute if it exists, otherwise "unknown".
-        """
-        try:
-            is_sso = isinstance(sg.source, SolarSystemObject)
-            cache_key = (
-                f"sso:{sg.source.sso_id}" if is_sso else f"fixed:{sg.source.source_id}"
-            )
-            if cache_key not in self._interp_cache:
-                sg.init_interp(ephem_cat=self.catalog.ephem)
-                self._interp_cache[cache_key] = sg
-            else:
-                sg = self._interp_cache[cache_key]
-            position, flux = sg.at_time(t=t)
-        except (AttributeError, ValueError):
-            return None
-        if is_sso:
-            source_type = "sso"
-        elif hasattr(sg.source, "source_type"):
-            source_type = sg.source.source_type
-        else:
-            source_type = "unknown"
-        catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
-        return RegisteredSource(
-            ra=position.ra,
-            dec=position.dec,
-            flux=flux,
-            source_id=sg.source.name,
-            source_type=source_type,
-            observation_mean_time=t,
-            crossmatches=[
-                CrossMatch(
-                    source_id=sg.source.name,
-                    source_type=source_type,
-                    probability=1.0,
-                    angular_separation=0.0 * u.deg,
-                    catalog_name="socat",
-                    catalog_idx=catalog_idx,
-                    observation_time=t,
-                )
-            ],
-        )
-
-    def add_sources(self, sources: list[RegisteredSource], no_monitor: bool = False):
+    def add_sources(self, sources: list[RegisteredSource], monitor: bool = True):
         for source in sources:
             self.catalog.create_source(
                 position=SkyCoord(source.ra, source.dec),
                 flux=source.flux,
                 name=source.source_id,
-                monitored=not no_monitor,
+                flags={"monitored": monitor},
             )
 
-    ## TODO: need to update for boxes which need to be broken in two.
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
-        if box is None:
-            box = [
-                SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-            ]
-        if box[0].ra > box[1].ra and box[0].dec < box[1].dec:
-            box = [box[1], box[0]]
-
+        """Get sources within the given sky box and time range.
+        If box is None, get all sources in the time range.
+        """
         if self.t_min is None or self.t_max is None:
-            sources = [
-                self._fixed_to_registered(s)
-                for s in self.catalog.get_box_fixed(
-                    lower_left=box[0], upper_right=box[1]
-                )
-            ]
-        else:
-            t_eval = self.t_min + (self.t_max - self.t_min) / 2
-            sources = [
-                s
-                for s in (
-                    self._sg_to_registered(sg, t_eval)
-                    for sg in self.catalog.sso.get_box(
-                        lower_left=box[0],
-                        upper_right=box[1],
-                        t_min=self.t_min,
-                        t_max=self.t_max,
-                        source_cat=self.catalog,
-                        ephem_cat=self.catalog.ephem,
-                    )
-                )
-                if s is not None
-            ]
-
+            self.log.error("socat.get_sources_in_box.no_time_range")
+            return []
+        t_eval = self.t_min + (self.t_max - self.t_min) / 2
+        source_generators = self._get_source_generators(box=box)
+        sources = [
+            s
+            for s in (self._sg_to_registered(sg, t_eval) for sg in source_generators)
+            if s is not None
+        ]
         self.log.debug("socat.get_sources_in_box", box=box, n_sources=len(sources))
         return sources
 
@@ -313,11 +279,6 @@ class SOCat(SourceCatalog):
             List of sources within the map.
         """
         self._check_and_expand_interp_range(input_map)
-        ## for now, just get all the sources and filter them.
-        sky_box = [
-            SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-            SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-        ]
         if input_map.observation_time is not None:
             t_mid = Time(input_map.observation_time)
         elif self.t_min is not None and self.t_max is not None:
@@ -325,17 +286,7 @@ class SOCat(SourceCatalog):
         else:
             t_mid = None
 
-        if self._interp_cache:
-            source_generators = self._interp_cache.values()
-        else:
-            source_generators = self.catalog.sso.get_box(
-                lower_left=sky_box[0],
-                upper_right=sky_box[1],
-                t_min=self.t_min,
-                t_max=self.t_max,
-                source_cat=self.catalog,
-                ephem_cat=self.catalog.ephem,
-            )
+        source_generators = self._get_source_generators(box=input_map.bbox)
         if monitored:
             source_generators = [sg for sg in source_generators if sg.source.monitored]
 
@@ -352,7 +303,6 @@ class SOCat(SourceCatalog):
             self.log.warning(
                 "socat.get_sources_in_map.no_sources_in_box",
                 map_id=input_map.map_id,
-                sky_box=sky_box,
                 wcs=input_map.flux.wcs,
             )
             return []
@@ -377,11 +327,10 @@ class SOCat(SourceCatalog):
         return self.get_sources_in_box(box=None)
 
     def forced_photometry_sources(
-        self, input_map: ProcessableMap, use_sso: bool = True
+        self, input_map: ProcessableMap
     ) -> list[RegisteredSource]:
         """
-        Wrapper for socat's get_forced_photometry because it doesn't work with
-        ssos yet.
+        Wrapper for socat's get_monitored_sources.
         If times arent provided (or use_sso is False) then it just grabs the fixed sources.
         Otherwise, grab all sources and filter them.
         """
@@ -391,27 +340,16 @@ class SOCat(SourceCatalog):
             obs_time=obs_time,
             t_min=self.t_min,
             t_max=self.t_max,
-            use_sso=use_sso,
         )
 
-        if not use_sso:
-            log.info("socat.forced_photometry_sources.fixed_sources_only")
-            sources = [
-                self._fixed_to_registered(s)
-                for s in self.catalog.get_forced_photometry_sources(
-                    minimum_flux=self.flux_lower_limit
-                )
-            ]
-        elif self.t_min is None or self.t_max is None:
+        if self.t_min is None or self.t_max is None:
             log.warning(
                 "socat.forced_photometry_sources.invalid_time_range",
                 map_id=input_map.map_id,
             )
             sources = [
-                self._fixed_to_registered(s)
-                for s in self.catalog.get_forced_photometry_sources(
-                    minimum_flux=self.flux_lower_limit
-                )
+                self.sg_to_registered(sg, obs_time)
+                for sg in self.catalog.get_box_fixed(minimum_flux=self.flux_lower_limit)
             ]
         else:
             log.info("socat.forced_photometry_sources.retrieving_sources_with_sso")
