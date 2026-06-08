@@ -8,6 +8,7 @@ import random
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
+import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from pydantic import AwareDatetime
@@ -115,10 +116,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         # But that's something we should probably handle anyway...
         # Another issue is that we're not actually generating sources on the
         # sphere, but that is not critical.
-        base = random.randint(0, 100000)
-
-        log = log.bind(base_id=base)
-
+        source_id = uuid.create()
         sources = [
             RegisteredSource(
                 ra=positions[i][1],
@@ -128,20 +126,20 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                     self.min_flux.to_value("Jy"), self.max_flux.to_value("Jy")
                 )
                 * u.Jy,
-                source_id=f"sim-{base + i:07d}",
+                source_id=source_id,
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
                 crossmatches=[
                     CrossMatch(
-                        source_id=f"sim-{base + i:07d}",
+                        source_id=source_id,
                         source_type="simulated_fixed",
                         catalog_name="simulated",
                         ra=positions[i][1],
                         dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
-                        catalog_idx=base + i,
+                        catalog_idx=source_id,
                     )
                 ],
             )
@@ -234,9 +232,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             time_range=[self.flare_earliest_time, self.flare_latest_time],
         )
 
-        base = random.randint(0, 100000)
-
-        log = log.bind(base_id=base)
+        source_id = uuid.create()
 
         def random_datetime(start, end):
             """Generate a random datetime between `start` and `end`"""
@@ -271,20 +267,20 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                     self.peak_amplitude_maximum.to_value("Jy"),
                 )
                 * u.Jy,
-                source_id=f"sim-{base + i:07d}",
+                source_id=source_id,
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
                 crossmatches=[
                     CrossMatch(
-                        source_id=f"sim-{base + i:07d}",
+                        source_id=source_id,
                         catalog_name="simulated",
                         source_type="simulated_gaussian",
                         ra=positions[i][1],
                         dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
-                        catalog_idx=base + i,
+                        catalog_idx=source_id,
                     )
                 ],
             )
@@ -405,7 +401,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                 dec=source.position.dec,
                 frequency=90.0 * u.GHz,
                 flux=source.flux if source.flux is not None else u.Quantity(0.0, "Jy"),
-                source_id=str(source.source_id),
+                source_id=source.source_id,
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
@@ -414,7 +410,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                     CrossMatch(
                         ra=source.position.ra,
                         dec=source.position.dec,
-                        source_id=str(source.source_id),
+                        source_id=source.source_id,
                         catalog_name="socat",
                         alternate_names=[source.name] if source.name else [],
                     )

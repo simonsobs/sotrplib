@@ -421,11 +421,11 @@ class SOCat(SourceCatalog):
                 err_flux=s.err_flux,
                 frequency=s.frequency,
                 catalog_name=s.catalog_name,
-                catalog_idx=y,
+                catalog_idx=s.source_id,
                 alternate_names=s.alternate_names,
                 ra=s.ra,
                 dec=s.dec,
                 observation_time=s.observation_mean_time,
             )
-            for y, s in enumerate(sources)
+            for s in sources
         ]

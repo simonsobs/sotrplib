@@ -225,7 +225,7 @@ class SSOCat(SolarSystemObjectCatalog):
                 err_flux=s.err_flux,
                 frequency=s.frequency,
                 catalog_name="solar_system_catalog",
-                catalog_idx=y[1],
+                catalog_idx=s.source_id,
                 alternate_names=[],
             )
             for s, y in zip(sources, matches)

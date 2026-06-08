@@ -194,7 +194,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             CrossMatch(
                 ra=s.ra,
                 dec=s.dec,
-                source_id=str(s.source_id),
+                source_id=s.source_id,
                 probability=1.0 / len(sources),
                 angular_separation=angular_separation(
                     ra1=s.ra, dec1=s.dec, ra2=ra, dec2=dec
@@ -203,7 +203,7 @@ class RegisteredSourceCatalog(SourceCatalog):
                 err_flux=s.err_flux,
                 frequency=s.frequency,
                 catalog_name="registered",
-                catalog_idx=y[1],
+                catalog_idx=s.source_id,
                 alternate_names=[],
             )
             for s, y in zip(sources, matches)

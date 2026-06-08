@@ -10,7 +10,7 @@ from structlog.types import FilteringBoundLogger
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.forced_photometry import (
-    convert_catalog_to_registered_source_objects,
+    convert_dict_catalog_to_registered_source_objects,
 )
 from sotrplib.sources.sources import MeasuredSource
 
@@ -267,7 +267,7 @@ def photutils_sim_n_sources(
         params,
         imap=sim_map if isinstance(sim_map, enmap.ndmap) else sim_map.flux,
     )
-    injected_sources = convert_catalog_to_registered_source_objects(
+    injected_sources = convert_dict_catalog_to_registered_source_objects(
         injected_sources, source_type="simulated", log=log
     )
 
