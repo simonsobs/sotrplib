@@ -54,8 +54,8 @@ def make_enmap(
 
     box = np.array(
         [
-            [min_dec.to_value(u.rad), min_ra.to_value(u.rad)],
-            [max_dec.to_value(u.rad), max_ra.to_value(u.rad)],
+            [min_dec.to_value(u.rad), max_ra.to_value(u.rad)],
+            [max_dec.to_value(u.rad), min_ra.to_value(u.rad)],
         ]
     )
     shape, wcs = geometry(box, res=resolution.to_value(u.rad))
