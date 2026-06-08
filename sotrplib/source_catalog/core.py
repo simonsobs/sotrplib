@@ -7,6 +7,7 @@ from typing import Literal
 
 import numpy as np
 import structlog
+import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from numpy.typing import NDArray
@@ -54,7 +55,7 @@ class SourceCatalog(ABC):
         return
 
     @abstractmethod
-    def source_by_id(self, id) -> RegisteredSource:
+    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
         """
         Get the information about a source by its internal ID.
         """
@@ -163,8 +164,12 @@ class RegisteredSourceCatalog(SourceCatalog):
     ) -> list[RegisteredSource]:
         return self.get_sources_in_map(mask_map)
 
-    def source_by_id(self, id: int):
-        return self.sources[id]
+    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
+        source_ids = [s.source_id for s in self.sources]
+        if id not in source_ids:
+            return None
+        idx = source_ids.index(id)
+        return self.sources[idx]
 
     def crossmatch(
         self,
