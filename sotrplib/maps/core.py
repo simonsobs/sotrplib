@@ -10,6 +10,7 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from astropy.units import Unit
 from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
@@ -325,6 +326,19 @@ class ProcessableMap(ABC):
             self.time_last[x, y] if self.time_last is not None else self.observation_end
         )
         return t_start, t_mean, t_end
+
+    def get_obs_time(self, position: SkyCoord) -> Time | None:
+        """Return the per-pixel mean observation time at a sky position, or None on failure."""
+        try:
+            pix = self.hits.sky2pix(
+                np.array([position.dec.to_value("rad"), position.ra.to_value("rad")])
+            )
+            _, t_pixel, _ = self.get_pixel_times(pix)
+            if isinstance(t_pixel, (int, float, np.floating)):
+                return Time(float(t_pixel), format="unix") if t_pixel > 0 else None
+            return Time(t_pixel)
+        except (IndexError, ValueError):
+            return None
 
     def apply_mask(self):
         """

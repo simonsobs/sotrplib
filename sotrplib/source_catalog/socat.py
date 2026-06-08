@@ -62,22 +62,6 @@ class SOCat(SourceCatalog):
 
         self._source_generators: list[SourceGenerator] | None = None
 
-    ## todo - move this to maps or something, since it's not really catalog specific.
-    def _get_obs_time(
-        self, position: SkyCoord, input_map: ProcessableMap
-    ) -> Time | None:
-        """Return the per-pixel mean observation time at a sky position, or None on failure."""
-        try:
-            pix = input_map.hits.sky2pix(
-                np.array([position.dec.to_value("rad"), position.ra.to_value("rad")])
-            )
-            _, t_pixel, _ = input_map.get_pixel_times(pix)
-            if isinstance(t_pixel, (int, float, np.floating)):
-                return Time(float(t_pixel), format="unix") if t_pixel > 0 else None
-            return Time(t_pixel)
-        except (IndexError, ValueError):
-            return None
-
     def _sg_to_registered(
         self, sg: SourceGenerator, t: Time
     ) -> RegisteredSource | None:
@@ -120,29 +104,45 @@ class SOCat(SourceCatalog):
         )
 
     def _sg_to_registered_with_refinement(
-        self, sg: SourceGenerator, t_initial: Time, input_map: ProcessableMap
+        self,
+        sg: SourceGenerator,
+        t_initial: Time,
+        input_map: ProcessableMap,
+        position_tolerance: u.Quantity = 1.0 * u.arcmin,
+        max_iterations: int = 10,
     ) -> RegisteredSource | None:
         """
-        convert a SourceGenerator to a RegisteredSource, refining the position using the map's per-pixel time if it's an SSO.
-        Two-step SSO position: initial position query at t_initial, then refined at per-pixel time.
+        Convert a SourceGenerator to a RegisteredSource, iteratively refining the
+        SSO position using the map's per-pixel observation time until the change in
+        position between iterations is smaller than position_tolerance.
 
-        For a moving source, we query the position at the mid point of the observation,
-        then use that position to find the time at which that pixel was observed, then
-        query the position again using that updated time.
+        For a moving source, we query the position at t_initial, look up the
+        per-pixel observation time at that position, re-query the position at the
+        new time, and repeat until convergence.  Non-SSO sources are returned
+        immediately without refinement.
 
         Main belt asteroids have apparent motion of up to several arcmin per hour.
-        For a depth1 map that spans 12-24 hours, we therefore might expect up to a degree or two.
-        The time refinement in depth1 map over 1-2 degrees is something like 10-20 minutes for an OT.
-        This reduces the positional uncertainty to <~1 arcmin.
+        For a depth1 map that spans 12-24 hours, we therefore might expect up to a
+        degree or two of offset.  Iterative refinement converges to positional errors
+        well below position_tolerance.
         """
-        initial = self._sg_to_registered(sg, t_initial)
-        if initial is None or not isinstance(sg.source, SolarSystemObject):
-            return initial
-        t = self._get_obs_time(SkyCoord(ra=initial.ra, dec=initial.dec), input_map)
-        if t is None:
-            return initial
-        refined = self._sg_to_registered(sg, t)
-        return refined if refined is not None else initial
+        current = self._sg_to_registered(sg, t_initial)
+        if current is None or not isinstance(sg.source, SolarSystemObject):
+            return current
+        for _ in range(max_iterations):
+            t = input_map.get_obs_time(SkyCoord(ra=current.ra, dec=current.dec))
+            if t is None:
+                return current
+            refined = self._sg_to_registered(sg, t)
+            if refined is None:
+                return current
+            sep = SkyCoord(ra=current.ra, dec=current.dec).separation(
+                SkyCoord(ra=refined.ra, dec=refined.dec)
+            )
+            current = refined
+            if sep < position_tolerance:
+                break
+        return current
 
     def set_time_range(
         self, t_min: Time, t_max: Time, time_padding: TimeDelta = _TIME_RANGE_PADDING
@@ -293,7 +293,12 @@ class SOCat(SourceCatalog):
         all_sources = [
             s
             for s in (
-                self._sg_to_registered_with_refinement(sg, t_mid, input_map)
+                self._sg_to_registered_with_refinement(
+                    sg,
+                    t_mid,
+                    input_map,
+                    position_tolerance=input_map.map_resolution / 2,
+                )
                 for sg in tqdm.tqdm(source_generators)
             )
             if s is not None
