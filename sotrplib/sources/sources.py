@@ -112,6 +112,7 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
     measurement_type: Literal["forced", "blind", "simulated"] = "forced"
+    measurement_id: str | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None

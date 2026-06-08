@@ -64,3 +64,6 @@ def map_with_sources(empty_map):
     new_map, sources = simulator.simulate(input_map=empty_map)
 
     yield new_map, sources
+
+
+second_map_with_sources = map_with_sources

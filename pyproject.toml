@@ -31,6 +31,7 @@ dependencies = [
     "pyinstrument",
     "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
     "soauth",
+    "uuid7-standard",
 ]
 
 [project.optional-dependencies]

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from itertools import combinations
 from typing import Iterable
 
 import numpy as np
@@ -19,6 +20,7 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
+from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
@@ -275,6 +277,24 @@ class BaseRunner:
             self.profilable_task(set_processing_end)(input_map.map_id)
         return forced_photometry_candidates, sifter_result
 
+    def crossmatch_pair(
+        self, candidates: tuple[list], radius: float = 1.5
+    ) -> list[list[tuple]]:
+        positions = np.array(
+            [
+                np.array([[src.dec.value, src.ra.value] for src in sub_candidates])
+                for sub_candidates in candidates
+            ]
+        )
+        if positions.shape[1] == 0:
+            return []
+
+        # FIXME: use a better radius
+        found, matches = self.profilable_task(crossmatch_mask)(
+            *positions, radius=radius, return_matches=True
+        )
+        return matches
+
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
 
@@ -300,8 +320,21 @@ class BaseRunner:
             self._initialize_socat_time_ranges(t_start, t_end)
         all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
-        return (
+        results = (
             self.basic_task(self.coadd_and_analyze_maps)
             .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )
+        all_transient_candidates = [res[1].transient_candidates for res in results]
+        matches = (
+            self.basic_task(self.crossmatch_pair)
+            .map(combinations(all_transient_candidates, 2))
+            .result()
+        )
+
+        cross_matches = self.profilable_task(n_wise_crossmatch)(
+            matches,
+            dict(zip([mm[0].map_id for mm in map_sets], all_transient_candidates)),
+        )
+
+        return results

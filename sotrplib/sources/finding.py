@@ -1,4 +1,5 @@
 import numpy as np
+import uuid7
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
 from numpydantic import NDArray
@@ -186,6 +187,7 @@ def extract_sources(
             "semimajor_sigma": peaks["semimajor_sigma"][j].value * inmap.map_resolution,
             "semiminor_sigma": peaks["semiminor_sigma"][j].value * inmap.map_resolution,
             "orientation": peaks["orientation"][j].value * u.deg,
+            "measurement_id": str(uuid7.create()),
         }
 
     log.info(
