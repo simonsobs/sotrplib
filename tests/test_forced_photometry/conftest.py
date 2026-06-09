@@ -123,7 +123,7 @@ def mapset_with_sources():
     )
 
     sources, _ = generator.generate(
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
     ret_maps = []
     for i in range(10):

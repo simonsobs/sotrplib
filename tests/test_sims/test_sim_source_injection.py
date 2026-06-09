@@ -66,7 +66,7 @@ def test_fixed_source_generation():
     )
 
     sources, cat = generator.generate(
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
 
     assert len(sources) == number
@@ -105,7 +105,7 @@ def test_gaussian_source_generation():
     )
 
     sources, cat = generator.generate(
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
 
     assert len(sources) == number
@@ -181,7 +181,7 @@ def test_source_injection_forced_photometry():
     )
 
     sources, cat = generator.generate(
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
     start_obs = start_time
     end_obs = start_time + datetime.timedelta(hours=2)
@@ -237,7 +237,7 @@ def test_source_injection_blind_search():
     )
 
     sources, cat = generator.generate(
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
     start_obs = start_time
     end_obs = start_time + datetime.timedelta(hours=2)
@@ -298,7 +298,7 @@ def test_source_injection_blind_search_SAT():
     )
 
     sources, cat = generator.generate(
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
 
     start_obs = start_time

@@ -161,7 +161,7 @@ class BaseRunner:
         all_simulated_sources = []
         for simulator in self.source_simulators:
             simulated_sources, catalog = self.profilable_task(simulator.generate)(
-                box=sky_box,
+                sky_box=sky_box,
                 time_range=time_range,
             )
 
