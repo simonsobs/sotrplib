@@ -3,8 +3,6 @@ from itertools import combinations
 from typing import Iterable
 
 import numpy as np
-from astropy import units
-from astropy.coordinates import SkyCoord
 from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
 
@@ -18,6 +16,7 @@ from sotrplib.maps.pointing import (
 )
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
+from sotrplib.maps.utils import enmap_box_to_skycoord
 from sotrplib.outputs.core import MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
 from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
@@ -131,19 +130,16 @@ class BaseRunner:
         if not maps:
             return None
 
-        # mapcat map list is not subscriptable so start with maximal bounding box
-        bbox = [
-            SkyCoord(ra=359.999 * units.deg, dec=90.0 * units.deg),
-            SkyCoord(ra=0.0 * units.deg, dec=-90.0 * units.deg),
-        ]
+        # map.bbox returns a pixell box [[dec_min, ra_max], [dec_max, ra_min]] in radians
+        dec_min, ra_max = np.pi / 2, 0.0
+        dec_max, ra_min = -np.pi / 2, 2 * np.pi
         for input_map in maps:
-            map_bbox = input_map.bbox
-            left = min(bbox[0].ra, map_bbox[0].ra)
-            bottom = min(bbox[0].dec, map_bbox[0].dec)
-            right = max(bbox[1].ra, map_bbox[1].ra)
-            top = max(bbox[1].dec, map_bbox[1].dec)
-            bbox = [SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
-        return bbox
+            b = input_map.bbox  # [[dec_min, ra_max], [dec_max, ra_min]]
+            dec_min = min(dec_min, b[0][0], b[1][0])
+            dec_max = max(dec_max, b[0][0], b[1][0])
+            ra_min = min(ra_min, b[0][1], b[1][1])
+            ra_max = max(ra_max, b[0][1], b[1][1])
+        return [[dec_min, ra_max], [dec_max, ra_min]]
 
     def observation_time_range(self, maps=None):
         if not maps:
@@ -157,16 +153,15 @@ class BaseRunner:
 
         return (start_time, end_time)
 
-    def simulate_sources(
-        self, bbox: list[SkyCoord], time_range: tuple[float]
-    ) -> list[SimulatedSource]:
+    def simulate_sources(self, bbox, time_range: tuple[float]) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         if len(self.source_simulators) == 0:
             return []
+        sky_box = enmap_box_to_skycoord(bbox) if bbox is not None else None
         all_simulated_sources = []
         for simulator in self.source_simulators:
             simulated_sources, catalog = self.profilable_task(simulator.generate)(
-                box=bbox,
+                box=sky_box,
                 time_range=time_range,
             )
 

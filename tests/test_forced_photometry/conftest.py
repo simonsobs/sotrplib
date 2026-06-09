@@ -134,7 +134,7 @@ def mapset_with_sources():
             observation_end=end_obs,
             frequency="f090",
             array="pa5",
-            box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+            sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
         )
 
         base_map.build()

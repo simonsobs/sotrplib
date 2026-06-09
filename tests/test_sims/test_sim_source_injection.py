@@ -190,7 +190,7 @@ def test_source_injection_forced_photometry():
         observation_end=end_obs,
         frequency="f090",
         array="pa5",
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
     )
 
     base_map.build()
@@ -246,7 +246,7 @@ def test_source_injection_blind_search():
         observation_end=end_obs,
         frequency="f090",
         array="pa5",
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
     )
 
     base_map.build()
@@ -310,7 +310,7 @@ def test_source_injection_blind_search_SAT():
         array=None,
         instrument="SOSAT",
         simulation_parameters=map_sim_params,
-        box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)],
     )
 
     base_map.build()
