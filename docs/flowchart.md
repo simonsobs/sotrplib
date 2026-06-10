@@ -6,7 +6,6 @@ Gray boxes are objects that are stored in memory.
 ---
 config:
   layout: elk
-  look: handDrawn
 ---
 flowchart TD
 
