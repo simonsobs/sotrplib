@@ -16,7 +16,7 @@ from sotrplib.maps.pointing import (
 )
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
-from sotrplib.maps.utils import enmap_box_to_skycoord
+from sotrplib.maps.utils import Box, enmap_box_to_skycoord
 from sotrplib.outputs.core import MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
 from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
@@ -128,23 +128,22 @@ class BaseRunner:
 
     def extract_bounding_box(
         self, maps: list[ProcessableMap] | None = None
-    ) -> list[list[float], list[float]] | None:
+    ) -> Box | None:
         if not maps:
             return None
 
-        # map.bbox returns a pixell box [[dec_min, ra_max], [dec_max, ra_min]] in radians
-        # so set defaults so that any real map will update them.
+        # set defaults so that any real map will update them.
         dec_min = np.inf
         dec_max = -np.inf
         ra_min = np.inf
         ra_max = -np.inf
         for input_map in maps:
-            b = input_map.bbox
+            b = input_map.bbox  # map.bbox returns a pixell box [[dec_min, ra_max], [dec_max, ra_min]] in radians
             dec_min = min(dec_min, b[0][0], b[1][0])
             dec_max = max(dec_max, b[0][0], b[1][0])
             ra_min = min(ra_min, b[0][1], b[1][1])
             ra_max = max(ra_max, b[0][1], b[1][1])
-        return [[dec_min, ra_max], [dec_max, ra_min]]
+        return np.array([[dec_min, ra_max], [dec_max, ra_min]])
 
     def observation_time_range(self, maps=None):
         if not maps:
@@ -158,7 +157,9 @@ class BaseRunner:
 
         return (start_time, end_time)
 
-    def simulate_sources(self, bbox, time_range: tuple[float]) -> list[SimulatedSource]:
+    def simulate_sources(
+        self, bbox: Box | None, time_range: tuple[float]
+    ) -> list[SimulatedSource]:
         """Generate sources based upon maximal bounding box of all maps"""
         if len(self.source_simulators) == 0:
             return []
