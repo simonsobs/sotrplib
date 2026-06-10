@@ -126,15 +126,20 @@ class BaseRunner:
     def coadd_maps(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
         return self.map_coadder.coadd(input_maps)
 
-    def bbox(self, maps=None):
+    def extract_bounding_box(
+        self, maps: list[ProcessableMap] | None = None
+    ) -> list[list[float], list[float]] | None:
         if not maps:
             return None
 
         # map.bbox returns a pixell box [[dec_min, ra_max], [dec_max, ra_min]] in radians
-        dec_min, ra_max = np.pi / 2, 0.0
-        dec_max, ra_min = -np.pi / 2, 2 * np.pi
+        # so set defaults so that any real map will update them.
+        dec_min = np.inf
+        dec_max = -np.inf
+        ra_min = np.inf
+        ra_max = -np.inf
         for input_map in maps:
-            b = input_map.bbox  # [[dec_min, ra_max], [dec_max, ra_min]]
+            b = input_map.bbox
             dec_min = min(dec_min, b[0][0], b[1][0])
             dec_max = max(dec_max, b[0][0], b[1][0])
             ra_min = min(ra_min, b[0][1], b[1][1])
@@ -298,7 +303,7 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
-        bbox = self.bbox(maps)
+        bbox = self.extract_bounding_box(maps)
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)

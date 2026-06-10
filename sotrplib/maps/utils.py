@@ -1,16 +1,25 @@
+from typing import TypeAlias
+
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
 from pixell import enmap
 
+Box: TypeAlias = (
+    np.ndarray
+)  # shape (2,2): [[dec_min, ra_max],[dec_max, ra_min]] in radians
 
-def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> list:
+
+def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> Box:
     """Convert a ``(lower_left, upper_right)`` SkyCoord box to a pixell enmap box.
-
+    Convert to ICRS frame to use internally.
     ``sky_box[0]`` must be ``SkyCoord(ra=ra_min, dec=dec_min)`` and ``sky_box[1]``
     must be ``SkyCoord(ra=ra_max, dec=dec_max)``.  Wrap is inferred when
     ``sky_box[0].ra > sky_box[1].ra``.
+    returned pixell box has the form ``[[dec_min, ra_max], [dec_max, ra_min]]`` in radians.
     """
+    # make sure the input is in ICRS frame for internal use
+    sky_box = (s.to_icrs() for s in sky_box)
     ra_min = sky_box[0].ra.to_value(u.rad)
     ra_max = sky_box[1].ra.to_value(u.rad)
     dec_min = sky_box[0].dec.to_value(u.rad)
@@ -20,19 +29,26 @@ def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> list:
     return [[dec_min, ra_max], [dec_max, ra_min]]
 
 
-def enmap_box_to_skycoord(raw_box) -> tuple[SkyCoord, SkyCoord]:
-    """Convert a pixell enmap box to a ``(lower_left, upper_right)`` SkyCoord tuple.
+def enmap_box_to_skycoord(raw_box: Box) -> tuple[SkyCoord, SkyCoord]:
+    """Convert a pixell enmap box to a ``(lower_left, upper_right)`` SkyCoord tuple in icrs frame.
 
     pixell boxes have the form ``[[dec_min, ra_max], [dec_max, ra_min]]`` where
-    ``ra_min`` may be negative for wrapping regions.  The returned tuple follows
+    ``ra_min`` may be negative for wrapping regions.
+    Expected input is in radians.
+
+    The returned tuple follows
     the ``ProcessableMap.sky_box`` convention:
     ``(SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``.
     For a wrapping region ``raw_box[1][1]`` is negative and SkyCoord normalises
     it to near 2π, so ``sky_box[0].ra > sky_box[1].ra`` signals the wrap.
     """
     return (
-        SkyCoord(raw_box[1][1] * u.rad, raw_box[0][0] * u.rad),  # (ra_min, dec_min)
-        SkyCoord(raw_box[0][1] * u.rad, raw_box[1][0] * u.rad),  # (ra_max, dec_max)
+        SkyCoord(
+            raw_box[1][1] * u.rad, raw_box[0][0] * u.rad, frame="icrs"
+        ),  # (ra_min, dec_min)
+        SkyCoord(
+            raw_box[0][1] * u.rad, raw_box[1][0] * u.rad, frame="icrs"
+        ),  # (ra_max, dec_max)
     )
 
 

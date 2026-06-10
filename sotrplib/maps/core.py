@@ -116,6 +116,9 @@ class ProcessableMap(ABC):
 
     _pointing_model: PointingModel | None = None
 
+    _available_maps: tuple[str, ...] = ("flux", "snr")
+    "Ordered attribute names searched by bbox to find a loaded map."
+
     @abstractmethod
     def build(self):
         """
@@ -261,17 +264,20 @@ class ProcessableMap(ABC):
         return self.map_resolution
 
     @property
-    @abstractmethod
     def bbox(self) -> np.ndarray:
         """
         The bounding box of the map as a pixell enmap box.
 
-        Returns ``enmap.box(shape, wcs)`` on the primary loaded map — a
-        ``[[dec_min, ra_max], [dec_max, ra_min]]`` array in radians (``ra_min``
-        may be negative for wrapping maps).  If the map has not been built yet,
-        falls back to ``skycoord_box_to_enmap_box(self.sky_box)`` when ``sky_box`` is
-        set, or reads the geometry from the source file.
+        Returns ``enmap.box(shape, wcs)`` on the first loaded map found in
+        ``_available_maps``.  Falls back to ``skycoord_box_to_enmap_box(self.sky_box)``
+        when ``sky_box`` is set.  Returns ``None`` if no map or sky_box is available.
         """
+        for attr in self._available_maps:
+            if (m := getattr(self, attr, None)) is not None:
+                return enmap.box(m.shape, m.wcs)
+        if self.sky_box is not None:
+            return skycoord_box_to_enmap_box(self.sky_box)
+        return None
 
     @property
     def map_id(self) -> str:
@@ -357,6 +363,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     be monthly or weekly co-adds. Or something else!
     """
 
+    _available_maps: tuple[str, ...] = ("intensity",)
+
     def __init__(
         self,
         intensity_filename: Path,
@@ -395,10 +403,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
     @property
     def bbox(self) -> np.ndarray:
-        if (intensity := getattr(self, "intensity", None)) is not None:
-            return enmap.box(intensity.shape, intensity.wcs)
-        if self.sky_box is not None:
-            return skycoord_box_to_enmap_box(self.sky_box)
+        if (box := super().bbox) is not None:
+            return box
         shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
         return enmap.box(shape, wcs)
 
@@ -543,6 +549,8 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
     """
 
+    _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
+
     def __init__(
         self,
         rho: enmap.ndmap,
@@ -587,12 +595,6 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             self.prefiltered_intensity = None
             self.prefiltered_inverse_variance = None
             self.intensity_units = None
-
-    @property
-    def bbox(self) -> np.ndarray:
-        for attr in ["rho", "kappa", "flux", "snr"]:
-            if (m := getattr(self, attr, None)) is not None:
-                return enmap.box(m.shape, m.wcs)
 
     def build(self):
         return
@@ -678,6 +680,8 @@ class RhoAndKappaMap(ProcessableMap):
     sky_box is tuple of SkyCoord: (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))
     """
 
+    _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
+
     def __init__(
         self,
         rho_filename: Path,
@@ -714,11 +718,8 @@ class RhoAndKappaMap(ProcessableMap):
 
     @property
     def bbox(self) -> np.ndarray:
-        for attr in ["rho", "kappa", "flux", "snr"]:
-            if (m := getattr(self, attr, None)) is not None:
-                return enmap.box(m.shape, m.wcs)
-        if self.sky_box is not None:
-            return skycoord_box_to_enmap_box(self.sky_box)
+        if (box := super().bbox) is not None:
+            return box
         shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
         return enmap.box(shape, wcs)
 
@@ -884,10 +885,8 @@ class FluxAndSNRMap(ProcessableMap):
 
     @property
     def bbox(self) -> np.ndarray:
-        if (flux := getattr(self, "flux", None)) is not None:
-            return enmap.box(flux.shape, flux.wcs)
-        if self.sky_box is not None:
-            return skycoord_box_to_enmap_box(self.sky_box)
+        if (box := super().bbox) is not None:
+            return box
         shape, wcs = enmap.read_map_geometry(str(self.flux_filename))
         return enmap.box(shape, wcs)
 
@@ -1013,6 +1012,8 @@ class CoaddedRhoKappaMap(ProcessableMap):
     Coadds are built using map_coadding.MapCoadder classes.
     """
 
+    _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
+
     def __init__(
         self,
         rho: ndmap,
@@ -1055,12 +1056,6 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.map_ids = map_ids
         self.input_map_times = input_map_times
         self.log = log or structlog.get_logger()
-
-    @property
-    def bbox(self) -> np.ndarray:
-        for attr in ["rho", "kappa", "flux", "snr"]:
-            if (m := getattr(self, attr, None)) is not None:
-                return enmap.box(m.shape, m.wcs)
 
     def build(self):
         pass
