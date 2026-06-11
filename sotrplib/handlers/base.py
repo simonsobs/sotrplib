@@ -280,18 +280,14 @@ class BaseRunner:
     def crossmatch_pair(
         self, candidates: tuple[list], radius: float = 1.5
     ) -> list[list[tuple]]:
-        positions = np.array(
-            [
-                np.array([[src.dec.value, src.ra.value] for src in sub_candidates])
-                for sub_candidates in candidates
-            ]
-        )
-        if positions.shape[1] == 0:
+        positions_1 = np.array([[src.dec.value, src.ra.value] for src in candidates[0]])
+        positions_2 = np.array([[src.dec.value, src.ra.value] for src in candidates[1]])
+        if len(positions_1) == 0 or len(positions_2) == 0:
             return []
 
         # FIXME: use a better radius
         found, matches = self.profilable_task(crossmatch_mask)(
-            *positions, radius=radius, return_matches=True
+            positions_1, positions_2, radius=radius, return_matches=True
         )
         return matches
 
