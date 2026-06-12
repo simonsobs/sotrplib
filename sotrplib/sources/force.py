@@ -176,34 +176,31 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
         if len(source_list) == 0:
             return []
-        ## check if there are any pointing sources with a source within the thumbnail_half_width
+        ## check if there are any sources within the thumbnail_half_width
         ## and above near_source_rel_flux_limit * pointing_source.flux
         has_nearby_sources = [False] * len(source_list)
         if self.near_source_rel_flux_limit is not None and len(source_list) > 1:
-            source_positions = SkyCoord(
+            all_coords = SkyCoord(
                 ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
             )
-            valid_positions = np.isfinite(source_positions.ra.deg) & np.isfinite(
-                source_positions.dec.deg
+            valid = (
+                np.isfinite(all_coords.ra.deg)
+                & np.isfinite(all_coords.dec.deg)
+                & np.array([s.flux is not None for s in source_list])
             )
-            ## mask nan values; i.e. asteroids with no interpolated position.
-            source_positions = source_positions[valid_positions]
-            source_fluxes = (
-                np.array([s.flux.to_value(u.Jy) for s in source_list]) * u.Jy
-            )[valid_positions]
-            for i, fp_source in enumerate(source_list):
-                c = SkyCoord(ra=fp_source.ra, dec=fp_source.dec)
-                if not np.isfinite(c.ra.deg) or not np.isfinite(c.dec.deg):
-                    continue
-                neighboridx, neighbordist, _ = c.match_to_catalog_sky(
-                    source_positions, nthneighbor=2 if len(source_list) > 2 else 1
+            valid_idx = np.where(valid)[0]
+            if len(valid_idx) > 1:
+                coords = all_coords[valid_idx]
+                fluxes = (
+                    np.array([source_list[i].flux.to_value(u.Jy) for i in valid_idx])
+                    * u.Jy
                 )
-                nearby = neighbordist <= self.thumbnail_half_width * (2**-0.5)
-                brighter = (
-                    source_fluxes[neighboridx]
-                    >= fp_source.flux * self.near_source_rel_flux_limit
-                )
-                if nearby & brighter:  # more than itself
+                nidx, ndist, _ = coords.match_to_catalog_sky(coords, nthneighbor=2)
+                flagged = valid_idx[
+                    (ndist <= self.thumbnail_half_width * (2**-0.5))
+                    & (fluxes[nidx] >= fluxes * self.near_source_rel_flux_limit)
+                ]
+                for i in flagged:
                     has_nearby_sources[i] = True
 
         self.log.info(

@@ -38,7 +38,6 @@ def test_basic_pipeline(tmp_path, fit_mode: str):
     runner = PrefectRunner(
         map_coadder=None,
         source_catalogs=[],
-        sso_catalogs=[],
         source_injector=PhotutilsSourceInjector(),
         preprocessors=None,
         pointing_provider=None,

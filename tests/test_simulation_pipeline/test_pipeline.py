@@ -51,7 +51,6 @@ def test_basic_pipeline_lmfit(
     runner = PipelineRunner(
         map_coadder=None,
         source_catalogs=[source_cat],
-        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,
@@ -86,8 +85,7 @@ def test_basic_pipeline_missing_crossmatches(
 
     runner = PipelineRunner(
         map_coadder=None,
-        source_catalogs=[],
-        sso_catalogs=[],
+        source_catalogs=[source_cat],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,

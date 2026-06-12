@@ -15,7 +15,6 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.source_catalog.solar_system_object_catalog import SolarSystemObjectCatalog
 from sotrplib.sources.sources import MeasuredSource
 
 
@@ -31,7 +30,7 @@ class SiftingProvider(ABC):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         raise NotImplementedError
@@ -41,7 +40,7 @@ class EmptySifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         return SifterResult(
@@ -70,7 +69,7 @@ class SimpleCatalogSifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         source_candidates = []
@@ -169,7 +168,7 @@ class DefaultSifter(SiftingProvider):
     def sift(
         self,
         sources: list[MeasuredSource],
-        catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
+        catalogs: list[SourceCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
         from .crossmatch import sift

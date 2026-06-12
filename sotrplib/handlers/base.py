@@ -46,7 +46,6 @@ class BaseRunner:
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
-    sso_catalogs: list[SourceCatalog] | None
     preprocessors: list[MapPreprocessor] | None
     pointing_provider: ForcedPhotometryProvider | None
     pointing_residual_model: MapPointingOffset | None
@@ -65,7 +64,6 @@ class BaseRunner:
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
-        sso_catalogs: list[SourceCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
         pointing_provider: ForcedPhotometryProvider | None,
         pointing_residual_model: MapPointingOffset | None,
@@ -82,7 +80,6 @@ class BaseRunner:
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
-        self.sso_catalogs = sso_catalogs or []
         self.preprocessors = preprocessors or []
         self.pointing_provider = pointing_provider or EmptyForcedPhotometry()
         self.pointing_residual_model = pointing_residual_model or EmptyPointingOffset()
@@ -255,7 +252,7 @@ class BaseRunner:
 
         sifter_result = self.profilable_task(self.sifter.sift)(
             sources=blind_sources,
-            catalogs=self.source_catalogs + self.sso_catalogs,
+            catalogs=self.source_catalogs,
             input_map=source_subtracted_map,
         )
 
@@ -295,7 +292,7 @@ class BaseRunner:
     def _initialize_socat_time_ranges(self, t_start, t_end) -> None:
         t_min = Time(t_start)
         t_max = Time(t_end)
-        for catalog in self.source_catalogs + self.sso_catalogs:
+        for catalog in self.source_catalogs:
             if hasattr(catalog, "set_time_range"):
                 catalog.set_time_range(t_min, t_max)
 
