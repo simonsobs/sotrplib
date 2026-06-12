@@ -76,12 +76,15 @@ class SOCat(SourceCatalog):
             position, flux = sg.at_time(t=t)
         except (AttributeError, ValueError):
             return None
+        ## couple lines to get source type.
+        ## not yet included in socat
         if is_sso:
             source_type = "sso"
         elif hasattr(sg.source, "source_type"):
             source_type = sg.source.source_type
         else:
             source_type = "unknown"
+        ## redundant for now.
         catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
         return RegisteredSource(
             ra=position.ra,
