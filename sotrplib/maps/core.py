@@ -18,7 +18,7 @@ from pixell.enmap import ndmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.utils import pixell_map_union
+from sotrplib.maps.utils import pixell_map_union, skycoord_box_to_enmap_box
 
 PointingModel = ConstantPointingModel
 
@@ -86,7 +86,20 @@ class ProcessableMap(ABC):
     instrument: str | None = None
     "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
-    box: tuple[SkyCoord, SkyCoord] | None = None
+    sky_box: tuple[SkyCoord, SkyCoord] | None = None
+    """
+    Sky bounding box. Can be set to initialize the map with a cutout of a larger map.
+    Should be in the form
+
+    ``sky_box = (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``
+
+    Wrap detection (both RAs in ``[0, 2π)``):
+
+    - ``sky_box[0].ra < sky_box[1].ra`` — non-wrapping region.
+    - ``sky_box[0].ra > sky_box[1].ra`` — wrapping region (spans RA = 0);
+      ``sky_box[0].ra`` is the upper boundary (near 2π) and ``sky_box[1].ra`` is the
+      lower boundary (near 0).
+    """
 
     _hits: ndmap | None = None
     "A hits map stating the number of times each pixel was observed"
@@ -103,6 +116,9 @@ class ProcessableMap(ABC):
     "Path to the parent database for this map, if any"
 
     _pointing_model: PointingModel | None = None
+
+    _available_maps: tuple[str, ...] = ("flux", "snr")
+    "Ordered attribute names searched by bbox to find a loaded map."
 
     @abstractmethod
     def build(self):
@@ -249,34 +265,20 @@ class ProcessableMap(ABC):
         return self.map_resolution
 
     @property
-    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
+    def bbox(self) -> np.ndarray:
         """
-        The bounding box of the map provided as sky coordinates.
+        The bounding box of the map as a pixell enmap box.
+
+        Returns ``enmap.box(shape, wcs)`` on the first loaded map found in
+        ``_available_maps``.  Falls back to ``skycoord_box_to_enmap_box(self.sky_box)``
+        when ``sky_box`` is set.  Returns ``None`` if no map or sky_box is available.
         """
-        ## TODO: do we want the bounding box returned to be the bbox of this specific map
-        ## or the box used to read in the map if it was provided?
-        ## need to check how box works when reading in the maps;
-        """
-        let's say you want to cut a box from -20 to 20 in ra, and -20 to 20 in dec but the map is only from -10, 20 in ra and -20, 10 in dec. 
-        The true bounding box of the cut map would only be (-10,-20),(20,10) but self.box would be (-20,-10),(20,20)
-        not sure if that's how box works when reading in maps or if it fills the empty space with nans or something... should check that
-        """
-        for attribute in ["flux", "snr", "rho", "kappa"]:
-            if (x := getattr(self, attribute, None)) is not None:
-                shape = x.shape[-2:]
-                wcs = x.wcs
-
-                bottom_left = wcs.array_index_to_world(0, 0)
-                top_right = wcs.array_index_to_world(shape[0], shape[1])
-
-                self.box = (
-                    bottom_left,
-                    top_right,
-                )
-
-                break
-
-        return self.box
+        for attr in self._available_maps:
+            if (m := getattr(self, attr, None)) is not None:
+                return enmap.box(m.shape, m.wcs)
+        if self.sky_box is not None:
+            return skycoord_box_to_enmap_box(self.sky_box)
+        return None
 
     @property
     def map_id(self) -> str:
@@ -375,13 +377,15 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     be monthly or weekly co-adds. Or something else!
     """
 
+    _available_maps: tuple[str, ...] = ("intensity",)
+
     def __init__(
         self,
         intensity_filename: Path,
         inverse_variance_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: tuple[SkyCoord, SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -400,7 +404,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.info_filename = info_filename
         self.observation_start = start_time
         self.observation_end = end_time
-        self.box = box
+        self.sky_box = sky_box
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
@@ -412,39 +416,21 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
-        """
-        The bounding box of the map provided as sky coordinates.
-        Read from the inverse variance map header.
-
-        if self.box is set, return that instead.
-        """
-        if self.box is not None:
-            return self.box
-
+    def bbox(self) -> np.ndarray:
+        if (box := super().bbox) is not None:
+            return box
         shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
-
-        bottom_left = wcs.array_index_to_world(0, 0)
-        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
-
-        self.box = (bottom_left, top_right)
-        return self.box
+        return enmap.box(shape, wcs)
 
     def build(self):
-        log = self.log.bind(intensity_filename=self.intensity_filename, box=self.box)
-        # box = self.box.to(u.rad).value if self.box is not None else None
+        log = self.log.bind(
+            intensity_filename=self.intensity_filename, sky_box=self.sky_box
+        )
         enmap_box = (
-            [
-                [self.box[0].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
-                [self.box[1].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
-            ]
-            if self.box is not None
+            skycoord_box_to_enmap_box(self.sky_box)
+            if self.sky_box is not None
             else None
         )
-
-        if enmap_box is not None:
-            if enmap_box[0][1] < enmap_box[1][1]:
-                enmap_box[1][1] -= 2 * np.pi
         intensity_shape = enmap.read_map_geometry(str(self.intensity_filename))[0]
         self.intensity = enmap.read_map(
             str(self.intensity_filename),
@@ -578,6 +564,8 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
     """
 
+    _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
+
     def __init__(
         self,
         rho: enmap.ndmap,
@@ -602,7 +590,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             - self.prefiltered_map.observation_start
         )
         self.observation_time = self.observation_start + self.observation_length / 2
-        self.box = self.prefiltered_map.box
+        self.sky_box = self.prefiltered_map.sky_box
         self.frequency = self.prefiltered_map.frequency
         self.array = self.prefiltered_map.array
         self.mask = self.prefiltered_map.mask
@@ -705,8 +693,10 @@ class RhoAndKappaMap(ProcessableMap):
     A set of FITS maps read from disk. Could be Depth 1, could
     be monthly or weekly co-adds. Or something else!
 
-    box is array of astropy Quantities: [[dec_min, ra_min], [dec_max, ra_max]]
+    sky_box is tuple of SkyCoord: (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))
     """
+
+    _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
 
     def __init__(
         self,
@@ -714,7 +704,7 @@ class RhoAndKappaMap(ProcessableMap):
         kappa_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: tuple[SkyCoord, SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -731,7 +721,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.info_filename = info_filename
         self.observation_start = start_time
         self.observation_end = end_time
-        self.box = box
+        self.sky_box = sky_box
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
@@ -743,35 +733,19 @@ class RhoAndKappaMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
-        """
-        The bounding box of the map provided as sky coordinates.
-        Read from the rho map header.
-        """
-        if self.box is not None:
-            return self.box
-
+    def bbox(self) -> np.ndarray:
+        if (box := super().bbox) is not None:
+            return box
         shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
-
-        bottom_left = wcs.array_index_to_world(0, 0)
-        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
-
-        self.box = (bottom_left, top_right)
-        return self.box
+        return enmap.box(shape, wcs)
 
     def build(self):
         log = self.log.bind(rho_filename=self.rho_filename)
         enmap_box = (
-            [
-                [self.box[0].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
-                [self.box[1].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
-            ]
-            if self.box is not None
+            skycoord_box_to_enmap_box(self.sky_box)
+            if self.sky_box is not None
             else None
         )
-        if enmap_box is not None:
-            if enmap_box[0][1] < enmap_box[1][1]:
-                enmap_box[1][1] -= 2 * np.pi
         try:
             self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=enmap_box)
             assert type(self.rho) is enmap.ndmap
@@ -893,7 +867,7 @@ class FluxAndSNRMap(ProcessableMap):
     A set of FITS maps read from disk. Could be Depth 1, could
     be monthly or weekly co-adds. Or something else!
 
-    box is tuple of skycoords: (bottom_left, top_right)
+    sky_box is tuple of skycoords: (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))
     """
 
     def __init__(
@@ -902,7 +876,7 @@ class FluxAndSNRMap(ProcessableMap):
         snr_filename: Path,
         start_time: AwareDatetime,
         end_time: AwareDatetime,
-        box: tuple[SkyCoord, SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_filename: Path | None = None,
         info_filename: Path | None = None,
         frequency: str | None = None,
@@ -919,7 +893,7 @@ class FluxAndSNRMap(ProcessableMap):
         self.info_filename = info_filename
         self.observation_start = start_time
         self.observation_end = end_time
-        self.box = box
+        self.sky_box = sky_box
         self.frequency = frequency
         self.array = array
         self.instrument = instrument
@@ -931,35 +905,19 @@ class FluxAndSNRMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
-        """
-        The bounding box of the map provided as sky coordinates.
-        Read from the flux map header.
-        """
-        if self.box is not None:
-            return self.box
-
+    def bbox(self) -> np.ndarray:
+        if (box := super().bbox) is not None:
+            return box
         shape, wcs = enmap.read_map_geometry(str(self.flux_filename))
-
-        bottom_left = wcs.array_index_to_world(0, 0)
-        top_right = wcs.array_index_to_world(shape[-2], shape[-1])
-
-        self.box = (bottom_left, top_right)
-        return self.box
+        return enmap.box(shape, wcs)
 
     def build(self):
         log = self.log.bind(flux_filename=self.flux_filename)
         enmap_box = (
-            [
-                [self.box[0].dec.to_value(u.rad), self.box[0].ra.to_value(u.rad)],
-                [self.box[1].dec.to_value(u.rad), self.box[1].ra.to_value(u.rad)],
-            ]
-            if self.box is not None
+            skycoord_box_to_enmap_box(self.sky_box)
+            if self.sky_box is not None
             else None
         )
-        if enmap_box is not None:
-            if enmap_box[0][1] < enmap_box[1][1]:
-                enmap_box[1][1] -= 2 * np.pi
         try:
             self.flux = enmap.read_map(str(self.flux_filename), sel=0, box=enmap_box)
             assert type(self.flux) is enmap.ndmap
@@ -1076,6 +1034,8 @@ class CoaddedRhoKappaMap(ProcessableMap):
     Coadds are built using map_coadding.MapCoadder classes.
     """
 
+    _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
+
     def __init__(
         self,
         rho: ndmap,
@@ -1086,7 +1046,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         time_mean: ndmap | None = None,
         time_last: ndmap | None = None,
         observation_length: timedelta | None = None,
-        box: tuple[SkyCoord, SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
@@ -1107,7 +1067,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.observation_end = observation_end
         self.observation_length = observation_length
         self.observation_time = observation_end - 0.5 * observation_length
-        self.box = box
+        self.sky_box = sky_box
         self.frequency = frequency
         self.array = array
         self.instrument = instrument

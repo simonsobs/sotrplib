@@ -56,12 +56,12 @@ class SimulatedSourceGenerator(ABC):
     def generate(
         self,
         input_map: ProcessableMap | None = None,
-        box: tuple[SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ) -> tuple[list[SimulatedSource], SourceCatalog]:
         """
-        Generate the simulated sources, optionally within a map or a box on the sky.
-        If input_map is provided, box is to be ignored and inject only within the map area.
+        Generate the simulated sources, optionally within a map or a sky_box on the sky.
+        If input_map is provided, sky_box is to be ignored and inject only within the map area.
         If time_range is provided, it specifies the time range for the simulation.
         Returns both the list of the core 'sources' for use in the source
         simulator, as well as a source catlaog that contains at least some of
@@ -92,11 +92,11 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
     def generate(
         self,
         input_map: ProcessableMap | None = None,
-        box: tuple[SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ):
-        if box is None and input_map is None:
-            box = [
+        if sky_box is None and input_map is None:
+            sky_box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
@@ -104,13 +104,16 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         if input_map is not None:
             positions = generate_random_positions_in_map(self.number, input_map.flux)
         else:
+            # sky_box[0] = (ra_min, dec_min), sky_box[1] = (ra_max, dec_max).
+            # When the box wraps RA=0, sky_box[0].ra > sky_box[1].ra (e.g. 357° vs 3°);
+            # generate_random_positions handles that by converting to negative RA.
             positions = generate_random_positions(
                 self.number,
-                ra_lims=(box[0].ra, box[1].ra),
-                dec_lims=(box[0].dec, box[1].dec),
+                ra_lims=(sky_box[0].ra, sky_box[1].ra),
+                dec_lims=(sky_box[0].dec, sky_box[1].dec),
             )
 
-        log = self.log.bind(box=box)
+        log = self.log.bind(sky_box=sky_box)
 
         # Potential issue with this setup is that you've got overlapping sources..?
         # But that's something we should probably handle anyway...
@@ -187,11 +190,11 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
     def generate(
         self,
         input_map: ProcessableMap | None = None,
-        box: tuple[SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ):
-        if box is None and input_map is None:
-            box = [
+        if sky_box is None and input_map is None:
+            sky_box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
@@ -228,7 +231,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
 
         log = self.log.bind(
             n=self.number,
-            box=box,
+            sky_box=sky_box,
             time_range=[self.flare_earliest_time, self.flare_latest_time],
         )
 
@@ -251,10 +254,13 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         if input_map is not None:
             positions = generate_random_positions_in_map(self.number, input_map.flux)
         else:
+            # sky_box[0] = (ra_min, dec_min), sky_box[1] = (ra_max, dec_max).
+            # When the box wraps RA=0, sky_box[0].ra > sky_box[1].ra (e.g. 357° vs 3°);
+            # generate_random_positions handles that by converting to negative RA.
             positions = generate_random_positions(
                 self.number,
-                ra_lims=(box[0].ra, box[1].ra),
-                dec_lims=(box[0].dec, box[1].dec),
+                ra_lims=(sky_box[0].ra, sky_box[1].ra),
+                dec_lims=(sky_box[0].dec, sky_box[1].dec),
             )
 
         sources = [
@@ -366,7 +372,8 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
     def generate(
         self,
-        box: tuple[SkyCoord] | None = None,
+        input_map: ProcessableMap | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ):
         self.log = self.log.bind(
@@ -375,13 +382,15 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         socat_client_settings = SOCatClientSettings()
         socat_client = socat_client_settings.client
 
-        if box is None:
-            box = [
+        if sky_box is None:
+            sky_box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
-        sources = socat_client.get_box_fixed(lower_left=box[0], upper_right=box[1])
+        sources = socat_client.get_box_fixed(
+            lower_left=sky_box[0], upper_right=sky_box[1]
+        )
         random.shuffle(sources)
 
         number_of_sources = len(sources)
@@ -393,7 +402,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
             n_sources=number_of_sources,
             n_fixed=number_of_fixed,
             n_flares=number_of_flares,
-            box=box,
+            sky_box=sky_box,
         )
         all_sources = [
             RegisteredSource(

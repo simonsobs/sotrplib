@@ -32,7 +32,7 @@ class CrossMatch(BaseModel):
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     catalog_name: str | None = None
-    catalog_idx: str | uuid.UUID | None = None
+    catalog_idx: int | str | uuid.UUID | None = None
     alternate_names: list[str] | None = None
 
 

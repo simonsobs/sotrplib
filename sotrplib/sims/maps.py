@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.utils import skycoord_box_to_enmap_box
 from sotrplib.sims import sim_maps
 
 
@@ -38,7 +39,7 @@ class SimulatedMap(ProcessableMap):
         array: str | None = None,
         instrument: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
-        box: tuple[SkyCoord, SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         include_half_pixel_offset: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
@@ -64,7 +65,7 @@ class SimulatedMap(ProcessableMap):
         """
         self.observation_start = observation_start
         self.observation_end = observation_end
-        self.box = box
+        self.sky_box = sky_box
         self.include_half_pixel_offset = include_half_pixel_offset
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
@@ -76,24 +77,24 @@ class SimulatedMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
-        if self.box is not None:
-            return self.box
-        self.box = (
-            SkyCoord(
-                ra=self.simulation_parameters.center_ra
-                - self.simulation_parameters.width_ra,
-                dec=self.simulation_parameters.center_dec
-                - self.simulation_parameters.width_dec,
-            ),
-            SkyCoord(
-                ra=self.simulation_parameters.center_ra
-                + self.simulation_parameters.width_ra,
-                dec=self.simulation_parameters.center_dec
-                + self.simulation_parameters.width_dec,
-            ),
-        )
-        return self.box
+    def bbox(self) -> np.ndarray:
+        if (flux := getattr(self, "flux", None)) is not None:
+            return enmap.box(flux.shape, flux.wcs)
+        if self.sky_box is not None:
+            return skycoord_box_to_enmap_box(self.sky_box)
+        ra_min = (
+            self.simulation_parameters.center_ra - self.simulation_parameters.width_ra
+        ).to_value(u.rad)
+        ra_max = (
+            self.simulation_parameters.center_ra + self.simulation_parameters.width_ra
+        ).to_value(u.rad)
+        dec_min = (
+            self.simulation_parameters.center_dec - self.simulation_parameters.width_dec
+        ).to_value(u.rad)
+        dec_max = (
+            self.simulation_parameters.center_dec + self.simulation_parameters.width_dec
+        ).to_value(u.rad)
+        return np.array([[dec_min, ra_max], [dec_max, ra_min]])
 
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
@@ -233,15 +234,11 @@ class SimulatedMapFromGeometry(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self) -> tuple[SkyCoord, SkyCoord]:
-        if self.box is not None:
-            return self.box
+    def bbox(self) -> np.ndarray:
+        if (flux := getattr(self, "flux", None)) is not None:
+            return enmap.box(flux.shape, flux.wcs)
         shape, wcs = enmap.read_map_geometry(str(self.geometry_source_map))
-        self.box = (
-            wcs.array_index_to_world(0, 0),
-            wcs.array_index_to_world(shape[-2], shape[-1]),
-        )
-        return self.box
+        return enmap.box(shape, wcs)
 
     def build(self):
         log = self.log.bind(geometry_source_map=self.geometry_source_map)
