@@ -289,12 +289,10 @@ class BaseRunner:
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
 
-    def _initialize_socat_time_ranges(self, t_start, t_end) -> None:
-        t_min = Time(t_start)
-        t_max = Time(t_end)
+    def _initialize_socat_time_ranges(self, t_start: Time, t_end: Time) -> None:
         for catalog in self.source_catalogs:
             if hasattr(catalog, "set_time_range"):
-                catalog.set_time_range(t_min, t_max)
+                catalog.set_time_range(t_start, t_end)
 
     def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         """
