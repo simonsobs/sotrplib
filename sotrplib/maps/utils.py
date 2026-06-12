@@ -1,13 +1,13 @@
-from typing import TypeAlias
+from typing import Literal
 
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
 from pixell import enmap
 
-Box: TypeAlias = (
-    np.ndarray
-)  # shape (2,2): [[dec_min, ra_max],[dec_max, ra_min]] in radians
+type Box = np.ndarray[
+    tuple[Literal[2], Literal[2]], np.dtype[np.float64]
+]  # shape (2,2): [[dec_min, ra_max],[dec_max, ra_min]] in radians
 
 
 def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> Box:
