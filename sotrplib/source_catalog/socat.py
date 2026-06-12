@@ -182,15 +182,15 @@ class SOCat(SourceCatalog):
             )
             self._refresh(t_min=new_t_min, t_max=new_t_max)
 
-    def _initialize_generators(self, box: list[SkyCoord] | None = None) -> None:
+    def _initialize_generators(self, sky_box: list[SkyCoord] | None = None) -> None:
         """Fetch SourceGenerators for the full sky at the current time range and cache them."""
         self._source_generators = list(
             self.catalog.get_box(
-                lower_left=box[0]
-                if box is not None
+                lower_left=sky_box[0]
+                if sky_box is not None
                 else SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                upper_right=box[1]
-                if box is not None
+                upper_right=sky_box[1]
+                if sky_box is not None
                 else SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
                 t_min=self.t_min,
                 t_max=self.t_max,
@@ -204,19 +204,19 @@ class SOCat(SourceCatalog):
         )
 
     def _get_source_generators(
-        self, box: list[SkyCoord] | None
+        self, sky_box: list[SkyCoord] | None
     ) -> list[SourceGenerator]:
         """Return cached SourceGenerators, fetching from DB if the cache is stale."""
         if self._source_generators is None:
-            if box is None:
-                box = [
+            if sky_box is None:
+                sky_box = [
                     SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
                     SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
                 ]
             if self.t_min is None or self.t_max is None:
                 self.log.warning("socat.get_source_generators.no_time_range")
                 return []
-            self._initialize_generators(box=box)
+            self._initialize_generators(sky_box=sky_box)
         return self._source_generators
 
     def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
@@ -227,7 +227,7 @@ class SOCat(SourceCatalog):
             self.t_max = t_max
         self._source_generators = None
         self._get_source_generators(
-            box=None
+            sky_box=None
         )  # pre-fetch generators for the new time range
         self.log.info(
             "socat.refreshed",
@@ -245,22 +245,24 @@ class SOCat(SourceCatalog):
             )
 
     def get_sources_in_box(
-        self, box: list[SkyCoord] | None = None
+        self, sky_box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
         """Get sources within the given sky box and time range.
-        If box is None, get all sources in the time range.
+        If sky_box is None, get all sources in the time range.
         """
         if self.t_min is None or self.t_max is None:
             self.log.error("socat.get_sources_in_box.no_time_range")
             return []
         t_eval = self.t_min + (self.t_max - self.t_min) / 2
-        source_generators = self._get_source_generators(box=box)
+        source_generators = self._get_source_generators(sky_box=sky_box)
         sources = [
             s
             for s in (self._sg_to_registered(sg, t_eval) for sg in source_generators)
             if s is not None
         ]
-        self.log.debug("socat.get_sources_in_box", box=box, n_sources=len(sources))
+        self.log.debug(
+            "socat.get_sources_in_box", sky_box=sky_box, n_sources=len(sources)
+        )
         return sources
 
     def get_sources_in_map(
@@ -289,7 +291,7 @@ class SOCat(SourceCatalog):
         else:
             t_mid = None
 
-        source_generators = self._get_source_generators(box=input_map.bbox)
+        source_generators = self._get_source_generators(sky_box=input_map.sky_box)
         if monitored:
             source_generators = [sg for sg in source_generators if sg.source.monitored]
 
@@ -332,7 +334,7 @@ class SOCat(SourceCatalog):
         return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
     def get_all_sources(self) -> list[RegisteredSource]:
-        return self.get_sources_in_box(box=None)
+        return self.get_sources_in_box(sky_box=None)
 
     def forced_photometry_sources(
         self, input_map: ProcessableMap
