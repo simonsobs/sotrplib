@@ -4,6 +4,7 @@ from typing import Iterable
 
 import numpy as np
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
 
@@ -148,16 +149,17 @@ class BaseRunner:
         sky_box = enmap_box_to_skycoord(bbox)
         return sky_box
 
-    def observation_time_range(self, maps=None):
+    def observation_time_range(self, maps=None) -> tuple[Time, Time]:
+        """
+        Get the time range covering all input maps.
+        """
         if not maps:
             return (None, None)
-
         start_time = datetime.max.replace(tzinfo=timezone.utc)
         end_time = datetime.min.replace(tzinfo=timezone.utc)
         for input_map in maps:
             start_time = min(input_map.observation_start, start_time)
             end_time = max(input_map.observation_end, end_time)
-
         return (start_time, end_time)
 
     def simulate_sources(
@@ -233,19 +235,12 @@ class BaseRunner:
                     filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
                 )
                 break
-        sso_sources = []
-        for sso_catalog in self.sso_catalogs:
-            sso_sources.extend(
-                self.profilable_task(sso_catalog.get_sources_in_map)(
-                    input_map=input_map
-                )
-            )
 
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
         )(
             input_map=input_map,
-            catalogs=self.source_catalogs + self.sso_catalogs,
+            catalogs=self.source_catalogs,
             pointing_model=pointing_model,
         )
 
@@ -298,11 +293,8 @@ class BaseRunner:
         return self.flow(self._run)(maps)
 
     def _initialize_socat_time_ranges(self, t_start, t_end) -> None:
-        from astropy.time import Time, TimeDelta
-
-        padding = TimeDelta(1, format="jd")
-        t_min = Time(t_start) - padding
-        t_max = Time(t_end) + padding
+        t_min = Time(t_start)
+        t_max = Time(t_end)
         for catalog in self.source_catalogs + self.sso_catalogs:
             if hasattr(catalog, "set_time_range"):
                 catalog.set_time_range(t_min, t_max)

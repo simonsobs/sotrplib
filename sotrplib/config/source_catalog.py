@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
-from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
@@ -31,7 +30,7 @@ class EmptySourceCatalogConfig(SourceCatalogConfig):
 
 class SOCatConfig(SourceCatalogConfig):
     catalog_type: Literal["socat"] = "socat"
-    flux_lower_limit: AstroPydanticQuantity = 0.03 * u.Jy
+    flux_lower_limit: AstroPydanticQuantity | None = None
     t_min: AstroPydanticTime | None = None
     t_max: AstroPydanticTime | None = None
 
