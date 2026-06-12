@@ -22,6 +22,8 @@ from sotrplib.utils.utils import angular_separation
 
 from .core import SourceCatalog
 
+# Specific padding for the time range used to construct
+# interpolation objects. Add this by default to all time ranges.
 _TIME_RANGE_PADDING = TimeDelta(1, format="jd")
 
 
@@ -38,6 +40,9 @@ class SOCat(SourceCatalog):
 
     flux_lower_limit can be set to filter sources for forced photometry,
     but if None, socat will return all monitored sources
+
+    The list of source generators returned by socat will be cached for
+    future use so that we don't redo the interpolation step each time.
 
     """
 
@@ -181,8 +186,9 @@ class SOCat(SourceCatalog):
     ) -> list[RegisteredSource]:
         """
         Wrapper for socat's get_monitored_sources.
-        If times arent provided (or use_sso is False) then it just grabs the fixed sources.
-        Otherwise, grab all sources and filter them.
+        If times arent provided then it just grabs the fixed sources.
+        Otherwise, grab all sources and filter them to
+        return only ones within the map region.
         """
         obs_time = Time(input_map.observation_time)
         log = self.log.bind(
@@ -237,6 +243,10 @@ class SOCat(SourceCatalog):
         radius: u.Quantity,
         method: Literal["closest", "all"],
     ) -> list[CrossMatch]:
+        """
+        Crossmatch the given coordinates with the sources in the catalog.
+        This uses pixell's crossmatch function.
+        """
         close_sources = self.get_sources_in_box(
             [
                 SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
