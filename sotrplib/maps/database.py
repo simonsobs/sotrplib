@@ -52,7 +52,7 @@ class MapCatDatabaseReader(ABC):
     end_time: AwareDatetime | None = None
     map_ids: list[int] | None = None
     sources: list[RegisteredSource] | None = None
-    box: tuple[SkyCoord, SkyCoord] | None = None
+    sky_box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
     log: FilteringBoundLogger
@@ -69,7 +69,7 @@ class MapCatDatabaseReader(ABC):
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
-        box: tuple[SkyCoord, SkyCoord] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         map_units: u.Unit | None = None,
         rerun: bool = False,
         rerun_pointing_model: bool = False,
@@ -89,7 +89,7 @@ class MapCatDatabaseReader(ABC):
         self.array = array
         self.instrument = instrument
         self.map_units = map_units if map_units is not None else self.default_map_units
-        self.box = box
+        self.sky_box = sky_box
         self.rerun = rerun
         self.rerun_pointing_model = rerun_pointing_model
         self._map_list = None
@@ -218,7 +218,7 @@ class IntensityMapReader(MapCatDatabaseReader):
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
             start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
             end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
-            box=self.box,
+            sky_box=self.sky_box,
             intensity_units=self.map_units,
             frequency=result.frequency,
             array=result.tube_slot,
@@ -240,7 +240,7 @@ class RhoKappaMapReader(MapCatDatabaseReader):
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
             start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
             end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
-            box=self.box,
+            sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
             array=result.tube_slot,
@@ -262,7 +262,7 @@ class FluxMapReader(MapCatDatabaseReader):
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
             start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
             end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
-            box=self.box,
+            sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
             array=result.tube_slot,
