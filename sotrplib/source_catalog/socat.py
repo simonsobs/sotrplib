@@ -62,91 +62,6 @@ class SOCat(SourceCatalog):
 
         self._source_generators: list[SourceGenerator] | None = None
 
-    def _sg_to_registered(
-        self, sg: SourceGenerator, t: Time
-    ) -> RegisteredSource | None:
-        """
-        Convert an socat SourceGenerator output to a RegisteredSource, querying at time t.
-
-        sets the source type to "sso" if the source is a SolarSystemObject,
-        otherwise uses the source_type attribute if it exists, otherwise "unknown".
-        """
-        try:
-            is_sso = isinstance(sg.source, SolarSystemObject)
-            position, flux = sg.at_time(t=t)
-        except (AttributeError, ValueError):
-            return None
-        ## couple lines to get source type.
-        ## not yet included in socat
-        if is_sso:
-            source_type = "sso"
-        elif hasattr(sg.source, "source_type"):
-            source_type = sg.source.source_type
-        else:
-            source_type = "unknown"
-        ## redundant for now.
-        catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
-        return RegisteredSource(
-            ra=position.ra,
-            dec=position.dec,
-            flux=flux,
-            source_id=sg.source.name,
-            source_type=source_type,
-            observation_mean_time=t,
-            crossmatches=[
-                CrossMatch(
-                    source_id=sg.source.name,
-                    source_type=source_type,
-                    probability=1.0,
-                    angular_separation=0.0 * u.deg,
-                    catalog_name="socat",
-                    catalog_idx=catalog_idx,
-                    observation_time=t,
-                )
-            ],
-        )
-
-    def _sg_to_registered_with_refinement(
-        self,
-        sg: SourceGenerator,
-        t_initial: Time,
-        input_map: ProcessableMap,
-        position_tolerance: u.Quantity = 1.0 * u.arcmin,
-        max_iterations: int = 10,
-    ) -> RegisteredSource | None:
-        """
-        Convert a SourceGenerator to a RegisteredSource, iteratively refining the
-        SSO position using the map's per-pixel observation time until the change in
-        position between iterations is smaller than position_tolerance.
-
-        For a moving source, we query the position at t_initial, look up the
-        per-pixel observation time at that position, re-query the position at the
-        new time, and repeat until convergence.  Non-SSO sources are returned
-        immediately without refinement.
-
-        Main belt asteroids have apparent motion of up to several arcmin per hour.
-        For a depth1 map that spans 12-24 hours, we therefore might expect up to a
-        degree or two of offset.  Iterative refinement converges to positional errors
-        well below position_tolerance.
-        """
-        current = self._sg_to_registered(sg, t_initial)
-        if current is None or not isinstance(sg.source, SolarSystemObject):
-            return current
-        for _ in range(max_iterations):
-            t = input_map.get_obs_time(SkyCoord(ra=current.ra, dec=current.dec))
-            if t is None:
-                return current
-            refined = self._sg_to_registered(sg, t)
-            if refined is None:
-                return current
-            sep = SkyCoord(ra=current.ra, dec=current.dec).separation(
-                SkyCoord(ra=refined.ra, dec=refined.dec)
-            )
-            current = refined
-            if sep < position_tolerance:
-                break
-        return current
-
     def set_time_range(
         self, t_min: Time, t_max: Time, time_padding: TimeDelta = _TIME_RANGE_PADDING
     ) -> None:
@@ -155,85 +70,6 @@ class SOCat(SourceCatalog):
         The time range is expanded by time_padding on either side to avoid edge effects.
         """
         self._refresh(t_min=t_min - time_padding, t_max=t_max + time_padding)
-
-    def _check_and_expand_interp_range(self, input_map: ProcessableMap) -> None:
-        """
-        If the map's observation window falls outside [t_min, t_max], expand and refresh.
-        """
-        obs_start = Time(input_map.observation_start)
-        obs_end = Time(input_map.observation_end)
-        new_t_min = self.t_min
-        new_t_max = self.t_max
-        needs_refresh = False
-        if self.t_min is None or obs_start < self.t_min:
-            new_t_min = obs_start - _TIME_RANGE_PADDING
-            needs_refresh = True
-        if self.t_max is None or obs_end > self.t_max:
-            new_t_max = obs_end + _TIME_RANGE_PADDING
-            needs_refresh = True
-        if needs_refresh:
-            self.log.info(
-                "socat.expanding_time_range",
-                map_id=input_map.map_id,
-                old_t_min=self.t_min,
-                old_t_max=self.t_max,
-                new_t_min=new_t_min,
-                new_t_max=new_t_max,
-            )
-            self._refresh(t_min=new_t_min, t_max=new_t_max)
-
-    def _initialize_generators(self, sky_box: list[SkyCoord] | None = None) -> None:
-        """Fetch SourceGenerators for the full sky at the current time range and cache them."""
-        self._source_generators = list(
-            self.catalog.get_box(
-                lower_left=sky_box[0]
-                if sky_box is not None
-                else SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                upper_right=sky_box[1]
-                if sky_box is not None
-                else SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-                t_min=self.t_min,
-                t_max=self.t_max,
-            )
-        )
-        self.log.info(
-            "socat.generators_initialized",
-            n_generators=len(self._source_generators),
-            t_min=self.t_min,
-            t_max=self.t_max,
-        )
-
-    def _get_source_generators(
-        self, sky_box: list[SkyCoord] | None
-    ) -> list[SourceGenerator]:
-        """Return cached SourceGenerators, fetching from DB if the cache is stale."""
-        if self._source_generators is None:
-            if sky_box is None:
-                sky_box = [
-                    SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                    SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-                ]
-            if self.t_min is None or self.t_max is None:
-                self.log.warning("socat.get_source_generators.no_time_range")
-                return []
-            self._initialize_generators(sky_box=sky_box)
-        return self._source_generators
-
-    def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
-        """Update the time range and invalidate the SourceGenerator cache."""
-        if t_min is not None:
-            self.t_min = t_min
-        if t_max is not None:
-            self.t_max = t_max
-        self._source_generators = None
-        self._get_source_generators(
-            sky_box=None
-        )  # pre-fetch generators for the new time range
-        self.log.info(
-            "socat.refreshed",
-            t_min=self.t_min,
-            t_max=self.t_max,
-        )
 
     def add_sources(self, sources: list[RegisteredSource], monitor: bool = True):
         for source in sources:
@@ -334,6 +170,10 @@ class SOCat(SourceCatalog):
         return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
     def get_all_sources(self) -> list[RegisteredSource]:
+        """
+        Just a helper function to get all the sources in the
+        catalog by querying with no spatial constraints.
+        """
         return self.get_sources_in_box(sky_box=None)
 
     def forced_photometry_sources(
@@ -434,3 +274,179 @@ class SOCat(SourceCatalog):
             )
             for s in sources
         ]
+
+    def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
+        """
+        Update the time range, clear the local SourceGenerator cache,
+        and pre-fetch SourceGenerators for the new time range.
+        """
+        if t_min is not None:
+            self.t_min = t_min
+        if t_max is not None:
+            self.t_max = t_max
+        self._source_generators = None
+        self._get_source_generators(
+            sky_box=None
+        )  # pre-fetch generators for the new time range
+        self.log.info(
+            "socat.refreshed",
+            t_min=self.t_min,
+            t_max=self.t_max,
+        )
+
+    def _check_and_expand_interp_range(self, input_map: ProcessableMap) -> None:
+        """
+        If the map's observation window falls outside [t_min, t_max], expand and refresh.
+        This makes sure the interpolation objects are initialized with the correct time range.
+        """
+        obs_start = Time(input_map.observation_start)
+        obs_end = Time(input_map.observation_end)
+        new_t_min = self.t_min
+        new_t_max = self.t_max
+        needs_refresh = False
+        if self.t_min is None or obs_start < self.t_min:
+            new_t_min = obs_start - _TIME_RANGE_PADDING
+            needs_refresh = True
+        if self.t_max is None or obs_end > self.t_max:
+            new_t_max = obs_end + _TIME_RANGE_PADDING
+            needs_refresh = True
+        if needs_refresh:
+            self.log.info(
+                "socat.expanding_time_range",
+                map_id=input_map.map_id,
+                old_t_min=self.t_min,
+                old_t_max=self.t_max,
+                new_t_min=new_t_min,
+                new_t_max=new_t_max,
+            )
+            self._refresh(t_min=new_t_min, t_max=new_t_max)
+
+    def _initialize_generators(self, sky_box: list[SkyCoord] | None = None) -> None:
+        """
+        Fetch SourceGenerators within the sky_box if supplied, or
+        for the full sky if None at the current time range.
+        Cache the generated SourceGenerators in the local instance of the class.
+        """
+        self._source_generators = list(
+            self.catalog.get_box(
+                lower_left=sky_box[0]
+                if sky_box is not None
+                else SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                upper_right=sky_box[1]
+                if sky_box is not None
+                else SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+                t_min=self.t_min,
+                t_max=self.t_max,
+            )
+        )
+        self.log.info(
+            "socat.generators_initialized",
+            n_generators=len(self._source_generators),
+            t_min=self.t_min,
+            t_max=self.t_max,
+        )
+
+    def _get_source_generators(
+        self, sky_box: list[SkyCoord] | None
+    ) -> list[SourceGenerator]:
+        """
+        Return cached SourceGenerators, fetching from DB if the cache is stale.
+        Because querying from socat initializes the interpolation objects which is
+        slow, we want to cache the source generators.
+        """
+        if self._source_generators is None:
+            if sky_box is None:
+                sky_box = [
+                    SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                    SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+                ]
+            if self.t_min is None or self.t_max is None:
+                self.log.warning("socat.get_source_generators.no_time_range")
+                return []
+            self._initialize_generators(sky_box=sky_box)
+        return self._source_generators
+
+    def _sg_to_registered(
+        self, sg: SourceGenerator, t: Time
+    ) -> RegisteredSource | None:
+        """
+        Convert an socat SourceGenerator output to a RegisteredSource, querying at time t.
+
+        sets the source type to "sso" if the source is a SolarSystemObject,
+        otherwise uses the source_type attribute if it exists, otherwise "unknown".
+        """
+        try:
+            is_sso = isinstance(sg.source, SolarSystemObject)
+            position, flux = sg.at_time(t=t)
+        except (AttributeError, ValueError):
+            return None
+        ## couple lines to get source type.
+        ## not yet included in socat
+        if is_sso:
+            source_type = "sso"
+        elif hasattr(sg.source, "source_type"):
+            source_type = sg.source.source_type
+        else:
+            source_type = "unknown"
+        ## redundant for now.
+        catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
+        return RegisteredSource(
+            ra=position.ra,
+            dec=position.dec,
+            flux=flux,
+            source_id=sg.source.name,
+            source_type=source_type,
+            observation_mean_time=t,
+            crossmatches=[
+                CrossMatch(
+                    source_id=sg.source.name,
+                    source_type=source_type,
+                    probability=1.0,
+                    angular_separation=0.0 * u.deg,
+                    catalog_name="socat",
+                    catalog_idx=catalog_idx,
+                    observation_time=t,
+                )
+            ],
+        )
+
+    def _sg_to_registered_with_refinement(
+        self,
+        sg: SourceGenerator,
+        t_initial: Time,
+        input_map: ProcessableMap,
+        position_tolerance: u.Quantity = 1.0 * u.arcmin,
+        max_iterations: int = 10,
+    ) -> RegisteredSource | None:
+        """
+        Convert a SourceGenerator to a RegisteredSource, iteratively refining the
+        SSO position using the map's per-pixel observation time until the change in
+        position between iterations is smaller than position_tolerance.
+
+        For a moving source, we query the position at t_initial, look up the
+        per-pixel observation time at that position, re-query the position at the
+        new time, and repeat until convergence.  Non-SSO sources are returned
+        immediately without refinement.
+
+        Main belt asteroids have apparent motion of up to several arcmin per hour.
+        For a depth1 map that spans 12-24 hours, we therefore might expect up to a
+        degree or two of offset.  Iterative refinement converges to positional errors
+        well below position_tolerance.
+        """
+        current = self._sg_to_registered(sg, t_initial)
+        if current is None or not isinstance(sg.source, SolarSystemObject):
+            return current
+        for _ in range(max_iterations):
+            t = input_map.get_obs_time(SkyCoord(ra=current.ra, dec=current.dec))
+            if t is None:
+                return current
+            refined = self._sg_to_registered(sg, t)
+            if refined is None:
+                return current
+            sep = SkyCoord(ra=current.ra, dec=current.dec).separation(
+                SkyCoord(ra=refined.ra, dec=refined.dec)
+            )
+            current = refined
+            if sep < position_tolerance:
+                break
+        return current
