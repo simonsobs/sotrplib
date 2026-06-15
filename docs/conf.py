@@ -13,7 +13,6 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "myst_parser",
-    "sphinxcontrib.mermaid",
 ]
 
 autodoc_default_options = {
@@ -24,7 +23,7 @@ autodoc_default_options = {
 
 autodoc_mock_imports = ["prefect"]
 
-myst_fence_as_directive = {"mermaid"}
+suppress_warnings = ["misc.highlighting_failure"]
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True

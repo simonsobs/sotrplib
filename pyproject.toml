@@ -46,7 +46,6 @@ docs = [
     "sphinx",
     "furo",
     "myst-parser",
-    "sphinxcontrib-mermaid",
 ]
 prefect = [
     "prefect",
