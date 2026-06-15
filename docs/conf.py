@@ -24,6 +24,8 @@ autodoc_default_options = {
 
 autodoc_mock_imports = ["prefect"]
 
+myst_fence_as_directive = {"mermaid"}
+
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 
