@@ -1,13 +1,11 @@
 SOTRPLib Documentation
 ======================
 
-**Simons Observatory Time Resolved Pipeline Library** — tools for transient source
-detection and characterization in SO/ACT maps.
-
 .. toctree::
    :maxdepth: 1
    :caption: User Guide
 
+   README
    installing
    overview
    configuration

@@ -13,6 +13,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "myst_parser",
+    "sphinxcontrib.mermaid",
 ]
 
 autodoc_default_options = {
@@ -20,6 +21,8 @@ autodoc_default_options = {
     "undoc-members": True,
     "show-inheritance": True,
 }
+
+autodoc_mock_imports = ["prefect"]
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
