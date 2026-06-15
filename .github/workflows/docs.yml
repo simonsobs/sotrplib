@@ -2,7 +2,7 @@ name: Build docs
 
 on:
   push:
-    branches: [main]
+    branches: [main, integrate_sphinx]
   pull_request:
     branches: [main]
 
