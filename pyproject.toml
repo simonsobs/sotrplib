@@ -42,6 +42,11 @@ dev = [
     "pytest-cov",
     "pre-commit",
 ]
+docs = [
+    "sphinx",
+    "furo",
+    "myst-parser",
+]
 prefect = [
     "prefect",
 ]
