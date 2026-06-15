@@ -33,7 +33,7 @@ jobs:
         run: sphinx-build -b html docs docs/_build/html -W --keep-going
 
       - name: Upload Pages artifact
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integrate_sphinx'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_build/html
