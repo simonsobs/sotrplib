@@ -23,25 +23,22 @@ PointingModel = ConstantPointingModel
 
 
 class ProcessableMap(ABC):
-    """
-    Maps that are processable by the pipeline. They have two key properties:
+    """Abstract base class for pipeline-processable sky maps.
 
-    a) snr - The signal-to-noise map
-    b) flux - The flux map
+    All maps expose two primary products after ``finalize`` is called:
 
-    Maps are created in two steps. First, 'build' reads the map, and then
-    'finalize' converts its internals to signal-to-noise ratios and flux maps.
+    - ``snr`` — the signal-to-noise ratio map
+    - ``flux`` — the calibrated flux map
 
-    We do this because you may want to read in maps of many different kinds,
-    e.g. intensity and inverse variance, or rho and kappa maps, before converting
-    them to the type that the pipeline needs.
+    Maps are created in two steps.  ``build`` reads or simulates the raw map
+    data, and ``finalize`` converts the internal representation (e.g.
+    rho/kappa or intensity/ivar) into the SNR and flux arrays required by the
+    pipeline.
 
-    The values `rho`:`kappa` are settable. Keep in mind though,
-    once you've called finalize, these maps will be deleted from memory and are
-    no longer _settable_. You cannot update these maps because they would be
-    inconsistent with the flux map that was generated.
-
-    Note that `intensity`:`ivar` maps are not yet supported.
+    The raw ``rho`` and ``kappa`` attributes are settable before ``finalize``
+    is called.  Once ``finalize`` is called they are deleted from memory and
+    can no longer be updated, because the derived flux map would otherwise
+    become inconsistent.
     """
 
     snr: ndmap
@@ -121,26 +118,44 @@ class ProcessableMap(ABC):
 
     @abstractmethod
     def build(self):
-        """
-        Build the maps for snr, flux, and time. Could include simulating them,
-        or reading them from disk.
+        """Read or simulate the raw map data.
+
+        Populates internal attributes (e.g. ``rho``/``kappa`` or
+        ``intensity``/``inverse_variance``) and the time maps.  Must be called
+        before ``finalize``.
         """
         return
 
     @abstractmethod
     def _compute_hits(self):
-        """
-        Must return an ndmap of hits.
+        """Compute and return the hits map.
+
+        Returns
+        -------
+        enmap.ndmap
+            Integer map counting the number of times each pixel was observed.
         """
         raise NotImplementedError(
             "_compute_hits must be implemented by ProcessableMap subclass"
         )
 
     def _core_filter_sources(self, source_positions: SkyCoord, bool_map: enmap.ndmap):
-        """
-        Core method for filtering sources. Must be implemented by ProcessableMap subclass.
-        Takes in a list of sources and a boolean map, and returns the list of sources within the valid pixels.
-        Bool map should have 1 or True in valid region and 0 or False in unobserved (or masked) region.
+        """Return the subset of sources that fall in valid (unmasked) pixels.
+
+        Parameters
+        ----------
+        source_positions : SkyCoord
+            Candidate source positions to filter.
+        bool_map : enmap.ndmap
+            Boolean validity map: 1/True in valid pixels, 0/False in masked or
+            unobserved pixels.
+
+        Returns
+        -------
+        mask : np.ndarray of bool
+            Per-source boolean indicating which sources pass the filter.
+        filtered_positions : SkyCoord
+            Source positions that fall in valid pixels.
         """
         fvals = bool_map.at(
             (source_positions.dec.to_value("rad"), source_positions.ra.to_value("rad")),
@@ -161,15 +176,32 @@ class ProcessableMap(ABC):
         return self._valid_pixel_mask_cache
 
     def filter_sources(self, source_positions: SkyCoord):
-        """
-        Filter sources based on the mask and hits map. Returns the positions of sources that are in valid pixels.
+        """Return the subset of sources that lie in valid, unmasked pixels.
+
+        Parameters
+        ----------
+        source_positions : SkyCoord
+            Candidate source positions.
+
+        Returns
+        -------
+        mask : np.ndarray of bool
+            Per-source boolean mask.
+        filtered_positions : SkyCoord
+            Positions of sources in valid pixels.
         """
         return self._core_filter_sources(source_positions, self.get_valid_pixel_mask())
 
     @property
     def hits(self):
-        """
-        Lazily computed hits map.
+        """Hits map: number of times each pixel was observed.
+
+        Computed lazily on first access and cached.
+
+        Returns
+        -------
+        enmap.ndmap
+            Integer hits map.
         """
         if self._hits is None:
             self._hits = self._compute_hits()
@@ -177,16 +209,31 @@ class ProcessableMap(ABC):
 
     @property
     def noise(self):
-        """
-        Get the 'noise map' (flux / SNR)
+        """Noise map derived as ``flux / snr``.
+
+        Returns
+        -------
+        enmap.ndmap
+            Per-pixel noise estimate.
         """
         with np.errstate(divide="ignore"):
             return self.flux / self.snr
 
     @property
     def rho(self):
-        """
-        Calculate the rho map from snr and flux.
+        """Matched-filter numerator map, computed from ``snr`` and ``flux``.
+
+        Returns ``snr² / flux`` unless a rho map was set explicitly.
+
+        Raises
+        ------
+        AttributeError
+            If called after ``finalize``.
+
+        Returns
+        -------
+        enmap.ndmap
+            Rho map.
         """
         if self.finalized:
             raise AttributeError(
@@ -221,8 +268,19 @@ class ProcessableMap(ABC):
 
     @property
     def kappa(self):
-        """
-        Calculate the kappa map from snr and flux.
+        """Matched-filter denominator map, computed from ``snr`` and ``flux``.
+
+        Returns ``snr² / flux²`` unless a kappa map was set explicitly.
+
+        Raises
+        ------
+        AttributeError
+            If called after ``finalize``.
+
+        Returns
+        -------
+        enmap.ndmap
+            Kappa map.
         """
         if self.finalized:
             raise AttributeError(
@@ -265,12 +323,17 @@ class ProcessableMap(ABC):
 
     @property
     def bbox(self) -> np.ndarray:
-        """
-        The bounding box of the map as a pixell enmap box.
+        """Bounding box of the map in the pixell enmap format.
 
-        Returns ``enmap.box(shape, wcs)`` on the first loaded map found in
-        ``_available_maps``.  Falls back to ``skycoord_box_to_enmap_box(self.sky_box)``
-        when ``sky_box`` is set.  Returns ``None`` if no map or sky_box is available.
+        Searches ``_available_maps`` in order for the first loaded map and
+        returns ``enmap.box(shape, wcs)``.  Falls back to
+        ``skycoord_box_to_enmap_box(self.sky_box)`` when ``sky_box`` is set.
+
+        Returns
+        -------
+        np.ndarray or None
+            Bounding box array of shape ``(2, 2)`` in radians, or ``None`` if
+            neither a map nor a ``sky_box`` is available.
         """
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
@@ -281,9 +344,15 @@ class ProcessableMap(ABC):
 
     @property
     def map_id(self) -> str:
-        """
-        An identifier for the map, e.g. filename or coadd type
-        Defaults to {frequency}_{array}_{observationstart_timestamp} if not set.
+        """Unique string identifier for this map.
+
+        Returns the explicitly set ID if one has been provided, otherwise
+        falls back to ``"{frequency}_{array}_{observation_start_timestamp}"``.
+
+        Returns
+        -------
+        str
+            Map identifier.
         """
         return self.__map_id if self.__map_id is not None else self.get_map_str_id()
 
@@ -299,16 +368,33 @@ class ProcessableMap(ABC):
             pass
 
     def get_map_str_id(self) -> str:
-        """
-        Get a string identifier for the map, useful for logging.
+        """Build a human-readable string identifier from map metadata.
+
+        Returns
+        -------
+        str
+            String of the form ``"{frequency}_{array}_{observation_start_unix}"``.
         """
         return (
             f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
     def get_pixel_times(self, pix: tuple[int, int]):
-        """
-        Given a pixel in the map, return the observation start, mean and end time of that pixel.
+        """Return the observation start, mean, and end time for a given pixel.
+
+        Parameters
+        ----------
+        pix : tuple of int
+            Pixel coordinates ``(dec_pix, ra_pix)``.
+
+        Returns
+        -------
+        t_start : datetime or ndmap value
+            Time of the first observation of the pixel.
+        t_mean : datetime or ndmap value
+            Mean observation time of the pixel.
+        t_end : datetime or ndmap value
+            Time of the last observation of the pixel.
         """
         x, y = int(pix[0]), int(pix[1])
 
@@ -329,10 +415,10 @@ class ProcessableMap(ABC):
         return t_start, t_mean, t_end
 
     def apply_mask(self):
-        """
-        Apply the mask to the snr and flux maps if a mask is present.
-        Assumes masked region is indicated by 0s in the mask map.
+        """Multiply the SNR and flux maps by the mask in place.
 
+        Has no effect if ``self.mask`` is ``None``.  Masked pixels are
+        indicated by 0 in the mask map.
         """
         if self.mask is not None:
             self.snr *= self.mask
@@ -340,13 +426,12 @@ class ProcessableMap(ABC):
         return
 
     def finalize(self):
-        """
-        Called just before source injection to ensure that the snr, flux, and
-        time maps are available.
+        """Convert the raw map data into SNR and flux arrays.
 
-        clear the cached valid pixel mask because the apply mask may change that.
-
-        apply mask if present.
+        Called after ``build`` and any preprocessing steps.  Clears the cached
+        valid-pixel mask (which may be invalidated by masking), applies
+        ``self.mask`` to the SNR and flux maps, and sets ``self.finalized =
+        True``.  After this call ``rho`` and ``kappa`` are no longer accessible.
         """
         del self.rho
         del self.kappa
@@ -358,9 +443,45 @@ class ProcessableMap(ABC):
 
 
 class IntensityAndInverseVarianceMap(ProcessableMap):
-    """
-    A set of FITS maps read from disk. Could be Depth 1, could
-    be monthly or weekly co-adds. Or something else!
+    """A processable map backed by intensity and inverse-variance FITS files.
+
+    Suitable for Depth-1 maps or co-adds stored as separate intensity and
+    inverse-variance FITS files.  Call ``build`` to read the files, then
+    ``finalize`` to compute ``snr`` and ``flux``.
+
+    Parameters
+    ----------
+    intensity_filename : Path
+        Path to the intensity FITS file.
+    inverse_variance_filename : Path
+        Path to the inverse-variance FITS file.
+    start_time : AwareDatetime
+        Observation start time.
+    end_time : AwareDatetime
+        Observation end time.
+    sky_box : tuple of SkyCoord, optional
+        Bounding box for a cutout read.
+    time_filename : Path, optional
+        Path to the per-pixel time FITS file.
+    info_filename : Path, optional
+        Path to the observation info HDF file (used for the time offset).
+    frequency : str, optional
+        Frequency band string (e.g. ``"f090"``).
+    array : str, optional
+        Detector array/wafer name.
+    instrument : str, optional
+        Instrument name (e.g. ``"SOLAT"``).
+    matched_filtered : bool, optional
+        If ``True``, treat intensity as rho and ivar as kappa when computing
+        the flux.  Default is ``False``.
+    mask : ndmap, optional
+        Pre-computed mask (1 = valid, 0 = masked).
+    intensity_units : Unit, optional
+        Physical units of the intensity map.  Default is Kelvin.
+    map_id : str, optional
+        Override the auto-generated map identifier.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     _available_maps: tuple[str, ...] = ("intensity",)
@@ -466,15 +587,17 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         return
 
     def add_time_offset(self, offset: timedelta):
-        """
-        Add a time offset to the time maps. Useful if you have a time map
-        that is relative to the start of the observation, and you want to
-        convert it to an absolute time map.
+        """Add an absolute time offset to the per-pixel time maps.
 
-        time maps are in unix time (seconds).
+        ACT time maps store seconds elapsed since the start of the observation.
+        This method converts them to absolute unix timestamps by adding the
+        observation start time.
 
-        ACT time maps are stored in seconds since the start of the observation,
-        thus if you want absolute time you need to add the start time of the observation.
+        Parameters
+        ----------
+        offset : datetime or timedelta
+            Absolute time to add.  If ``None``, the offset is read from the
+            info HDF file.  If neither is available, the method is a no-op.
         """
         if offset is None:
             from pixell.bunch import read as bunch_read
@@ -542,11 +665,28 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
 
 
 class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
-    """
-    Resulting rho/kappa maps after ingesting intensity and ivar maps and
-    matched filtering them. Could be Depth 1, could be monthly
-    or weekly co-adds. Or something else!
+    """A processable map containing matched-filtered rho/kappa arrays.
 
+    Created by the ``MatchedFilter`` preprocessor from an
+    ``IntensityAndInverseVarianceMap``.  Inherits observation metadata from
+    the source map.
+
+    Parameters
+    ----------
+    rho : enmap.ndmap
+        Matched-filter numerator map.
+    kappa : enmap.ndmap
+        Matched-filter denominator map.
+    flux_units : astropy.units.Unit
+        Physical units of the derived flux map.
+    prefiltered_map : IntensityAndInverseVarianceMap
+        The source map from which observation metadata is inherited.
+    keep_prefiltered : bool, optional
+        If ``True``, retain the original intensity and ivar arrays as
+        ``prefiltered_intensity`` and ``prefiltered_inverse_variance``.
+        Default is ``False``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
@@ -673,11 +813,43 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
 
 class RhoAndKappaMap(ProcessableMap):
-    """
-    A set of FITS maps read from disk. Could be Depth 1, could
-    be monthly or weekly co-adds. Or something else!
+    """A processable map backed by rho and kappa FITS files on disk.
 
-    sky_box is tuple of SkyCoord: (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))
+    Suitable for Depth-1 maps or co-adds stored as matched-filtered rho/kappa
+    pairs.  Call ``build`` to read the files, then ``finalize`` to compute
+    ``snr`` and ``flux``.
+
+    Parameters
+    ----------
+    rho_filename : Path
+        Path to the rho FITS file.
+    kappa_filename : Path
+        Path to the kappa FITS file.
+    start_time : AwareDatetime
+        Observation start time.
+    end_time : AwareDatetime
+        Observation end time.
+    sky_box : tuple of SkyCoord, optional
+        Bounding box ``(SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max,
+        dec=dec_max))`` for a cutout read.
+    time_filename : Path, optional
+        Path to the per-pixel time FITS file.
+    info_filename : Path, optional
+        Path to the observation info HDF file.
+    frequency : str, optional
+        Frequency band string (e.g. ``"f090"``).
+    array : str, optional
+        Detector array/wafer name.
+    instrument : str, optional
+        Instrument name (e.g. ``"SOLAT"``).
+    flux_units : Unit, optional
+        Physical units of the derived flux map.  Default is Jy.
+    mask : ndmap, optional
+        Pre-computed mask (1 = valid, 0 = masked).
+    map_id : str, optional
+        Override the auto-generated map identifier.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
@@ -842,11 +1014,42 @@ class RhoAndKappaMap(ProcessableMap):
 
 
 class FluxAndSNRMap(ProcessableMap):
-    """
-    A set of FITS maps read from disk. Could be Depth 1, could
-    be monthly or weekly co-adds. Or something else!
+    """A processable map backed by pre-computed flux and SNR FITS files.
 
-    sky_box is tuple of skycoords: (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))
+    Use this when the flux and SNR maps have already been computed and written
+    to disk (e.g. by an upstream pipeline step).
+
+    Parameters
+    ----------
+    flux_filename : Path
+        Path to the flux FITS file.
+    snr_filename : Path
+        Path to the SNR FITS file.
+    start_time : AwareDatetime
+        Observation start time.
+    end_time : AwareDatetime
+        Observation end time.
+    sky_box : tuple of SkyCoord, optional
+        Bounding box ``(SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max,
+        dec=dec_max))`` for a cutout read.
+    time_filename : Path, optional
+        Path to the per-pixel time FITS file.
+    info_filename : Path, optional
+        Path to the observation info HDF file.
+    frequency : str, optional
+        Frequency band string (e.g. ``"f090"``).
+    array : str, optional
+        Detector array/wafer name.
+    instrument : str, optional
+        Instrument name (e.g. ``"SOLAT"``).
+    flux_units : Unit, optional
+        Physical units of the flux map.  Default is Jy.
+    mask : ndmap, optional
+        Pre-computed mask (1 = valid, 0 = masked).
+    map_id : str, optional
+        Override the auto-generated map identifier.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     def __init__(
@@ -1004,12 +1207,52 @@ class FluxAndSNRMap(ProcessableMap):
 
 
 class CoaddedRhoKappaMap(ProcessableMap):
-    """
-    A coadded rho/kappa map created from multiple observations.
-    Attributes are the same as RhoAndKappaMap, but the maps are provided
-    directly rather than read from disk.
+    """A coadded rho/kappa map assembled in memory from multiple observations.
 
-    Coadds are built using map_coadding.MapCoadder classes.
+    Unlike ``RhoAndKappaMap``, the arrays are provided directly rather than
+    read from disk.  Instances are normally created by
+    ``map_coadding.RhoKappaMapCoadder``.
+
+    Parameters
+    ----------
+    rho : ndmap
+        Coadded rho map.
+    kappa : ndmap
+        Coadded kappa map.
+    observation_start : AwareDatetime
+        Start time of the earliest contributing observation.
+    observation_end : AwareDatetime
+        End time of the latest contributing observation.
+    time_first : ndmap, optional
+        Per-pixel first-observation time map.
+    time_mean : ndmap, optional
+        Per-pixel mean-observation time map.
+    time_last : ndmap, optional
+        Per-pixel last-observation time map.
+    observation_length : timedelta, optional
+        Total span of the coadd.
+    sky_box : tuple of SkyCoord, optional
+        Bounding box of the coadd.
+    frequency : str, optional
+        Frequency band string.
+    array : str, optional
+        Array/wafer name (or ``"coadd"`` for multi-array coadds).
+    instrument : str, optional
+        Instrument name.
+    flux_units : Unit, optional
+        Physical units of the derived flux.  Default is Jy.
+    mask : ndmap, optional
+        Combined mask for the coadd.
+    map_resolution : Quantity, optional
+        Pixel resolution.
+    hits : ndmap, optional
+        Pre-computed hits map.
+    map_ids : list, optional
+        List of map IDs that were coadded.
+    input_map_times : list, optional
+        Mid-point observation times of the individual maps.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
@@ -1061,11 +1304,14 @@ class CoaddedRhoKappaMap(ProcessableMap):
         pass
 
     def update_times(self, new_map):
-        """
-        Update the coadd observation start and observation end
-        given the new map.
+        """Extend the coadd time bounds and per-pixel time maps to include a new map.
 
-        Update the time maps themselves as well.
+        Parameters
+        ----------
+        new_map : ProcessableMap
+            Map being added to the coadd.  Its observation times and per-pixel
+            time maps are merged into the coadd using min/max/hits-weighted-mean
+            operations.
         """
         log = self.log or structlog.get_logger()
 

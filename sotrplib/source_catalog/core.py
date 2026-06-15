@@ -19,10 +19,16 @@ from sotrplib.utils.utils import angular_separation, normalize_ra
 
 
 class SourceCatalog(ABC):
+    """Abstract base for all source catalogs used in the pipeline."""
+
     @abstractmethod
     def add_sources(self, sources: list[RegisteredSource]):
-        """
-        Add sources to the main internal list for searching.
+        """Add sources to the catalog's internal list.
+
+        Parameters
+        ----------
+        sources : list of RegisteredSource
+            Sources to add.
         """
         return
 
@@ -30,8 +36,17 @@ class SourceCatalog(ABC):
     def get_sources_in_box(
         self, box: list[SkyCoord] | None = None
     ) -> list[RegisteredSource]:
-        """
-        Get sources that live in a specific box on the sky.
+        """Return sources within a sky bounding box.
+
+        Parameters
+        ----------
+        box : list of SkyCoord, optional
+            ``[lower_left, upper_right]`` sky-coordinate corners.  If ``None``,
+            return all sources.
+
+        Returns
+        -------
+        list of RegisteredSource
         """
         return
 
@@ -39,8 +54,16 @@ class SourceCatalog(ABC):
     def get_sources_in_map(
         self, input_map: ProcessableMap | None = None
     ) -> list[RegisteredSource]:
-        """
-        Get sources that are within the valid region of a given map.
+        """Return sources within the valid (non-zero) region of a map.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap, optional
+            Map used to determine the valid sky footprint.
+
+        Returns
+        -------
+        list of RegisteredSource
         """
         return
 
@@ -48,15 +71,31 @@ class SourceCatalog(ABC):
     def forced_photometry_sources(
         self, mask_map: ProcessableMap | None = None
     ) -> list[RegisteredSource]:
-        """
-        Get the list of sources to be used for forced photometry
+        """Return the subset of sources intended for forced photometry.
+
+        Parameters
+        ----------
+        mask_map : ProcessableMap, optional
+            Map used to restrict the source list to the observed region.
+
+        Returns
+        -------
+        list of RegisteredSource
         """
         return
 
     @abstractmethod
     def source_by_id(self, id) -> RegisteredSource:
-        """
-        Get the information about a source by its internal ID.
+        """Return the source with the given internal ID.
+
+        Parameters
+        ----------
+        id : int or str
+            Internal source identifier.
+
+        Returns
+        -------
+        RegisteredSource
         """
         return
 
@@ -68,13 +107,35 @@ class SourceCatalog(ABC):
         radius: u.Quantity,
         method: Literal["closest", "all"],
     ) -> list[CrossMatch]:
+        """Return catalog crossmatches within ``radius`` of a position.
+
+        Parameters
+        ----------
+        ra : Quantity
+            Right ascension of the query position.
+        dec : Quantity
+            Declination of the query position.
+        radius : Quantity
+            Search radius.
+        method : {"closest", "all"}
+            Return only the closest match or all matches within the radius.
+
+        Returns
+        -------
+        list of CrossMatch
+        """
         return
 
 
 class RegisteredSourceCatalog(SourceCatalog):
-    """
-    A source catalog generated purely from a list of 'registered sources',
-    usually those that are generated as part of the simulation process.
+    """Source catalog backed by an in-memory list of ``RegisteredSource`` objects.
+
+    Typically used for simulation-injected sources.
+
+    Parameters
+    ----------
+    sources : list of RegisteredSource
+        Initial source list.
     """
 
     sources: list[RegisteredSource]
@@ -173,8 +234,22 @@ class RegisteredSourceCatalog(SourceCatalog):
         radius: u.Quantity,
         method: Literal["closest", "all"],
     ) -> list[CrossMatch]:
-        """
-        Get sources within radius of the catalog.
+        """Return crossmatches within ``radius`` of a position.
+
+        Parameters
+        ----------
+        ra : Quantity
+            Query RA.
+        dec : Quantity
+            Query Dec.
+        radius : Quantity
+            Search radius.
+        method : {"closest", "all"}
+            Return only the closest match or all matches.
+
+        Returns
+        -------
+        list of CrossMatch
         """
 
         if len(self.ra_dec_array) == 0:

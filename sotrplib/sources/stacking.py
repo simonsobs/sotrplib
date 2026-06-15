@@ -15,17 +15,16 @@ from sotrplib.sources.sources import RegisteredSource
 
 
 class Stamps:
-    """
-    Class to hold stamps, ivar stamps, and times for a single source.
+    """Flux stamps, inverse-variance stamps, and times for a single source.
 
-    Attributes:
-    -----------
-    flux_stamps: list[enmap.ndmap]
-        List of flux stamps for the source.
-    ivar_stamps: list[enmap.ndmap]
-        List of ivar stamps for the source.
-    times: list[float]
-        List of times corresponding to each stamp.
+    Attributes
+    ----------
+    flux_stamps : list of enmap.ndmap
+        Flux cutouts, one per map visit.
+    ivar_stamps : list of enmap.ndmap
+        Inverse-variance cutouts, one per map visit.
+    times : list of float
+        Observation times corresponding to each stamp.
     """
 
     def __init__(
@@ -40,24 +39,19 @@ class Stamps:
 
 
 class Stacker(ABC):
-    """
-    Stacking class to handle the the creation of flux and ivar stamps for a list of sources.
+    """Abstract stacker that cuts flux and ivar stamps for a list of sources.
 
-    Attributes:
-    -----------
-    reader: MapCatDatabaseReader
-        Reader to read maps from the database.
-    preprocessors: list[MapPreprocessor]
-        List of preprocessors to apply to the maps after reading and before stamping.
-    maps: list[ProcessableMap]
-        List of maps read from the database and preprocessed, ready for stamping. Starts as none and set by the _read_maps method.
+    Parameters
+    ----------
+    reader : MapCatDatabaseReader
+        Reader used to load maps from the database.
+    preprocessors : list of MapPreprocessor, optional
+        Pipeline steps applied to each map after reading and before stamping.
 
-    Methods:
-    --------
-    _read_maps():
-        Reads maps from the database using the reader, applies preprocessors, and finalizes the maps for stamping.
-    stamp(sources: list[RegisteredSource], thumb_width=20*u.arcmin) -> Stamps:
-        Creates flux and ivar stamps for a list of sources.
+    Attributes
+    ----------
+    maps : list of ProcessableMap
+        Map list obtained from the reader; populated on construction.
     """
 
     def __init__(

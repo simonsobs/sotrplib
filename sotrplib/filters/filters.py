@@ -1,18 +1,31 @@
+"""
+Matched-filter implementation for depth-1 SO/ACT maps.
+
+Several functions are adapted from
+https://github.com/amaurea/tenki/blob/master/filter_depth1.py
+"""
+
 import numpy as np
 from astropy import units as u
 from pixell import analysis, bunch, enmap, uharm, utils
 
-"""
-Lots of functions copied from https://github.com/amaurea/tenki/blob/master/filter_depth1.py
-
-"""
-
 
 def fix_profile(profile):
-    """profile has a bug where it was generated over too big an
-    az range. This is probably harmless, but could in theory lead to it moving
-    past north, which makes the profile non-monotonous in dec. This function
-    chops off those parts.
+    """Trim a scanning profile that extends beyond the valid azimuth range.
+
+    The profile can be generated over too wide an azimuth range.  This is
+    usually harmless, but can cause the dec axis to become non-monotonic if
+    the scan crosses north.  This function chops off those regions.
+
+    Parameters
+    ----------
+    profile : np.ndarray, shape (2, N)
+        Scanning profile with rows ``[dec, ra]`` in radians.
+
+    Returns
+    -------
+    np.ndarray
+        Trimmed profile with only the monotonic dec portion retained.
     """
     # First fix any wrapping issues
     profile[1] = utils.unwind(profile[1])
@@ -31,11 +44,23 @@ def fix_profile(profile):
 
 
 class ShiftMatrix:
+    """Operator that shears a map so that scan rows become vertical.
+
+    Given a map geometry and a scanning profile, builds an integer pixel-shift
+    vector so that ``forward`` rolls each row to align scans vertically, and
+    ``backward`` undoes the shift.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        Map shape ``(ny, nx)``.
+    wcs : astropy.wcs.WCS
+        WCS for the map.
+    profile : np.ndarray, shape (2, N)
+        Scanning profile ``[dec, ra]`` in radians.
+    """
+
     def __init__(self, shape, wcs, profile):
-        """Given a map geometry and a scanning profile [{dec,ra},:]
-        create an operator that can be used to transform a map to/from
-        a coordinate system where the scans are straight vertically.
-        """
         map_decs, map_ras = enmap.posaxes(shape, wcs)
         # make sure it's sorted, otherwise interp won't work
         profile = fix_profile(profile)
@@ -55,18 +80,44 @@ class ShiftMatrix:
         self.dxs = dxs
 
     def forward(self, map):
+        """Shift rows so that the scan direction is vertical.
+
+        Parameters
+        ----------
+        map : enmap.ndmap
+            Input map.
+
+        Returns
+        -------
+        enmap.ndmap
+            Row-shifted map.
+        """
         from pixell import array_ops
 
         # Numpy can't do this efficiently
         return array_ops.roll_rows(map, -self.dxs)
 
     def backward(self, map):
+        """Undo the forward shift.
+
+        Parameters
+        ----------
+        map : enmap.ndmap
+            Shifted map.
+
+        Returns
+        -------
+        enmap.ndmap
+            Map with rows restored to their original positions.
+        """
         from pixell import array_ops
 
         return array_ops.roll_rows(map, self.dxs)
 
 
 class ShiftDummy:
+    """No-op replacement for ``ShiftMatrix`` when shifting is disabled."""
+
     def forward(self, map):
         return map.copy()
 
@@ -75,12 +126,38 @@ class ShiftDummy:
 
 
 class NmatShiftConstCorr:
+    """Noise model operator combining a shift matrix, ivar weighting, and a 2-D filter.
+
+    Parameters
+    ----------
+    S : ShiftMatrix or ShiftDummy
+        Shift operator.
+    ivar : enmap.ndmap
+        Inverse-variance map.
+    iC : enmap.ndmap
+        Inverse noise power spectrum (2-D).
+    """
+
     def __init__(self, S, ivar, iC):
         self.S = S
         self.H = ivar**0.5
         self.iC = iC
 
     def apply(self, map, omap=None):
+        """Apply the noise model operator to a map.
+
+        Parameters
+        ----------
+        map : enmap.ndmap
+            Input map.
+        omap : enmap.ndmap, optional
+            Output buffer.  If ``None``, a new map is returned.
+
+        Returns
+        -------
+        enmap.ndmap
+            Filtered map.
+        """
         sub = map.extract(self.H.shape, self.H.wcs)
         sub = self.H * self.S.backward(
             enmap.ifft(self.iC * enmap.fft(self.S.forward(self.H * sub))).real
@@ -92,6 +169,25 @@ class NmatShiftConstCorr:
 
 
 def build_ips2d_udgrade(map, ivar, lres=(70, 100), apod_corr=1):
+    """Estimate the 2-D inverse noise power spectrum by downgrade/upgrade smoothing.
+
+    Parameters
+    ----------
+    map : enmap.ndmap
+        Whitened signal map (``map * ivar**0.5``).
+    ivar : enmap.ndmap
+        Inverse-variance map used for whitening.
+    lres : tuple of int, optional
+        Downgrade factor ``(ly, lx)`` in multipole space.  Default is (70, 100).
+    apod_corr : float, optional
+        Apodization correction factor applied to the raw power spectrum.
+        Default is 1.
+
+    Returns
+    -------
+    enmap.ndmap
+        Inverse of the smoothed 2-D power spectrum.
+    """
     # Apodize
     white = map * ivar**0.5
     # Compute the 2d spectrun
@@ -113,6 +209,31 @@ def build_ips2d_udgrade(map, ivar, lres=(70, 100), apod_corr=1):
 
 
 def overlapping_range_iterator(n, nblock, overlap, padding=0):
+    """Iterate over overlapping index ranges for band-by-band processing.
+
+    Parameters
+    ----------
+    n : int
+        Total length of the axis to split.
+    nblock : int
+        Number of blocks.
+    overlap : int
+        Number of pixels of overlap between adjacent blocks.
+    padding : int, optional
+        Additional padding outside the overlap region.  Default is 0.
+
+    Yields
+    ------
+    pixell.bunch.Bunch
+        Each item has attributes ``i1``, ``i2`` (full range including padding),
+        ``p1``, ``p2`` (padding widths at each end), and ``weight`` (taper
+        array for the non-padded region).
+
+    Raises
+    ------
+    ValueError
+        If ``nblock`` is so large that individual blocks would be empty.
+    """
     if nblock == 0:
         return
     # We don't handle overlap > half our block size
@@ -147,6 +268,22 @@ def overlapping_range_iterator(n, nblock, overlap, padding=0):
 
 
 def highpass_ips2d(ips2d, lknee, alpha=-20):
+    """Apply a high-pass filter to a 2-D inverse power spectrum.
+
+    Parameters
+    ----------
+    ips2d : enmap.ndmap
+        Inverse 2-D power spectrum to filter.
+    lknee : float
+        Knee multipole of the high-pass filter.
+    alpha : float, optional
+        Power-law slope of the filter.  Default is -20 (very sharp).
+
+    Returns
+    -------
+    enmap.ndmap
+        High-pass-filtered inverse power spectrum.
+    """
     l = np.maximum(ips2d.modlmap(), 0.5)  # noqa: E741
     return ips2d * (1 + (l / lknee) ** alpha) ** -1
 
@@ -174,82 +311,78 @@ def matched_filter_depth1_map(
     lres=(70, 100),
     pixwin: str = "nn",
 ):
-    """
-    copy of the script https://github.com/amaurea/tenki/blob/master/filter_depth1.py converted to a function.
+    """Apply a matched filter to a depth-1 intensity map.
 
-    Arguments:
-    -----------
-    imap:enmap
-        intensity map, uK
+    Adapted from
+    https://github.com/amaurea/tenki/blob/master/filter_depth1.py.
+    Converts the input map from CMB temperature units (K) to mJy/sr, builds a
+    data-driven (or simple power-law) 2-D noise model, and runs the
+    ``pixell.analysis.matched_filter_constcorr_dual`` filter in declination
+    bands.
 
-    ivarmap:enmap
-        inverse variance map, 1./uK^2
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Intensity map in CMB temperature units (K).
+    ivarmap : enmap.ndmap
+        Inverse-variance map in K\ :sup:`-2`.
+    band_center : Quantity
+        Observing band centre frequency (e.g. ``90 * u.GHz``).
+    infofile : str, optional
+        Path to the ``.info`` HDF file for the observation.  Required when
+        ``shift > 0``.
+    maskfile : str, optional
+        Path to an external mask FITS file (1 = masked).
+    source_mask : enmap.ndmap, optional
+        Source mask (1 = unmasked, 0 = masked) applied before noise
+        estimation.
+    beam_fwhm : Quantity, optional
+        Gaussian beam FWHM.  Either ``beam_fwhm`` or ``beam1d`` is required.
+    beam1d : str, optional
+        Path to a 1-D beam profile file with columns ``[r (arcsec), B(r)]``.
+        Takes precedence over ``beam_fwhm`` when both are provided.
+    shrink_holes : Quantity, optional
+        Holes smaller than this radius are filled before apodization.
+        Default is 5 arcmin.
+    apod_edge : Quantity, optional
+        Apodization width at the map edge.  Default is 10 arcmin.
+    apod_holes : Quantity, optional
+        Apodization width around holes.  Default is 5 arcmin.
+    noisemask_lim : float, optional
+        Brightness threshold in mJy/sr above which pixels are masked before
+        noise estimation.  ``None`` disables this step.
+    noisemask_radius : Quantity, optional
+        Radius around bright-source pixels to include in the noise mask.
+        Default is 10 arcmin.
+    highpass : bool, optional
+        Apply a high-pass filter to the noise model.  Default is ``False``.
+    band_height : Quantity, optional
+        Height of each declination processing band.  Set to 0 to process the
+        whole map at once.  Default is 1 degree.
+    shift : float, optional
+        If > 0, apply a scan-direction shift matrix using the info file
+        profile.  Default is 0 (no shift).
+    simple : bool, optional
+        Use a simple power-law noise model instead of estimating it from the
+        data.  Default is ``False``.
+    simple_lknee : float, optional
+        Knee multipole for the simple noise model.  Default is 1000.
+    simple_alpha : float, optional
+        Power-law index for the simple noise model.  Default is -3.5.
+    lres : tuple of int, optional
+        ``(ly, lx)`` block size for smoothing the estimated noise spectrum.
+        Default is (70, 100).
+    pixwin : {"nn", "lin", "none"}, optional
+        Pixel window function to include in the beam model.  ``"nn"`` applies
+        nearest-neighbour, ``"lin"`` applies bilinear, ``"none"`` skips it.
+        Default is ``"nn"``.
 
-    band_center: u.Quantity
-        observing band center frequency
-
-    infofile: str | None = None
-        the .info file for the observation in case shifting is nonzero.
-
-    maskfile: str | None = None
-        a mask file to apply to the observation
-
-    source_mask: enmap.ndmap | None = None
-        a source mask to apply to the observation, with 1==unmasked, 0==masked
-
-    beam_fwhm: u.Quantity | None = None
-        fwhm of the Gaussian beam, in radian. e.g. 2.2*utils.arcmin for f090
-
-    beam1d: str | None = None
-        beam profile file, B(r), where col[0]=r, col[1]=B(r).
-        currently, r assumed to be in arcseconds
-
-    shrink_holes: u.Quantity = 20 * utils.arcmin
-        hole size under which to ignore
-
-    apod_edge: u.Quantity = 10 * utils.arcmin
-        apodize this far from the map edge
-
-    apod_holes: u.Quantity = 5 * utils.arcmin
-        apodize this far around holes
-
-    noisemask_lim: float | None = None
-        an upper limit to the noise, above which you mask. mJy/sr
-
-    noisemask_radius: u.Quantity = 10 * utils.arcmin
-        radius around bright sources to mask
-
-    highpass: bool = False
-        perform highpass filtering
-
-    band_height: u.Quantity = 1 * utils.degree
-        do filtering in dec bands of this height if >0, else one filtering for entire map, in radians.
-
-    shift: int = 0
-        apply a shift matrix to the data according to the infofile. 0 means no shift
-
-    simple: bool = False
-        do a simple filtering using a noise model with lknee and alpha. If False it makes the noise model
-        from the data itself
-
-    simple_lknee: float = 1000
-        simple filtering lknee, values vary significant among frequencies e.g. ACT full maps had lknee
-        intensity values of 2100,3000,3800 for f090, f150, f220, respectively (See Naess 2025 2503.14451)
-
-    simple_alpha: float = -3.5
-        simple filtering alpha, values are usually around -3 and -4, depending on the experiment
-
-    lres: tuple = (70,100)
-        y,x block size to use when smoothing the noise spectrum
-
-    pixwin: str = "nn"
-        apply pixel window function. This is included as part of the beam, which is valid in the flat sky
-        posible values are nearest neighbor "nn" "0" bilinear "lin" "bilin" "1" or "none"
-
-    Returns:
-    -----------
-    rho,kappa : enmap
-        the matched filtered maps rho and kappa.
+    Returns
+    -------
+    rho : enmap.ndmap
+        Matched-filter numerator map in mJy/sr units.
+    kappa : enmap.ndmap
+        Matched-filter denominator map.
     """
 
     freq = band_center.to(u.Hz).value

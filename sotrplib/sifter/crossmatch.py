@@ -22,16 +22,29 @@ def crossmatch_mask(
     mode: str = "all",
     return_matches: bool = False,
 ):
-    """Determines if source matches with masked objects
+    """Crossmatch source positions against a catalog and return a match mask.
 
-    Args:
-        sources: np.array of sources [[dec, ra]] in deg
-        crosscat: catalog of masked objects [[dec, ra]] in deg
-        radius: radius to search for matches in arcmin, float or list of length sources.
-        mode: return `all` pairs, or just `closest`
-    Returns:
-        mask column for sources, 1 matches with at least one source, 0 no matches
+    Parameters
+    ----------
+    sources : ndarray
+        Source positions as ``[[dec, ra]]`` in degrees.  A 1-D array is
+        treated as a single source ``[dec, ra]``.
+    crosscat : ndarray
+        Catalog of positions to match against, as ``[[dec, ra]]`` in degrees.
+    radius : float or array-like
+        Search radius in arcmin.  If array-like, each element gives the
+        matching radius for the source at the same index.
+    mode : {"all", "closest"}, optional
+        Return all matches or only the closest (default ``"all"``).
+    return_matches : bool, optional
+        If ``True``, also return the raw match index list (default ``False``).
 
+    Returns
+    -------
+    mask : bool or ndarray of bool
+        ``True`` where a source has at least one catalog match.
+    matches : list, optional
+        Raw match indices, returned only when ``return_matches=True``.
     """
     crosspos_ra = crosscat[:, 1] * pixell_utils.degree
     crosspos_dec = crosscat[:, 0] * pixell_utils.degree
@@ -79,16 +92,25 @@ def crossmatch_with_million_quasar_catalog(
     match_threshold: AstroPydanticQuantity[u.arcmin] = 0.5 * u.arcmin,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Crossmatch the source candidates with the million quasar catalog.
-    Returns a list of source candidates that are matched with the million quasar catalog
-    and a dict with the crossmatch information.
+    """Crossmatch source candidates against the million-quasar catalog.
 
-    Parameters:
-    - mq_catalog: The million quasar catalog as an astropy table.
-    - sources: catalog of source positions [[dec, ra]] in deg (same format as crossmatch_mask).
-    - match_threshold: The matching radius.
+    Parameters
+    ----------
+    extracted_sources : list of MeasuredSource
+        Detections to crossmatch.
+    mq_catalog : SOCat, optional
+        Million-quasar catalog.  If ``None``, returns an all-``False`` mask.
+    match_threshold : Quantity[arcmin], optional
+        Matching radius (default 0.5 arcmin).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
+    Returns
+    -------
+    isin_mq_cat : ndarray of bool
+        ``True`` for each source matched in the quasar catalog.
+    match_info : dict
+        Per-source match detail keyed by source index.
     """
     log = log if log else get_logger()
     log = log.bind(func_name="crossmatch_million_quasar_catalog")
@@ -127,6 +149,28 @@ def gaia_match(
     mag_key="phot_g_mean_mag",
     sep_key="dist",
 ):
+    """Query Gaia for a bright stellar counterpart near a source candidate.
+
+    Parameters
+    ----------
+    cand : MeasuredSource
+        Source candidate to check.
+    maxmag : float, optional
+        Maximum Gaia magnitude to consider (default 16).
+    maxsep : Quantity[deg], optional
+        Cone-search radius (default 5 arcmin).
+    parallax_required : bool, optional
+        Require a finite Gaia parallax (default ``True``).
+    mag_key : str, optional
+        Gaia column name for magnitude (default ``"phot_g_mean_mag"``).
+    sep_key : str, optional
+        Gaia column name for angular separation (default ``"dist"``).
+
+    Returns
+    -------
+    astropy.table.Table
+        Matching Gaia sources; empty table if no match found.
+    """
     from ..source_catalog.query_tools import cone_query_gaia
 
     gaia_results = cone_query_gaia(
@@ -161,9 +205,23 @@ def alert_on_flare(
     new_flux: u.Quantity[u.Jy],
     ratio_threshold: float = 5.0,
 ):
-    """
-    Check if the new flux is significantly larger than the previous flux.
-    If the ratio of new flux to previous flux is greater than the threshold, return True.
+    """Return ``True`` if the new flux exceeds the previous flux by a large ratio.
+
+    Parameters
+    ----------
+    previous_flux : Quantity[Jy]
+        Reference flux (e.g. catalog value).
+    new_flux : Quantity[Jy]
+        Newly measured flux.
+    ratio_threshold : float, optional
+        Ratio ``new_flux / previous_flux`` above which a flare is flagged
+        (default 5.0).
+
+    Returns
+    -------
+    bool
+        ``True`` if the ratio exceeds the threshold; ``False`` if either flux
+        is ``None``.
     """
     if previous_flux is None or new_flux is None:
         return False
@@ -192,46 +250,58 @@ def sift(
     debug: bool = False,
     log: FilteringBoundLogger | None = None,
 ):
+    """Crossmatch extracted sources against catalogs and classify candidates.
+
+    Uses a flux-scaled matching radius (``radius1Jy`` for a 1 Jy source,
+    ``min_match_radius`` as the floor) capped at 2 degrees.
+
+    Parameters
+    ----------
+    extracted_sources : list of MeasuredSource
+        Detections to classify.
+    catalog_sources : list of RegisteredSource, optional
+        Known-source catalog for crossmatching.
+    input_map : ProcessableMap, optional
+        Map the sources were extracted from (used for FWHM and frequency lookup).
+    radius1Jy : Quantity[arcmin], optional
+        Matching radius for a 1 Jy source (default 10 arcmin).
+    min_match_radius : Quantity[arcmin], optional
+        Minimum matching radius (default 1.5 arcmin).
+    ra_jitter : Quantity[arcmin], optional
+        Extra RA position uncertainty added in quadrature (default 0 arcmin).
+    dec_jitter : Quantity[arcmin], optional
+        Extra Dec position uncertainty added in quadrature (default 0 arcmin).
+    source_fluxes : Quantity[Jy], optional
+        Fluxes of extracted sources; inferred from ``extracted_sources`` if
+        ``None``.
+    map_freq : str, optional
+        Frequency band string (e.g. ``"f090"``).
+    arr : str, optional
+        Array identifier.
+    cuts : dict, optional
+        Quality cuts as ``{field: [min, max]}``.
+    crossmatch_with_gaia : bool, optional
+        Query Gaia for unmatched sources (default ``True``).
+    crossmatch_with_million_quasar : bool, optional
+        Crossmatch with the million-quasar catalog (default ``True``).
+    additional_catalogs : dict, optional
+        Extra named catalogs for crossmatching.
+    debug : bool, optional
+        Enable verbose debug logging (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    source_candidates : list of MeasuredSource
+        Detections matched to a known catalog source.
+    transient_candidates : list of MeasuredSource
+        Detections with no catalog match.
+    noise_candidates : list of MeasuredSource
+        Detections rejected by quality cuts.
+    """
     from ..utils.utils import get_fwhm, radec_to_str_name
 
-    """
-     Perform crossmatching of extracted sources from `extract_sources` and the cataloged sources.
-     Return lists of dictionaries containing each source which matches the catalog, may be noise, or appears to be a transient.
-
-     Uses a flux-based matching radius with `radius1Jy` the radius, in arcmin, for a 1Jy source and 
-     `min_match_radius` the radius, in arcmin, for a zero flux source, up to a max of 2 degrees.
-
-     Args:
-       extracted_sources:dict
-           sources returned from extract_sources function
-       catalog_sources:list
-           source catalog as list of Registered objects
-       radius1Jy:float=30.0
-           matching radius for a 1Jy source, arcmin
-       min_match_radius:float=1.5
-           minimum matching radius, i.e. for a zero flux source, arcmin
-       source_fluxes:list = None,
-           a list of the fluxes of the extracted sources, if None will pull it from `extracted_sources` dict. 
-       cuts: dict
-           snr cut and a simple cut on fwhm, in units of fwhm, outside of range is considered noise.
-       ra_jitter:float=0.0
-              jitter in the ra direction, in arcmin, to add to the uncertainty of the source position.
-       dec_jitter:float=0.0
-              jitter in the dec direction, in arcmin, to add to the uncertainty of the source position. 
-       crossmatch_with_gaia:bool=True
-              if True, will crossmatch with gaia catalog and add the gaia source name to the source_id.
-       crossmatch_with_million_quasar:bool=True
-                if True, will crossmatch with the million quasar catalog and add the source name to the source_id.
-       additional_catalogs:dict={}
-                a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}.
-                for example: {"million_quasar":mq_catalog}
-                where catalog is loaded from source_catalog.py
-                
-     Returns:
-        source_candidates, transient_candidates, noise_candidates : list
-            list of dictionaries with information about the detected source.
-
-    """
     log = log if log else get_logger()
     log = log.bind(func_name="sift")
 
@@ -438,22 +508,25 @@ def get_cut_decision(
     debug: bool = False,
     log: FilteringBoundLogger | None = None,
 ) -> bool:
-    """
-    cuts contains dictionary with key values describing the cuts.
+    """Decide whether a source candidate should be rejected by quality thresholds.
 
-    acceptable cut keys : ['fwhm']
+    Parameters
+    ----------
+    candidate : MeasuredSource
+        Source measurement to evaluate.
+    cuts : dict, optional
+        Quality cuts as ``{field: [min, max]}``.  Supported keys include
+        ``"fwhm"``, ``"snr"``, and ``"observation_mean_time"``.
+    debug : bool, optional
+        Log details of each cut decision (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    each cut key has [min,max] value on which to make cuts.
-
-    for example,
-    if i want a source iwth measured fwhm >0.5  and less than 5 times nominal fwhm,
-    cuts={'fwhm':[0.5,5.0]}
-    cut = (candidate['fwhm']<cuts['fwhm'][0]) | (candidate['fwhm']>cuts['fwhm'][1])
-
-    Returns:
-
-    True : cut source
-    False : within ranges
+    Returns
+    -------
+    bool
+        ``True`` if the candidate is cut (outside allowed range);
+        ``False`` if all cuts are passed.
     """
     log = log if log else get_logger()
     log = log.bind(func_name="get_cut_decision")
@@ -490,25 +563,36 @@ def recalculate_local_snr(
     ratio_cut: float = 10.0,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Recalculate the local SNR for each transient source.
+    """Recalculate per-source SNR using local map noise and re-classify.
 
-    Parameters:
-    - transient_candidates: List of transient source candidates.
-    - imap: The map data object.
-    - thumb_size_deg: The size of the thumbnail in degrees.
-    - fwhm_arcmin: The band full width at half maximum in arcmin.
-    - snr_cut: The SNR cut to use for the new local noise.
-    - ratio_cut: The ratio of the old SNR to the new SNR above which to cut.
+    Computes the RMS of a thumbnail submap (with the source core masked) and
+    rejects candidates whose new SNR is too low or whose old/new SNR ratio
+    exceeds ``ratio_cut`` (indicating an unexpectedly noisy region).
 
-    assumes that if the new snr is significantly different from the old snr, the region is noisier than expected.
-    empircally 30% change seems to indicate a noisy region....
-    todo: however because an unmasked source creates filtering wings, the snr can be significantly different.
-          so for now, set the ratio_cut fairly high to avoid cutting real transients.
+    Parameters
+    ----------
+    transient_candidates : list of MeasuredSource
+        Candidate transient sources to re-evaluate.
+    imap : ProcessableMap
+        Map from which to extract thumbnails.
+    thumb_size : Quantity[deg], optional
+        Size of the thumbnail extracted around each source (default 0.25 deg).
+    fwhm : Quantity[arcmin], optional
+        Beam FWHM used to compute the source-masking radius (default 2.2 arcmin).
+    snr_cut : float, optional
+        Minimum SNR for a candidate to survive re-evaluation (default 5.0).
+    ratio_cut : float, optional
+        Old/new SNR ratio above which a candidate is demoted to noise
+        (default 10.0).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-    - updated_transient_candidates: List of transient source candidates with updated SNR.
-    - updated_noise_candidates: List of noise source candidates with updated SNR.
+    Returns
+    -------
+    updated_transient_candidates : list of MeasuredSource
+        Candidates that pass the local SNR check.
+    updated_noise_candidates : list of MeasuredSource
+        Candidates rejected by the local SNR check.
     """
     from ..maps.maps import get_submap
     from ..utils.utils import get_pix_from_peak_to_noise
@@ -576,19 +660,37 @@ def crossmatch_position_and_flux(
     fail_flux_mismatch: bool = False,
     log=None,
 ):
-    """
-    Crossmatch the injected sources and transients with the recovered ones.
-    Ensure the recovered fluxes are within 3 sigma of the injected fluxes.
-    Count and report the fraction of failures.
+    """Verify spatial and flux recovery of injected sources against recovered sources.
 
-    Parameters:
-    - injected_sources: List of injected static sources.
-    - recovered_sources: List of recovered static sources.
-    - flux_threshold: Threshold for similar fluxes (Jy).
-    - spatial_threshold: Spatial threshold for matching (degrees).
+    Parameters
+    ----------
+    injected_sources : list of SimulatedSource
+        Sources injected into the map.
+    recovered_sources : list of MeasuredSource
+        Sources recovered from the map.
+    flux_threshold : float, optional
+        Absolute flux tolerance in Jy (default 0.01).
+    fractional_flux : float, optional
+        Fractional flux tolerance; effective threshold is
+        ``sqrt(flux_threshold**2 + (fractional_flux * injected_flux)**2)``
+        (default 0.01).
+    spatial_threshold : float, optional
+        Spatial matching radius in degrees (default 0.05).
+    fail_unmatched : bool, optional
+        If ``True``, log an error when injected sources have no spatial match
+        (default ``False``).
+    fail_flux_mismatch : bool, optional
+        If ``True``, raise ``ValueError`` when recovered fluxes are mismatched
+        (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-    - A dictionary containing the failure fractions for sources and transients.
+    Returns
+    -------
+    matched_mask : ndarray of bool
+        ``True`` for each injected source that has a spatial match.
+    similar_fluxes : list of bool
+        ``True`` for each matched pair whose fluxes agree within tolerance.
     """
     from pixell.utils import arcmin, degree
 
@@ -701,6 +803,22 @@ def crossmatch_position_and_flux(
 def n_wise_crossmatch(
     matches: list[list[tuple]], candidates: list[list[MeasuredSource]]
 ) -> dict[str, list[tuple[str, str]]]:
+    """Merge pairwise crossmatch results into a global source-identity mapping.
+
+    Parameters
+    ----------
+    matches : list of list of tuple
+        Pairwise match lists; each inner list corresponds to a map pair and
+        contains ``(i, j)`` index tuples.
+    candidates : dict
+        Map-ID-keyed dict of ``MeasuredSource`` lists.
+
+    Returns
+    -------
+    dict
+        Mapping from UUID source key to a list of ``(map_id, measurement_id)``
+        tuples for all observations of that source.
+    """
     map_pairs = list(combinations(candidates.keys(), 2))
     match_by_pair = {
         pair: {i: j for match in match_list for i, j in match}

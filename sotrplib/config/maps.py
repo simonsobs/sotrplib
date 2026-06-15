@@ -26,24 +26,80 @@ from sotrplib.sims.maps import (
 
 
 class MapConfig(BaseModel, ABC):
+    """Abstract base for single-map configuration objects.
+
+    Each subclass defines a ``map_type`` discriminator and implements
+    ``to_map`` to construct the corresponding ``ProcessableMap``.
+    """
+
     map_type: str
 
     @abstractmethod
     def to_map(self, log: FilteringBoundLogger | None = None) -> ProcessableMap:
+        """Construct the configured map object.
+
+        Parameters
+        ----------
+        log : FilteringBoundLogger, optional
+            Structured logger to pass to the map.
+
+        Returns
+        -------
+        ProcessableMap
+            The constructed map instance.
+        """
         return
 
 
 class MapGeneratorConfig(BaseModel, ABC):
+    """Abstract base for map-generator configuration objects.
+
+    Each subclass defines a ``map_generator_type`` discriminator and
+    implements ``to_generator`` to construct an iterable of maps (e.g. a
+    database reader).
+    """
+
     map_generator_type: str
 
     @abstractmethod
     def to_generator(
         self, log: FilteringBoundLogger | None = None
     ) -> Iterable[ProcessableMap]:
+        """Construct the configured map generator.
+
+        Parameters
+        ----------
+        log : FilteringBoundLogger, optional
+            Structured logger.
+
+        Returns
+        -------
+        Iterable[ProcessableMap]
+            An iterable that yields ``ProcessableMap`` instances.
+        """
         return
 
 
 class SimulatedMapConfig(MapConfig):
+    """Configuration for a purely simulated map.
+
+    Creates a ``SimulatedMap`` with Gaussian noise over the SO wide-field
+    geometry.
+
+    Fields
+    ------
+    observation_start : AwareDatetime
+        Simulated observation start time.
+    observation_end : AwareDatetime
+        Simulated observation end time.
+    frequency : str
+        Frequency band string (default ``"f090"``).
+    array : str
+        Detector array name (default ``"pa5"``).
+    simulation_parameters : SimulationParameters
+        Noise and beam parameters for the simulation.
+    """
+
     map_type: Literal["simulated"] = "simulated"
     observation_start: AwareDatetime
     observation_end: AwareDatetime
@@ -65,6 +121,27 @@ class SimulatedMapConfig(MapConfig):
 
 
 class SimulatedMapFromGeometryConfig(MapConfig):
+    """Configuration for a simulated map that inherits geometry from an existing file.
+
+    Fields
+    ------
+    resolution : Quantity[arcmin]
+        Pixel resolution of the output map.
+    geometry_source_map : Path
+        Path to a FITS file whose geometry is used as the template.
+    observation_start, observation_end : AwareDatetime or None
+        Observation time bounds.  Either these or ``time_map_filename`` must
+        be provided.
+    time_map_filename : Path or None
+        Per-pixel time map to use instead of fixed start/end times.
+    frequency : str
+        Frequency band string (default ``"f090"``).
+    array : str
+        Detector array name (default ``"pa5"``).
+    map_noise : Quantity[Jy]
+        RMS noise level for the simulated map (default 0.01 Jy).
+    """
+
     map_type: Literal["simulated_geometry"] = "simulated_geometry"
     resolution: AstroPydanticQuantity[u.arcmin]
     geometry_source_map: Path
@@ -103,6 +180,26 @@ class SimulatedMapFromGeometryConfig(MapConfig):
 
 
 class RhoKappaMapConfig(MapConfig):
+    """Configuration for a matched-filtered rho/kappa map read from FITS files.
+
+    Fields
+    ------
+    rho_map_path, kappa_map_path : Path
+        Paths to the rho and kappa FITS files.
+    time_map_path : Path, optional
+        Path to the per-pixel time FITS file.
+    info_path : Path, optional
+        Path to the observation info HDF file.
+    frequency, array, instrument : str or None
+        Map metadata.
+    observation_start, observation_end : AwareDatetime or None
+        Observation time bounds.
+    sky_box : list of AstroPydanticICRS or None
+        Bounding box for a sky cutout.
+    flux_units : Unit
+        Physical units of the derived flux (default Jy).
+    """
+
     map_type: Literal["filtered"] = "filtered"
     rho_map_path: Path
     kappa_map_path: Path
@@ -134,6 +231,28 @@ class RhoKappaMapConfig(MapConfig):
 
 
 class InverseVarianceMapConfig(MapConfig):
+    """Configuration for an intensity + inverse-variance map read from FITS files.
+
+    Fields
+    ------
+    intensity_map_path : Path
+        Path to the intensity FITS file.
+    weights_map_path : Path
+        Path to the inverse-variance FITS file.
+    time_map_path : Path, optional
+        Path to the per-pixel time FITS file.
+    info_path : Path, optional
+        Path to the observation info HDF file.
+    frequency, array, instrument : str or None
+        Map metadata.
+    observation_start, observation_end : AwareDatetime or None
+        Observation time bounds.
+    sky_box : list of AstroPydanticICRS or None
+        Bounding box for a sky cutout.
+    intensity_units : Unit
+        Physical units of the intensity map (default K).
+    """
+
     map_type: Literal["inverse_variance"] = "inverse_variance"
     intensity_map_path: Path
     weights_map_path: Path
@@ -167,6 +286,26 @@ class InverseVarianceMapConfig(MapConfig):
 
 
 class FluxAndSNRMapConfig(MapConfig):
+    """Configuration for a pre-computed flux + SNR map read from FITS files.
+
+    Fields
+    ------
+    flux_map_path, snr_map_path : Path
+        Paths to the flux and SNR FITS files.
+    time_map_path : Path, optional
+        Path to the per-pixel time FITS file.
+    info_path : Path, optional
+        Path to the observation info HDF file.
+    frequency, array, instrument : str or None
+        Map metadata.
+    observation_start, observation_end : AwareDatetime or None
+        Observation time bounds.
+    sky_box : list of AstroPydanticICRS or None
+        Bounding box for a sky cutout.
+    flux_units : Unit
+        Physical units of the flux map (default Jy).
+    """
+
     map_type: Literal["flux_and_snr"] = "flux_and_snr"
     flux_map_path: Path
     snr_map_path: Path
@@ -198,6 +337,28 @@ class FluxAndSNRMapConfig(MapConfig):
 
 
 class MapCatDatabaseConfig(MapGeneratorConfig):
+    """Configuration for reading maps from the mapcat database.
+
+    Fields
+    ------
+    frequency, array, instrument : str or None
+        Filter maps by these metadata values.  ``None`` matches all.
+    number_to_read : int or None
+        Maximum number of maps to return.  ``None`` reads all matching maps.
+    start_time, end_time : AwareDatetime or None
+        Time window for the query.
+    map_ids : list of int or None
+        Explicit list of mapcat IDs to read.
+    sky_box : list of AstroPydanticICRS or None
+        Bounding box for sky cutouts.
+    map_units : Unit
+        Physical units of the map intensities (default K).
+    map_type : {"intensity", "flux", "rhokappa"}
+        Which map representation to load.
+    rerun : bool
+        If ``True``, re-process maps even if already in the pipeline DB.
+    """
+
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
     frequency: str | None = None
     array: str | None = None

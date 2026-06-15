@@ -12,11 +12,22 @@ type Box = np.ndarray[
 
 def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> Box:
     """Convert a ``(lower_left, upper_right)`` SkyCoord box to a pixell enmap box.
-    Convert to ICRS frame to use internally.
-    ``sky_box[0]`` must be ``SkyCoord(ra=ra_min, dec=dec_min)`` and ``sky_box[1]``
-    must be ``SkyCoord(ra=ra_max, dec=dec_max)``.  Wrap is inferred when
+
+    Inputs are converted to ICRS internally.  ``sky_box[0]`` must be
+    ``SkyCoord(ra=ra_min, dec=dec_min)`` and ``sky_box[1]`` must be
+    ``SkyCoord(ra=ra_max, dec=dec_max)``.  Wrap is inferred when
     ``sky_box[0].ra > sky_box[1].ra``.
-    returned pixell box has the form ``[[dec_min, ra_max], [dec_max, ra_min]]`` in radians.
+
+    Parameters
+    ----------
+    sky_box : tuple of SkyCoord
+        ``(lower_left, upper_right)`` corners of the bounding box.
+
+    Returns
+    -------
+    Box
+        Pixell enmap box of the form
+        ``[[dec_min, ra_max], [dec_max, ra_min]]`` in radians.
     """
     # make sure the input is in ICRS frame for internal use
     sky_box = (s.to_icrs() for s in sky_box)
@@ -30,17 +41,22 @@ def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> Box:
 
 
 def enmap_box_to_skycoord(raw_box: Box) -> tuple[SkyCoord, SkyCoord]:
-    """Convert a pixell enmap box to a ``(lower_left, upper_right)`` SkyCoord tuple in icrs frame.
+    """Convert a pixell enmap box to a ``(lower_left, upper_right)`` SkyCoord tuple.
 
-    pixell boxes have the form ``[[dec_min, ra_max], [dec_max, ra_min]]`` where
-    ``ra_min`` may be negative for wrapping regions.
-    Expected input is in radians.
+    Parameters
+    ----------
+    raw_box : Box
+        Pixell box of the form ``[[dec_min, ra_max], [dec_max, ra_min]]`` in
+        radians.  ``ra_min`` may be negative for wrap-around regions.
 
-    The returned tuple follows
-    the ``ProcessableMap.sky_box`` convention:
-    ``(SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``.
-    For a wrapping region ``raw_box[1][1]`` is negative and SkyCoord normalises
-    it to near 2π, so ``sky_box[0].ra > sky_box[1].ra`` signals the wrap.
+    Returns
+    -------
+    tuple of SkyCoord
+        ``(SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``
+        in the ICRS frame, following the ``ProcessableMap.sky_box`` convention.
+        For a wrapping region ``raw_box[1][1]`` is negative and SkyCoord
+        normalises it to near 2π, so ``sky_box[0].ra > sky_box[1].ra``
+        signals the wrap.
     """
     return (
         SkyCoord(
@@ -53,15 +69,23 @@ def enmap_box_to_skycoord(raw_box: Box) -> tuple[SkyCoord, SkyCoord]:
 
 
 def pixell_map_union(map1, map2, op=lambda a, b: a + b):
-    """Create a new pixell map that is the union of map1 and map2.
-    The new map will have the shape and wcs that covers both input maps.
-    The pixel values will be combined using the provided operation.
+    """Create a new pixell map covering the union of two map geometries.
 
-    Args:
-        map1: First input pixell map.
-        map2: Second input pixell map.
-        op: Function to combine pixel values (default is addition).
+    Parameters
+    ----------
+    map1 : enmap.ndmap
+        First input map.
+    map2 : enmap.ndmap
+        Second input map.
+    op : callable, optional
+        Function ``(a, b) -> result`` used to combine overlapping pixel values.
+        Defaults to addition.
 
+    Returns
+    -------
+    enmap.ndmap
+        New map whose geometry covers both inputs, with pixel values combined
+        by ``op``.
     """
     oshape, owcs = enmap.union_geometry([map1.geometry, map2.geometry])
     omap = enmap.zeros(map1.shape[:-2] + oshape[-2:], owcs, map1.dtype)

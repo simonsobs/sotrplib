@@ -16,16 +16,36 @@ from sotrplib.sources.blind import (
 
 
 class BlindSearchConfig(BaseModel, ABC):
+    """Abstract base for blind-search configuration objects.
+
+    Each subclass defines a ``search_type`` discriminator and implements
+    ``to_search_provider`` to construct a ``BlindSearchProvider``.
+    """
+
     search_type: str
 
     @abstractmethod
     def to_search_provider(
         self, log: FilteringBoundLogger | None = None
     ) -> BlindSearchProvider:
+        """Construct the configured blind-search provider.
+
+        Parameters
+        ----------
+        log : FilteringBoundLogger, optional
+            Structured logger.
+
+        Returns
+        -------
+        BlindSearchProvider
+            The constructed search provider instance.
+        """
         return
 
 
 class EmptyBlindSearchConfig(BlindSearchConfig):
+    """Configuration for a no-op blind-search provider."""
+
     search_type: Literal["empty"] = "empty"
 
     def to_search_provider(
@@ -35,6 +55,18 @@ class EmptyBlindSearchConfig(BlindSearchConfig):
 
 
 class PhotutilsBlindSearchConfig(BlindSearchConfig):
+    """Configuration for the sigma-clip blind source finder.
+
+    Fields
+    ------
+    parameters : BlindSearchParameters or None
+        Detection thresholds and fitting parameters.  Uses defaults if ``None``.
+    pixel_mask : NDArray or None
+        Additional pixel mask applied before source detection.
+    thumbnail_half_width : Quantity[deg] or None
+        Half-width of thumbnails stored for each detection.
+    """
+
     search_type: Literal["photutils"] = "photutils"
     parameters: BlindSearchParameters | None = None
     pixel_mask: NDArray | None = None

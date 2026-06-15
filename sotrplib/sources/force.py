@@ -17,9 +17,7 @@ from sotrplib.utils.utils import angular_separation, get_fwhm
 
 
 class EmptyForcedPhotometry(ForcedPhotometryProvider):
-    """
-    Just return empty lists
-    """
+    """No-op forced-photometry provider that always returns an empty list."""
 
     def __init__(
         self,
@@ -37,6 +35,18 @@ class EmptyForcedPhotometry(ForcedPhotometryProvider):
 
 
 class SimpleForcedPhotometry(ForcedPhotometryProvider):
+    """Single-pixel forced photometry using nearest-neighbour or spline interpolation.
+
+    Parameters
+    ----------
+    mode : {"spline", "nn"}
+        Interpolation mode.  ``"nn"`` is faster.
+    sources : list of RegisteredSource, optional
+        Pre-computed source list (unused; catalog is used at force-time).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     mode: Literal["spline", "nn"]
 
     def __init__(
@@ -93,6 +103,32 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 
 
 class TwoDGaussianFitter(ForcedPhotometryProvider):
+    """Forced photometry via 2-D Gaussian fitting with lmfit.
+
+    Parameters
+    ----------
+    mode : {"lmfit"}, optional
+        Fitting backend; only ``"lmfit"`` is currently supported.
+    flux_limit_centroid : Quantity, optional
+        Minimum flux required to fit for the source centroid (default 0.3 Jy).
+        Sources below this limit have their centroid fixed.
+    reproject_thumbnails : bool, optional
+        If ``True``, reproject thumbnails to a local tangent plane before fitting
+        (default ``False``).
+    thumbnail_half_width : Quantity, optional
+        Half-width of thumbnail cutouts (default 0.1 deg).
+    near_source_rel_flux_limit : float or None, optional
+        If set, sources with a neighbour inside ``thumbnail_half_width`` that
+        exceeds ``near_source_rel_flux_limit * source.flux`` are flagged as
+        fitting failed.
+    allowable_center_offset : Quantity, optional
+        Maximum centroid offset from the initial guess (default 1.0 arcmin).
+    goodness_of_fit_threshold : float or None, optional
+        Minimum R² value for an acceptable fit; ``None`` disables the cut.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     mode: Literal["lmfit"] = "lmfit"
     flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
@@ -113,33 +149,6 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         goodness_of_fit_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
     ):
-        """
-        Initialize the GaussianFitter.
-        Parameters
-        ----------
-        mode : {"lmfit"}, optional
-            The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
-        flux_limit_centroid : astropy.units.Quantity, optional
-            Minimum flux required to attempt centroid fitting (default: 0.3 Jy).
-        reproject_thumbnails : bool, optional
-            Whether to reproject thumbnails before fitting (default: False).
-            If False, just cuts out square in pixel space.
-        thumbnail_half_width : astropy.units.Quantity, optional
-            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
-        allowable_center_offset : astropy.units.Quantity, optional
-            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
-        near_source_rel_flux_limit : float | None, optional
-            Relative flux limit to exclude nearby sources (default: None).
-            If another source within the thumbnail_half_width has a flux
-            greater than near_source_rel_flux_limit * source.flux,
-            flag the source as fitting failed.
-            If None, ignore.
-        goodness_of_fit_threshold : float | None, optional
-            Threshold for goodness of fit to flag poor fits (default: None).
-        log : FilteringBoundLogger or None, optional
-            Logger instance to use (default: None).
-        """
-
         self.mode = mode
         self.flux_limit_centroid = flux_limit_centroid
         self.reproject_thumbnails = reproject_thumbnails
@@ -230,6 +239,32 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
 
 class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
+    """Pointing-model calibration via 2-D Gaussian fitting of bright point sources.
+
+    Only sources above ``min_flux`` are fitted; neighbours brighter than
+    ``near_source_rel_flux_limit * source.flux`` within ``thumbnail_half_width``
+    are automatically excluded.
+
+    Parameters
+    ----------
+    mode : {"lmfit"}, optional
+        Fitting backend; only ``"lmfit"`` is currently supported.
+    min_flux : Quantity, optional
+        Minimum source flux for the fit (default 0.3 Jy).
+    reproject_thumbnails : bool, optional
+        Reproject thumbnails before fitting (default ``False``).
+    thumbnail_half_width : Quantity, optional
+        Half-width of thumbnail cutouts (default 0.1 deg).
+    near_source_rel_flux_limit : float, optional
+        Fractional neighbour flux threshold for source exclusion (default 0.3).
+    allowable_center_offset : Quantity, optional
+        Maximum centroid offset from the initial guess (default 3.0 arcmin).
+    goodness_of_fit_threshold : float or None, optional
+        Minimum R² value for an acceptable fit; ``None`` disables the cut.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     mode: Literal["lmfit"] = "lmfit"
     min_flux: u.Quantity
     reproject_thumbnails: bool
@@ -250,31 +285,6 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         goodness_of_fit_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
     ):
-        """
-        Initialize the TwoDGaussianPointingFitter.
-        Parameters
-        ----------
-        mode : {"lmfit"}, optional
-            The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
-        min_flux : astropy.units.Quantity, optional
-            Minimum flux required to attempt pointing fit (default: 0.3 Jy).
-        reproject_thumbnails : bool, optional
-            Whether to reproject thumbnails before fitting (default: False).
-            If False, just cuts out square in pixel space.
-        thumbnail_half_width : astropy.units.Quantity, optional
-            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
-        near_source_rel_flux_limit : float, optional
-            Relative flux limit to exclude nearby sources (default: 0.3).
-            If another source within the thumbnail_half_width has a flux
-            greater than near_source_rel_flux_limit * pointing_source.flux,
-            the pointing source is excluded from fitting.
-        allowable_center_offset : astropy.units.Quantity, optional
-            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
-        goodness_of_fit_threshold : float or None, optional
-            Threshold for goodness of fit to flag poor fits (default: None).
-        log : FilteringBoundLogger or None, optional
-            Logger instance to use (default: None).
-        """
         self.mode = mode
         self.min_flux = min_flux
         self.reproject_thumbnails = reproject_thumbnails

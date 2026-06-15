@@ -14,6 +14,20 @@ from sotrplib.source_catalog.solar_system_object_catalog import (
 
 
 class SSOCatalogConfig(SourceCatalogConfig):
+    """Configuration for the solar-system object catalog.
+
+    Fields
+    ------
+    db_path : Path or None
+        Path to the SSO ephemeris database.  Uses the default if ``None``.
+    observer_lat, observer_lon : Quantity
+        Observatory latitude and longitude (defaults to Atacama site).
+    observer_elev : Quantity
+        Observatory elevation above sea level (default 5180 m).
+    start_time, stop_time : AwareDatetime or None
+        Time window for which to compute ephemerides.
+    """
+
     catalog_type: Literal["sso"] = "sso"
     db_path: Path | None = None
     observer_lat: AstroPydanticQuantity = -22.96098 * u.deg

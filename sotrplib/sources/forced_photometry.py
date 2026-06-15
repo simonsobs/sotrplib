@@ -58,8 +58,31 @@ def gaussian_2d(
     theta: float,
     offset: float,
 ):
-    """
-    2D Gaussian function.
+    """Evaluate a tilted 2-D Gaussian on a pixel grid.
+
+    Parameters
+    ----------
+    xy : tuple of ArrayLike
+        ``(x, y)`` coordinate arrays (pixel indices).
+    amplitude : float
+        Peak amplitude of the Gaussian.
+    x0 : float
+        X-coordinate of the Gaussian centre.
+    y0 : float
+        Y-coordinate of the Gaussian centre.
+    sigma_x : float
+        Standard deviation along the x-axis before rotation.
+    sigma_y : float
+        Standard deviation along the y-axis before rotation.
+    theta : float
+        Rotation angle in radians.
+    offset : float
+        Constant background offset.
+
+    Returns
+    -------
+    np.ndarray
+        Flattened array of Gaussian values at each ``(x, y)`` position.
     """
     x, y = xy
     x0 = float(x0)
@@ -87,10 +110,33 @@ def gaussian_2d_lmfit(
     theta: float,
     offset: float,
 ):
-    """
-    wrapper for the 2d gaussian to have the
-    required signature for lmfit Model to work with independent variables x and y.
+    """Wrapper around ``gaussian_2d`` with separate x/y args for lmfit.
 
+    Parameters
+    ----------
+    x : ArrayLike
+        X-coordinate array (independent variable for lmfit).
+    y : ArrayLike
+        Y-coordinate array (independent variable for lmfit).
+    amplitude : float
+        Peak amplitude.
+    x0 : float
+        X-centre of the Gaussian.
+    y0 : float
+        Y-centre of the Gaussian.
+    sigma_x : float
+        Standard deviation along x.
+    sigma_y : float
+        Standard deviation along y.
+    theta : float
+        Rotation angle in radians.
+    offset : float
+        Constant background offset.
+
+    Returns
+    -------
+    np.ndarray
+        Gaussian values at each ``(x, y)`` position.
     """
     return gaussian_2d((x, y), amplitude, x0, y0, sigma_x, sigma_y, theta, offset)
 
@@ -135,12 +181,9 @@ class LmFitGaussian2DFitter:
         self.model = None
 
     def initialize_model(self):
-        """
-        Docstring for initialize_model
+        """Initialize the 2D Gaussian lmfit model and parameter guesses.
 
-        Initialize the 2D Gaussian model and initial parameter guess
-
-        Forcing center removes the x0,y0 from the fit parameters.
+        Forcing center removes x0, y0 from the free parameters.
         """
         self.model = lmfit.Model(gaussian_2d_lmfit, independent_vars=["x", "y"])
         ny, nx = self.source.thumbnail.shape
@@ -339,8 +382,8 @@ def gaussian_fit(
     log: FilteringBoundLogger | None = None,
     debug: bool = False,
 ) -> list[MeasuredSource]:
-    """
-    Fit 2D Gaussian models to a list of registered sources on a map using lmfit.
+    """Fit 2D Gaussian models to a list of registered sources on a map using lmfit.
+
     Parameters
     ----------
     input_map : ProcessableMap
@@ -576,10 +619,21 @@ def convert_catalog_to_registered_source_objects(
     source_type: str | None = None,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    take each source in the catalog and convert to a list
-    of RegisteredSource objects.
+    """Convert an ACT-format source catalog dict to a list of ``RegisteredSource`` objects.
 
+    Parameters
+    ----------
+    catalog_sources : dict
+        Column-keyed catalog with at minimum ``name``, ``RADeg``, ``decDeg``,
+        and ``fluxJy`` keys.
+    source_type : str, optional
+        Source classification to attach to each object.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    list of RegisteredSource
     """
     log = log or structlog.get_logger()
     log = log.bind(func_name="convert_catalog_to_registered_source_objects")
@@ -633,8 +687,20 @@ def return_initial_catalog_entry(
     add_dict: dict = {},
     keyconv={},
 ):
-    """
-    source is a MeasuredSource object
+    """Serialise a ``MeasuredSource`` to a plain dict with optional key remapping.
+
+    Parameters
+    ----------
+    source : MeasuredSource
+        Source to serialise.
+    add_dict : dict, optional
+        Extra key/value pairs to merge into the output.
+    keyconv : dict, optional
+        Mapping of old key names to new key names in the output dict.
+
+    Returns
+    -------
+    dict
     """
     outdict = {}
     for item in vars(source):

@@ -18,14 +18,40 @@ from sotrplib.outputs.lightserve import LightServeOutput
 
 
 class OutputConfig(BaseModel, ABC):
+    """Abstract base for pipeline output configuration objects.
+
+    Each subclass defines an ``output_type`` discriminator and implements
+    ``to_output`` to construct a ``SourceOutput``.
+    """
+
     output_type: str
 
     @abstractmethod
     def to_output(self, log: FilteringBoundLogger | None = None) -> SourceOutput:
+        """Construct the configured output handler.
+
+        Parameters
+        ----------
+        log : FilteringBoundLogger, optional
+            Structured logger.
+
+        Returns
+        -------
+        SourceOutput
+            The constructed output handler instance.
+        """
         return
 
 
 class PickleOutputConfig(OutputConfig):
+    """Configuration for pickle-file source output.
+
+    Fields
+    ------
+    directory : Path
+        Directory where pickle files are written.
+    """
+
     output_type: Literal["pickle"] = "pickle"
     directory: Path
 
@@ -34,6 +60,14 @@ class PickleOutputConfig(OutputConfig):
 
 
 class JSONOutputConfig(OutputConfig):
+    """Configuration for JSON-file source output.
+
+    Fields
+    ------
+    directory : Path
+        Directory where JSON files are written.
+    """
+
     output_type: Literal["json"] = "json"
     directory: Path
 
@@ -42,6 +76,16 @@ class JSONOutputConfig(OutputConfig):
 
 
 class MapOutputConfig(OutputConfig):
+    """Configuration for FITS map output serializer.
+
+    Fields
+    ------
+    directory : Path
+        Directory where map files are written.
+    fields : list of str
+        Map field IDs to serialize.
+    """
+
     output_type: Literal["maps"] = "maps"
     directory: Path
     fields: list[str]
@@ -53,6 +97,14 @@ class MapOutputConfig(OutputConfig):
 
 
 class CutoutImageOutputConfig(OutputConfig):
+    """Configuration for cutout image output.
+
+    Fields
+    ------
+    directory : Path
+        Directory where cutout image files are written.
+    """
+
     output_type: Literal["cutout"] = "cutout"
     directory: Path
 
@@ -61,6 +113,18 @@ class CutoutImageOutputConfig(OutputConfig):
 
 
 class LightServeOutputConfig(OutputConfig):
+    """Configuration for the LightServe HTTP output.
+
+    Fields
+    ------
+    hostname : str
+        LightServe server hostname.
+    token_tag : str or None
+        Tag used to look up the authentication token.
+    identity_server : str or None
+        Identity server URL for token exchange.
+    """
+
     output_type: Literal["lightserve"] = "lightserve"
     hostname: str
     token_tag: str | None = None
@@ -76,6 +140,18 @@ class LightServeOutputConfig(OutputConfig):
 
 
 class LightcurveDBOutputConfig(OutputConfig):
+    """Configuration for the LightcurveDB output handler.
+
+    Fields
+    ------
+    override_settings : dict or None
+        Key-value pairs that override individual LightcurveDB environment
+        variable settings.
+    upsert_sources : bool
+        If ``True``, upsert sources to LightcurveDB before writing flux
+        measurements (default ``False``).
+    """
+
     output_type: Literal["lightcurvedb"] = "lightcurvedb"
     override_settings: dict | None = None
     "Over-ride individual settings from the LightcurveDB environment variable setup."

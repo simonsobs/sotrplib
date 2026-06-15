@@ -23,9 +23,23 @@ def cone_query_gaia(
         "phot_g_mean_flux_error",
     ],
 ):
-    """
-    Query gaia using astroquery.
-    Performs cone search at ra_deg,dec_deg with a search radius of radius_arcmin
+    """Perform a Gaia DR3 cone search using astroquery.
+
+    Parameters
+    ----------
+    ra : Quantity[deg]
+        Right ascension of the search center.
+    dec : Quantity[deg]
+        Declination of the search center.
+    radius : Quantity[arcmin], optional
+        Search radius (default 1 arcmin).
+    columns : list of str, optional
+        Gaia columns to retrieve.
+
+    Returns
+    -------
+    astropy.table.Table or dict
+        Gaia results, or an empty dict if no results are found.
     """
     from astroquery.gaia import Gaia
 
@@ -39,17 +53,23 @@ def cone_query_gaia(
 
 
 def SIMBAD(ra, dec, radius):
-    """
-    Query SIMBAD for objects within a given radius of a given RA/Dec
+    """Query SIMBAD for objects within a given radius of a sky position.
 
-    Args:
-        ra (float): RA in degrees
-        dec (float): Dec in degrees
-        radius (float): radius in arcmin
+    Parameters
+    ----------
+    ra : float
+        Right ascension in degrees.
+    dec : float
+        Declination in degrees.
+    radius : float
+        Search radius in arcmin.
 
-    Returns:
-        pd.DataFrame: SIMBAD objects within the search radius
-        (id, type, sep, mag, dist)
+    Returns
+    -------
+    pd.DataFrame
+        SIMBAD objects within the search radius with columns
+        ``id``, ``type``, ``spectral type``, ``sep [arcsec]``, ``mag``,
+        ``dist [pc]``.
     """
 
     # add flux field to search
@@ -93,15 +113,19 @@ def SIMBAD(ra, dec, radius):
 
 
 def simdist(sim, verbose=False):
-    """
-    Get distance from SIMBAD object
+    """Extract the distance in pc from a SIMBAD result row.
 
-    Args:
-        sim (astropy.table.row.Row): SIMBAD object
-        verbose (bool): print verbose output
+    Parameters
+    ----------
+    sim : astropy.table.row.Row
+        A single row from a SIMBAD query result.
+    verbose : bool, optional
+        Print the distance source to stdout (default ``False``).
 
-    Returns:
-        float: distance in pc
+    Returns
+    -------
+    float
+        Distance in pc, or ``nan`` if no distance is available.
     """
     # Prefer the parallax distance if available:
     if sim["PLX_VALUE"]:

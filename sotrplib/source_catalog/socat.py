@@ -20,6 +20,14 @@ from .core import SourceCatalog
 
 
 class SOCatWrapper:
+    """Thin wrapper around the SOCat REST client for common catalog operations.
+
+    Parameters
+    ----------
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     def __init__(self, log: FilteringBoundLogger | None = None):
         self.log = log or structlog.get_logger()
         self.settings = SOCatClientSettings()
@@ -161,8 +169,20 @@ class SOCatWrapper:
 
 
 class SOCat(SourceCatalog):
-    """
-    A catalog implementation that uses the configured SOCat database.
+    """Source catalog backed by the configured SOCat database.
+
+    Parameters
+    ----------
+    flux_lower_limit : Quantity, optional
+        Minimum source flux for forced-photometry queries (default 0.03 Jy).
+    additional_positions : list of SkyCoord, optional
+        Extra positions to add to the catalog on construction.
+    additional_fluxes : list of Quantity, optional
+        Fluxes for the extra positions.
+    additional_source_ids : list of str, optional
+        Source IDs for the extra positions.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     def __init__(
@@ -224,8 +244,22 @@ class SOCat(SourceCatalog):
         radius: u.Quantity,
         method: Literal["closest", "all"],
     ) -> list[CrossMatch]:
-        """
-        Get sources within radius of the catalog.
+        """Return crossmatches from SOCat within ``radius`` of a position.
+
+        Parameters
+        ----------
+        ra : Quantity
+            Query RA.
+        dec : Quantity
+            Query Dec.
+        radius : Quantity
+            Search radius.
+        method : {"closest", "all"}
+            Return only the closest match or all matches.
+
+        Returns
+        -------
+        list of CrossMatch
         """
         ra_min = ra - 2.0 * radius
         ra_max = ra + 2.0 * radius

@@ -20,9 +20,20 @@ Photutils version implemented by Melanie Archipley
 
 
 def get_source_sky_positions(extracted_sources, skymap):
-    """
-    from output of extract_sources, use xpeak and ypeak to
-    convert to sky coordinates.
+    """Convert pixel peak positions in the extraction dict to sky coordinates.
+
+    Parameters
+    ----------
+    extracted_sources : dict
+        Output dict from source extraction; entries must have ``xpeak``/``ypeak``.
+    skymap : enmap.ndmap
+        Map used to convert pixel to sky coordinates via ``pix2sky``.
+
+    Returns
+    -------
+    dict
+        Same dict updated with ``ra``, ``dec``, and (if available)
+        ``err_ra`` / ``err_dec`` entries.
     """
 
     for f in extracted_sources:
@@ -50,9 +61,21 @@ def get_source_sky_positions(extracted_sources, skymap):
 def get_source_observation_time(
     extracted_sources, timemap: ProcessableMap | NDArray = None
 ):
-    """
-    from output of extract_sources, use xpeak and ypeak to
-    get the observed time given the map `timemap`.
+    """Look up pixel observation times for each detected source.
+
+    Parameters
+    ----------
+    extracted_sources : dict
+        Output dict from source extraction; entries must have ``xpeak``/``ypeak``.
+    timemap : ProcessableMap or NDArray, optional
+        Time map used to look up per-pixel observation times.  If ``None``,
+        ``extracted_sources`` is returned unchanged.
+
+    Returns
+    -------
+    dict
+        Same dict updated with ``observation_mean_time``, ``observation_start_time``,
+        and ``observation_end_time`` entries.
     """
     if timemap is None:
         return extracted_sources
@@ -85,16 +108,29 @@ def extract_sources(
     pixel_mask: NDArray = None,
     log: FilteringBoundLogger | None = None,
 ) -> list[MeasuredSource]:
-    """
-    Use photutils to find sources above nsigma in a map.
-    maprms can be supplied as a map or a single value.
-    minrad is the minimum distance to the nearest source, in angular units.
-    If multiple values are given, minrad and sigma_thresh_for_minrad should be 1:1.
-    The highest significance sources should have the largest minrad (i.e. group more pixels together).
-    pixel_mask can be supplied to mask out bad pixels (0=bad, 1=good).
+    """Find sources above a significance threshold using photutils.
 
-    High snr pixels are returned by photutils and grouped into sources based on their
-    significance and the minrad values.
+    Parameters
+    ----------
+    inmap : ProcessableMap
+        Finalized flux map to search.
+    nsigma : float, optional
+        Detection threshold in map noise units (default 5.0).
+    maprms : NDArray or float, optional
+        Map noise; if ``None``, computed from ``flux / snr``.
+    minrad : list of Quantity[arcmin], optional
+        Minimum angular separation(s) between detected sources.
+        Paired 1-to-1 with ``sigma_thresh_for_minrad``.
+    sigma_thresh_for_minrad : list of float, optional
+        SNR thresholds that activate each entry in ``minrad``.
+    pixel_mask : NDArray, optional
+        Pixel validity mask (0 = bad, 1 = good).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    list of MeasuredSource
     """
     log = log or get_logger()
     log.bind(func_name="extract_sources")
@@ -208,8 +244,18 @@ def convert_outstruct_to_measured_source_objects(
     output_struct: dict,
     inmap: ProcessableMap | None = None,
 ) -> list[MeasuredSource]:
-    """
-    Convert the output dictionary from extract_sources to MeasuredSource objects.
+    """Convert the internal extraction dict to ``MeasuredSource`` objects.
+
+    Parameters
+    ----------
+    output_struct : dict
+        Per-source dict produced by ``extract_sources``.
+    inmap : ProcessableMap, optional
+        Map used to populate instrument/array/frequency metadata.
+
+    Returns
+    -------
+    list of MeasuredSource
     """
     outlist = []
     for struct in output_struct.values():
@@ -259,45 +305,32 @@ def find_using_photutils(
     From ``find_groups``: given a 2d array (a map), will find groups of elements
     (pixels) that are spatially associated (sources).
 
-    Arguments
-    ---------
-    Tmap: enamp.ndmap
+    Parameters
+    ----------
+    Tmap : enmap.ndmap
         Intensity map.
-    signoise : float or enmap.ndmap
-        Noise in the map, can be float or enmap.ndmap of same shape as Tmap.
-    offset : float
-        Zero point of map.
-    minnum : int
-        Minimum number of pixels needed to form a group.
-    nsigma : float
-        Required detection threshold for a group.
+    signoise : float or enmap.ndmap, optional
+        Noise in the map; scalar or same-shape ndmap.
+    minnum : int, optional
+        Minimum number of pixels needed to form a group (default 2).
+    nsigma : float, optional
+        Detection threshold in noise units (default 5.0).
+    log : optional
+        Structured logger.
 
     Returns
     -------
-    Dictionary with following keys:
-        * maxvals - array of heights (in map units) of found objects.
-        * sigvals - array of heights (in significance units) of found objects.
-        * xcen - array of x-location of group centers. From the documentation,
-          the "centroid is computed as the center of mass of the unmasked pixels
-          within the source segment."
-        * ycen - array of Y-location of group centers.
-        * semimajor_sigma, semiminor_sigma - sigma in major and minor axes of 2D gauss fit.
-        * orientation - The angle between the x axis and the semimajor axis.
-                        The angle increases in the counter-clockwise direction.
-        * n_detected - Number of detected sources.
+    dict
+        Keys: ``maxvals``, ``sigvals``, ``xcen``, ``ycen``,
+        ``semimajor_sigma``, ``semiminor_sigma``, ``orientation``,
+        ``n_detected``, ``ellipticity``, ``elongation``, ``fwhm``,
+        ``kron_aperture``, ``kron_flux``, ``kron_fluxerr``, ``kron_radius``.
+        All positional keys use pixel coordinates.
+        ``n_detected`` is 0 if no sources are found.
 
-    The keys below are outputs of the astropy source finding functionality,
-    being used to test if any of them indicate extendedness of a source.
-        * ellipticity
-        * elongation
-        * fwhm - units of pixels. From the documentation, "circularized FWHM of
-          2D Gaussian function with same second order moments as the source."
-        * kron_aperture
-        * kron_flux - Parameter requires that Tmap already be in units of mJy.
-        * kron_fluxerr - Parameter requires that Tmap already be in units of mJy.
-        * kron_radius - units of pixels.
-
-    Function written by Melanie Archipley, adapted by AF Jan 2025
+    Notes
+    -----
+    Written by Melanie Archipley, adapted by AF Jan 2025.
     """
     log.bind(func_name="find_using_photutils")
     default_keys = {
@@ -377,16 +410,19 @@ def find_using_photutils(
 
 
 def mask_sources_outside_map(sourcecat, maskmap: ndmap):
-    """
-    Determines if source is inside mask or observed region
+    """Return a boolean mask indicating which catalog sources lie inside the map.
 
-    Args:
-        sourcecat: source catalog, need keys RADeg, decDeg
-        maskmap: ndmap of mask (zero masked, one not masked)
-                 or weights map which will be zero or nan elsewhere.
+    Parameters
+    ----------
+    sourcecat : dict-like
+        Source catalog with keys ``RADeg`` and ``decDeg``.
+    maskmap : enmap.ndmap
+        Mask or weights map (zero / NaN = unobserved; non-zero = observed).
 
-    Returns:
-        mask column for sources, 1 observed, 0 not observed or outside map
+    Returns
+    -------
+    np.ndarray of bool
+        ``True`` for sources inside the observed region, ``False`` otherwise.
     """
     from pixell.enmap import sky2pix
 
@@ -413,16 +449,21 @@ def mask_sources_outside_map(sourcecat, maskmap: ndmap):
 
 
 def get_ps_inmap(imap: np.ndarray, sourcecat, fluxlim: bool = None):
-    """
-    get point sources in map
+    """Return the subset of a source catalog whose positions fall inside a map.
 
-    Args:
-        imap:ndmap to get point sources in
-        sourcecat:source catalog
-        fluxlim:flux limit in mJy
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Map that defines the sky footprint.
+    sourcecat : table-like
+        Source catalog with ``RADeg`` and ``decDeg`` columns.
+    fluxlim : float, optional
+        Minimum flux in mJy; sources below this value are excluded first.
 
-    Returns:
-        sourcecat with sources in map
+    Returns
+    -------
+    table-like
+        Filtered source catalog containing only sources inside the map.
     """
     from pixell.enmap import sky2pix
 

@@ -21,12 +21,20 @@ from sotrplib.sources.sources import MeasuredSource
 
 @dataclass
 class SifterResult:
+    """Container for the three output lists from a sifting pass."""
+
     source_candidates: list[MeasuredSource]
     transient_candidates: list[MeasuredSource]
     noise_candidates: list[MeasuredSource]
 
 
 class SiftingProvider(ABC):
+    """Abstract base for source-sifting providers.
+
+    Subclasses implement ``sift`` to classify detections as known sources,
+    transients, or noise.
+    """
+
     @abstractmethod
     def sift(
         self,
@@ -34,10 +42,28 @@ class SiftingProvider(ABC):
         catalogs: list[SourceCatalog | SolarSystemObjectCatalog],
         input_map: ProcessableMap,
     ) -> SifterResult:
+        """Classify a list of source detections.
+
+        Parameters
+        ----------
+        sources : list of MeasuredSource
+            Extracted source detections to classify.
+        catalogs : list of SourceCatalog or SolarSystemObjectCatalog
+            Reference catalogs used for crossmatching.
+        input_map : ProcessableMap
+            The map from which the sources were extracted.
+
+        Returns
+        -------
+        SifterResult
+            Detections partitioned into source, transient, and noise lists.
+        """
         raise NotImplementedError
 
 
 class EmptySifter(SiftingProvider):
+    """No-op sifter that returns empty candidate lists for every input."""
+
     def sift(
         self,
         sources: list[MeasuredSource],
@@ -50,12 +76,21 @@ class EmptySifter(SiftingProvider):
 
 
 class SimpleCatalogSifter(SiftingProvider):
+    """Sifter that classifies detections by fixed-radius catalog crossmatch.
+
+    Parameters
+    ----------
+    radius : Quantity[arcmin], optional
+        Search radius for catalog crossmatching (default 2 arcmin).
+    method : {"all", "closest"}, optional
+        Whether to return all matches or only the closest (default ``"all"``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     radius: u.Quantity
-    "Radius to search within"
     log: FilteringBoundLogger
-    "Structlog logger"
     method: Literal["closest", "all"]
-    "Return just the closest match or all of them"
 
     def __init__(
         self,
@@ -112,26 +147,43 @@ class SimpleCatalogSifter(SiftingProvider):
 
 
 class DefaultSifter(SiftingProvider):
+    """Sifter that uses a flux-scaled matching radius and quality cuts.
+
+    Parameters
+    ----------
+    radius_1Jy : Quantity[arcmin], optional
+        Crossmatch radius for a 1 Jy source (default 30 arcmin).
+    min_match_radius : Quantity[arcmin], optional
+        Minimum crossmatch radius for faint sources (default 1.5 arcmin).
+    ra_jitter : Quantity[arcmin], optional
+        Additional RA position uncertainty added in quadrature (default 0 arcmin).
+    dec_jitter : Quantity[arcmin], optional
+        Additional Dec position uncertainty added in quadrature (default 0 arcmin).
+    cuts : dict, optional
+        Quality cuts as ``{field: [min, max]}``.  Defaults to FWHM 0.5–2.5×,
+        SNR ≥ 5, and finite observation time.
+    crossmatch_with_gaia : bool, optional
+        Query Gaia for unmatched sources (default ``True``).
+    crossmatch_with_million_quasar : bool, optional
+        Crossmatch with the million-quasar catalog (default ``True``).
+    additional_catalogs : dict, optional
+        Extra named catalogs, e.g. ``{"million_quasar": mq_catalog}``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    debug : bool, optional
+        Enable verbose debug logging (default ``False``).
+    """
+
     radius_1Jy: AstroPydanticQuantity[u.Jy]
-    "matching radius for a 1Jy source, arcmin"
     min_match_radius: AstroPydanticQuantity[u.arcmin]
-    "minimum matching radius, i.e. for a zero flux source, arcmin"
     ra_jitter: AstroPydanticQuantity[u.arcmin]
-    "jitter in the ra direction, in arcmin, to add to the uncertainty of the source position."
     dec_jitter: AstroPydanticQuantity[u.arcmin]
-    "jitter in the dec direction, in arcmin, to add to the uncertainty of the source position."
     cuts: dict[str, list[float]]
-    "a dictionary of cuts to apply to the source candidates, in the form of {cut_name: [min_value, max_value]}."
     crossmatch_with_gaia: bool
-    "if True, will crossmatch with gaia catalog and add the gaia source name to the source_id."
     crossmatch_with_million_quasar: bool
-    "if True, will crossmatch with the million quasar catalog and add the source name to the source_id."
     additional_catalogs: dict[str, Any]
-    "a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}."
     log: FilteringBoundLogger
-    "Structlog logger for logging information during the sifting process."
     debug: bool
-    "If True, will log debug information."
 
     def __init__(
         self,

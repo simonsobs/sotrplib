@@ -7,23 +7,26 @@ from sotrplib.sources.forced_photometry import (
 )
 
 
-class SourceCatalog:
-    def __init__(self, ra, dec):
-        self.ra = ra
-        self.dec = dec
-
-
 def load_act_catalog(
     source_cat_file: str = "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
     flux_threshold: float = 0,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    source_cat_file is path to source catalog
+    """Load an ACT FITS source catalog and apply a flux cut.
 
-    flux_threshold is a threshold, in Jy, below which we ignore the sources.
-        i.e. if we want sources in depth-1 map, we don't care about sub mJy sources.
-        by default, returns all positive sources.
+    Parameters
+    ----------
+    source_cat_file : str
+        Path to the FITS catalog file.
+    flux_threshold : float, optional
+        Minimum flux in Jy (default 0, all positive sources).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    dict
+        Column-keyed dictionary of catalog arrays.
     """
     from astropy.table import Table
 
@@ -46,12 +49,22 @@ def load_act_catalog(
 def convert_gauss_fit_to_source_cat(
     gauss_fits: list, uncert_prefix: str = "err_", log=None
 ):
-    """
-    gauss fits is a list of dictionaries of the output params of the gaussian fitting.
-    convert that into a dictionary of lists.
+    """Convert a list of Gaussian-fit parameter dicts to a column-keyed source catalog.
 
-    since there are uncertainties on the fits, make keys err_[blah] for those fits.
-    this is inspired by fluxJy and err_fluxJy in act table.
+    Parameters
+    ----------
+    gauss_fits : list of dict
+        Per-source parameter dictionaries from the Gaussian fitter.
+    uncert_prefix : str, optional
+        Prefix for uncertainty keys (default ``"err_"``).
+    log : optional
+        Structured logger.
+
+    Returns
+    -------
+    dict
+        Column-keyed dict where tuple values are split into value and
+        ``err_<key>`` uncertainty arrays.
     """
     log.bind(func_name="convert_gauss_fit_to_source_cat")
 
@@ -86,11 +99,18 @@ def convert_gauss_fit_to_source_cat(
 
 
 def convert_json_to_act_format(json_list):
-    """
-    json list is the list of dictionaries output to json file format.
-    this will hopefully be depricated when using the database.
+    """Convert a list of JSON source-candidate dicts to ACT catalog column format.
 
-    there are other differences too, but these are the ones we care about now.
+    Parameters
+    ----------
+    json_list : list of dict
+        Source-candidate dictionaries as written by the JSON output handler.
+
+    Returns
+    -------
+    dict
+        Column-keyed dict with ACT-compatible keys (``RADeg``, ``decDeg``,
+        ``fluxJy``, ``err_fluxJy``, ``name``).
     """
     import numpy as np
 
@@ -123,13 +143,21 @@ def convert_json_to_act_format(json_list):
 
 
 def load_json_test_catalog(source_cat_file: str, flux_threshold: float = 0, log=None):
-    """
-    Load the output file with MeasuredSource dictionaries
-    which is stored as a json file.
+    """Load a JSON source-candidate file and apply a flux cut.
 
-    flux_threshold is a threshold, in Jy, below which we ignore the sources.
-        i.e. if we want sources in depth-1 map, we don't care about sub mJy sources.
-        by default, returns all positive sources.
+    Parameters
+    ----------
+    source_cat_file : str
+        Path to the JSON file (one ``MeasuredSource`` dict per line).
+    flux_threshold : float, optional
+        Minimum flux in Jy (default 0).
+    log : optional
+        Structured logger.
+
+    Returns
+    -------
+    dict
+        ACT-format column-keyed source dictionary.
     """
     import json
 
@@ -159,9 +187,22 @@ def load_websky_csv_catalog(
     flux_threshold: float = 0,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    load the websky catalog from a csv containing the columns
-    flux(Jy), ra(deg), dec(deg)
+    """Load a WebSky CSV catalog (columns: flux Jy, RA deg, Dec deg).
+
+    Parameters
+    ----------
+    source_cat_file : str
+        Path to the CSV file.
+    flux_threshold : float, optional
+        Minimum flux in Jy (default 0).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    dict
+        Column-keyed dict with keys ``RADeg``, ``decDeg``, ``fluxJy``,
+        ``err_fluxJy``, ``name``.
     """
     from numpy import asarray, loadtxt
 
@@ -200,8 +241,21 @@ def load_pandas_catalog(
     flux_threshold: float = 0,
     log=None,
 ):
-    """
-    load the source catalog from a pandas dataframe stored in a pickle file.
+    """Load a source catalog from a pandas pickle file.
+
+    Parameters
+    ----------
+    source_cat_file : str
+        Path to the pickle file.
+    flux_threshold : float, optional
+        Minimum flux in Jy (default 0).
+    log : optional
+        Structured logger.
+
+    Returns
+    -------
+    pd.DataFrame
+        Source catalog with a flux cut applied.
     """
     import pandas as pd
 
@@ -242,19 +296,27 @@ def load_catalog(
     return_source_cand_list: bool = False,
     log=None,
 ):
-    """
-    flux_threshold is a threshold, in Jy, below which we ignore the sources.
-        i.e. if we want sources in depth-1 map, we don't care about sub mJy sources.
-        by default, returns all positive sources.
-    mask_outside_map: bool
-        if False, do not mask the mapped region, just include all sources in catalog.
-    mask_map: enmap
-        map with which to do the masking; can be anything that is zero/nan outside observed region.
+    """Load a source catalog from a file, dispatch on extension, and return ``RegisteredSource`` objects.
 
-    Returns:
+    Parameters
+    ----------
+    source_cat_file : str
+        Path to the catalog file.  Format is inferred from the filename.
+    flux_threshold : float, optional
+        Minimum flux in Jy (default 0).
+    mask_outside_map : bool, optional
+        If ``True``, remove sources outside the valid map region (default ``False``).
+    mask_map : enmap, optional
+        Map used for spatial masking when ``mask_outside_map=True``.
+    return_source_cand_list : bool, optional
+        Unused; retained for API compatibility.
+    log : optional
+        Structured logger.
 
-        sources: source catalog, in astropy.table.table.Table or dict format... dumb but works for now.
-
+    Returns
+    -------
+    list of RegisteredSource
+        Catalog sources as pipeline-native objects.
     """
 
     ##

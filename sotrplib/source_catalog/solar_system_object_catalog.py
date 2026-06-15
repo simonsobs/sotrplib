@@ -26,25 +26,51 @@ from sotrplib.utils.utils import angular_separation
 
 
 class SolarSystemObjectCatalog(ABC):
+    """Abstract base for solar-system object catalogs."""
+
     @abstractmethod
     def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
-        """
-        Get sources that may be present in a specific map.
+        """Return SSOs that may lie within a given map.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            Map used to determine the sky footprint and observation time.
+
+        Returns
+        -------
+        list of RegisteredSource
         """
         return
 
     def forced_photometry_sources(
         self, input_map: ProcessableMap
     ) -> list[RegisteredSource]:
-        """
-        Wrapper for forced photometry sources.
+        """Return the SSO list for forced photometry (delegates to ``get_sources_in_map``).
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            Map used to determine the sky footprint.
+
+        Returns
+        -------
+        list of RegisteredSource
         """
         return
 
     @abstractmethod
     def source_by_id(self, id) -> RegisteredSource:
-        """
-        Get the information about a source by its internal ID.
+        """Return the SSO with the given designation.
+
+        Parameters
+        ----------
+        id : str
+            Object designation (e.g. ``"Ceres"``).
+
+        Returns
+        -------
+        RegisteredSource
         """
         return
 
@@ -54,25 +80,40 @@ class SolarSystemObjectCatalog(ABC):
         times: list[datetime],
         source_ids: list | None = None,
     ) -> dict[str, SkyCoord]:
-        """
-        Get the positions of sources at specific times.
+        """Return sky positions for all (or selected) SSOs at the given times.
 
         Parameters
         ----------
-        times
-            Array of MJD times to get positions for.
-        source_ids
-            List of source IDs to get positions for. If None, get positions for all sources.
+        times : list of datetime
+            UTC datetimes at which to evaluate positions.
+        source_ids : list, optional
+            Subset of object designations; if ``None``, returns all objects.
 
         Returns
         -------
-        dict[str, SkyCoord]
-            Dictionary mapping source IDs to their SkyCoord positions at the given times.
+        dict
+            Mapping from object designation to ``SkyCoord`` at each time.
         """
         return
 
 
 class SSOCat(SolarSystemObjectCatalog):
+    """Solar-system object catalog backed by a JPL Horizons ephemeris parquet file.
+
+    Parameters
+    ----------
+    db_path : str
+        Path to the ephemeris parquet file.
+    observer : GeographicPosition
+        Observer location for planet parallax calculations.
+    start_time : AwareDatetime, optional
+        Clip ephemeris to this start time.
+    stop_time : AwareDatetime, optional
+        Clip ephemeris to this stop time.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     db_path: str
     sso_ephems: dict
     catalog: list[RegisteredSource]

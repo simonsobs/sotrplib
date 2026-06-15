@@ -19,15 +19,43 @@ from sotrplib.maps.masks import mask_dustgal
 
 
 class MapPostprocessor(ABC):
+    """Abstract base class for map postprocessors.
+
+    Postprocessors run after ``ProcessableMap.finalize`` and operate on the
+    finalised ``snr`` and ``flux`` arrays.
+    """
+
     @abstractmethod
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        """
-        Provides postprocessing for the input map
+        """Apply postprocessing to a finalised map.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            Finalised map to postprocess.  Modified in place.
+
+        Returns
+        -------
+        ProcessableMap
+            The (possibly modified) input map.
         """
         return input_map
 
 
 class GalaxyMask(MapPostprocessor):
+    """Postprocessor that multiplies the flux and SNR maps by a galactic mask.
+
+    Parameters
+    ----------
+    mask_path : Path
+        Path to the FITS galactic mask file.
+    invert : bool, optional
+        If ``True``, use ``1 - mask`` (mask the non-galactic region).
+        Default is ``False``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     mask_path: Path
     invert: bool = False
     log: FilteringBoundLogger | None = None
@@ -60,6 +88,21 @@ class GalaxyMask(MapPostprocessor):
 
 
 class PixellFlatFielder(MapPostprocessor):
+    """Postprocessor that flat-fields the SNR map using the pixell tiling module.
+
+    Parameters
+    ----------
+    sigma_val : float, optional
+        Sigma-clipping threshold (currently unused; reserved for future use).
+        Default is 5.0.
+    tile_size : Quantity, optional
+        Tile size for the flat-fielding grid.  Default is 1 deg.
+    mask : enmap.ndmap, optional
+        Additional mask to exclude pixels from the flat-field estimate.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     tile_size: AstroPydanticQuantity = AstroPydanticQuantity(1.0 * u.deg)
     sigma_val: float = 5.0
 
@@ -84,6 +127,21 @@ class PixellFlatFielder(MapPostprocessor):
 
 
 class PhotutilsFlatFielder(MapPostprocessor):
+    """Postprocessor that flat-fields the SNR and flux maps using photutils Background2D.
+
+    Parameters
+    ----------
+    sigma_val : float, optional
+        Sigma-clipping threshold for background estimation.  Default is 5.0.
+    tile_size : Quantity, optional
+        Tile size for the background grid.  Default is 1 deg.
+    mask : enmap.ndmap, optional
+        Additional mask to exclude pixels from the background estimate.
+        Combined with ``input_map.mask`` if both are present.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     tile_size: AstroPydanticQuantity = AstroPydanticQuantity(1.0 * u.deg)
     sigma_val: float = 5.0
 

@@ -19,17 +19,21 @@ def generate_random_positions_in_map(
     imap: enmap.ndmap,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Generate n random positions uniformly distributed in the map.
-    Uses the mapshape, to get random pixels, then calculates ra,dec
-    using the imap.pix2sky.
+    """Generate ``n`` random positions uniformly distributed in pixel space.
 
-    Arguments:
-        n (int): Number of positions to generate.
-        imap (enmap.ndmap): Input map for generating random positions.
+    Parameters
+    ----------
+    n : int
+        Number of positions to generate.
+    imap : enmap.ndmap
+        Input map; its shape and WCS define the pixel grid.
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-        tuple: Two numpy arrays containing the RA and Dec positions.
+    Returns
+    -------
+    list of tuple
+        List of ``(dec, ra)`` pairs as astropy Quantities.
     """
     log = log or get_logger()
     x = np.random.uniform(0, imap.shape[0], n)
@@ -49,18 +53,28 @@ def generate_random_positions(
     edge_buffer: AstroPydanticQuantity[u.deg] = 5 * u.arcmin,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Generate n random positions in RA and Dec uniformly distributed on the sphere
-    within the given limits.
+    """Generate ``n`` random positions uniformly distributed on the sphere.
 
-    Arguments:
-        n (int): Number of positions to generate.
-        imap (enmap.ndmap): Input map for generating random positions. If None, ra_lims and dec_lims must be provided.
-        ra_lims (tuple): Limits for RA (min_ra, max_ra).
-        dec_lims (tuple): Limits for Dec  (min_dec, max_dec).
+    Parameters
+    ----------
+    n : int
+        Number of positions to generate.
+    imap : enmap.ndmap, optional
+        If provided, RA/Dec limits are derived from the map bounding box.
+    ra_lims : tuple of Quantity[deg], optional
+        ``(min_ra, max_ra)`` limits.  Required if ``imap`` is not given.
+        RA wrap-around (e.g. ``(350 deg, 10 deg)``) is handled automatically.
+    dec_lims : tuple of Quantity[deg], optional
+        ``(min_dec, max_dec)`` limits.  Required if ``imap`` is not given.
+    edge_buffer : Quantity[deg], optional
+        Inset applied to map-derived limits (default 5 arcmin).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-        array: zipped array of tuples containing (dec,ra) pairs.
+    Returns
+    -------
+    list of tuple
+        List of ``(dec, ra)`` pairs as astropy Quantities in degrees.
     """
     log = log or get_logger()
     if ra_lims is None or dec_lims is None:
@@ -102,14 +116,25 @@ def generate_random_flare_times(
     end_time: float | str = 1.7e9,
     log=None,
 ):
-    """
-    Generate n random flare times uniformly distributed between start_time and end_time.
-    Arguments:
-        n (int): Number of flare times to generate.
-        start_time (float | str): Start time in unix timestamp or string formatted as "yyyy-mm-dd HH:MM:SS".
-        end_time (float | str): End time in unix timestamp or string formatted as "yyyy-mm-dd HH:MM:SS".
-    Returns:
-        numpy array: Array of random flare times.
+    """Generate ``n`` random flare peak times between ``start_time`` and ``end_time``.
+
+    Parameters
+    ----------
+    n : int
+        Number of times to generate.
+    start_time : float or str
+        Start of the time window as a Unix timestamp or
+        ``"YYYY-MM-DD HH:MM:SS"`` string.
+    end_time : float or str
+        End of the time window as a Unix timestamp or
+        ``"YYYY-MM-DD HH:MM:SS"`` string.
+    log : optional
+        Unused; retained for API compatibility.
+
+    Returns
+    -------
+    ndarray
+        Array of ``n`` Unix timestamps drawn uniformly from the window.
     """
     from datetime import datetime
 
@@ -128,16 +153,23 @@ def generate_random_flare_widths(
     max_width: float = 10.0,
     log=None,
 ):
-    """
-    Generate n random flare widths uniformly distributed between min_width and max_width.
+    """Generate ``n`` random flare FWHMs drawn uniformly from a range.
 
-    Arguments:
-        n (int): Number of flare widths to generate.
-        min_width (float): Minimum flare width.
-        max_width (float): Maximum flare width.
+    Parameters
+    ----------
+    n : int
+        Number of widths to generate.
+    min_width : float, optional
+        Minimum flare width (default 0.1).
+    max_width : float, optional
+        Maximum flare width (default 10.0).
+    log : optional
+        Unused; retained for API compatibility.
 
-    Returns:
-        numpy array: Array of random flare widths.
+    Returns
+    -------
+    ndarray
+        Array of ``n`` flare widths.
     """
     return np.random.uniform(min_width, max_width, n)
 
@@ -148,16 +180,23 @@ def generate_random_flare_amplitudes(
     max_amplitude: AstroPydanticQuantity[u.Jy] = 10.0 * u.Jy,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Generate n random flare amplitudes uniformly distributed between min_amplitude and max_amplitude.
+    """Generate ``n`` random flare peak amplitudes drawn uniformly from a range.
 
-    Arguments:
-        n (int): Number of flare amplitudes to generate.
-        min_amplitude (float): Minimum flare amplitude.
-        max_amplitude (float): Maximum flare amplitude.
+    Parameters
+    ----------
+    n : int
+        Number of amplitudes to generate.
+    min_amplitude : Quantity[Jy], optional
+        Minimum amplitude (default 0.1 Jy).
+    max_amplitude : Quantity[Jy], optional
+        Maximum amplitude (default 10.0 Jy).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-        numpy array: Array of random flare amplitudes.
+    Returns
+    -------
+    Quantity[Jy]
+        Array of ``n`` flare amplitudes.
     """
     return (
         np.random.uniform(min_amplitude.to_value(u.Jy), max_amplitude.to_value(u.Jy), n)
@@ -172,17 +211,25 @@ def make_gaussian_flare(
     flare_peak_Jy: float = 0.1,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Generate a Gaussian flare sampled at the given unix_times.
+    """Evaluate a Gaussian light curve at an array of Unix timestamps.
 
-    Arguments:
-        unix_times (numpy array): Array of unix timestamps to sample the flare.
-        flare_peak_time (float): Unix timestamp of the flare peak.
-        flare_fwhm_s (float): Full width at half maximum (FWHM) of the flare in seconds.
-        flare_peak_Jy (float): Amplitude of the flare in Jy.
+    Parameters
+    ----------
+    unix_times : ndarray
+        Sample times as Unix timestamps.
+    flare_peak_time : float, optional
+        Unix timestamp of the flare peak (default 0.0).
+    flare_fwhm_s : float, optional
+        Flare FWHM in seconds (default 1.0).
+    flare_peak_Jy : float, optional
+        Peak flux in Jy (default 0.1).
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-        numpy array: Array of flare amplitudes sampled at unix_times.
+    Returns
+    -------
+    ndarray
+        Flare flux in Jy sampled at each time in ``unix_times``.
     """
     # Convert FWHM to standard deviation
     sigma = flare_fwhm_s / (2 * np.sqrt(2 * np.log(2)))
@@ -198,11 +245,24 @@ def convert_photutils_qtable_to_json(
     imap: enmap.ndmap = None,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    photutils params is an Astropy QTable with:
-    id,x_0, y_0, flux, fwhm_x,fwhm_y, theta
+    """Convert a photutils parameter QTable to a JSON-compatible dict.
 
-    if imap supplied, will also get ra,dec
+    Parameters
+    ----------
+    params : QTable
+        Photutils source parameter table with columns
+        ``id``, ``x_0``, ``y_0``, ``flux``, ``x_fwhm``, ``y_fwhm``, ``theta``.
+    imap : enmap.ndmap, optional
+        If provided, RA/Dec are computed for each source and added to the output.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    dict
+        Dictionary of arrays with keys matching QTable columns plus
+        ``RADeg``, ``decDeg``, ``name``, ``fluxJy``, ``err_fluxJy``, and
+        ``forced``.
     """
     log = log or get_logger()
     log.bind(func_name="convert_photutils_qtable_to_json")
@@ -240,14 +300,19 @@ def ra_lims_valid(
     ra_lims: AstroPydanticQuantity[u.deg] = None,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Check if the RA limits are valid.
+    """Check whether RA limits are a valid ``(min_ra, max_ra)`` pair.
 
-    Arguments:
-        ra_lims (tuple): Tuple containing the RA limits (min_ra, max_ra).
+    Parameters
+    ----------
+    ra_lims : Quantity[deg], optional
+        Two-element tuple of RA limits.
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-        bool: True if the RA limits are valid, False otherwise.
+    Returns
+    -------
+    bool
+        ``True`` if limits are a length-2 tuple within ``[0, 360]`` deg.
     """
     if ra_lims is None:
         return False
@@ -263,14 +328,19 @@ def dec_lims_valid(
     dec_lims: AstroPydanticQuantity[u.deg] | None = None,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Check if the Dec limits are valid.
+    """Check whether Dec limits are a valid ``(min_dec, max_dec)`` pair.
 
-    Arguments:
-        dec_lims (tuple): Tuple containing the Dec limits (min_dec, max_dec).
+    Parameters
+    ----------
+    dec_lims : Quantity[deg], optional
+        Two-element tuple of Dec limits.
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-        bool: True if the Dec limits are valid, False otherwise.
+    Returns
+    -------
+    bool
+        ``True`` if limits are a length-2 tuple within ``[-90, 90]`` deg.
     """
     if dec_lims is None:
         return False
@@ -286,14 +356,19 @@ def load_config_yaml(
     config_path: str,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Load a configuration file in YAML format.
+    """Load a YAML configuration file into a dictionary.
 
-    Parameters:
-    - config_path: Path to the YAML configuration file.
+    Parameters
+    ----------
+    config_path : str
+        Path to the YAML file.
+    log : FilteringBoundLogger, optional
+        Structured logger.
 
-    Returns:
-    - Dictionary containing the configuration parameters.
+    Returns
+    -------
+    dict
+        Parsed configuration, or an empty dict if the file does not exist.
     """
     import os
 
@@ -337,11 +412,28 @@ def make_2d_gaussian_model_param_table(
     cuts={},
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Create a 2D Gaussian model parameter table from the sources detected in the image.
-    The table contains the parameters for each source, including its position, flux, and FWHM.
-    This function also applies cuts to filter out poor fits.
-    The function returns an astropy Qtable compatible with photutils psf_image generation.
+    """Build a photutils-compatible 2-D Gaussian parameter table from measured sources.
+
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Map used to convert sky positions to pixel coordinates.
+    sources : list of MeasuredSource
+        Source measurements to tabulate.
+    nominal_fwhm : Quantity, optional
+        Fallback FWHM when a source fit did not converge (default 2.2 arcmin).
+    verbose : bool, optional
+        Log debug output for each source (default ``False``).
+    cuts : dict, optional
+        Quality cuts as ``{field: [min, max]}`` applied before tabulation.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    QTable
+        Astropy QTable with columns ``x_0``, ``y_0``, ``x_fwhm``, ``y_fwhm``,
+        ``flux``, ``theta``, ``id`` suitable for ``photutils.psf.make_model_image``.
     """
     from astropy.table import QTable
 

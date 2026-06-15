@@ -27,15 +27,40 @@ from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
 class MapPreprocessor(ABC):
+    """Abstract base class for map preprocessors.
+
+    Preprocessors run between ``ProcessableMap.build`` and
+    ``ProcessableMap.finalize`` and modify the map in place.
+    """
+
     @abstractmethod
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        """
-        Provides preprocessing for the input map
+        """Apply preprocessing to a map.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            Map to preprocess.  Modified in place.
+
+        Returns
+        -------
+        ProcessableMap
+            The (possibly modified) input map.
         """
         return input_map
 
 
 class PlanetMasker(MapPreprocessor):
+    """Preprocessor that masks solar-system planets in the map.
+
+    Parameters
+    ----------
+    mask_radius : Quantity, optional
+        Radius of the circular mask around each planet.  Default is 15 arcmin.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     mask_radius: AstroPydanticQuantity = 15 * u.arcmin
 
     def __init__(
@@ -67,6 +92,17 @@ class PlanetMasker(MapPreprocessor):
 
 
 class KappaRhoCleaner(MapPreprocessor):
+    """Preprocessor that clips low-weight pixels from the kappa and rho maps.
+
+    Parameters
+    ----------
+    cut_on : {"median", "percentile", "max"}, optional
+        Reference value for the kappa threshold.  Default is ``"median"``.
+    fraction : float, optional
+        Fraction of the reference value below which pixels are zeroed.
+        Default is 0.05.
+    """
+
     cut_on: Literal["median", "percentile", "max"] = "median"
     fraction: float = 0.05
 
@@ -94,6 +130,49 @@ class KappaRhoCleaner(MapPreprocessor):
 
 
 class MatchedFilter(MapPreprocessor):
+    """Preprocessor that applies a matched filter to intensity+ivar maps.
+
+    Converts an ``IntensityAndInverseVarianceMap`` into a
+    ``MatchedFilteredIntensityAndInverseVarianceMap`` containing rho/kappa maps.
+
+    Parameters
+    ----------
+    infofile : Path, optional
+        Path to the map info HDF file (used for noise model).
+    maskfile : Path, optional
+        Path to an external mask file.
+    beam1d : Path, optional
+        Path to a 1-D beam profile file.
+    shrink_holes : Quantity, optional
+        Radius by which to erode holes in the mask.  Default is 20 arcmin.
+    apod_edge : Quantity, optional
+        Apodisation width at the map edge.  Default is 10 arcmin.
+    apod_holes : Quantity, optional
+        Apodisation width around holes.  Default is 5 arcmin.
+    noisemask_lim : float, optional
+        SNR limit for the noise mask.  ``None`` disables noise masking.
+    noisemask_radius : Quantity, optional
+        Radius for the noise mask.  Default is 10 arcmin.
+    highpass : bool, optional
+        Apply a high-pass filter.  Default is ``False``.
+    band_height : Quantity, optional
+        Scan-band height for the filter model.  Default is 1 degree.
+    shift : float, optional
+        Band shift parameter.  Default is 0.
+    simple : bool, optional
+        Use a simple power-law noise model instead of the data-driven one.
+    simple_lknee : float, optional
+        Knee multipole for the simple noise model.  Default is 1000.
+    simple_alpha : float, optional
+        Spectral index for the simple noise model.  Default is -3.5.
+    lres : tuple of int, optional
+        Low-resolution multipole range for the filter.  Default is (70, 100).
+    pixwin : str, optional
+        Pixel window function type.  Default is ``"nn"``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     def __init__(
         self,
         infofile: Path | None = None,
@@ -170,6 +249,19 @@ class MatchedFilter(MapPreprocessor):
 
 
 class EdgeMask(MapPreprocessor):
+    """Preprocessor that masks a band of pixels near the map edge.
+
+    Parameters
+    ----------
+    edge_width : Quantity, optional
+        Width of the masked border.  Default is 10 arcmin.
+    mask_on : {"rho", "kappa", "flux", "snr", "inverse_variance", "intensity"}, optional
+        Map attribute used to determine the edge region.  Default is
+        ``"kappa"``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     edge_width: AstroPydanticQuantity = AstroPydanticQuantity(10.0 * u.arcmin)
     mask_on: Literal["rho", "kappa", "flux", "snr", "inverse_variance", "intensity"] = (
         "kappa"
@@ -215,6 +307,22 @@ class EdgeMask(MapPreprocessor):
 
 
 class GalaxyMask(MapPreprocessor):
+    """Preprocessor that applies a galactic dust mask to the map.
+
+    Parameters
+    ----------
+    mask_path : Path, optional
+        Path to a FITS galactic mask file.  Either ``mask_path`` or
+        ``mask_map`` must be provided.
+    invert : bool, optional
+        If ``True``, invert the mask (mask the non-galactic region).
+        Default is ``False``.
+    mask_map : enmap.ndmap, optional
+        Pre-loaded galactic mask.  Takes precedence over ``mask_path``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     mask_path: Path
 
     def __init__(

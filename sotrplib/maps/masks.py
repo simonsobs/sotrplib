@@ -12,7 +12,22 @@ from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_a
 def mask_dustgal(
     imap: enmap.ndmap, galmask: enmap.ndmap, log: FilteringBoundLogger | None = None
 ):
-    """Get a mask that masks out the dusty galaxy"""
+    """Project the galactic dust mask onto the geometry of a target map.
+
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Target map whose shape and WCS define the output geometry.
+    galmask : enmap.ndmap
+        Galactic dust mask to reproject.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    enmap.ndmap
+        Reprojected mask with the same geometry as ``imap``.
+    """
     log = log or structlog.get_logger()
     log = log.bind(func="mask_dustgal")
     masked_map = enmap.project(galmask.astype(float), imap.shape, imap.wcs)
@@ -29,16 +44,34 @@ def mask_planets(
     planets=["Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
     log: FilteringBoundLogger | None = None,
 ) -> enmap.ndmap:
-    """
-    Get's the planet ephemerides at start and end times of the map, and creates a mask around each planet position.
-    Assumes that the planet positions do not change significantly during the observation.
+    """Create a boolean mask blanking out solar-system planets.
 
-    Args:
-        input_map: enmap.ndmap to create planet mask for
-        mask_time: time to get planet positions at, if None uses map start and end times
-        array: array name, if None uses input_map.array
-        frequency: frequency, if None uses input_map.frequency
-        planets: list of planet names to mask
+    Fetches planet ephemerides at the provided times and grows a circular
+    mask around each planet position.  Planet positions are assumed to be
+    approximately constant over the observation.
+
+    Parameters
+    ----------
+    input_map : enmap.ndmap
+        Map that defines the output geometry.
+    mask_time : datetime or list of datetime
+        Time(s) at which to evaluate planet positions.
+    array : str, optional
+        Detector array name (used for beam lookup).
+    frequency : str, optional
+        Frequency band (used for beam lookup).
+    mask_radius : Quantity, optional
+        Radius of the circular mask around each planet.  Default is 10 arcmin.
+    planets : list of str, optional
+        Planet names to mask.  Defaults to the six outer planets plus Venus.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    enmap.ndmap
+        Boolean mask: ``True`` where the map is unmasked, ``False`` near
+        planets.
     """
     log = log or structlog.get_logger()
     log = log.bind(func="mask_planets")
@@ -91,14 +124,19 @@ def mask_planets(
 
 
 def mask_edge(imap: enmap.ndmap, pix_num: int):
-    """Get a mask that masking off edge pixels
+    """Create a mask that zeros a band of pixels near the map edge.
 
-    Args:
-        imap:ndmap to create mask for,usually kappa map
-        pix_num: pixels within this number from edge will be cutoff
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Map to create the edge mask for (typically the kappa map).
+    pix_num : int
+        Width of the masked border in pixels.
 
-    Returns:
-        binary ndmap with 1 == unmasked, 0 == masked
+    Returns
+    -------
+    enmap.ndmap
+        Binary mask: 1 where unmasked, 0 within ``pix_num`` pixels of the edge.
     """
     from scipy.ndimage import morphology as morph
 
@@ -119,16 +157,24 @@ def get_masked_map(
     galmask: enmap.ndmap,
     planet_mask: enmap.ndmap,
 ):
-    """returns map with edge, dustygalaxy, and planets masked
+    """Apply edge, galactic, and planet masks to a map.
 
-    Args:
-        imap: input map
-        edgemask: mask of map edges
-        galmask: enmap of galaxy mask
-        planet_mask: enmap of planet mask
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Input map to mask.
+    edgemask : enmap.ndmap
+        Binary edge mask (1 = keep, 0 = mask).
+    galmask : enmap.ndmap
+        Galactic dust mask in the native map projection.  If ``None``, the
+        galactic mask step is skipped.
+    planet_mask : enmap.ndmap
+        Planet mask (1 = keep, 0 = mask).
 
-    Returns:
-        imap with masks applied
+    Returns
+    -------
+    enmap.ndmap
+        ``imap`` multiplied by all applicable masks.
     """
     if galmask is None:
         return imap * edgemask * planet_mask
@@ -145,10 +191,29 @@ def make_src_mask(
     arr: str = None,
     freq: str = None,
 ):
-    """
-    mask_radius in pixels, can be gotten using
-    sotrplib.utils.utils.get_pix_from_peak_to_noise
+    """Create a mask blanking circular regions around a list of source positions.
 
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Map that defines the output geometry.
+    srcs_pix : list of array-like, optional
+        Source pixel positions ``[[dec_pix, ra_pix], ...]``.
+    fwhm : float, optional
+        Beam FWHM in arcminutes.  Used with ``arr`` and ``freq`` to compute
+        the cut radius when ``mask_radius`` is not supplied.
+    mask_radius : list of float, optional
+        Per-source cut radius in pixels.  Computed from ``get_cut_radius`` if
+        not provided.
+    arr : str, optional
+        Detector array name (used for cut-radius lookup).
+    freq : str, optional
+        Frequency band (used for cut-radius lookup).
+
+    Returns
+    -------
+    enmap.ndmap
+        Mask with value 1 everywhere except inside the source discs (value 0).
     """
     from ..utils.utils import get_cut_radius
 

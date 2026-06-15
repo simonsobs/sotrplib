@@ -23,16 +23,36 @@ from .sim_sources import SimulatedSource
 
 
 class SourceInjector(ABC):
+    """Abstract base for source injectors."""
+
     @abstractmethod
     def inject(
         self,
         input_map: ProcessableMap,
         simulated_sources: list[SimulatedSource],
     ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
+        """Inject simulated sources into a map.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            The map to inject sources into.
+        simulated_sources : list of SimulatedSource
+            Sources to inject.
+
+        Returns
+        -------
+        valid_sources : list of SimulatedSource
+            Sources that were successfully injected (lie within the map).
+        output_map : ProcessableMapWithSimulatedSources
+            A new map with the injected source fluxes added.
+        """
         return
 
 
 class EmptySourceInjector(SourceInjector):
+    """No-op injector that returns the input map unchanged."""
+
     def inject(
         self,
         input_map: ProcessableMap,
@@ -42,6 +62,25 @@ class EmptySourceInjector(SourceInjector):
 
 
 class PhotutilsSourceInjector(SourceInjector):
+    """Inject simulated sources as 2-D Gaussians using photutils.
+
+    Parameters
+    ----------
+    gauss_fwhm : Quantity, optional
+        Nominal beam FWHM (default 2.2 arcmin).
+    gauss_theta_min : Quantity[deg], optional
+        Minimum Gaussian rotation angle (default 0 deg).
+    gauss_theta_max : Quantity[deg], optional
+        Maximum Gaussian rotation angle (default 90 deg).
+    fwhm_uncertainty_fraction : float, optional
+        Fractional scatter applied to the per-source FWHM (default 0.01).
+    progress_bar : bool, optional
+        Show a photutils progress bar during model-image generation
+        (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     def __init__(
         self,
         gauss_fwhm: u.Quantity = 2.2 * u.arcmin,

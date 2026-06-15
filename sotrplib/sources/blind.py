@@ -15,6 +15,8 @@ from sotrplib.utils.utils import get_fwhm
 
 
 class EmptyBlindSearch(BlindSearchProvider):
+    """No-op blind search that always returns empty results."""
+
     def search(
         self,
         input_map: ProcessableMap,
@@ -24,8 +26,16 @@ class EmptyBlindSearch(BlindSearchProvider):
 
 
 class BlindSearchParameters(BaseModel):
-    """
-    Parameters for blind source searching using photutils.
+    """Parameters for blind source searching using photutils.
+
+    Fields
+    ------
+    sigma_threshold : float
+        Detection threshold in units of the map noise (default 5.0).
+    minimum_separation : list of Quantity[arcmin]
+        Minimum angular separations between sources; one per threshold level.
+    sigma_threshold_for_minimum_separation : list of float
+        SNR thresholds corresponding to each entry in ``minimum_separation``.
     """
 
     ## TODO : Get these into the json config
@@ -37,6 +47,20 @@ class BlindSearchParameters(BaseModel):
 
 
 class SigmaClipBlindSearch(BlindSearchProvider):
+    """Blind source search using sigma-clipping via photutils.
+
+    Parameters
+    ----------
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    parameters : BlindSearchParameters, optional
+        Detection parameters; defaults to ``BlindSearchParameters()``.
+    pixel_mask : enmap.ndmap, optional
+        Map of valid pixels (0 = bad, 1 = good).
+    thumbnail_half_width : Quantity[deg], optional
+        Half-width of thumbnails extracted around each detection.
+    """
+
     def __init__(
         self,
         log: FilteringBoundLogger | None = None,

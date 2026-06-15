@@ -36,6 +36,57 @@ from .source_subtractor import (
 
 
 class Settings(BaseSettings):
+    """Top-level pipeline configuration loaded from a JSON file or environment.
+
+    All fields can be overridden by environment variables prefixed with
+    ``SOTRP_`` or by passing a JSON config file to ``Settings.from_file``.
+
+    Fields
+    ------
+    observatory : {"SO", "ACT", "SPT"}
+        Telescope (default ``"SO"``).
+    instrument : str
+        Instrument name (default ``"LAT"``).
+    maps : AllMapGeneratorConfigTypes
+        Input map sources.
+    map_coadder : AllMapCoadderConfigTypes
+        Map coadding strategy.
+    source_simulators : list
+        Source generators for injection tests.
+    source_injector : AllSourceInjectorConfigTypes
+        Source injection method.
+    source_catalogs : list
+        Known-source catalogs for forced photometry and sifting.
+    sso_catalogs : list
+        Solar-system object catalogs.
+    preprocessors : list
+        Ordered list of map preprocessors.
+    postprocessors : list
+        Ordered list of map postprocessors.
+    pointing_provider : AllForcedPhotometryConfigTypes
+        Photometry method used for pointing sources.
+    pointing_residual : AllPointingResidualConfigTypes
+        Pointing offset model.
+    forced_photometry : AllForcedPhotometryConfigTypes
+        Photometry method used for known sources.
+    source_subtractor : AllSourceSubtractorConfigTypes
+        Source subtraction strategy.
+    blind_search : AllBlindSearchConfigTypes
+        Blind transient detection method.
+    sifter : AllSifterConfigTypes
+        Candidate sifting strategy.
+    source_outputs : list
+        Output handlers for source catalogs.
+    map_outputs : list
+        Output handlers for map products.
+    runner : {"basic", "prefect"}
+        Pipeline runner backend (default ``"basic"``).
+    profile : bool
+        Enable pyinstrument profiling (default ``False``).
+    log_level : int or str
+        Logging level (default ``logging.INFO``).
+    """
+
     # Telescope choice
     observatory: Literal["SO", "ACT", "SPT"] = "SO"
     instrument: Literal["LAT", "ACTPol", "SPT3G", "SAT1", "SAT2", "SAT3"] = "LAT"
@@ -114,10 +165,30 @@ class Settings(BaseSettings):
     # Read json config settings to override default + environment
     @classmethod
     def from_file(cls, config_path: Path | str) -> "Settings":
+        """Load settings from a JSON configuration file.
+
+        Parameters
+        ----------
+        config_path : Path or str
+            Path to the JSON file.
+
+        Returns
+        -------
+        Settings
+            Validated settings instance.
+        """
         with open(config_path, "r") as handle:
             return cls.model_validate_json(handle.read())
 
     def to_dependencies(self) -> dict[str, Any]:
+        """Instantiate all pipeline components from the current settings.
+
+        Returns
+        -------
+        dict
+            Dictionary of constructed pipeline component instances keyed by
+            their role name (e.g. ``"map_coadder"``, ``"preprocessors"``).
+        """
         structlog.configure(
             wrapper_class=structlog.make_filtering_bound_logger(self.log_level),
         )
@@ -149,6 +220,14 @@ class Settings(BaseSettings):
         return contents
 
     def to_runner(self) -> BaseRunner:
+        """Construct the pipeline runner from the current settings.
+
+        Returns
+        -------
+        BaseRunner
+            A ``PipelineRunner`` or ``PrefectRunner`` depending on
+            ``self.runner``.
+        """
         match self.runner:
             case "basic":
                 return self.to_basic()

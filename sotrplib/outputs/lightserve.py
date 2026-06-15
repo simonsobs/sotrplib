@@ -17,9 +17,18 @@ from .core import SourceOutput
 
 
 class LightServeOutput(SourceOutput):
-    """
-    Output source candidates to lightserve. Note that, for now, this only
-    handles forced photometry output.
+    """Upload forced-photometry source candidates to a LightServe HTTP server.
+
+    Parameters
+    ----------
+    hostname : str
+        Base URL of the LightServe server.
+    token_tag : str, optional
+        Tag used to look up the SOAuth authentication token.
+    identity_server : str, optional
+        Identity server URL for token exchange.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     def __init__(

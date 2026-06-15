@@ -18,12 +18,27 @@ class SourceSubtractedMap(ProcessableMap):
 
 
 class SourceSubtractor(ABC):
+    """Abstract base for source-subtraction pipeline steps."""
+
     @abstractmethod
     def subtract(
         self,
         sources: list[MeasuredSource],
         input_map: ProcessableMap,
     ) -> SourceSubtractedMap:
+        """Subtract sources from the input map.
+
+        Parameters
+        ----------
+        sources : list of MeasuredSource
+            Sources to subtract.
+        input_map : ProcessableMap
+            Map from which sources will be subtracted.
+
+        Returns
+        -------
+        SourceSubtractedMap
+        """
         return
 
 

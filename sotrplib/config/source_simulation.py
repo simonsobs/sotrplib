@@ -16,16 +16,47 @@ from sotrplib.sims.sim_source_generators import (
 
 
 class SourceSimulationConfig(BaseModel, ABC):
+    """Abstract base for source-simulation configuration objects.
+
+    Each subclass defines a ``simulation_type`` discriminator and implements
+    ``to_simulator`` to construct a ``SimulatedSourceGenerator``.
+    """
+
     simulation_type: str
 
     @abstractmethod
     def to_simulator(
         self, log: FilteringBoundLogger | None = None
     ) -> SimulatedSourceGenerator:
+        """Construct the configured source generator.
+
+        Parameters
+        ----------
+        log : FilteringBoundLogger, optional
+            Structured logger.
+
+        Returns
+        -------
+        SimulatedSourceGenerator
+            The constructed generator instance.
+        """
         return
 
 
 class FixedSourceGeneratorConfig(SourceSimulationConfig):
+    """Configuration for a fixed-flux simulated source generator.
+
+    Fields
+    ------
+    min_flux, max_flux : Quantity[Jy]
+        Flux range for uniformly-drawn simulated sources.
+    number : int
+        Number of sources to simulate.
+    catalog_fraction : float
+        Fraction of simulated sources placed at known catalog positions
+        (default 1.0).
+    """
+
     simulation_type: Literal["fixed"] = "fixed"
     min_flux: AstroPydanticQuantity[u.Jy]
     max_flux: AstroPydanticQuantity[u.Jy]
@@ -45,6 +76,22 @@ class FixedSourceGeneratorConfig(SourceSimulationConfig):
 
 
 class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
+    """Configuration for a Gaussian-profile transient source generator.
+
+    Fields
+    ------
+    flare_width_shortest, flare_width_longest : timedelta
+        Range of flare durations drawn uniformly.
+    peak_amplitude_minimum, peak_amplitude_maximum : Quantity[Jy]
+        Range of peak flare amplitudes drawn uniformly.
+    number : int
+        Number of transient sources to simulate.
+    flare_earliest_time, flare_latest_time : AwareDatetime or None
+        Time window within which flare peaks are placed.
+    catalog_fraction : float
+        Fraction placed at known catalog positions (default 1.0).
+    """
+
     simulation_type: Literal["gaussian_transient"] = "gaussian_transient"
 
     flare_width_shortest: timedelta
@@ -73,6 +120,22 @@ class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
 
 
 class SOCatSourceGeneratorConfig(SourceSimulationConfig):
+    """Configuration for a mixed fixed/transient source generator seeded from SOCat.
+
+    Fields
+    ------
+    fraction_fixed : float
+        Fraction of catalog sources simulated as fixed (default 0.5).
+    fraction_gaussian : float
+        Fraction simulated as Gaussian transients (default 0.5).
+    flare_earliest_time, flare_latest_time : AwareDatetime
+        Time window for transient flare peaks.
+    flare_width_shortest, flare_width_longest : timedelta
+        Range of flare durations.
+    peak_amplitude_minimum_factor, peak_amplitude_maximum_factor : float
+        Flare amplitude as a multiple of the catalog source flux.
+    """
+
     simulation_type: Literal["socat"] = "socat"
     fraction_fixed: float = 0.5
     fraction_gaussian: float = 0.5

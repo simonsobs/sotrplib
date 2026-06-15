@@ -17,12 +17,12 @@ def radec_to_str_name(
     """
     Convert RA & dec (in degrees) to IAU-approved string name.
 
-    Arguments
-    ---------
+    Parameters
+    ----------
     ra : float
-        Source right ascension in degrees
+        Source right ascension in degrees.
     dec : float
-        Source declination in degrees
+        Source declination in degrees.
     source_class : str
         The class of source to which this name is assigned.  Supported classes
         are ``pointsource``, ``cluster`` or ``transient``.  Shorthand class
@@ -79,14 +79,17 @@ def radec_to_str_name(
 
 
 def datetime_mean(datetime_objects):
-    """
-    Calculates the mean of a list of datetime objects.
+    """Calculate the mean of a list of datetime objects.
 
-    Args:
-        datetime_objects (list): A list of datetime.datetime objects.
+    Parameters
+    ----------
+    datetime_objects : list of datetime.datetime
+        Datetimes to average.
 
-    Returns:
-        datetime.datetime: The mean datetime object.
+    Returns
+    -------
+    datetime.datetime or None
+        Mean datetime, or ``None`` if the input list is empty.
     """
     if not datetime_objects:
         return None
@@ -104,10 +107,14 @@ def datetime_mean(datetime_objects):
 
 
 def normalize_ra(ra_array):
-    """
-    Normalize RA array to either [0, 360) or [-180, 180).
+    """Normalize an RA array to either ``[0, 360)`` or ``[-180, 180)``.
 
-    Return normalized RA array and system used.
+    Returns
+    -------
+    ra_norm : Quantity
+        Normalized RA array.
+    system : str
+        ``"0-360"`` or ``"-180-180"`` depending on which convention was applied.
     """
 
     if np.any(ra_array < 0 * u.deg):
@@ -147,9 +154,26 @@ def restrict_ctimes_to_local_night(
     night_hour: float = 22,
     tz_loc: str = "America/Santiago",
 ):
-    """
-    Given a list of ctimes, return the boolean mask for night times,
-    where night times are defined as pre-morning_hour and post-night_hour.
+    """Return a boolean mask selecting night-time entries from a ctime array.
+
+    Night is defined as hours after ``night_hour`` or before ``morning_hour``
+    in local time.
+
+    Parameters
+    ----------
+    ctimes : list of float
+        Unix timestamps (ctime) to filter.
+    morning_hour : float, optional
+        Local hour before which observations are considered night (default 11).
+    night_hour : float, optional
+        Local hour after which observations are considered night (default 22).
+    tz_loc : str, optional
+        Timezone string (default ``"America/Santiago"``).
+
+    Returns
+    -------
+    np.ndarray of bool
+        ``True`` for entries that fall during local night.
     """
     local_hour = ctime_to_local_hour(ctimes, tz_loc=tz_loc)
     night_times = (local_hour > night_hour) & (local_hour < morning_hour)
@@ -158,14 +182,23 @@ def restrict_ctimes_to_local_night(
 
 
 def get_freq_array_splits(files: list):
-    """
-    given a list of map files with names depth1_[obsid]_[arr]_[freq]_[maptype].fits,
-    return a dictionary with keys arr_freq for each combination of arr,freq as
-    well as freq for coadds of all arrays.
-    each element contains a boolean array indexing the files into those subsets.
+    """Group map files by array/frequency combination.
 
-    check if all of the files only contain one wafer, in which case remove the
-    array-coadded key; i.e. if all files have pa5_f090, remove the f090.
+    Parses filenames of the form
+    ``depth1_[obsid]_[arr]_[freq]_[maptype].fits`` and returns a boolean
+    index dict.  Array-coadded frequency keys (e.g. ``f090``) are removed
+    when all files share the same wafer.
+
+    Parameters
+    ----------
+    files : list of str
+        Map file paths to group.
+
+    Returns
+    -------
+    dict
+        Mapping from ``arr_freq`` (or just ``freq``) to a boolean array
+        selecting the matching files.
     """
     arrs = np.asarray([f.split("_")[-3] for f in files])
     freqs = np.asarray([f.split("_")[-2] for f in files])
@@ -196,18 +229,30 @@ def get_map_groups(
     morning_hour: float = 11,
     night_hour: float = 22,
 ):
-    """
-    given a list of map files with names depth1_[obsid]_[arr]_[freq]_[maptype].fits
-    group into bins of length `coadd_days` days.
-    Also supports restricting the maps to nighttime only.
+    """Group map files into time bins by array/frequency.
 
-    returns
-     map_groups:dict
-        dictionary keyed by array/freq combinations containing the relevant set of maps
-     map_group_time_range:dict
-        dictionary keyed by array/freq combinations containing the actual time range of maps in the bin.
-     time_bins: array-like, None
-        time bin centers in ctime seconds (with bin-widths of coadd_days) if coadd_days>0 else None.
+    Parameters
+    ----------
+    maps : list of str
+        Map file paths with names ``depth1_[obsid]_[arr]_[freq]_[maptype].fits``.
+    coadd_days : float, optional
+        Bin width in days (default 7).  Set to 0 to skip time binning.
+    restrict_to_night : bool, optional
+        If ``True``, discard daytime maps before grouping (default ``False``).
+    morning_hour : float, optional
+        Local hour defining the end of night (default 11).
+    night_hour : float, optional
+        Local hour defining the start of night (default 22).
+
+    Returns
+    -------
+    map_groups : dict
+        Mapping from ``arr_freq`` to list-of-lists of map paths, one inner
+        list per time bin.
+    map_group_time_range : dict
+        Mapping from ``arr_freq`` to the ``[min_ctime, max_ctime]`` of each bin.
+    time_bins : np.ndarray or None
+        Bin-centre ctimes (seconds), or ``None`` if ``coadd_days == 0``.
     """
     from pathlib import Path
 
@@ -335,18 +380,26 @@ def get_pix_from_peak_to_noise(
     fwhm_pix: Union[float, list],
     minpix: Union[int, float] = 1,
 ):
-    """
-    Given a gaussian with amplitude, `peak`, and fwhm in units of pixels, `fwhm_pix`,
-    calculate the distance from the peak to the noise level given by `noise`.
+    """Compute the mask radius (in pixels) for each source given its peak and noise.
 
-    Assumes that peak, noise, fwhm_pix are either the same length or floats
-    (i.e. the same noise value or same fwhm for each source)
+    For each source, finds the pixel distance at which a Gaussian with
+    amplitude ``peak`` and FWHM ``fwhm_pix`` drops to ``noise``.
 
-    Units are in pixels.
+    Parameters
+    ----------
+    peak : float or list of float
+        Peak amplitude(s) of the source Gaussians.
+    noise : float or list of float
+        Local noise level(s); scalar applies to all sources.
+    fwhm_pix : float or list of float
+        FWHM(s) in pixels; scalar applies to all sources.
+    minpix : int or float, optional
+        Minimum mask radius in pixels (default 1).
 
-    minpix provides the minimum radius.
-
-    Returns array of pixels corresponding to mask radius for each source.
+    Returns
+    -------
+    np.ndarray
+        Mask radii in pixels, one per source.
     """
     from astropy.modeling.models import Gaussian1D
 
@@ -387,24 +440,39 @@ def get_cut_radius(
     min_radius_arcmin: float = 0.5,
     max_radius_arcmin: float = 60.0,
 ):
-    """
-    get desired radius that we want to cut on point sources or signal at the center
+    """Compute the point-source mask radius in pixels for a given map.
 
-    Uses the noise in the map which can be a single value or localized for each source.
+    If ``source_amplitudes`` are supplied, the radius is scaled so that the
+    Gaussian profile falls below the map noise, up to ``max_radius_arcmin``.
 
-    if source_amplitudes provided, will perform a scaling of the cut radius up to max_radius
-    by taking the number of pixels required for a gaussian with peak amplitude to fall below the map noise.
-    Args:
-        map_res_arcmin: resolution of map, in arcmin
-        arr: array name
-        freq: frequency
-        fwhm_arcmin: float fwhm (arcmin) or None
-        match_filtered: bool , increase radius by 2sqrt(2) if so
-        source_amplitudes: list of amplitudes, used to set mask radius
-        map_noise: noise in the map, for scaling mask radius.
-        max_radius_arcmin: maximum mask radius, in arcmin
-    Returns:
-        radius in pixel
+    Parameters
+    ----------
+    map_res_arcmin : float
+        Map pixel scale in arcmin.
+    arr : str
+        Array name (e.g. ``"pa5"``).
+    freq : str
+        Frequency band (e.g. ``"f090"``).
+    instrument : str, optional
+        ``"SOLAT"`` or ``"SOSAT"`` (default ``None`` → SOLAT).
+    fwhm_arcmin : float, optional
+        Beam FWHM in arcmin; inferred from ``freq`` and ``arr`` if ``None``.
+    matched_filtered : bool, optional
+        If ``True``, increase radius by ``sqrt(2)`` (default ``False``).
+    source_amplitudes : list of float, optional
+        Per-source peak amplitudes used for amplitude-scaled masking.
+    map_noise : list of float, optional
+        Per-source noise estimates; required when ``source_amplitudes`` is set.
+    min_radius_arcmin : float, optional
+        Minimum mask radius in arcmin (default 0.5).
+    max_radius_arcmin : float, optional
+        Maximum mask radius in arcmin (default 60.0).
+
+    Returns
+    -------
+    np.ndarray
+        Mask radii in pixels, one per source (or a single scalar if no
+        amplitudes are supplied).
     """
 
     if not fwhm_arcmin:
@@ -432,13 +500,17 @@ def get_cut_radius(
 
 
 def ra_pos(ra: u.Quantity[u.deg]):
-    """converts ra to 0<ra<360
+    """Convert RA to the range ``0 < ra < 360`` deg (in-place).
 
-    Args:
-        ra: arr to convert
+    Parameters
+    ----------
+    ra : Quantity[deg]
+        Array of RA values to normalise.
 
-    Returns:
-        ra converted to 0<ra<360
+    Returns
+    -------
+    Quantity[deg]
+        Same array with negative values shifted by +360 deg.
     """
 
     ra[ra < 0.0 * u.deg] += 360.0 * u.deg
@@ -447,13 +519,17 @@ def ra_pos(ra: u.Quantity[u.deg]):
 
 
 def ra_neg(ra: u.Quantity[u.deg]):
-    """converts ra to -180<ra<180
+    """Convert RA to the range ``-180 < ra < 180`` deg (in-place).
 
-    Args:
-        ra: arr to convert ra of
+    Parameters
+    ----------
+    ra : Quantity[deg]
+        Array of RA values to normalise.
 
-    Returns:
-        ra converted to -180<ra<180
+    Returns
+    -------
+    Quantity[deg]
+        Same array with values above 180 deg shifted by -360 deg.
     """
 
     ra[ra > 180.0 * u.deg] -= 360.0 * u.deg
@@ -467,16 +543,23 @@ def angular_separation(
     ra2: u.Quantity[u.deg],
     dec2: u.Quantity[u.deg],
 ):
-    """calculates angular separation between two points on the sky
+    """Calculate the angular separation between two sky positions.
 
-    Args:
-        ra1: ra of first point [angle]
-        dec1: dec of first point [angle]
-        ra2: ra of second point [angle]
-        dec2: dec of second point [angle]
+    Parameters
+    ----------
+    ra1 : Quantity[deg]
+        RA of the first point.
+    dec1 : Quantity[deg]
+        Dec of the first point.
+    ra2 : Quantity[deg]
+        RA of the second point.
+    dec2 : Quantity[deg]
+        Dec of the second point.
 
-    Returns:
-        angular separation between two points on the sky
+    Returns
+    -------
+    Angle
+        Angular separation as an astropy ``Angle`` quantity.
     """
 
     # convert to SkyCoord

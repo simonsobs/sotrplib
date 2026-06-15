@@ -425,19 +425,26 @@ def inject_random_sources(
     add_noise: bool = False,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Inject sources into a map using photutils.
-    Add injected sources to the injected_source_db.
-    Parameters:
-    - mapdata: ProcessableMap object containing the map to inject sources into.
-    - injected_source_db: Database object to store injected sources.
-    - sim_params: Dictionary containing simulation parameters.
-    - map_id: Unique identifier for the map.
-    - fwhm_arcmin: Bandwidth full width at half maximum (FWHM) in arcminutes.
-    - return_source_object_list: bool, if True, return the list of injected source objects.
-        otherwise, return a source catalog dict.
-    - add_noise: bool, if True, add sim_params['maps']['map_noise'] to the map.
-        Assumes this is already injected since sim maps load this by default.
+    """Inject random point sources into a map using photutils.
+
+    Parameters
+    ----------
+    mapdata : ProcessableMap
+        Map to inject sources into.
+    sim_params : dict
+        Simulation parameters dictionary.
+    fwhm_arcmin : Quantity[arcmin], optional
+        Beam FWHM (default 2.2 arcmin).
+    add_noise : bool, optional
+        If ``True``, add ``sim_params['maps']['map_noise']`` to the map
+        (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    list of RegisteredSource
+        Injected source objects.
     """
     log = log if log else get_logger()
     log = log.bind(func_name="inject_random_sources")

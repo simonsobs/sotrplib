@@ -14,14 +14,34 @@ from sotrplib.sims.source_injector import (
 
 
 class SourceInjectorConfig(BaseModel, ABC):
+    """Abstract base for source-injector configuration objects.
+
+    Each subclass defines an ``injector_type`` discriminator and implements
+    ``to_injector`` to construct a ``SourceInjector``.
+    """
+
     injector_type: str
 
     @abstractmethod
     def to_injector(self, log: FilteringBoundLogger | None = None) -> SourceInjector:
+        """Construct the configured source injector.
+
+        Parameters
+        ----------
+        log : FilteringBoundLogger, optional
+            Structured logger.
+
+        Returns
+        -------
+        SourceInjector
+            The constructed injector instance.
+        """
         return
 
 
 class EmptySourceInjectorConfig(SourceInjectorConfig):
+    """Configuration for a no-op source injector."""
+
     injector_type: Literal["empty"] = "empty"
 
     def to_injector(
@@ -31,6 +51,21 @@ class EmptySourceInjectorConfig(SourceInjectorConfig):
 
 
 class PhotutilsSourceInjectorConfig(SourceInjectorConfig):
+    """Configuration for the photutils Gaussian source injector.
+
+    Fields
+    ------
+    gauss_fwhm : Quantity[arcmin]
+        Nominal beam FWHM for injected Gaussian sources (default 2.2 arcmin).
+    gauss_theta_min, gauss_theta_max : Quantity[deg]
+        Range of orientation angles drawn uniformly (default 0–90 deg).
+    fwhm_uncertainty_fraction : float
+        Fractional scatter applied to the FWHM of each injected source
+        (default 0.01).
+    progress_bar : bool
+        Show a tqdm progress bar during injection (default ``False``).
+    """
+
     injector_type: Literal["photutils"] = "photutils"
     gauss_fwhm: AstroPydanticQuantity[u.arcmin] = 2.2 * u.arcmin
     gauss_theta_min: AstroPydanticQuantity[u.deg] = 0 * u.deg

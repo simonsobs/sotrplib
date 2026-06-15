@@ -20,6 +20,8 @@ from sotrplib.sources.sources import MeasuredSource
 
 
 class SourceOutput(ABC):
+    """Abstract base class for source-candidate output handlers."""
+
     @abstractmethod
     def output(
         self,
@@ -29,28 +31,48 @@ class SourceOutput(ABC):
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
-        """
-        Output the source candidates somehow. We also pass the
-        input map in case e.g. we wish to reconstruct thumbnails from it.
+        """Write source candidates to an output destination.
+
+        Parameters
+        ----------
+        forced_photometry_candidates : list of MeasuredSource
+            Sources measured via forced photometry.
+        sifter_result : SifterResult
+            Sifted blind-search candidates.
+        map_id : str
+            Identifier for the input map.
+        pointing_sources : list of MeasuredSource, optional
+            Sources used for pointing calibration.
+        injected_sources : list of SimulatedSource, optional
+            Simulated sources injected into the map.
         """
         return
 
 
 class MapOutput(ABC):
+    """Abstract base class for map output handlers."""
+
     field_ids: list[str]
 
     @abstractmethod
     def output(self, input_map: ProcessableMap):
-        """
-        Output the map after postprocessing. This is for outputs that want to
-        do something with the map itself, e.g. save it to disk.
+        """Write the processed map to an output destination.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap
+            The processed map to output.
         """
         return
 
 
 class JSONSerializer(SourceOutput):
-    """
-    Serialize a source candidate list to a JSON file.
+    """Serialize source candidate lists to a timestamped JSON file.
+
+    Parameters
+    ----------
+    directory : Path
+        Directory where JSON files are written.
     """
 
     directory: Path
@@ -84,8 +106,12 @@ class JSONSerializer(SourceOutput):
 
 
 class PickleSerializer(SourceOutput):
-    """
-    Serialize a source candidate list to a Pickle file.
+    """Serialize source candidate lists to a timestamped pickle file.
+
+    Parameters
+    ----------
+    directory : Path
+        Directory where pickle files are written.
     """
 
     directory: Path
@@ -121,8 +147,12 @@ class PickleSerializer(SourceOutput):
 
 
 class CutoutImageOutput(SourceOutput):
-    """
-    Output cutout images around each source candidate.
+    """Save cutout PNG images around each source candidate.
+
+    Parameters
+    ----------
+    directory : Path
+        Directory where cutout image files are written.
     """
 
     directory: Path
@@ -169,9 +199,16 @@ class CutoutImageOutput(SourceOutput):
 
 
 class MapOutputSerializer(MapOutput):
-    """
-    Output the map after postprocessing. This is for outputs that want to
-    do something with the map itself, e.g. save it to disk.
+    """Serialize selected map fields to FITS files on disk.
+
+    Parameters
+    ----------
+    directory : Path
+        Directory where FITS files are written.
+    field_ids : list of str
+        Map attribute names (e.g. ``"flux"``, ``"snr"``) to serialize.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     directory: Path

@@ -43,19 +43,31 @@ def hist(data, binsize, xlabel=None, max=None):
 def enplot_annotate(
     ra, dec, size=5, width=5, color="black", label=None, label_color="black", fname=None
 ):
-    """
+    """Generate enplot annotation lines for circles and optional text labels.
 
-    Write file to use as input for enplot to annotate a map with circles and text
+    Parameters
+    ----------
+    ra : list of float
+        RA values in degrees.
+    dec : list of float
+        Dec values in degrees.
+    size : int or list of int, optional
+        Circle radius in pixels (default 5).
+    width : int or list of int, optional
+        Circle line width in pixels (default 5).
+    color : str, optional
+        Circle colour string recognised by enplot (default ``"black"``).
+    label : list of str, optional
+        Text labels to draw next to each circle; ``None`` omits labels.
+    label_color : str, optional
+        Label colour string (default ``"black"``).
+    fname : str, optional
+        If given, write the annotation lines to this file.
 
-    Args:
-        fname: str, name of file to write to
-        ra: list of ra values [deg]
-        dec: list of dec values [deg]
-        size: list of sizes for circles [pix]
-        label: list of labels for circles
-
-    Returns:
-        Writes file to fname
+    Returns
+    -------
+    list of str
+        Annotation lines suitable for passing to ``enplot``.
     """
 
     # parse sizes: if scalar, convert to list

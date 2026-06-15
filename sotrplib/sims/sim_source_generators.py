@@ -51,6 +51,8 @@ def random_timedelta(min_td, max_td):
 
 
 class SimulatedSourceGenerator(ABC):
+    """Abstract base for simulated source generators."""
+
     @abstractmethod
     def generate(
         self,
@@ -58,20 +60,45 @@ class SimulatedSourceGenerator(ABC):
         sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
     ) -> tuple[list[SimulatedSource], SourceCatalog]:
-        """
-        Generate the simulated sources, optionally within a map or a sky_box on the sky.
-        If input_map is provided, sky_box is to be ignored and inject only within the map area.
-        If time_range is provided, it specifies the time range for the simulation.
-        Returns both the list of the core 'sources' for use in the source
-        simulator, as well as a source catlaog that contains at least some of
-        the sources (some may be hidden for testing blind searches)
+        """Generate simulated sources within a map or sky region.
+
+        Parameters
+        ----------
+        input_map : ProcessableMap, optional
+            If provided, sources are generated within the map footprint and
+            ``sky_box`` is ignored.
+        sky_box : tuple of SkyCoord, optional
+            ``(lower_left, upper_right)`` sky-coordinate bounding box.
+        time_range : tuple of AwareDatetime, optional
+            ``(start, end)`` time range for the simulation.
+
+        Returns
+        -------
+        sources : list of SimulatedSource
+            Generated source objects for use in injection.
+        catalog : SourceCatalog
+            Reference catalog containing at least a fraction of the sources
+            (some may be hidden for blind-search testing).
         """
         return
 
 
 class FixedSourceGenerator(SimulatedSourceGenerator):
-    """
-    In-place source generator using photutils.
+    """Generate a fixed number of static (constant-flux) simulated sources.
+
+    Parameters
+    ----------
+    min_flux : Quantity
+        Minimum source flux.
+    max_flux : Quantity
+        Maximum source flux.
+    number : int
+        Number of sources to generate.
+    catalog_fraction : float, optional
+        Fraction of sources placed in the returned reference catalog
+        (default 1.0 — all sources visible).
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     def __init__(
@@ -167,6 +194,33 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 
 
 class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
+    """Generate Gaussian-flare transient sources at random sky positions.
+
+    Parameters
+    ----------
+    flare_earliest_time : AwareDatetime or None
+        Earliest possible flare peak time.  Overridden by the map observation
+        start if ``None`` and an ``input_map`` is supplied.
+    flare_latest_time : AwareDatetime or None
+        Latest possible flare peak time.  Overridden by the map observation
+        end if ``None`` and an ``input_map`` is supplied.
+    flare_width_shortest : timedelta
+        Minimum flare FWHM.
+    flare_width_longest : timedelta
+        Maximum flare FWHM.
+    peak_amplitude_minimum : Quantity
+        Minimum peak flux.
+    peak_amplitude_maximum : Quantity
+        Maximum peak flux.
+    number : int
+        Number of sources to generate.
+    catalog_fraction : float, optional
+        Fraction of sources placed in the returned reference catalog
+        (default 1.0).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+    """
+
     def __init__(
         self,
         flare_earliest_time: AwareDatetime | None,
@@ -327,10 +381,32 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
 
 
 class SOCatSourceGenerator(SimulatedSourceGenerator):
-    """
-    A source generator that uses an existing source catalog in SOCat format.
-    We then generate simulated sources based on that catalog, so it can be
-    matched against the same catalog.
+    """Generate simulated sources drawn from an existing SOCat catalog.
+
+    Sources are injected as a mixture of constant-flux and Gaussian-transient
+    types, matched against the same catalog to allow recovery testing.
+
+    Parameters
+    ----------
+    fraction_fixed : float
+        Fraction of catalog sources injected as constant-flux sources.
+    fraction_gaussian : float
+        Fraction of catalog sources injected as Gaussian-transient sources.
+        ``fraction_fixed + fraction_gaussian`` must be ≤ 1.0.
+    flare_earliest_time : datetime
+        Earliest possible flare peak time.
+    flare_latest_time : datetime
+        Latest possible flare peak time.
+    flare_width_shortest : timedelta
+        Minimum flare FWHM.
+    flare_width_longest : timedelta
+        Maximum flare FWHM.
+    peak_amplitude_minimum_factor : float
+        Lower bound on the random flux scaling factor applied to catalog fluxes.
+    peak_amplitude_maximum_factor : float
+        Upper bound on the random flux scaling factor applied to catalog fluxes.
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     def __init__(
@@ -345,20 +421,6 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         peak_amplitude_maximum_factor: float,
         log: FilteringBoundLogger | None = None,
     ):
-        """
-        Parameters
-        ----------
-        fraction_fixed: float
-            Fraction of sources in the catalog to inject as 'fixed' flux sources.
-        fraction_gaussian: float
-            Fraction of sources to inject as gaussian flares.
-
-        Notes
-        -----
-        The fraction of fixed and gaussian sources together must be less than 1.0.
-        For information on the flare parameters, see the `GaussianTransientSourceGenerator` class.
-        """
-
         if (fraction_fixed + fraction_gaussian) > 1.0:
             raise ValueError(
                 "Incompatible fractions for fixed and gaussian sources in SOCat generation"

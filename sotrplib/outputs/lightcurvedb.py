@@ -21,10 +21,17 @@ from .core import SourceOutput
 
 
 class LightcurveDBOutput(SourceOutput):
-    """
-    Output source candidates to straight to lightcurveDB. Note that, for now,
-    this only handles forced photometry output. This should be used for
-    development or when you have direct access to the database server.
+    """Upload forced-photometry source candidates directly to LightcurveDB.
+
+    Parameters
+    ----------
+    settings : LightcurveDBSettings
+        Database connection settings.
+    upsert_sources : bool, optional
+        If ``True``, upsert source records before writing flux measurements
+        (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
     """
 
     def __init__(

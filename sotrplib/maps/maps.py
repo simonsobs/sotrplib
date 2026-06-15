@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 
 
 def get_map_info_from_filename(map_path):
+    """Extract map metadata from a standard SO/ACT filename.
+
+    Parameters
+    ----------
+    map_path : Path or str
+        Path to the map file. Expected filename format:
+        ``<prefix>_<ctime>_<wafer>_<freq>_<suffix>``.
+
+    Returns
+    -------
+    dict or None
+        Dictionary with keys ``wafer_name``, ``freq``, ``map_ctime``, and
+        ``map_start_time``, or ``None`` if ``map_path`` is not a ``Path``
+        instance.
+    """
     if not isinstance(map_path, Path):
         return
 
@@ -47,6 +62,31 @@ def init_empty_so_map(
     include_half_pixel_offset=False,
     box: u.Quantity[u.deg] | None = None,
 ):
+    """Create an empty SO wide-field map with the given resolution.
+
+    Parameters
+    ----------
+    res : Quantity[arcmin]
+        Pixel resolution.  Required.
+    intensity : bool, optional
+        Unused placeholder for future intensity-map support.
+    include_half_pixel_offset : bool, optional
+        Passed to ``widefield_geometry`` to shift the reference pixel by half
+        a pixel.
+    box : Quantity[deg], optional
+        If provided, create a map covering this bounding box instead of the
+        full wide-field geometry.
+
+    Returns
+    -------
+    enmap.ndmap
+        Zero-valued map with the requested geometry.
+
+    Raises
+    ------
+    Exception
+        If ``res`` is not provided.
+    """
     ## res in radian
     if not res:
         raise Exception("Need a resolution, no input res and self.res is None.")
@@ -73,14 +113,33 @@ def subtract_sources(
     inplace=True,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    src_model is a simulated (model) map of the sources in the list.
-    sources are fit using photutils, and are MeasuredSource
-    objects with fwhm_ra, fwhm_dec, ra, dec, flux, and orientation
+    """Subtract a source model from the flux and SNR maps of a ProcessableMap.
 
-    inplace subtracts the model from input_map.flux and sets the snr to 0 where the model is nonzero.
-    if inplace is False, then the model is saved to input_map.sky_model instead of being
-    subtracted from the flux map. This allows for the source model to be saved without modifying the original map.
+    Parameters
+    ----------
+    input_map : ProcessableMap
+        Map to subtract sources from.  Modified in place when ``inplace=True``.
+    sources : list of MeasuredSource
+        Sources to model and subtract.  Each must have ``fwhm_ra``,
+        ``fwhm_dec``, ``ra``, ``dec``, ``flux``, and ``orientation``.
+    src_model : enmap.ndmap, optional
+        Pre-computed source model map.  If ``None``, a model is built from
+        ``sources`` using ``make_model_source_map``.
+    verbose : bool, optional
+        Print sources that are excluded from the model.
+    cuts : dict, optional
+        Parameter cuts passed to ``make_model_source_map``.
+    inplace : bool, optional
+        If ``True``, subtract the model from ``input_map.flux`` and zero the
+        SNR where the model is non-zero.  If ``False``, store the model in
+        ``input_map.sky_model`` without modifying the flux or SNR maps.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    ProcessableMap or None
+        The modified ``input_map``, or ``None`` if ``sources`` is empty.
     """
     log = log if log else structlog.get_logger()
     log.bind(func_name="subtract_sources")
@@ -126,6 +185,22 @@ def kappa_clean(
     rho: np.ndarray,
     min_frac: float = 1e-3,
 ):
+    """Clip kappa below a minimum fraction of its maximum and zero where rho is zero.
+
+    Parameters
+    ----------
+    kappa : np.ndarray
+        Inverse-variance-like weight map.  Modified in place.
+    rho : np.ndarray
+        Weighted signal map used to locate zero-signal pixels.
+    min_frac : float, optional
+        Minimum kappa is set to ``min_frac * nanmax(kappa)``.  Default is 1e-3.
+
+    Returns
+    -------
+    np.ndarray
+        Cleaned kappa map.
+    """
     kappa = np.maximum(kappa, np.nanmax(kappa) * min_frac)
     kappa[np.where(rho == 0.0)] = 0.0
     return kappa
@@ -137,6 +212,27 @@ def clean_map(
     fraction: float = 0.01,
     cut_on: str = "max",
 ):
+    """Zero map pixels where the inverse-variance is below a threshold.
+
+    Parameters
+    ----------
+    imap : np.ndarray
+        Signal map.  Modified in place.
+    inverse_variance : np.ndarray
+        Inverse-variance map used to determine which pixels to cut.
+    fraction : float, optional
+        Threshold fraction.  Pixels with ``ivar < fraction * reference`` are
+        zeroed.  Default is 0.01.
+    cut_on : {"max", "median", "percentile"}
+        Reference value for the threshold.  ``"max"`` uses ``nanmax``,
+        ``"median"`` uses ``nanmedian``, ``"percentile"`` treats ``fraction``
+        as a percentile level.  Defaults to ``"max"`` for unrecognized values.
+
+    Returns
+    -------
+    np.ndarray
+        Cleaned map.
+    """
     ## cut_on can be max or median, this sets the imap to zero for values of inverse variance
     ## which are below fraction*max or fraction*median of inverse variance map.
     if cut_on == "median" or cut_on == "med":
@@ -154,6 +250,21 @@ def get_snr(
     rho: np.ndarray,
     kappa: np.ndarray,
 ):
+    """Compute the signal-to-noise ratio map from rho and kappa.
+
+    Parameters
+    ----------
+    rho : np.ndarray
+        Matched-filter numerator map.
+    kappa : np.ndarray
+        Matched-filter denominator map.  Pixels where ``kappa == 0`` are set
+        to zero in the output.
+
+    Returns
+    -------
+    np.ndarray
+        SNR map: ``rho / sqrt(kappa)``.
+    """
     # supress divide by zero warning
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -163,6 +274,21 @@ def get_snr(
 
 
 def get_flux(rho: np.ndarray, kappa: np.ndarray):
+    """Compute the flux map from rho and kappa.
+
+    Parameters
+    ----------
+    rho : np.ndarray
+        Matched-filter numerator map.
+    kappa : np.ndarray
+        Matched-filter denominator map.  Pixels where ``kappa == 0`` are set
+        to zero in the output.
+
+    Returns
+    -------
+    np.ndarray
+        Flux map: ``rho / kappa``.
+    """
     # supress divide by zero warning
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -173,6 +299,19 @@ def get_flux(rho: np.ndarray, kappa: np.ndarray):
 
 
 def get_dflux(kappa: np.ndarray):
+    """Compute the flux uncertainty map from kappa.
+
+    Parameters
+    ----------
+    kappa : np.ndarray
+        Matched-filter denominator map.  Pixels where ``kappa == 0`` are set
+        to zero in the output.
+
+    Returns
+    -------
+    np.ndarray
+        Flux uncertainty map: ``kappa^{-0.5}``.
+    """
     # supress divide by zero warning
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -182,6 +321,22 @@ def get_dflux(kappa: np.ndarray):
 
 
 def get_maptype(map_path: Path):
+    """Infer the map type and file extension from a filename.
+
+    Parameters
+    ----------
+    map_path : Path or str
+        Path to the map file.  The type is determined by searching for the
+        substrings ``"rho"``, ``"kappa"``, ``"map"``, ``"ivar"``, or
+        ``"time"`` in the filename.
+
+    Returns
+    -------
+    maptype : str
+        One of ``"rho"``, ``"kappa"``, ``"map"``, ``"ivar"``, or ``"time"``.
+    suffix : str
+        File extension including the leading dot (e.g. ``".fits"``).
+    """
     if "rho" in str(map_path):
         maptype = "rho"
     elif "kappa" in str(map_path):
@@ -200,6 +355,20 @@ def get_maptype(map_path: Path):
 
 
 def get_observation_start_time(map_path: Path):
+    """Read the observation start time from the associated info HDF file.
+
+    Parameters
+    ----------
+    map_path : Path
+        Path to any map file.  The corresponding info file is located by
+        replacing the map-type substring with ``"info.hdf"``.
+
+    Returns
+    -------
+    float
+        Unix timestamp of the observation start, or ``0.0`` if no info file
+        exists.
+    """
     from os.path import exists
 
     maptype, _ = get_maptype(map_path)
@@ -215,13 +384,18 @@ def get_observation_start_time(map_path: Path):
 
 
 def edge_map(imap: enmap.ndmap):
-    """Finds the edges of a map
+    """Return a binary map marking the observed region of a map.
 
-    Args:
-        imap: ndmap to find edges of
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Input map.  Non-zero finite pixels are treated as observed.
 
-    Returns:
-        binary ndmap with 1 inside region, 0 outside
+    Returns
+    -------
+    enmap.ndmap
+        Binary map of dtype ``ubyte``: 1 inside the observed region (holes
+        filled), 0 outside.
     """
     from scipy.ndimage import binary_fill_holes
 
@@ -240,6 +414,24 @@ def get_submap(
     dec_deg: float,
     size_deg: float = 0.5,
 ) -> enmap:
+    """Extract a square submap centred on a sky position (no reprojection).
+
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Full map to extract from.
+    ra_deg : float
+        Right ascension of the centre in degrees.
+    dec_deg : float
+        Declination of the centre in degrees.
+    size_deg : float, optional
+        Half-width of the extraction box in degrees.  Default is 0.5.
+
+    Returns
+    -------
+    enmap.ndmap
+        Submap in the original projection.
+    """
     ## Does not reproject
 
     ra = ra_deg * degree
@@ -258,6 +450,27 @@ def get_thumbnail(
     size_deg: float = 0.5,
     proj: str = "tan",
 ) -> enmap:
+    """Extract a reprojected thumbnail centred on a sky position.
+
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Full map to extract from.
+    ra_deg : float
+        Right ascension of the centre in degrees.
+    dec_deg : float
+        Declination of the centre in degrees.
+    size_deg : float, optional
+        Half-width of the thumbnail in degrees.  Default is 0.5.
+    proj : str, optional
+        Output projection (e.g. ``"tan"``).  Default is ``"tan"``.
+
+    Returns
+    -------
+    enmap.ndmap
+        Reprojected thumbnail.  If the thumbnail is all NaN (e.g. near a map
+        boundary), ``nan_to_num`` is applied before a second attempt.
+    """
     from pixell import reproject
 
     ra = ra_deg * degree
@@ -279,6 +492,23 @@ def get_thumbnail(
 
 
 def get_time_safe(time_map: enmap.ndmap, poss: list, r: float = 5.0):
+    """Look up pixel times, falling back to a neighbourhood average for zero pixels.
+
+    Parameters
+    ----------
+    time_map : enmap.ndmap
+        Per-pixel time map (unix seconds).
+    poss : list of array-like
+        Positions in the form ``[[dec, ra], [dec, ra], ...]`` in radians.
+    r : float, optional
+        Fallback neighbourhood radius in arcminutes.  Default is 5.0.
+
+    Returns
+    -------
+    np.ndarray
+        Time values at each position.  Zero-valued pixels are replaced by the
+        inverse-variance-weighted average over the neighbourhood.
+    """
     ## pos [[dec,ra],[dec,ra],...]
     ## r radius in arcmin
 
@@ -305,11 +535,40 @@ def widefield_geometry(
     variant="fejer1",
     include_half_pixel_offset=False,
 ):
-    """Build an enmap covering the full sky, with the outermost pixel centers
-        at the poles and wrap-around points. Only the car projection is
-        supported for now, but the variants CC and fejer1 can be selected using
-        the variant keyword. This currently defaults to CC, but will likely
-    change to fejer1 in the future.
+    """Build an enmap geometry covering the SO survey footprint (~-60° to +20° Dec).
+
+    Only the CAR projection is supported.  The ``"cc"`` (Clenshaw-Curtis) and
+    ``"fejer1"`` variants can be selected via ``variant``.
+
+    Parameters
+    ----------
+    res : Quantity or float, optional
+        Pixel resolution.  Required if ``shape`` is ``None``.
+    shape : tuple of int, optional
+        Map shape ``(ny, nx)``.  If provided, ``res`` is inferred from the
+        footprint size.
+    dims : tuple, optional
+        Extra leading dimensions prepended to the shape (e.g. ``(3,)`` for
+        IQU).
+    proj : str, optional
+        Projection type.  Only ``"car"`` is currently supported.
+    variant : {"fejer1", "cc"}
+        CAR variant: ``"fejer1"`` places pixel centres away from the poles,
+        ``"cc"`` (Clenshaw-Curtis) places them at the poles.
+    include_half_pixel_offset : bool, optional
+        Shift the reference pixel by half a pixel in RA.  Default is ``False``.
+
+    Returns
+    -------
+    shape : tuple of int
+        Map shape including any extra ``dims``.
+    wcs : astropy.wcs.WCS
+        WCS object for the map.
+
+    Raises
+    ------
+    ValueError
+        If ``variant`` is not ``"cc"`` or ``"fejer1"``.
     """
     from pixell import utils as pixell_utils
     from pixell import wcsutils
@@ -361,9 +620,24 @@ def flat_field_using_pixell(
     tilegrid=1.0,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Use the tiles module to do map tiling using scan strategy.
-    Not sure how much better (if at all) this is than using background2d
+    """Flat-field a map's SNR using the pixell tiling module.
+
+    Divides ``mapdata.snr`` by the median SNR ratio across tiles derived from
+    the scan strategy.
+
+    Parameters
+    ----------
+    mapdata : ProcessableMap
+        Map to flat-field.  ``mapdata.snr`` is modified in place.
+    tilegrid : float, optional
+        Tile size in degrees.  Default is 1.0.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    ProcessableMap
+        The modified ``mapdata``.
     """
     from .tiles import get_medrat, get_tmap_tiles
 
@@ -396,14 +670,31 @@ def flat_field_using_photutils(
     sigmaclip: float = 5.0,
     log: FilteringBoundLogger | None = None,
 ) -> ProcessableMap:
-    """
-    use photutils.background.Background2D to calculate the rms in tiles.
-    get the rms of the tiled snr map (i.e. the rms should be 1)
-    calculate the median.
-    divide the snr map by the tiled rms / median.
-    tilegrid is the size of the tile to use for the background estimation.
-    mask is a binary map of the same shape as the input map, where 1 indicates pixels to be masked
-    (i.e. not used for background estimation) and 0 indicates pixels to be used for background estimation.
+    """Flat-field a map using photutils Background2D RMS estimation.
+
+    Estimates the per-tile RMS of the SNR map (which should be ~1 for
+    Gaussian noise), then divides ``mapdata.snr`` by the tile RMS normalised
+    to the median.  Also stores the flux RMS mesh in ``mapdata.flatfield_map``.
+
+    Parameters
+    ----------
+    mapdata : ProcessableMap
+        Map to flat-field.  ``mapdata.snr`` and ``mapdata.flux`` are modified
+        in place.
+    tilegrid : Quantity[deg], optional
+        Tile size for the background estimation.  Default is 1 deg.
+    mask : np.ndarray, optional
+        Binary mask (1 = include, 0 = exclude) for the background estimation.
+    sigmaclip : float, optional
+        Sigma threshold for iterative sigma-clipping.  Pass ``None`` to
+        disable clipping.  Default is 5.0.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    ProcessableMap
+        The modified ``mapdata``.
     """
     from astropy.stats import SigmaClip
     from photutils.background import Background2D, StdBackgroundRMS
@@ -455,20 +746,32 @@ def make_model_source_map(
     cuts={},
     log=None,
 ):
-    """
-    Use source list containing fwhm_a, fwhm_b, ra, dec, flux, and orientation
-    to create a model map of the sources.
-    This is used to subtract the sources from the map.
+    """Build a 2-D Gaussian model map for a list of sources.
 
-    Arguments:
-        - imap: enmap object
-        - sources: list of source candidates
-        - nominal_fwhm_arcmin: nominal fwhm in arcmin
-        - matched_filtered: if True, then the fwhm is matched filtered
-        - verbose: if True, then print out the sources that are not included
-        - cuts: dictionary of cuts to apply to the sources
-    Returns:
-        - model_map: enmap object of the model map
+    Parameters
+    ----------
+    imap : enmap.ndmap
+        Template map that defines the geometry of the output.
+    sources : list of MeasuredSource
+        Sources to model.  Each must expose ``fwhm_a``, ``fwhm_b``,
+        ``ra``, ``dec``, ``flux``, and ``orientation``.
+    nominal_fwhm : Quantity, optional
+        Nominal beam FWHM.  Used as the model PSF size when individual source
+        sizes are not reliable.
+    matched_filtered : bool, optional
+        Unused flag reserved for future matched-filter PSF scaling.
+    verbose : bool, optional
+        Print sources skipped by ``cuts``.
+    cuts : dict, optional
+        Parameter cuts forwarded to ``make_2d_gaussian_model_param_table``.
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    enmap.ndmap or np.ndarray
+        Model map with the same shape as ``imap``.  Returns ``imap``
+        unchanged if ``sources`` is empty.
     """
     log = log.bind(func_name="make_model_source_map")
     if len(sources) == 0:

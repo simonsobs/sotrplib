@@ -13,22 +13,37 @@ from sotrplib.sources.sources import RegisteredSource
 
 
 class SimulatedSource(ABC):
+    """Abstract base for simulated sources that produce a position and flux at any time."""
+
     @abstractmethod
     def position(self, time: AwareDatetime) -> SkyCoord:
+        """Return the sky position of the source at ``time``."""
         return
 
     @abstractmethod
     def flux(self, time: AwareDatetime) -> u.Quantity:
+        """Return the flux of the source at ``time``."""
         return
 
     @abstractmethod
     def _to_registered_fixed(
         self, time: AwareDatetime, frequency: AstroPydanticQuantity[u.GHz] | None = None
     ) -> RegisteredSource:
+        """Instantiate a ``RegisteredSource`` snapshot of this source at ``time``."""
         return
 
 
 class FixedSimulatedSource(SimulatedSource):
+    """Simulated source with constant sky position and flux.
+
+    Parameters
+    ----------
+    position : SkyCoord
+        Fixed sky position of the source.
+    flux : Quantity
+        Constant flux of the source.
+    """
+
     def __init__(
         self,
         position: SkyCoord,
@@ -59,6 +74,20 @@ class FixedSimulatedSource(SimulatedSource):
 
 
 class GaussianTransientSimulatedSource(SimulatedSource):
+    """Simulated transient source with a Gaussian time-domain light curve.
+
+    Parameters
+    ----------
+    position : SkyCoord
+        Fixed sky position of the source.
+    peak_time : AwareDatetime
+        UTC datetime at which the flare peaks.
+    flare_width : timedelta
+        FWHM of the Gaussian light curve.
+    peak_amplitude : Quantity, optional
+        Peak flux of the flare (default 0 Jy).
+    """
+
     def __init__(
         self,
         position: SkyCoord,
@@ -66,17 +95,6 @@ class GaussianTransientSimulatedSource(SimulatedSource):
         flare_width: timedelta,
         peak_amplitude: u.Quantity = 0.0 * u.Jy,
     ):
-        """
-        Initialize a simulated source.
-
-        Parameters:
-        - position: Sky position of the source
-        - peak_amplitude: The peak amplitude of the flare.
-        - peak_time: The time at which the flare peaks.
-        - flare_width: The FWHM of the flare (e.g., standard deviation for Gaussian).
-        - flare_morph: The morphology of the flare ('Gaussian' supported for now).
-        - beam_params: Dictionary of beam parameters (e.g., FWHM, ellipticity).
-        """
         self._position = position
         self.peak_time = peak_time
         self.flare_width = flare_width
@@ -126,25 +144,44 @@ def generate_transients(
     uniform_on_sky=False,
     log: FilteringBoundLogger | None = None,
 ):
-    """
-    Generate a list of simulated transient sources.
-    These will be either generated uniformly on sky or uniformly in the flatsky map.
-    If imap is given, only inject sources within the weighted region.
-    Each source generates a SimTransient object.
+    """Generate a list of simulated transient sources.
 
+    Positions are drawn either uniformly on the sphere or uniformly within a
+    flat-sky map.  If ``imap`` is provided, only positions inside the weighted
+    (non-zero) region are kept.
 
-    Arguments:
-    - n (int): Number of transients to generate. If None, positions must be provided.
-    - imap (enmap.ndmap): Input map for generating random positions. If None, ra_lims and dec_lims must be provided.
-    - ra_lims (tuple): Tuple of (min_ra, max_ra) for random RA generation. degrees
-    - dec_lims (tuple): Tuple of (min_dec, max_dec) for random Dec generation. degrees
-    - positions (list): List of tuples (ra, dec) for specific positions. If provided, n is ignored. degrees
-    - peak_amplitudes (list|tuple): List of peak amplitudes for each transient or tuple of (min, max) for random generation.
-    - peak_times (list|tuple): List of peak times for each transient or tuple of (min, max) for random generation.
-    - flare_widths (list|tuple): List of flare widths for each transient or tuple of (min, max) for random generation.
-    - flare_morphs (list): List of flare morphologies for each transient.
-    - beam_params (list): List of dictionaries containing beam parameters for each transient.
-    - uniform_on_sky (bool): generate random positions uniform on sky or uniform on imap flatsky
+    Parameters
+    ----------
+    n : int, optional
+        Number of transients to generate.  Mutually exclusive with ``positions``.
+    imap : enmap.ndmap, optional
+        Input map used to generate and validate random positions.
+    ra_lims : Quantity[deg], optional
+        ``(min_ra, max_ra)`` limits for random RA generation.
+    dec_lims : Quantity[deg], optional
+        ``(min_dec, max_dec)`` limits for random Dec generation.
+    positions : list of tuple, optional
+        Explicit ``(dec, ra)`` positions in degrees.  Overrides ``n``.
+    peak_amplitudes : Quantity[Jy] or tuple, optional
+        Per-source peak amplitudes, or ``(min, max)`` for random generation.
+    peak_times : list or tuple, optional
+        Per-source peak times, or ``(start, end)`` for random generation.
+    flare_widths : list or tuple, optional
+        Per-source flare FWHMs, or ``(min, max)`` for random generation.
+    flare_morphs : list of str, optional
+        Flare morphology per source (``"Gaussian"`` or ``"Fixed"``).
+    beam_params : list of dict, optional
+        Beam parameters per source.
+    uniform_on_sky : bool, optional
+        If ``True``, draw positions uniform on the sphere; otherwise uniform
+        in the flat-sky map (default ``False``).
+    log : FilteringBoundLogger, optional
+        Structured logger.
+
+    Returns
+    -------
+    list of SimulatedSource
+        Generated transient source objects.
     """
     from .sim_utils import (
         generate_random_flare_amplitudes,
