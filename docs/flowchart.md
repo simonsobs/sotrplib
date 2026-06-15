@@ -1,3 +1,5 @@
+# Pipeline Flowchart
+
 The workflow for the time-resolved pipeline.
 Inputs are read from a range of databases and written to the same(???) databases (green).
 Gray boxes are objects that are stored in memory.
