@@ -7,12 +7,6 @@ from sotrplib.sources.forced_photometry import (
 )
 
 
-class SourceCatalog:
-    def __init__(self, ra, dec):
-        self.ra = ra
-        self.dec = dec
-
-
 def load_act_catalog(
     source_cat_file: str = "/scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/PS_S19_f090_2pass_optimalCatalog.fits",
     flux_threshold: float = 0,

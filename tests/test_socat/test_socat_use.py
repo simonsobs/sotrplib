@@ -5,7 +5,6 @@ Tests for the SOCat source catalog integration
 import os
 from datetime import datetime, timedelta
 
-from astropy import units as u
 from astropy.time import Time
 
 
@@ -19,13 +18,9 @@ def test_socat_read(socat_pickle):
 
     from sotrplib.source_catalog.socat import SOCat
 
-    cat = SOCat(
-        t_min=Time.now() - u.Quantity(1, u.day),
-        t_max=Time.now(),
-        flux_lower_limit=0.0 * u.Jy,
-    )
+    cat = SOCat()
 
-    sources = cat.get_all_sources()
+    sources = cat.get_all_sources(t=Time.now())
 
     assert len(sources) == 128
 

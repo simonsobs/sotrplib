@@ -35,46 +35,17 @@ class SOCat(SourceCatalog):
     SSO queries require t_min and t_max so that ephemeris interpolation
     is bounded.
 
-    t_min and t_max can be set manually or automatically generated from
-    the maps.
-
-    flux_lower_limit can be set to filter sources for forced photometry,
-    but if None, socat will return all monitored sources
-
-    The list of source generators returned by socat will be cached for
-    future use so that we don't redo the interpolation step each time.
-
     """
 
     def __init__(
         self,
-        t_min: Time | None = None,
-        t_max: Time | None = None,
-        flux_lower_limit: u.Quantity | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or structlog.get_logger()
         self.catalog = SOCatClientSettings().client
-        self.t_min = t_min
-        self.t_max = t_max
-        self.flux_lower_limit = flux_lower_limit
         self.log.info(
             "socat.initialized",
-            t_min=self.t_min,
-            t_max=self.t_max,
-            flux_lower_limit=self.flux_lower_limit,
         )
-
-        self._source_generators: list[SourceGenerator] | None = None
-
-    def set_time_range(
-        self, t_min: Time, t_max: Time, time_padding: TimeDelta = _TIME_RANGE_PADDING
-    ) -> None:
-        """
-        Set the time range from the map database and clear the interpolation cache.
-        The time range is expanded by time_padding on either side to avoid edge effects.
-        """
-        self._refresh(t_min=t_min - time_padding, t_max=t_max + time_padding)
 
     def add_sources(self, sources: list[RegisteredSource], monitor: bool = True):
         for source in sources:
@@ -86,23 +57,43 @@ class SOCat(SourceCatalog):
             )
 
     def get_sources_in_box(
-        self, sky_box: list[SkyCoord] | None = None
+        self, sky_box: tuple[SkyCoord, SkyCoord] | None = None, t: Time | None = None
     ) -> list[RegisteredSource]:
-        """Get sources within the given sky box and time range.
-        If sky_box is None, get all sources in the time range.
         """
-        if self.t_min is None or self.t_max is None:
-            self.log.error("socat.get_sources_in_box.no_time_range")
-            return []
-        t_eval = self.t_min + (self.t_max - self.t_min) / 2
-        source_generators = self._get_source_generators(sky_box=sky_box)
+        Get sources within the given sky box.
+        If sky_box is None, get all sources.
+        If t is provided, get sources at that time by interpolating using +/- padding time,
+        then querying source at that the time, t.
+        """
+        if sky_box is None:
+            sky_box = (
+                SkyCoord(0, -89.999, unit="deg"),
+                SkyCoord(359.999, 89.999, unit="deg"),
+            )
+
+        if t is None:
+            self.log.warning("socat.get_sources_in_box.no_eval_time")
+            source_generators = self.catalog.get_box_fixed(
+                lower_left=sky_box[0], upper_right=sky_box[1]
+            )
+        else:
+            source_generators = self.catalog.get_box(
+                lower_left=sky_box[0],
+                upper_right=sky_box[1],
+                t_min=t - _TIME_RANGE_PADDING,
+                t_max=t + _TIME_RANGE_PADDING,
+            )
+
         sources = [
             s
-            for s in (self._sg_to_registered(sg, t_eval) for sg in source_generators)
+            for s in (self._sg_to_registered(sg, t) for sg in source_generators)
             if s is not None
         ]
         self.log.debug(
-            "socat.get_sources_in_box", sky_box=sky_box, n_sources=len(sources)
+            "socat.get_sources_in_box",
+            sky_box=sky_box,
+            n_sources=len(sources),
+            t_eval=t,
         )
         return sources
 
@@ -124,15 +115,34 @@ class SOCat(SourceCatalog):
         list[RegisteredSource]
             List of sources within the map.
         """
-        self._check_and_expand_interp_range(input_map)
         if input_map.observation_time is not None:
             t_mid = Time(input_map.observation_time)
-        elif self.t_min is not None and self.t_max is not None:
-            t_mid = self.t_min + (self.t_max - self.t_min) / 2
+            t_min = (
+                Time(input_map.observation_start) - _TIME_RANGE_PADDING
+                if input_map.observation_start is not None
+                else None
+            )
+            t_max = (
+                Time(input_map.observation_end) + _TIME_RANGE_PADDING
+                if input_map.observation_end is not None
+                else None
+            )
         else:
+            self.log.warning(
+                "socat.get_sources_in_map.no_observation_time",
+                map_id=input_map.map_id,
+            )
             t_mid = None
+            t_min = None
+            t_max = None
 
-        source_generators = self._get_source_generators(sky_box=input_map.sky_box)
+        # Get sources within the map's sky box and a padded time range around the observation.
+        source_generators = self.catalog.get_box(
+            lower_left=input_map.sky_box[0],
+            upper_right=input_map.sky_box[1],
+            t_min=t_min,
+            t_max=t_max,
+        )
         if monitored:
             source_generators = [sg for sg in source_generators if sg.source.monitored]
 
@@ -174,38 +184,55 @@ class SOCat(SourceCatalog):
 
         return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
-    def get_all_sources(self) -> list[RegisteredSource]:
+    def get_all_sources(self, t: Time | None = None) -> list[RegisteredSource]:
         """
         Just a helper function to get all the sources in the
         catalog by querying with no spatial constraints.
+        If t is not provided, only fixed sources are returned.
         """
-        return self.get_sources_in_box(sky_box=None)
+        return self.get_sources_in_box(sky_box=None, t=t)
 
     def forced_photometry_sources(
-        self, input_map: ProcessableMap
+        self, input_map: ProcessableMap, flux_lower_limit: u.Quantity | None = None
     ) -> list[RegisteredSource]:
         """
         Wrapper for socat's get_monitored_sources.
-        If times arent provided then it just grabs the fixed sources.
-        Otherwise, grab all sources and filter them to
+        If observation start and end times are not in the input_map,
+        then only fixed sources are returned.
+        Grabs the sources and filter them to
         return only ones within the map region.
         """
-        obs_time = Time(input_map.observation_time)
+        obs_time = (
+            Time(input_map.observation_time)
+            if input_map.observation_time is not None
+            else None
+        )
+        t_min = (
+            Time(input_map.observation_start) - _TIME_RANGE_PADDING
+            if input_map.observation_start is not None
+            else None
+        )
+        t_max = (
+            Time(input_map.observation_end) + _TIME_RANGE_PADDING
+            if input_map.observation_end is not None
+            else None
+        )
         log = self.log.bind(
             func="socat.forced_photometry_sources",
             obs_time=obs_time,
-            t_min=self.t_min,
-            t_max=self.t_max,
+            t_min=t_min,
+            t_max=t_max,
+            flux_lower_limit=flux_lower_limit,
         )
 
-        if self.t_min is None or self.t_max is None:
+        if t_min is None or t_max is None:
             log.warning(
                 "socat.forced_photometry_sources.invalid_time_range",
                 map_id=input_map.map_id,
             )
             sources = [
                 self.sg_to_registered(sg, obs_time)
-                for sg in self.catalog.get_box_fixed(minimum_flux=self.flux_lower_limit)
+                for sg in self.catalog.get_box_fixed(minimum_flux=flux_lower_limit)
             ]
         else:
             log.info("socat.forced_photometry_sources.retrieving_sources_with_sso")
@@ -214,8 +241,8 @@ class SOCat(SourceCatalog):
                 s
                 for s in candidates
                 if s is not None
-                and (s.flux is not None or self.flux_lower_limit is None)
-                and (self.flux_lower_limit is None or s.flux >= self.flux_lower_limit)
+                and (s.flux is not None or flux_lower_limit is None)
+                and (flux_lower_limit is None or s.flux >= flux_lower_limit)
             ]
 
         log.info("socat.forced_photometry_sources", n_sources=len(sources))
@@ -242,25 +269,32 @@ class SOCat(SourceCatalog):
         dec: u.Quantity,
         radius: u.Quantity,
         method: Literal["closest", "all"],
+        t: Time | None = None,
     ) -> list[CrossMatch]:
         """
         Crossmatch the given coordinates with the sources in the catalog.
         This uses pixell's crossmatch function.
+
+        If a time is provided, the catalog positions will be
+        evaluated at that time.
+
+        Makes use of `get_sources_in_box`.
         """
         close_sources = self.get_sources_in_box(
             [
                 SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
                 SkyCoord(ra=ra + 2.0 * radius, dec=dec + 2.0 * radius),
-            ]
+            ],
+            t=t,
         )
-        ra_dec_array = np.asarray(
+        catalog_positions = np.asarray(
             [(x.ra.to("radian").value, x.dec.to("radian").value) for x in close_sources]
         )
-        if len(ra_dec_array) == 0:
+        if len(catalog_positions) == 0:
             return []
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("radian").value, dec.to("radian").value]],
-            pos2=ra_dec_array,
+            pos2=catalog_positions,
             rmax=radius.to("radian").value,
             mode=method,
             coords="radec",
@@ -284,97 +318,6 @@ class SOCat(SourceCatalog):
             )
             for s in sources
         ]
-
-    def _refresh(self, t_min: Time | None = None, t_max: Time | None = None):
-        """
-        Update the time range, clear the local SourceGenerator cache,
-        and pre-fetch SourceGenerators for the new time range.
-        """
-        if t_min is not None:
-            self.t_min = t_min
-        if t_max is not None:
-            self.t_max = t_max
-        self._source_generators = None
-        self._get_source_generators(
-            sky_box=None
-        )  # pre-fetch generators for the new time range
-        self.log.info(
-            "socat.refreshed",
-            t_min=self.t_min,
-            t_max=self.t_max,
-        )
-
-    def _check_and_expand_interp_range(self, input_map: ProcessableMap) -> None:
-        """
-        If the map's observation window falls outside [t_min, t_max], expand and refresh.
-        This makes sure the interpolation objects are initialized with the correct time range.
-        """
-        obs_start = Time(input_map.observation_start)
-        obs_end = Time(input_map.observation_end)
-        new_t_min = self.t_min
-        new_t_max = self.t_max
-        needs_refresh = False
-        if self.t_min is None or obs_start < self.t_min:
-            new_t_min = obs_start - _TIME_RANGE_PADDING
-            needs_refresh = True
-        if self.t_max is None or obs_end > self.t_max:
-            new_t_max = obs_end + _TIME_RANGE_PADDING
-            needs_refresh = True
-        if needs_refresh:
-            self.log.info(
-                "socat.expanding_time_range",
-                map_id=input_map.map_id,
-                old_t_min=self.t_min,
-                old_t_max=self.t_max,
-                new_t_min=new_t_min,
-                new_t_max=new_t_max,
-            )
-            self._refresh(t_min=new_t_min, t_max=new_t_max)
-
-    def _initialize_generators(self, sky_box: list[SkyCoord] | None = None) -> None:
-        """
-        Fetch SourceGenerators within the sky_box if supplied, or
-        for the full sky if None at the current time range.
-        Cache the generated SourceGenerators in the local instance of the class.
-        """
-        self._source_generators = list(
-            self.catalog.get_box(
-                lower_left=sky_box[0]
-                if sky_box is not None
-                else SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                upper_right=sky_box[1]
-                if sky_box is not None
-                else SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-                t_min=self.t_min,
-                t_max=self.t_max,
-            )
-        )
-        self.log.info(
-            "socat.generators_initialized",
-            n_generators=len(self._source_generators),
-            t_min=self.t_min,
-            t_max=self.t_max,
-        )
-
-    def _get_source_generators(
-        self, sky_box: list[SkyCoord] | None
-    ) -> list[SourceGenerator]:
-        """
-        Return cached SourceGenerators, fetching from DB if the cache is stale.
-        Because querying from socat initializes the interpolation objects which is
-        slow, we want to cache the source generators.
-        """
-        if self._source_generators is None:
-            if sky_box is None:
-                sky_box = [
-                    SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
-                    SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
-                ]
-            if self.t_min is None or self.t_max is None:
-                self.log.warning("socat.get_source_generators.no_time_range")
-                return []
-            self._initialize_generators(sky_box=sky_box)
-        return self._source_generators
 
     def _sg_to_registered(
         self, sg: SourceGenerator, t: Time

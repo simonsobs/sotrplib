@@ -80,8 +80,8 @@ class SimulatedMap(ProcessableMap):
     def bbox(self) -> np.ndarray:
         if (flux := getattr(self, "flux", None)) is not None:
             return enmap.box(flux.shape, flux.wcs)
-        if self.sky_box is not None:
-            return skycoord_box_to_enmap_box(self.sky_box)
+        if self._sky_box is not None:
+            return skycoord_box_to_enmap_box(self._sky_box)
         ra_min = (
             self.simulation_parameters.center_ra - self.simulation_parameters.width_ra
         ).to_value(u.rad)

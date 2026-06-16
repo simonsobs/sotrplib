@@ -18,7 +18,11 @@ from pixell.enmap import ndmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.utils import pixell_map_union, skycoord_box_to_enmap_box
+from sotrplib.maps.utils import (
+    enmap_box_to_skycoord,
+    pixell_map_union,
+    skycoord_box_to_enmap_box,
+)
 
 PointingModel = ConstantPointingModel
 
@@ -86,20 +90,7 @@ class ProcessableMap(ABC):
     instrument: str | None = None
     "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
-    sky_box: tuple[SkyCoord, SkyCoord] | None = None
-    """
-    Sky bounding box. Can be set to initialize the map with a cutout of a larger map.
-    Should be in the form
-
-    ``sky_box = (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``
-
-    Wrap detection (both RAs in ``[0, 2π)``):
-
-    - ``sky_box[0].ra < sky_box[1].ra`` — non-wrapping region.
-    - ``sky_box[0].ra > sky_box[1].ra`` — wrapping region (spans RA = 0);
-      ``sky_box[0].ra`` is the upper boundary (near 2π) and ``sky_box[1].ra`` is the
-      lower boundary (near 0).
-    """
+    _sky_box: tuple[SkyCoord, SkyCoord] | None = None
 
     _hits: ndmap | None = None
     "A hits map stating the number of times each pixel was observed"
@@ -270,15 +261,50 @@ class ProcessableMap(ABC):
         The bounding box of the map as a pixell enmap box.
 
         Returns ``enmap.box(shape, wcs)`` on the first loaded map found in
-        ``_available_maps``.  Falls back to ``skycoord_box_to_enmap_box(self.sky_box)``
-        when ``sky_box`` is set.  Returns ``None`` if no map or sky_box is available.
+        ``_available_maps``.
+        Returns ``None`` if no map or sky_box is available.
         """
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
                 return enmap.box(m.shape, m.wcs)
-        if self.sky_box is not None:
-            return skycoord_box_to_enmap_box(self.sky_box)
+
         return None
+
+    @property
+    def sky_box(self) -> tuple[SkyCoord, SkyCoord] | None:
+        """
+        Sky bounding box. Can be set to initialize the map with a cutout of a larger map.
+        Should be in the form
+
+        ``sky_box = (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``
+
+        Wrap detection (both RAs in ``[0, 2π)``):
+
+        - ``sky_box[0].ra < sky_box[1].ra`` — non-wrapping region.
+        - ``sky_box[0].ra > sky_box[1].ra`` — wrapping region (spans RA = 0);
+          ``sky_box[0].ra`` is the upper boundary (near 2π) and ``sky_box[1].ra`` is the
+          lower boundary (near 0).
+
+        If not explicitly set, derived from ``bbox`` (e.g. the geometry of a
+        loaded map) the same way ``rho``/``kappa`` are derived from ``snr``/``flux``.
+        """
+        if self._sky_box is not None:
+            return self._sky_box
+        if (box := self.bbox) is not None:
+            return enmap_box_to_skycoord(box)
+
+        return None
+
+    @sky_box.setter
+    def sky_box(self, x):
+        self._sky_box = x
+
+    @sky_box.deleter
+    def sky_box(self):
+        try:
+            del self._sky_box
+        except AttributeError:
+            pass
 
     @property
     def map_id(self) -> str:

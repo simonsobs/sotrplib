@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
-from astropydantic import AstroPydanticQuantity, AstroPydanticTime
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
@@ -30,15 +29,9 @@ class EmptySourceCatalogConfig(SourceCatalogConfig):
 
 class SOCatConfig(SourceCatalogConfig):
     catalog_type: Literal["socat"] = "socat"
-    flux_lower_limit: AstroPydanticQuantity | None = None
-    t_min: AstroPydanticTime | None = None
-    t_max: AstroPydanticTime | None = None
 
     def to_source_catalog(self, log=None) -> SOCat:
         return SOCat(
-            t_min=self.t_min,
-            t_max=self.t_max,
-            flux_lower_limit=self.flux_lower_limit,
             log=log,
         )
 

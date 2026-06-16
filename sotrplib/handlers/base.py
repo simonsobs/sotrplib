@@ -281,18 +281,13 @@ class BaseRunner:
             return []
 
         # FIXME: use a better radius
-        found, matches = self.profilable_task(crossmatch_mask)(
+        _, matches = self.profilable_task(crossmatch_mask)(
             positions_1, positions_2, radius=radius, return_matches=True
         )
         return matches
 
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
-
-    def _initialize_socat_time_ranges(self, t_start: Time, t_end: Time) -> None:
-        for catalog in self.source_catalogs:
-            if hasattr(catalog, "set_time_range"):
-                catalog.set_time_range(t_start, t_end)
 
     def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         """
@@ -301,7 +296,6 @@ class BaseRunner:
         """
         sky_box = self.extract_bounding_box(maps)
         time_range = self.observation_time_range(maps)
-        self._initialize_socat_time_ranges(time_range[0], time_range[1])
         all_simulated_sources = self.basic_task(self.simulate_sources)(
             sky_box, time_range
         )
