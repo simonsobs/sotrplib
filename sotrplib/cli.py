@@ -9,6 +9,7 @@ from pathlib import Path
 import structlog
 
 from sotrplib.config.config import Settings
+from sotrplib.config.maps import MapGeneratorConfig
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
@@ -37,6 +38,7 @@ def parse_args() -> ArgumentParser:
 def main():
     args = parse_args()
     config = Settings.from_file(args.config)
+
     pipeline = config.to_runner()
 
     structlog.configure(
@@ -44,7 +46,12 @@ def main():
     )
     log = structlog.get_logger()
 
-    maps = config.maps.to_generator(log=log)
+    if isinstance(config.maps, MapGeneratorConfig):
+        maps = config.maps.to_generator(log=log)
+    elif isinstance(config.maps, list):
+        maps = [m.to_map(log=log) for m in config.maps]
+    else:
+        maps = None
 
     if maps is not None:
         pipeline.run(maps)

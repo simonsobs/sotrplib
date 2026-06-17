@@ -13,7 +13,6 @@ from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import (
     EmptyPointingOffset,
     MapPointingOffset,
-    save_model_maps,
 )
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
@@ -224,17 +223,6 @@ class BaseRunner:
                 save_pointing_model(
                     input_map.map_id, pointing_model, pointing_model_stats
                 )
-
-        ## this is dumb and should be fixed.
-        for o in self.map_outputs:
-            if "pointing_residual_map" in o.field_ids:
-                self.profilable_task(save_model_maps)(
-                    self.pointing_residual_model,
-                    pointing_model,
-                    input_map,
-                    filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
-                )
-                break
 
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force

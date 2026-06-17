@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Iterable, Literal
 
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import (
     AstroPydanticICRS,
     AstroPydanticQuantity,
-    AstroPydanticTime,
     AstroPydanticUnit,
 )
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
@@ -50,8 +50,8 @@ class MapGeneratorConfig(BaseModel, ABC):
 
 class SimulatedMapConfig(MapConfig):
     map_type: Literal["simulated"] = "simulated"
-    observation_start: AstroPydanticTime
-    observation_end: AstroPydanticTime
+    observation_start: AwareDatetime
+    observation_end: AwareDatetime
     frequency: str = "f090"
     array: str = "pa5"
     simulation_parameters: SimulationParameters = Field(
@@ -60,8 +60,8 @@ class SimulatedMapConfig(MapConfig):
 
     def to_map(self, log: FilteringBoundLogger | None = None) -> SimulatedMap:
         return SimulatedMap(
-            observation_start=self.observation_start,
-            observation_end=self.observation_end,
+            observation_start=Time(self.observation_start),
+            observation_end=Time(self.observation_end),
             frequency=self.frequency,
             array=self.array,
             simulation_parameters=self.simulation_parameters,
@@ -73,8 +73,8 @@ class SimulatedMapFromGeometryConfig(MapConfig):
     map_type: Literal["simulated_geometry"] = "simulated_geometry"
     resolution: AstroPydanticQuantity[u.arcmin]
     geometry_source_map: Path
-    observation_start: AstroPydanticTime | None
-    observation_end: AstroPydanticTime | None
+    observation_start: AwareDatetime | None
+    observation_end: AwareDatetime | None
     time_map_filename: Path | None
     frequency: str = "f090"
     array: str = "pa5"
@@ -97,8 +97,12 @@ class SimulatedMapFromGeometryConfig(MapConfig):
         return SimulatedMapFromGeometry(
             resolution=self.resolution,
             geometry_source_map=self.geometry_source_map,
-            observation_start=self.observation_start,
-            observation_end=self.observation_end,
+            observation_start=Time(self.observation_start)
+            if self.observation_start
+            else None,
+            observation_end=Time(self.observation_end)
+            if self.observation_end
+            else None,
             time_map_filename=self.time_map_filename,
             frequency=self.frequency,
             array=self.array,
@@ -116,8 +120,8 @@ class RhoKappaMapConfig(MapConfig):
     frequency: str | None = "f090"
     array: str | None = "pa5"
     instrument: str | None = None
-    observation_start: AstroPydanticTime | None = None
-    observation_end: AstroPydanticTime | None = None
+    observation_start: AwareDatetime | None = None
+    observation_end: AwareDatetime | None = None
     sky_box: list[AstroPydanticICRS] | None = None
     flux_units: AstroPydanticUnit = u.Unit("Jy")
 
@@ -125,8 +129,8 @@ class RhoKappaMapConfig(MapConfig):
         return RhoAndKappaMap(
             rho_filename=self.rho_map_path,
             kappa_filename=self.kappa_map_path,
-            start_time=self.observation_start,
-            end_time=self.observation_end,
+            start_time=Time(self.observation_start) if self.observation_start else None,
+            end_time=Time(self.observation_end) if self.observation_end else None,
             time_filename=self.time_map_path,
             info_filename=self.info_path,
             sky_box=self.sky_box,
@@ -147,8 +151,8 @@ class InverseVarianceMapConfig(MapConfig):
     frequency: str | None = "f090"
     array: str | None = "pa5"
     instrument: str | None = None
-    observation_start: AstroPydanticTime | None = None
-    observation_end: AstroPydanticTime | None = None
+    observation_start: AwareDatetime | None = None
+    observation_end: AwareDatetime | None = None
     sky_box: list[AstroPydanticICRS] | None = None
     intensity_units: AstroPydanticUnit = u.Unit("K")
 
@@ -160,8 +164,8 @@ class InverseVarianceMapConfig(MapConfig):
             inverse_variance_filename=self.weights_map_path,
             time_filename=self.time_map_path,
             info_filename=self.info_path,
-            start_time=self.observation_start,
-            end_time=self.observation_end,
+            start_time=Time(self.observation_start) if self.observation_start else None,
+            end_time=Time(self.observation_end) if self.observation_end else None,
             sky_box=self.sky_box,
             frequency=self.frequency,
             array=self.array,
@@ -180,8 +184,8 @@ class FluxAndSNRMapConfig(MapConfig):
     frequency: str | None = "f090"
     array: str | None = "pa5"
     instrument: str | None = None
-    observation_start: AstroPydanticTime | None = None
-    observation_end: AstroPydanticTime | None = None
+    observation_start: AwareDatetime | None = None
+    observation_end: AwareDatetime | None = None
     sky_box: list[AstroPydanticICRS] | None = None
     flux_units: AstroPydanticUnit = u.Unit("Jy")
 
@@ -191,8 +195,8 @@ class FluxAndSNRMapConfig(MapConfig):
             snr_filename=self.snr_map_path,
             time_filename=self.time_map_path,
             info_filename=self.info_path,
-            start_time=self.observation_start,
-            end_time=self.observation_end,
+            start_time=Time(self.observation_start) if self.observation_start else None,
+            end_time=Time(self.observation_end) if self.observation_end else None,
             sky_box=self.sky_box,
             frequency=self.frequency,
             array=self.array,
@@ -208,8 +212,8 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     array: str | None = None
     instrument: str | None = None
     number_to_read: int | None = None  ## if None, all in database will be read
-    start_time: AstroPydanticTime | None = None
-    end_time: AstroPydanticTime | None = None
+    start_time: AwareDatetime | None = None
+    end_time: AwareDatetime | None = None
     map_ids: list[int] | None = None
     sky_box: list[AstroPydanticICRS] | None = None
     map_units: AstroPydanticUnit = u.Unit("K")
@@ -226,8 +230,8 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
         }[self.map_type]
         return _reader_cls(
             number_to_read=self.number_to_read,
-            start_time=self.start_time,
-            end_time=self.end_time,
+            start_time=Time(self.start_time) if self.start_time else None,
+            end_time=Time(self.end_time) if self.end_time else None,
             frequency=self.frequency,
             array=self.array,
             instrument=self.instrument,

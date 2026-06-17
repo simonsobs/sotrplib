@@ -32,7 +32,7 @@
     "sifter": {
         "sifter_type": "simple"
     },
-    "outputs": [
+    "source_outputs": [
         {
             "output_type": "cutout",
             "directory": "."

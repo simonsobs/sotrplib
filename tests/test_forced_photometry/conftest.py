@@ -2,7 +2,6 @@
 Fixtures for the dependency-injected completely simulated pipeline.
 """
 
-import datetime
 import os
 from pathlib import Path
 
@@ -112,7 +111,7 @@ def mapset_with_sources():
     bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
     top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
-    start_time = datetime.datetime.fromisoformat("2025-01-01T00:00:00+00:00")
+    start_time = Time("2025-01-01T00:00:00", scale="utc")
     number = 3
 
     generator = sim_source_generators.FixedSourceGenerator(
@@ -127,8 +126,8 @@ def mapset_with_sources():
     )
     ret_maps = []
     for i in range(10):
-        start_obs = start_time + datetime.timedelta(days=i)
-        end_obs = start_time + datetime.timedelta(hours=8)
+        start_obs = start_time + TimeDelta(i, format="jd")
+        end_obs = start_time + TimeDelta(8 / 24, format="jd")
         base_map = maps.SimulatedMap(
             observation_start=start_obs,
             observation_end=end_obs,
