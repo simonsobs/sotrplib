@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sotrplib"
-version = "0.0.1a1"
-requires-python = ">=3.11"
+version = "0.0.3"
+requires-python = ">=3.12"
 dependencies = [
     "pixell",
     "numpy==1.26.4",
@@ -27,7 +27,7 @@ dependencies = [
     "skyfield",
     "astropydantic",
     "numpydantic",
-    "mapcat>=0.2.3",
+    "mapcat @ git+https://github.com/simonsobs/mapcat",
     "pyinstrument",
     "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
     "soauth",

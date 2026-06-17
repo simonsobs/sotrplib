@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import lmfit
 import numpy as np
 import structlog
+import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
@@ -13,13 +17,15 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import PointingModel
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,
     RegisteredSource,
 )
 from sotrplib.utils.utils import get_frequency, get_fwhm
+
+if TYPE_CHECKING:
+    from sotrplib.maps.pointing import PointingModel
 
 
 class GaussianFitParameters(BaseModel):
@@ -566,7 +572,7 @@ def gaussian_fit(
     return fit_sources
 
 
-def convert_catalog_to_registered_source_objects(
+def convert_dict_catalog_to_registered_source_objects(
     catalog_sources: dict,
     source_type: str | None = None,
     log: FilteringBoundLogger | None = None,
@@ -577,17 +583,17 @@ def convert_catalog_to_registered_source_objects(
 
     """
     log = log or structlog.get_logger()
-    log = log.bind(func_name="convert_catalog_to_registered_source_objects")
+    log = log.bind(func_name="convert_dict_catalog_to_registered_source_objects")
 
     if isinstance(catalog_sources, list):
         log.info(
-            "convert_catalog_to_registered_source_objects.catalog_is_list",
+            "convert_dict_catalog_to_registered_source_objects.catalog_is_list",
             num_sources=len(catalog_sources),
         )
         return catalog_sources
     if not catalog_sources:
         log.warning(
-            "convert_catalog_to_registered_source_objects.catalog_is_empty",
+            "convert_dict_catalog_to_registered_source_objects.catalog_is_empty",
             num_sources=0,
         )
         return []
@@ -596,11 +602,12 @@ def convert_catalog_to_registered_source_objects(
     for i in range(len(catalog_sources["name"])):
         source_ra = catalog_sources["RADeg"][i] % 360
         source_dec = catalog_sources["decDeg"][i]
+        source_id = uuid.create()
         cs = RegisteredSource(
             ra=source_ra * u.deg,
             dec=source_dec * u.deg,
             flux=catalog_sources["fluxJy"][i] * u.Jy,
-            source_id=catalog_sources["name"][i],
+            source_id=source_id,
             source_type=source_type,
         )
         if "ra_offset_arcmin" in catalog_sources:
@@ -610,14 +617,14 @@ def convert_catalog_to_registered_source_objects(
 
         cs.add_crossmatch(
             CrossMatch(
-                source_id=catalog_sources["name"][i],
+                source_id=source_id,
                 probability=1.0,
-                catalog_idx=i,
+                catalog_idx=source_id,
             )
         )
         known_sources.append(cs)
     log.info(
-        "convert_catalog_to_registered_source_objects.catalog_converted",
+        "convert_dict_catalog_to_registered_source_objects.catalog_converted",
         num_sources=len(known_sources),
     )
     return known_sources

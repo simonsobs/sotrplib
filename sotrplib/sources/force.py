@@ -100,6 +100,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
     thumbnail_half_width: u.Quantity
     goodness_of_fit_threshold: float | None
     near_source_rel_flux_limit: float | None
+    min_flux: u.Quantity | None = None
     log: FilteringBoundLogger
 
     def __init__(
@@ -108,6 +109,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        min_flux: u.Quantity | None = None,
         near_source_rel_flux_limit: float | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
         goodness_of_fit_threshold: float | None = None,
@@ -136,6 +138,9 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             If None, ignore.
         goodness_of_fit_threshold : float | None, optional
             Threshold for goodness of fit to flag poor fits (default: None).
+        min_flux : astropy.units.Quantity, optional
+            Minimum flux required for a source to be considered (default: None).
+            If None, no minimum flux is required, and all sources will be considered.
         log : FilteringBoundLogger or None, optional
             Logger instance to use (default: None).
         """
@@ -147,6 +152,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         self.allowable_center_offset = allowable_center_offset
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.goodness_of_fit_threshold = goodness_of_fit_threshold
+        self.min_flux = min_flux
         self.log = log or get_logger()
 
     def force(
@@ -160,8 +166,16 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             arr=input_map.array,
             instrument=input_map.instrument,
         )
+
         source_list = list(
-            itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
+            itertools.chain(
+                *[
+                    c.forced_photometry_sources(
+                        input_map, flux_lower_limit=self.min_flux
+                    )
+                    for c in catalogs
+                ]
+            )
         )
         self.log.info(
             "TwoDGaussianFitter.force",
@@ -172,38 +186,36 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             reproject_thumbnails=self.reproject_thumbnails,
             allowable_center_offset=self.allowable_center_offset,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
+            min_flux=self.min_flux,
         )
 
         if len(source_list) == 0:
             return []
-        ## check if there are any pointing sources with a source within the thumbnail_half_width
+        ## check if there are any sources within the thumbnail_half_width
         ## and above near_source_rel_flux_limit * pointing_source.flux
         has_nearby_sources = [False] * len(source_list)
         if self.near_source_rel_flux_limit is not None and len(source_list) > 1:
-            source_positions = SkyCoord(
+            all_coords = SkyCoord(
                 ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
             )
-            valid_positions = np.isfinite(source_positions.ra.deg) & np.isfinite(
-                source_positions.dec.deg
+            valid = (
+                np.isfinite(all_coords.ra.deg)
+                & np.isfinite(all_coords.dec.deg)
+                & np.array([s.flux is not None for s in source_list])
             )
-            ## mask nan values; i.e. asteroids with no interpolated position.
-            source_positions = source_positions[valid_positions]
-            source_fluxes = (
-                np.array([s.flux.to_value(u.Jy) for s in source_list]) * u.Jy
-            )[valid_positions]
-            for i, fp_source in enumerate(source_list):
-                c = SkyCoord(ra=fp_source.ra, dec=fp_source.dec)
-                if not np.isfinite(c.ra.deg) or not np.isfinite(c.dec.deg):
-                    continue
-                neighboridx, neighbordist, _ = c.match_to_catalog_sky(
-                    source_positions, nthneighbor=2 if len(source_list) > 2 else 1
+            valid_idx = np.where(valid)[0]
+            if len(valid_idx) > 1:
+                coords = all_coords[valid_idx]
+                fluxes = (
+                    np.array([source_list[i].flux.to_value(u.Jy) for i in valid_idx])
+                    * u.Jy
                 )
-                nearby = neighbordist <= self.thumbnail_half_width * (2**-0.5)
-                brighter = (
-                    source_fluxes[neighboridx]
-                    >= fp_source.flux * self.near_source_rel_flux_limit
-                )
-                if nearby & brighter:  # more than itself
+                nidx, ndist, _ = coords.match_to_catalog_sky(coords, nthneighbor=2)
+                flagged = valid_idx[
+                    (ndist <= self.thumbnail_half_width * (2**-0.5))
+                    & (fluxes[nidx] >= fluxes * self.near_source_rel_flux_limit)
+                ]
+                for i in flagged:
                     has_nearby_sources[i] = True
 
         self.log.info(
@@ -296,7 +308,14 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         )
         ## get all forced photometry sources from catalogs
         source_list = list(
-            itertools.chain(*[c.forced_photometry_sources(input_map) for c in catalogs])
+            itertools.chain(
+                *[
+                    c.forced_photometry_sources(
+                        input_map, flux_lower_limit=self.min_flux
+                    )
+                    for c in catalogs
+                ]
+            )
         )
         ## select only those above min_flux for pointing fitting
         pointing_source_list = [

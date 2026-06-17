@@ -54,20 +54,14 @@ def test_rhokappa_coadder_separate(separate_map_set_1, separate_map_set_2):
     assert coadd.flux is not None
     assert coadd.snr is not None
     assert coadd.time_mean is not None
-    corners = coadd.bbox
-    assert corners[0].ra.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].ra, input_maps[1].bbox[0].ra).to_value(u.deg)
-    )
-    assert corners[0].dec.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].dec, input_maps[1].bbox[0].dec).to_value(u.deg)
-    )
-
-    assert corners[1].ra.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].ra, input_maps[1].bbox[1].ra).to_value(u.deg)
-    )
-    assert corners[1].dec.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].dec, input_maps[1].bbox[1].dec).to_value(u.deg)
-    )
+    corners = (
+        coadd.bbox
+    )  # [[dec_min, ra_max], [dec_max, ra_min]] in radians (pixell east-left)
+    b0, b1 = input_maps[0].bbox, input_maps[1].bbox
+    assert corners[0][0] == pytest.approx(min(b0[0][0], b1[0][0]))  # dec_min
+    assert corners[0][1] == pytest.approx(max(b0[0][1], b1[0][1]))  # ra_max (east edge)
+    assert corners[1][0] == pytest.approx(max(b0[1][0], b1[1][0]))  # dec_max
+    assert corners[1][1] == pytest.approx(min(b0[1][1], b1[1][1]))  # ra_min (west edge)
     assert np.all(coadd.hits <= 1)
 
 
@@ -106,20 +100,14 @@ def test_rhokappa_coadder_overlapping(overlapping_map_set_1, overlapping_map_set
     assert coadd.flux is not None
     assert coadd.snr is not None
     assert coadd.time_mean is not None
-    corners = coadd.bbox
-    assert corners[0].ra.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].ra, input_maps[1].bbox[0].ra).to_value(u.deg)
-    )
-    assert corners[0].dec.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].dec, input_maps[1].bbox[0].dec).to_value(u.deg)
-    )
-
-    assert corners[1].ra.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].ra, input_maps[1].bbox[1].ra).to_value(u.deg)
-    )
-    assert corners[1].dec.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].dec, input_maps[1].bbox[1].dec).to_value(u.deg)
-    )
+    corners = (
+        coadd.bbox
+    )  # [[dec_min, ra_max], [dec_max, ra_min]] in radians (pixell east-left)
+    b0, b1 = input_maps[0].bbox, input_maps[1].bbox
+    assert corners[0][0] == pytest.approx(min(b0[0][0], b1[0][0]))  # dec_min
+    assert corners[0][1] == pytest.approx(max(b0[0][1], b1[0][1]))  # ra_max (east edge)
+    assert corners[1][0] == pytest.approx(max(b0[1][0], b1[1][0]))  # dec_max
+    assert corners[1][1] == pytest.approx(min(b0[1][1], b1[1][1]))  # ra_min (west edge)
     assert ~np.all(coadd.hits <= 1)
 
 
@@ -195,14 +183,16 @@ def test_coadding_with_sources_in_separate_maps(
             separate_source_params["source2"]["ra"].to_value(u.rad),
         ]
     )
-    assert new_map.flux[int(source_pos_1[0]), int(source_pos_1[1])] == pytest.approx(
+    pix1 = int(source_pos_1[0]), int(source_pos_1[1])
+    pix2 = int(source_pos_2[0]), int(source_pos_2[1])
+    assert new_map.flux[pix1] - float(coadd.flux[pix1]) == pytest.approx(
         separate_source_params["source1"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert new_map.flux[int(source_pos_2[0]), int(source_pos_2[1])] == pytest.approx(
+    assert new_map.flux[pix2] - float(coadd.flux[pix2]) == pytest.approx(
         separate_source_params["source2"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert coadd.hits[int(source_pos_1[0]), int(source_pos_1[1])] == 1
-    assert coadd.hits[int(source_pos_2[0]), int(source_pos_2[1])] == 1
+    assert coadd.hits[pix1] == 1
+    assert coadd.hits[pix2] == 1
 
 
 def test_coadding_with_sources_in_overlapping_maps(
@@ -278,11 +268,13 @@ def test_coadding_with_sources_in_overlapping_maps(
             overlapping_source_params["source2"]["ra"].to_value(u.rad),
         ]
     )
-    assert new_map.flux[int(source_pos_1[0]), int(source_pos_1[1])] == pytest.approx(
+    pix1 = int(source_pos_1[0]), int(source_pos_1[1])
+    pix2 = int(source_pos_2[0]), int(source_pos_2[1])
+    assert new_map.flux[pix1] - float(coadd.flux[pix1]) == pytest.approx(
         overlapping_source_params["source1"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert new_map.flux[int(source_pos_2[0]), int(source_pos_2[1])] == pytest.approx(
+    assert new_map.flux[pix2] - float(coadd.flux[pix2]) == pytest.approx(
         overlapping_source_params["source2"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert coadd.hits[int(source_pos_1[0]), int(source_pos_1[1])] == 2
-    assert coadd.hits[int(source_pos_2[0]), int(source_pos_2[1])] == 1
+    assert coadd.hits[pix1] == 2
+    assert coadd.hits[pix2] == 1

@@ -54,9 +54,13 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.array = original_map.array
         self.finalized = original_map.finalized
         self.map_resolution = original_map.map_resolution
-        self.box = original_map.box
+        self.sky_box = original_map.sky_box
 
         return
+
+    @property
+    def bbox(self) -> np.ndarray:
+        return enmap.box(self.flux.shape, self.flux.wcs)
 
     def build(self):
         return

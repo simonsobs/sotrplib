@@ -51,7 +51,41 @@ def test_basic_pipeline_lmfit(
     runner = PipelineRunner(
         map_coadder=None,
         source_catalogs=[source_cat],
-        sso_catalogs=[],
+        source_injector=None,
+        preprocessors=None,
+        pointing_provider=None,
+        pointing_residual_model=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=TwoDGaussianFitter(mode="lmfit"),
+        source_subtractor=None,
+        blind_search=SigmaClipBlindSearch(),
+        sifter=DefaultSifter(),
+        source_outputs=[PickleSerializer(directory=tmp_path)],
+        map_outputs=None,
+    )
+
+    runner.run(maps)
+
+
+def test_basic_pipeline_missing_crossmatches(
+    tmp_path,
+    map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],
+    map_with_single_source: tuple[SimulatedMap, list[RegisteredSource]],
+):
+    """
+    Tests a complete setup of the basic pipeline run with different maps
+    to verify crossmatch.
+    """
+
+    map_1, sources = map_with_sources
+    map_2, _ = map_with_single_source
+    source_cat = RegisteredSourceCatalog(sources=sources)
+    maps = [map_1, map_2]
+
+    runner = PipelineRunner(
+        map_coadder=None,
+        source_catalogs=[source_cat],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,

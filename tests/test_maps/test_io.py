@@ -40,7 +40,6 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
     runner = PipelineRunner(
         map_coadder=None,
         source_catalogs=[],
-        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,
@@ -73,7 +72,6 @@ def test_basic_pipeline_ivar(separate_map_set_1):
     runner = PipelineRunner(
         map_coadder=None,
         source_catalogs=[],
-        sso_catalogs=[],
         source_injector=None,
         preprocessors=None,
         pointing_provider=None,

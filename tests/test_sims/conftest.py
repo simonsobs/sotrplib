@@ -153,3 +153,22 @@ def dummy_map(sim_map_params, ones_map_set):
     DummyMap.frequency = "f090"
     DummyMap.array = "sim"
     return DummyMap
+
+
+@pytest.fixture
+def obs_times():
+    return (
+        Time("2024-01-01T00:00:00", format="isot", scale="utc"),
+        Time("2024-01-01T01:00:00", format="isot", scale="utc"),
+    )
+
+
+@pytest.fixture
+def flux_enmap():
+    """Small synthetic enmap centred on (ra=16 deg, dec=-2 deg)."""
+    shape, wcs = enmap.geometry(
+        pos=np.deg2rad([[-3.0, 18.0], [-1.0, 14.0]]),
+        res=np.deg2rad(0.5 / 60),
+        proj="car",
+    )
+    return enmap.zeros(shape, wcs=wcs)
