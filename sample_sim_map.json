@@ -19,7 +19,9 @@
         "injector_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy"
+        "photometry_type": "lmfit",
+        "min_flux": "0.01 Jy",
+        "flux_limit_centroid": "0.1 Jy"
     },
     "source_subtractor": {
         "subtractor_type": "photutils"
