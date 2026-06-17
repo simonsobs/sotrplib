@@ -50,7 +50,7 @@ def main():
     if isinstance(config.maps, MapGeneratorConfig):
         maps = config.maps.to_generator(log=log)
     elif isinstance(config.maps, list):
-        maps = (m.to_map(log=log) for m in config.maps)
+        maps = [m.to_map(log=log) for m in config.maps]
 
     if maps is not None:
         pipeline.run(maps)
