@@ -3,7 +3,7 @@ Simons Observatory Time Resolved Pipeline Library
 
 A pipeline to ingest fits maps, perform pre- and post-processing, forced photometry and blind searching for point sources.
 
-Currently, the output is a pandas database in pickle format.
+Currently, the sample config output use a pandas database in pickle format.
 
 See `scripts/end-to-end/` for an example of a full pipeline run including socat and lightcurvedb
 
@@ -46,10 +46,12 @@ code in `sotrplib/config/config.py` and the relevant config files.
 ### Source Catalog (socat)
 
 We have implemented the source catalog using `socat` (https://github.com/simonsobs/socat/).
-To make things work with an ACT type catalog, socat includes a runnable script `socat-act-fits` which ingests the .fits file into a pickle file which can be converted into a mock socat object in the pipeline.
-One can also ingest solar system object ephemerides using a parquet file containing JPL horizons output. See socat documentation for this info.
+To make things work with an ACT type catalog, socat includes a runnable script `socat-act-fits` which ingests the .fits file into the socat database.
+One can also ingest solar system object ephemerides using a parquet file containing JPL horizons output. See `socat` documentation for this info.
 
-You can also write custom ingest scripts as needed to load whatever relevant source catalogs you want.
+You could also ingest files directly into a `RegisteredSourceCatalog`, though it is preferred to load them directly into an socat db.
+One would need to create a custom `SourceCatalog` object and wire it through the configuration path to load on-the-fly.
+See `source_catalog/source_catalog.py` for some examples of loading custom files.
 
 To use socat as a proper database and ingest solar system objects, follow the instructions in the socat README.
 You'll want to set up the environment variables appropriately -- something like:
@@ -63,23 +65,13 @@ Then in the config JSON file, the source catalogs list is just a single socat db
 ```
     "source_catalogs": [
         {
-            "catalog_type": "socat",
-            "flux_lower_limit": "0.1 Jy",
-            "t_min": "2019-01-01T00:00:00Z",
-            "t_max": "2019-12-30T12:00:00Z"
+            "catalog_type": "socat"
         }
     ],
 ```
 
 This example shows that the source catalog is of type "socat" which means the system will 
 look for the environment variables to define the type and name of the catalog.
-If you want socat to include/query solar system or other moving objects, you should provide
-`t_min` and `t_max` so the pipeline can determine whether those objects are inside the maps.
-These values set the limits on interpolating the positions of the objects, so make sure the
-map time range(s) are contained within these times. If `t_min` and `t_max` are omitted, socat
-can still be used for fixed sources, but moving-object queries will not be available.
-`flux_lower_limit` sets the limit for querying forced photometry sources; thus if ingesting a 
-custom file it should be sure to include a flux estimate for the source.
 
 ### Map Catalog (mapcat)
 
