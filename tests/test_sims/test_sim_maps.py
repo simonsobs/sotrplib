@@ -175,3 +175,119 @@ def test_inject_simulated_sources_all_none(log=log):
 
     mapdata = type("MapData", (), {})()
     assert sim_maps.inject_simulated_sources(mapdata, log=log) == ([], [])
+
+
+class TestSimulatedMapBboxSkyBox:
+    """
+    Tests for SimulatedMap.bbox / sky_box property interactions.
+
+    Regression coverage for the infinite-recursion bug where bbox called
+    self.sky_box which called self.bbox (fixed by reading _sky_box directly).
+    """
+
+    def _make_map(self, obs_times, sky_box=None, simulation_parameters=None):
+        from sotrplib.sims.maps import SimulatedMap
+
+        return SimulatedMap(
+            observation_start=obs_times[0],
+            observation_end=obs_times[1],
+            sky_box=sky_box,
+            simulation_parameters=simulation_parameters,
+        )
+
+    def test_no_flux_no_sky_box_no_recursion(self, obs_times):
+        """Regression: accessing bbox and sky_box on a fresh map must not recurse."""
+        sim = self._make_map(obs_times)
+        _ = sim.bbox
+        _ = sim.sky_box
+
+    def test_no_flux_no_sky_box_bbox_uses_sim_params(self, obs_times):
+        from sotrplib.sims.maps import SimulationParameters
+
+        params = SimulationParameters(
+            center_ra=16.0 * u.deg,
+            center_dec=-2.0 * u.deg,
+            width_ra=2.0 * u.deg,
+            width_dec=1.0 * u.deg,
+        )
+        sim = self._make_map(obs_times, simulation_parameters=params)
+        box = sim.bbox  # [[dec_min, ra_max], [dec_max, ra_min]] in radians
+        assert np.isclose(box[0][0], np.deg2rad(-3.0), atol=1e-6)  # dec_min
+        assert np.isclose(box[0][1], np.deg2rad(18.0), atol=1e-6)  # ra_max
+        assert np.isclose(box[1][0], np.deg2rad(-1.0), atol=1e-6)  # dec_max
+        assert np.isclose(box[1][1], np.deg2rad(14.0), atol=1e-6)  # ra_min
+
+    def test_no_flux_no_sky_box_sky_box_derived_from_sim_params(self, obs_times):
+        from sotrplib.sims.maps import SimulationParameters
+
+        params = SimulationParameters(
+            center_ra=16.0 * u.deg,
+            center_dec=-2.0 * u.deg,
+            width_ra=2.0 * u.deg,
+            width_dec=1.0 * u.deg,
+        )
+        sim = self._make_map(obs_times, simulation_parameters=params)
+        sky_box = sim.sky_box
+        assert sky_box is not None
+        # sky_box[0] = (ra_min, dec_min), sky_box[1] = (ra_max, dec_max)
+        assert np.isclose(sky_box[0].ra.to_value(u.deg), 14.0, atol=1e-4)
+        assert np.isclose(sky_box[0].dec.to_value(u.deg), -3.0, atol=1e-4)
+        assert np.isclose(sky_box[1].ra.to_value(u.deg), 18.0, atol=1e-4)
+        assert np.isclose(sky_box[1].dec.to_value(u.deg), -1.0, atol=1e-4)
+
+    def test_explicit_sky_box_no_flux_bbox(self, obs_times):
+        explicit = (
+            SkyCoord(ra=10.0 * u.deg, dec=-5.0 * u.deg),
+            SkyCoord(ra=20.0 * u.deg, dec=5.0 * u.deg),
+        )
+        sim = self._make_map(obs_times, sky_box=explicit)
+        box = sim.bbox
+        assert np.isclose(box[0][0], np.deg2rad(-5.0), atol=1e-6)  # dec_min
+        assert np.isclose(box[0][1], np.deg2rad(20.0), atol=1e-6)  # ra_max
+        assert np.isclose(box[1][0], np.deg2rad(5.0), atol=1e-6)  # dec_max
+        assert np.isclose(box[1][1], np.deg2rad(10.0), atol=1e-6)  # ra_min
+
+    def test_explicit_sky_box_no_flux_sky_box_returns_explicit(self, obs_times):
+        explicit = (
+            SkyCoord(ra=10.0 * u.deg, dec=-5.0 * u.deg),
+            SkyCoord(ra=20.0 * u.deg, dec=5.0 * u.deg),
+        )
+        sim = self._make_map(obs_times, sky_box=explicit)
+        sky_box = sim.sky_box
+        assert np.isclose(sky_box[0].ra.to_value(u.deg), 10.0, atol=1e-4)
+        assert np.isclose(sky_box[0].dec.to_value(u.deg), -5.0, atol=1e-4)
+        assert np.isclose(sky_box[1].ra.to_value(u.deg), 20.0, atol=1e-4)
+        assert np.isclose(sky_box[1].dec.to_value(u.deg), 5.0, atol=1e-4)
+
+    def test_flux_set_bbox_uses_flux(self, obs_times, flux_enmap):
+        sim = self._make_map(obs_times)
+        sim.flux = flux_enmap
+        expected = enmap.box(flux_enmap.shape, flux_enmap.wcs)
+        assert np.allclose(sim.bbox, expected)
+
+    def test_flux_set_sky_box_derived_from_flux(self, obs_times, flux_enmap):
+        sim = self._make_map(obs_times)
+        sim.flux = flux_enmap
+        flux_box = enmap.box(flux_enmap.shape, flux_enmap.wcs)
+        sky_box = sim.sky_box
+        assert sky_box is not None
+        # ra_min lives at flux_box[1][1], dec_min at flux_box[0][0]
+        assert np.isclose(sky_box[0].ra.to_value(u.rad), flux_box[1][1], atol=1e-4)
+        assert np.isclose(sky_box[0].dec.to_value(u.rad), flux_box[0][0], atol=1e-4)
+        assert np.isclose(sky_box[1].ra.to_value(u.rad), flux_box[0][1], atol=1e-4)
+        assert np.isclose(sky_box[1].dec.to_value(u.rad), flux_box[1][0], atol=1e-4)
+
+    def test_flux_set_explicit_sky_box_preserved(self, obs_times, flux_enmap):
+        """Explicit sky_box is not overridden when flux is set."""
+        explicit = (
+            SkyCoord(ra=10.0 * u.deg, dec=-5.0 * u.deg),
+            SkyCoord(ra=20.0 * u.deg, dec=5.0 * u.deg),
+        )
+        sim = self._make_map(obs_times, sky_box=explicit)
+        sim.flux = flux_enmap
+        # bbox should use flux
+        assert np.allclose(sim.bbox, enmap.box(flux_enmap.shape, flux_enmap.wcs))
+        # sky_box should still be the explicit one
+        sky_box = sim.sky_box
+        assert np.isclose(sky_box[0].ra.to_value(u.deg), 10.0, atol=1e-4)
+        assert np.isclose(sky_box[1].ra.to_value(u.deg), 20.0, atol=1e-4)

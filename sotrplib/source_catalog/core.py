@@ -7,9 +7,10 @@ from typing import Literal
 
 import numpy as np
 import structlog
+import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from numpy.typing import NDArray
+from astropy.time import Time
 from pixell import utils as pixell_utils
 from structlog.types import FilteringBoundLogger
 
@@ -28,17 +29,17 @@ class SourceCatalog(ABC):
 
     @abstractmethod
     def get_sources_in_box(
-        self, box: list[SkyCoord] | None = None
+        self, box: tuple[SkyCoord, SkyCoord] | None = None, t: Time | None = None
     ) -> list[RegisteredSource]:
         """
-        Get sources that live in a specific box on the sky.
+        Get sources that live in a specific sky box.
+        Sky box is defined by two corner coordinates, (lower-left, upper-right).
+        Time required for moving sources in order to determine if they are within the box.
         """
         return
 
     @abstractmethod
-    def get_sources_in_map(
-        self, input_map: ProcessableMap | None = None
-    ) -> list[RegisteredSource]:
+    def get_sources_in_map(self, input_map: ProcessableMap) -> list[RegisteredSource]:
         """
         Get sources that are within the valid region of a given map.
         """
@@ -46,15 +47,22 @@ class SourceCatalog(ABC):
 
     @abstractmethod
     def forced_photometry_sources(
-        self, mask_map: ProcessableMap | None = None
+        self,
+        mask_map: ProcessableMap | None = None,
+        t_min: Time | None = None,
+        t_max: Time | None = None,
+        flux_lower_limit: u.Quantity | None = None,
     ) -> list[RegisteredSource]:
         """
-        Get the list of sources to be used for forced photometry
+        Get the list of sources to be used for forced photometry.
+        Will use mask_map to filter sources.
+        flux_lower_limit to filter by flux.
+        t_min and t_max can be used to filter by time.
         """
         return
 
     @abstractmethod
-    def source_by_id(self, id) -> RegisteredSource:
+    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
         """
         Get the information about a source by its internal ID.
         """
@@ -67,7 +75,12 @@ class SourceCatalog(ABC):
         dec: u.Quantity,
         radius: u.Quantity,
         method: Literal["closest", "all"],
+        t: Time | None = None,
     ) -> list[CrossMatch]:
+        """
+        Crossmatch a set of coordinates with the sources in the catalog.
+        Optionally include a time for moving sources.
+        """
         return
 
 
@@ -78,26 +91,21 @@ class RegisteredSourceCatalog(SourceCatalog):
     """
 
     sources: list[RegisteredSource]
-    ra_dec_array: NDArray
 
     def __init__(self, sources: list[RegisteredSource]):
         self.sources = sources
-        # Generate the RA, Dec array for crossmatches.
-        self.ra_dec_array = np.asarray(
-            [(x.ra.to("radian").value, x.dec.to("radian").value) for x in self.sources]
-        )
 
     def add_sources(self, sources: list[RegisteredSource]):
         self.sources.extend(sources)
-        self.ra_dec_array = np.asarray(
-            [(x.ra.to("radian").value, x.dec.to("radian").value) for x in self.sources]
-        )
 
     def get_sources_in_map(
         self,
-        input_map: ProcessableMap | None = None,
+        input_map: ProcessableMap,
         log: FilteringBoundLogger | None = None,
     ) -> list[RegisteredSource]:
+        """
+        Get sources that are within the valid region of a given map.
+        """
         log = log or structlog.get_logger()
         if len(self.sources) == 0:
             return []
@@ -116,8 +124,12 @@ class RegisteredSourceCatalog(SourceCatalog):
         return [self.sources[i] for i in np.where(inside)[0]]
 
     def get_sources_in_box(
-        self, box: list[SkyCoord] | None = None
+        self, box: tuple[SkyCoord, SkyCoord] | None = None
     ) -> list[RegisteredSource]:
+        """
+        Get sources that are within a given sky box.
+        If no box is provided, all sources are returned.
+        """
         if box is None:
             return self.sources
         ## Get sky coord limits and whether ra is -180,180 or 0,360
@@ -159,12 +171,23 @@ class RegisteredSourceCatalog(SourceCatalog):
         ]
 
     def forced_photometry_sources(
-        self, mask_map: ProcessableMap | None = None
+        self, mask_map: ProcessableMap, flux_lower_limit: u.Quantity | None = None
     ) -> list[RegisteredSource]:
-        return self.get_sources_in_map(mask_map)
+        """
+        Get sources that are within the valid region of a given map.
+        Optionally filter by a lower limit on the source flux.
+        """
+        sources = self.get_sources_in_map(mask_map)
+        if flux_lower_limit is not None:
+            sources = [s for s in sources if s.flux >= flux_lower_limit]
+        return sources
 
-    def source_by_id(self, id: int):
-        return self.sources[id]
+    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
+        source_ids = [s.source_id for s in self.sources]
+        if id not in source_ids:
+            return None
+        idx = source_ids.index(id)
+        return self.sources[idx]
 
     def crossmatch(
         self,
@@ -176,13 +199,15 @@ class RegisteredSourceCatalog(SourceCatalog):
         """
         Get sources within radius of the catalog.
         """
-
-        if len(self.ra_dec_array) == 0:
+        if len(self.sources) == 0:
             return []
 
+        catalog_positions = np.array(
+            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in self.sources]
+        )
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("radian").value, dec.to("radian").value]],
-            pos2=self.ra_dec_array,
+            pos2=catalog_positions,
             rmax=radius.to("radian").value,
             mode=method,
             coords="radec",
@@ -194,7 +219,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             CrossMatch(
                 ra=s.ra,
                 dec=s.dec,
-                source_id=str(s.source_id),
+                source_id=s.source_id,
                 probability=1.0 / len(sources),
                 angular_separation=angular_separation(
                     ra1=s.ra, dec1=s.dec, ra2=ra, dec2=dec
@@ -203,8 +228,8 @@ class RegisteredSourceCatalog(SourceCatalog):
                 err_flux=s.err_flux,
                 frequency=s.frequency,
                 catalog_name="registered",
-                catalog_idx=y[1],
+                catalog_idx=s.source_id,
                 alternate_names=[],
             )
-            for s, y in zip(sources, matches)
+            for s, _ in zip(sources, matches)
         ]

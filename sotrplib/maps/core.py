@@ -10,6 +10,7 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from astropy.units import Unit
 from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
@@ -17,7 +18,11 @@ from pixell.enmap import ndmap
 from pydantic import AwareDatetime
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.utils import pixell_map_union, skycoord_box_to_enmap_box
+from sotrplib.maps.utils import (
+    enmap_box_to_skycoord,
+    pixell_map_union,
+    skycoord_box_to_enmap_box,
+)
 
 PointingModel = ConstantPointingModel
 
@@ -85,20 +90,7 @@ class ProcessableMap(ABC):
     instrument: str | None = None
     "The instrument that observed the map, e.g. 'SOLAT', 'SOSAT'"
 
-    sky_box: tuple[SkyCoord, SkyCoord] | None = None
-    """
-    Sky bounding box. Can be set to initialize the map with a cutout of a larger map.
-    Should be in the form
-
-    ``sky_box = (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``
-
-    Wrap detection (both RAs in ``[0, 2π)``):
-
-    - ``sky_box[0].ra < sky_box[1].ra`` — non-wrapping region.
-    - ``sky_box[0].ra > sky_box[1].ra`` — wrapping region (spans RA = 0);
-      ``sky_box[0].ra`` is the upper boundary (near 2π) and ``sky_box[1].ra`` is the
-      lower boundary (near 0).
-    """
+    _sky_box: tuple[SkyCoord, SkyCoord] | None = None
 
     _hits: ndmap | None = None
     "A hits map stating the number of times each pixel was observed"
@@ -269,15 +261,50 @@ class ProcessableMap(ABC):
         The bounding box of the map as a pixell enmap box.
 
         Returns ``enmap.box(shape, wcs)`` on the first loaded map found in
-        ``_available_maps``.  Falls back to ``skycoord_box_to_enmap_box(self.sky_box)``
-        when ``sky_box`` is set.  Returns ``None`` if no map or sky_box is available.
+        ``_available_maps``.
+        Returns ``None`` if no map or sky_box is available.
         """
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
                 return enmap.box(m.shape, m.wcs)
-        if self.sky_box is not None:
-            return skycoord_box_to_enmap_box(self.sky_box)
+
         return None
+
+    @property
+    def sky_box(self) -> tuple[SkyCoord, SkyCoord] | None:
+        """
+        Sky bounding box. Can be set to initialize the map with a cutout of a larger map.
+        Should be in the form
+
+        ``sky_box = (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))``
+
+        Wrap detection (both RAs in ``[0, 2π)``):
+
+        - ``sky_box[0].ra < sky_box[1].ra`` — non-wrapping region.
+        - ``sky_box[0].ra > sky_box[1].ra`` — wrapping region (spans RA = 0);
+          ``sky_box[0].ra`` is the upper boundary (near 2π) and ``sky_box[1].ra`` is the
+          lower boundary (near 0).
+
+        If not explicitly set, derived from ``bbox`` (e.g. the geometry of a
+        loaded map) the same way ``rho``/``kappa`` are derived from ``snr``/``flux``.
+        """
+        if self._sky_box is not None:
+            return self._sky_box
+        if (box := self.bbox) is not None:
+            return enmap_box_to_skycoord(box)
+
+        return None
+
+    @sky_box.setter
+    def sky_box(self, x):
+        self._sky_box = x
+
+    @sky_box.deleter
+    def sky_box(self):
+        try:
+            del self._sky_box
+        except AttributeError:
+            pass
 
     @property
     def map_id(self) -> str:
@@ -306,27 +333,58 @@ class ProcessableMap(ABC):
             f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         """
         Given a pixel in the map, return the observation start, mean and end time of that pixel.
+        Assumes time map is in unix time.
+
+        If the map has time maps, will check pixel value. Otherwise, will
+        use the time ranges defined by the map's observation start and end times.
+
+        Raises
+        ------
+        IndexError
+            If the pixel is outside the map bounds.
+
+        Returns
+        -------
+        tuple[Time|None, Time|None, Time|None]
+            The observation start, mean and end time of the pixel, or None if the pixel is outside the map bounds.
         """
         x, y = int(pix[0]), int(pix[1])
 
         t_start = (
-            self.time_first[x, y]
+            Time(self.time_first[x, y], format="unix")
             if self.time_first is not None
-            else self.observation_start
+            else Time(self.observation_start)
         )
         t_mean = (
-            self.time_mean[x, y]
+            Time(self.time_mean[x, y], format="unix")
             if self.time_mean is not None
-            else (self.observation_end - self.observation_start) / 2
-            + self.observation_start
+            else Time(
+                (self.observation_end - self.observation_start) / 2
+                + self.observation_start
+            )
         )
         t_end = (
-            self.time_last[x, y] if self.time_last is not None else self.observation_end
+            Time(self.time_last[x, y], format="unix")
+            if self.time_last is not None
+            else Time(self.observation_end)
         )
         return t_start, t_mean, t_end
+
+    def get_obs_time(self, position: SkyCoord) -> Time | None:
+        """Return the per-pixel mean observation time at a sky position, or None on failure."""
+        try:
+            pix = self.hits.sky2pix(
+                np.array([position.dec.to_value("rad"), position.ra.to_value("rad")])
+            )
+            _, t_pixel, _ = self.get_pixel_times(pix)
+            return t_pixel
+        except (IndexError, ValueError):
+            return None
 
     def apply_mask(self):
         """
@@ -462,6 +520,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.time_mean = time_map
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
 
         return
 
@@ -529,7 +588,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             flux /= self.inverse_variance
         return flux
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
@@ -574,6 +635,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
             self.prefiltered_map.observation_end
             - self.prefiltered_map.observation_start
         )
+        self.observation_time = self.observation_start + self.observation_length / 2
         self.sky_box = self.prefiltered_map.sky_box
         self.frequency = self.prefiltered_map.frequency
         self.array = self.prefiltered_map.array
@@ -660,7 +722,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
         return flux
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
@@ -768,6 +832,7 @@ class RhoAndKappaMap(ProcessableMap):
 
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
         return
 
     def add_time_offset(self, offset: timedelta | None = None):
@@ -804,14 +869,20 @@ class RhoAndKappaMap(ProcessableMap):
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def get_map_id(self):
         return self.__map_id or super().get_map_str_id()
 
     def _compute_hits(self):
-        return (self.kappa > 0).astype(np.int32)
+        return (
+            (self.kappa > 0).astype(np.int32)
+            if not self.finalized
+            else (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        )
 
     def _compute_valid_pixel_mask(self):
         if self.finalized:
@@ -936,6 +1007,7 @@ class FluxAndSNRMap(ProcessableMap):
 
         self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
         return
 
     def add_time_offset(self, offset: timedelta | None = None):
@@ -972,7 +1044,9 @@ class FluxAndSNRMap(ProcessableMap):
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def get_map_id(self):
@@ -1138,7 +1212,9 @@ class CoaddedRhoKappaMap(ProcessableMap):
             bool_map *= self.mask
         return bool_map
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def get_snr(self):

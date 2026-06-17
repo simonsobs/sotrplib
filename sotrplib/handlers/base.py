@@ -4,6 +4,7 @@ from typing import Iterable
 
 import numpy as np
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
 
@@ -45,7 +46,6 @@ class BaseRunner:
     source_simulators: list[SimulatedSourceGenerator] | None
     source_injector: SourceInjector | None
     source_catalogs: list[SourceCatalog] | None
-    sso_catalogs: list[SourceCatalog] | None
     preprocessors: list[MapPreprocessor] | None
     pointing_provider: ForcedPhotometryProvider | None
     pointing_residual_model: MapPointingOffset | None
@@ -64,7 +64,6 @@ class BaseRunner:
         source_simulators: list[SimulatedSourceGenerator] | None,
         source_injector: SourceInjector | None,
         source_catalogs: list[SourceCatalog] | None,
-        sso_catalogs: list[SourceCatalog] | None,
         preprocessors: list[MapPreprocessor] | None,
         pointing_provider: ForcedPhotometryProvider | None,
         pointing_residual_model: MapPointingOffset | None,
@@ -81,7 +80,6 @@ class BaseRunner:
         self.source_simulators = source_simulators or []
         self.source_injector = source_injector or EmptySourceInjector()
         self.source_catalogs = source_catalogs or []
-        self.sso_catalogs = sso_catalogs or []
         self.preprocessors = preprocessors or []
         self.pointing_provider = pointing_provider or EmptyForcedPhotometry()
         self.pointing_residual_model = pointing_residual_model or EmptyPointingOffset()
@@ -148,16 +146,17 @@ class BaseRunner:
         sky_box = enmap_box_to_skycoord(bbox)
         return sky_box
 
-    def observation_time_range(self, maps=None):
+    def observation_time_range(self, maps=None) -> tuple[Time, Time]:
+        """
+        Get the time range covering all input maps.
+        """
         if not maps:
             return (None, None)
-
         start_time = datetime.max.replace(tzinfo=timezone.utc)
         end_time = datetime.min.replace(tzinfo=timezone.utc)
         for input_map in maps:
             start_time = min(input_map.observation_start, start_time)
             end_time = max(input_map.observation_end, end_time)
-
         return (start_time, end_time)
 
     def simulate_sources(
@@ -233,19 +232,12 @@ class BaseRunner:
                     filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
                 )
                 break
-        sso_sources = []
-        for sso_catalog in self.sso_catalogs:
-            sso_sources.extend(
-                self.profilable_task(sso_catalog.get_sources_in_map)(
-                    input_map=input_map
-                )
-            )
 
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force
         )(
             input_map=input_map,
-            catalogs=self.source_catalogs + self.sso_catalogs,
+            catalogs=self.source_catalogs,
             pointing_model=pointing_model,
         )
 
@@ -260,7 +252,7 @@ class BaseRunner:
 
         sifter_result = self.profilable_task(self.sifter.sift)(
             sources=blind_sources,
-            catalogs=self.source_catalogs + self.sso_catalogs,
+            catalogs=self.source_catalogs,
             input_map=source_subtracted_map,
         )
 
@@ -289,7 +281,7 @@ class BaseRunner:
             return []
 
         # FIXME: use a better radius
-        found, matches = self.profilable_task(crossmatch_mask)(
+        _, matches = self.profilable_task(crossmatch_mask)(
             positions_1, positions_2, radius=radius, return_matches=True
         )
         return matches

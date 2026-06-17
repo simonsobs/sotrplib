@@ -42,7 +42,7 @@ def test_socat_mock_db(dummy_socat_db):
     assert near_source.source_id == "test_source_1"
     assert near_source.ra == source1.ra
     assert near_source.dec == source1.dec
-    assert near_source.catalog_idx == 0
+    assert near_source.catalog_idx == source1.source_id
 
     source2 = RegisteredSource(
         source_id="test_source_2",
@@ -61,7 +61,7 @@ def test_socat_mock_db(dummy_socat_db):
     assert near_source.source_id == "test_source_1"
     assert near_source.ra == source1.ra
     assert near_source.dec == source1.dec
-    assert near_source.catalog_idx == 0
+    assert near_source.catalog_idx == source1.source_id
 
     nearby = db.crossmatch(
         ra=source2.ra, dec=source2.dec, radius=0.1 * u.deg, method="closest"
@@ -71,7 +71,7 @@ def test_socat_mock_db(dummy_socat_db):
     assert near_source.source_id == "test_source_2"
     assert near_source.ra == source2.ra
     assert near_source.dec == source2.dec
-    assert near_source.catalog_idx == 1
+    assert near_source.catalog_idx == source2.source_id
 
     nearby = db.crossmatch(
         ra=source2.ra, dec=source2.dec, radius=3 * u.deg, method="all"
@@ -80,11 +80,11 @@ def test_socat_mock_db(dummy_socat_db):
     assert nearby[0].source_id == "test_source_1"
     assert nearby[0].ra == source1.ra
     assert nearby[0].dec == source1.dec
-    assert nearby[0].catalog_idx == 0
+    assert nearby[0].catalog_idx == source1.source_id
     assert nearby[1].source_id == "test_source_2"
     assert nearby[1].ra == source2.ra
     assert nearby[1].dec == source2.dec
-    assert nearby[1].catalog_idx == 1
+    assert nearby[1].catalog_idx == source2.source_id
 
 
 def test_simple_source_catalog():

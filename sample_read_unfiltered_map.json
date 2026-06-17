@@ -22,8 +22,7 @@
     ],
     "source_catalogs": [
         {
-            "catalog_type": "socat",
-            "flux_lower_limit": "0.1 Jy"
+            "catalog_type": "socat"
         }
     ],
     "preprocessors": [
@@ -41,8 +40,10 @@
             "search_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy",
-        "reproject_thumbnails": "True"
+        "photometry_type": "lmfit",
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy",
+        "min_flux": "0.01 Jy"
     },
     "sifter": {
         "sifter_type": "default"

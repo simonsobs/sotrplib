@@ -2,10 +2,10 @@
 Tests for the SOCat source catalog integration
 """
 
-import datetime
 import os
+from datetime import datetime, timedelta
 
-from astropy import units as u
+from astropy.time import Time
 
 
 def test_socat_read(socat_pickle):
@@ -18,9 +18,9 @@ def test_socat_read(socat_pickle):
 
     from sotrplib.source_catalog.socat import SOCat
 
-    cat = SOCat(flux_lower_limit=0.0 * u.Jy)
+    cat = SOCat()
 
-    sources = cat.get_all_sources()
+    sources = cat.get_all_sources(t=Time.now())
 
     assert len(sources) == 128
 
@@ -35,9 +35,9 @@ def test_socat_source_generator(socat_pickle):
 
     from sotrplib.sims.sim_source_generators import SOCatSourceGenerator
 
-    flare_start = datetime.datetime.now()
-    flare_end = flare_start + datetime.timedelta(days=1)
-    flare_width_shortest = datetime.timedelta(hours=1)
+    flare_start = datetime.now()
+    flare_end = flare_start + timedelta(days=1)
+    flare_width_shortest = timedelta(hours=1)
     flare_width_longest = flare_width_shortest * 2.0
 
     source_generator = SOCatSourceGenerator(
