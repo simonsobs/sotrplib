@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from astropy import units as u
-from astropy.time import Time, TimeDelta
+from astropy.time import Time
 
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
@@ -34,8 +34,8 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
         rho_map_path=paths["rho"],
         kappa_map_path=paths["kappa"],
         time_map_path=paths["time"],
-        observation_start=Time.now(),
-        observation_end=Time.now() + TimeDelta(3600, format="sec"),
+        observation_start="2025-01-01T00:00:00Z",
+        observation_end="2025-01-01T12:00:00Z",
     ).to_map()
     runner = PipelineRunner(
         map_coadder=None,
@@ -66,8 +66,8 @@ def test_basic_pipeline_ivar(separate_map_set_1):
         intensity_map_path=paths["map"],
         weights_map_path=paths["ivar"],
         time_map_path=paths["time"],
-        observation_start=Time.now(),
-        observation_end=Time.now() + TimeDelta(3600, format="sec"),
+        observation_start="2025-01-01T00:00:00Z",
+        observation_end="2025-01-01T12:00:00Z",
     ).to_map()
     runner = PipelineRunner(
         map_coadder=None,
@@ -98,8 +98,8 @@ def test_basic_pipeline_instrument(separate_map_set_1):
         rho_map_path=paths["rho"],
         kappa_map_path=paths["kappa"],
         time_map_path=paths["time"],
-        observation_start=Time.now(),
-        observation_end=Time.now() + TimeDelta(3600, format="sec"),
+        observation_start="2025-01-01T00:00:00Z",
+        observation_end="2025-01-01T12:00:00Z",
         instrument="SOSAT",
         array=None,
         frequency="f090",
