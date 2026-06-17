@@ -119,7 +119,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         # But that's something we should probably handle anyway...
         # Another issue is that we're not actually generating sources on the
         # sphere, but that is not critical.
-        source_id = uuid.create()
+        source_ids = [uuid.create() for _ in range(self.number)]
         sources = [
             RegisteredSource(
                 ra=positions[i][1],
@@ -129,20 +129,20 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                     self.min_flux.to_value("Jy"), self.max_flux.to_value("Jy")
                 )
                 * u.Jy,
-                source_id=source_id,
+                source_id=source_ids[i],
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
                 crossmatches=[
                     CrossMatch(
-                        source_id=source_id,
+                        source_id=source_ids[i],
                         source_type="simulated_fixed",
                         catalog_name="simulated",
                         ra=positions[i][1],
                         dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
-                        catalog_idx=source_id,
+                        catalog_idx=source_ids[i],
                     )
                 ],
             )
@@ -235,7 +235,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             time_range=[self.flare_earliest_time, self.flare_latest_time],
         )
 
-        source_id = uuid.create()
+        source_ids = [uuid.create() for _ in range(self.number)]
 
         def random_datetime(start, end):
             """Generate a random datetime between `start` and `end`"""
@@ -273,20 +273,20 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                     self.peak_amplitude_maximum.to_value("Jy"),
                 )
                 * u.Jy,
-                source_id=source_id,
+                source_id=source_ids[i],
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
                 crossmatches=[
                     CrossMatch(
-                        source_id=source_id,
+                        source_id=source_ids[i],
                         catalog_name="simulated",
                         source_type="simulated_gaussian",
                         ra=positions[i][1],
                         dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
-                        catalog_idx=source_id,
+                        catalog_idx=source_ids[i],
                     )
                 ],
             )

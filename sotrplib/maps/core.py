@@ -333,25 +333,45 @@ class ProcessableMap(ABC):
             f"{self.frequency}_{self.array}_{int(self.observation_start.timestamp())}"
         )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         """
         Given a pixel in the map, return the observation start, mean and end time of that pixel.
+        Assumes time map is in unix time.
+
+        If the map has time maps, will check pixel value. Otherwise, will
+        use the time ranges defined by the map's observation start and end times.
+
+        Raises
+        ------
+        IndexError
+            If the pixel is outside the map bounds.
+
+        Returns
+        -------
+        tuple[Time|None, Time|None, Time|None]
+            The observation start, mean and end time of the pixel, or None if the pixel is outside the map bounds.
         """
         x, y = int(pix[0]), int(pix[1])
 
         t_start = (
-            self.time_first[x, y]
+            Time(self.time_first[x, y], format="unix")
             if self.time_first is not None
-            else self.observation_start
+            else Time(self.observation_start)
         )
         t_mean = (
-            self.time_mean[x, y]
+            Time(self.time_mean[x, y], format="unix")
             if self.time_mean is not None
-            else (self.observation_end - self.observation_start) / 2
-            + self.observation_start
+            else Time(
+                (self.observation_end - self.observation_start) / 2
+                + self.observation_start
+            )
         )
         t_end = (
-            self.time_last[x, y] if self.time_last is not None else self.observation_end
+            Time(self.time_last[x, y], format="unix")
+            if self.time_last is not None
+            else Time(self.observation_end)
         )
         return t_start, t_mean, t_end
 
@@ -362,9 +382,7 @@ class ProcessableMap(ABC):
                 np.array([position.dec.to_value("rad"), position.ra.to_value("rad")])
             )
             _, t_pixel, _ = self.get_pixel_times(pix)
-            if isinstance(t_pixel, (int, float, np.floating)):
-                return Time(float(t_pixel), format="unix") if t_pixel > 0 else None
-            return Time(t_pixel)
+            return t_pixel
         except (IndexError, ValueError):
             return None
 
@@ -570,7 +588,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             flux /= self.inverse_variance
         return flux
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
@@ -702,7 +722,9 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
         return flux
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
@@ -847,7 +869,9 @@ class RhoAndKappaMap(ProcessableMap):
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def get_map_id(self):
@@ -1020,7 +1044,9 @@ class FluxAndSNRMap(ProcessableMap):
                 float(np.amax(self.time_last)), tz=timezone.utc
             )
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def get_map_id(self):
@@ -1186,7 +1212,9 @@ class CoaddedRhoKappaMap(ProcessableMap):
             bool_map *= self.mask
         return bool_map
 
-    def get_pixel_times(self, pix: tuple[int, int]):
+    def get_pixel_times(
+        self, pix: tuple[int, int]
+    ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def get_snr(self):

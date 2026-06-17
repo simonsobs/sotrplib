@@ -47,13 +47,13 @@ class SOCat(SourceCatalog):
             "socat.initialized",
         )
 
-    def add_sources(self, sources: list[RegisteredSource], monitor: bool = True):
+    def add_sources(self, sources: list[RegisteredSource], monitored: bool = True):
         for source in sources:
             self.catalog.create_source(
                 position=SkyCoord(source.ra, source.dec),
                 flux=source.flux,
                 name=source.source_id,
-                flags={"monitored": monitor},
+                flags={"monitored": monitored},
             )
 
     def get_sources_in_box(

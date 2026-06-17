@@ -4,6 +4,7 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from astropy.units import Quantity
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
@@ -170,7 +171,7 @@ class SimulatedMap(ProcessableMap):
 
         return self._core_filter_sources(source_positions, bool_map)
 
-    def get_pixel_times(self, pix):
+    def get_pixel_times(self, pix) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
@@ -305,7 +306,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         return self._core_filter_sources(source_positions, bool_map)
 
-    def get_pixel_times(self, pix):
+    def get_pixel_times(self, pix) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
