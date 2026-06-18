@@ -1,4 +1,3 @@
-import datetime
 import os
 
 import numpy as np
@@ -69,7 +68,7 @@ def dummy_gaussian_source():
         position=SkyCoord(ra=1.1 * u.deg, dec=-2.2 * u.deg),
         peak_amplitude=1.0 * u.Jy,
         peak_time=Time("2025-01-01", format="iso", scale="utc"),
-        flare_width=datetime.timedelta(days=1),
+        flare_width=TimeDelta(1, format="jd"),
     )
 
 

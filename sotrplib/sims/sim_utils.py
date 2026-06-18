@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
@@ -98,48 +99,34 @@ def generate_random_positions(
 
 def generate_random_flare_times(
     n: int,
-    start_time: float | str = 1.4e9,
-    end_time: float | str = 1.7e9,
+    start_time: Time = Time(1.4e9, format="unix"),
+    end_time: Time = Time(1.7e9, format="unix"),
     log=None,
-):
+) -> list[Time]:
     """
-    Generate n random flare times uniformly distributed between start_time and end_time.
-    Arguments:
-        n (int): Number of flare times to generate.
-        start_time (float | str): Start time in unix timestamp or string formatted as "yyyy-mm-dd HH:MM:SS".
-        end_time (float | str): End time in unix timestamp or string formatted as "yyyy-mm-dd HH:MM:SS".
-    Returns:
-        numpy array: Array of random flare times.
+    Generate n random Time values uniformly distributed between start_time and end_time.
     """
-    from datetime import datetime
-
-    # Convert string times to unix timestamps if necessary
-    if isinstance(start_time, str):
-        start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S").timestamp()
-    if isinstance(end_time, str):
-        end_time = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S").timestamp()
-
-    return np.random.uniform(start_time, end_time, n)
+    int_delta = int((end_time - start_time).to_value("s"))
+    return [
+        start_time + TimeDelta(np.random.randint(int_delta), format="sec")
+        for _ in range(n)
+    ]
 
 
 def generate_random_flare_widths(
     n: int,
-    min_width: float = 0.1,
-    max_width: float = 10.0,
+    min_width: TimeDelta = TimeDelta(0.1, format="jd"),
+    max_width: TimeDelta = TimeDelta(10.0, format="jd"),
     log=None,
-):
+) -> list[TimeDelta]:
     """
-    Generate n random flare widths uniformly distributed between min_width and max_width.
-
-    Arguments:
-        n (int): Number of flare widths to generate.
-        min_width (float): Minimum flare width.
-        max_width (float): Maximum flare width.
-
-    Returns:
-        numpy array: Array of random flare widths.
+    Generate n random TimeDelta values uniformly distributed between min_width and max_width.
     """
-    return np.random.uniform(min_width, max_width, n)
+    int_delta = int((max_width - min_width).to_value("s"))
+    return [
+        min_width + TimeDelta(np.random.randint(int_delta), format="sec")
+        for _ in range(n)
+    ]
 
 
 def generate_random_flare_amplitudes(

@@ -1,5 +1,3 @@
-import datetime
-
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
@@ -32,7 +30,7 @@ def test_fixed_source_type():
 def test_gaussian_source_type():
     position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
     flux = u.Quantity(1.0, "Jy")
-    width = datetime.timedelta(days=1)
+    width = TimeDelta(1, format="jd")
     time = Time.now()
 
     source = sim_sources.GaussianTransientSimulatedSource(
@@ -49,14 +47,8 @@ def test_gaussian_source_type():
     )
 
     assert source.position(time=time) == position
-    assert (
-        source.position(time=time - TimeDelta(width.total_seconds(), format="sec"))
-        == position
-    )
-    assert (
-        source.position(time=time + TimeDelta(width.total_seconds(), format="sec"))
-        == position
-    )
+    assert source.position(time=time - width) == position
+    assert source.position(time=time + width) == position
 
 
 def test_fixed_source_generation():
@@ -97,11 +89,11 @@ def test_gaussian_source_generation():
     bottom = 0.0 * u.deg
     top = 10.0 * u.deg
     time = Time.now()
-    dt = datetime.timedelta(hours=2)
-    earliest = time - TimeDelta(dt.total_seconds(), format="sec")
-    latest = time + TimeDelta(dt.total_seconds(), format="sec")
-    shortest = datetime.timedelta(hours=1.0)
-    longest = datetime.timedelta(hours=2.0)
+    dt = TimeDelta(2 * 3600, format="sec")
+    earliest = time - dt
+    latest = time + dt
+    shortest = TimeDelta(3600, format="sec")
+    longest = TimeDelta(2 * 3600, format="sec")
     number = 32
 
     generator = sim_source_generators.GaussianTransientSourceGenerator(
@@ -366,8 +358,8 @@ def test_sim_maps_inject_sources():
     generator = sim_source_generators.GaussianTransientSourceGenerator(
         flare_earliest_time=start_time - TimeDelta(3600, format="sec"),
         flare_latest_time=start_time + TimeDelta(3600, format="sec"),
-        flare_width_shortest=datetime.timedelta(minutes=10),
-        flare_width_longest=datetime.timedelta(minutes=30),
+        flare_width_shortest=TimeDelta(600, format="sec"),
+        flare_width_longest=TimeDelta(1800, format="sec"),
         peak_amplitude_minimum=min_flux,
         peak_amplitude_maximum=max_flux,
         number=number,

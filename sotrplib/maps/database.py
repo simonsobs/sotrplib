@@ -3,7 +3,7 @@ Read maps from the map tracking database.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -73,7 +73,7 @@ class MapCatDatabaseReader(ABC):
         map_units: u.Unit | None = None,
         rerun: bool = False,
         rerun_pointing_model: bool = False,
-        stale_processing_time: timedelta = timedelta(hours=2),
+        stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
@@ -272,7 +272,7 @@ def check_if_processed(
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
-    stale_limit=timedelta(hours=2),
+    stale_limit: TimeDelta = TimeDelta(2 * 3600, format="sec"),
 ) -> bool:
     ## session is mapcat_settings.session() whatever that is
     if session is None:
@@ -288,7 +288,7 @@ def check_if_processed(
             r.processing_status == processing_status
         ) & (
             (datetime.now(timezone.utc).timestamp() - r.processing_start)
-            < stale_limit.total_seconds()
+            < stale_limit.to_value("s")
         ):
             return True
     return False

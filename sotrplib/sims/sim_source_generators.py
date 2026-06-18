@@ -6,7 +6,6 @@ the random generation of those sources.
 
 import random
 from abc import ABC, abstractmethod
-from datetime import timedelta
 
 import uuid7 as uuid
 from astropy import units as u
@@ -42,12 +41,11 @@ def random_datetime(start: Time, end: Time) -> Time:
     return start + TimeDelta(random_second, format="sec")
 
 
-def random_timedelta(min_td, max_td):
-    """Generate a random timedelta between `min_td` and `max_td`"""
-    delta = max_td - min_td
-    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+def random_timedelta(min_td: TimeDelta, max_td: TimeDelta) -> TimeDelta:
+    """Generate a random TimeDelta between `min_td` and `max_td`"""
+    int_delta = int((max_td - min_td).to_value("s"))
     random_second = random.randrange(int_delta)
-    return min_td + timedelta(seconds=random_second)
+    return min_td + TimeDelta(random_second, format="sec")
 
 
 class SimulatedSourceGenerator(ABC):
@@ -168,8 +166,8 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         self,
         flare_earliest_time: Time | None,
         flare_latest_time: Time | None,
-        flare_width_shortest: timedelta,
-        flare_width_longest: timedelta,
+        flare_width_shortest: TimeDelta,
+        flare_width_longest: TimeDelta,
         peak_amplitude_minimum: u.Quantity,
         peak_amplitude_maximum: u.Quantity,
         number: int,
@@ -242,12 +240,11 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
             random_second = random.randrange(int_delta)
             return start + TimeDelta(random_second, format="sec")
 
-        def random_timedelta(min_td, max_td):
-            """Generate a random timedelta between `min_td` and `max_td`"""
-            delta = max_td - min_td
-            int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+        def random_timedelta(min_td: TimeDelta, max_td: TimeDelta) -> TimeDelta:
+            """Generate a random TimeDelta between `min_td` and `max_td`"""
+            int_delta = int((max_td - min_td).to_value("s"))
             random_second = random.randrange(int_delta)
-            return min_td + timedelta(seconds=random_second)
+            return min_td + TimeDelta(random_second, format="sec")
 
         if input_map is not None:
             positions = generate_random_positions_in_map(self.number, input_map.flux)
@@ -333,8 +330,8 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         fraction_gaussian: float,
         flare_earliest_time: Time,
         flare_latest_time: Time,
-        flare_width_shortest: timedelta,
-        flare_width_longest: timedelta,
+        flare_width_shortest: TimeDelta,
+        flare_width_longest: TimeDelta,
         peak_amplitude_minimum_factor: float,
         peak_amplitude_maximum_factor: float,
         log: FilteringBoundLogger | None = None,

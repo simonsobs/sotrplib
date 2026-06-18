@@ -362,10 +362,9 @@ def inject_sources(
             and source.peak_time is not None
             and source.flare_width is not None
         ):
-            if (
-                abs(source.peak_time.unix - source_obs_time)
-                > 3 * source.flare_width.total_seconds()
-            ):
+            if abs(
+                source.peak_time.unix - source_obs_time
+            ) > 3 * source.flare_width.to_value("s"):
                 removed_sources["not_flaring"] += 1
                 continue
         flux = source.flux(Time(source_obs_time, format="unix"))

@@ -1,10 +1,9 @@
 import math
 from abc import ABC, abstractmethod
-from datetime import timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
@@ -63,7 +62,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
         self,
         position: SkyCoord,
         peak_time: Time,
-        flare_width: timedelta,
+        flare_width: TimeDelta,
         peak_amplitude: u.Quantity = 0.0 * u.Jy,
     ):
         """
@@ -89,7 +88,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
     def flux(self, time: Time) -> u.Quantity:
         delta_s = (time - self.peak_time).to_value("s")
-        sigma_s = self.flare_width.total_seconds() / (
+        sigma_s = self.flare_width.to_value("s") / (
             2.0 * math.sqrt(2.0 * math.log(2.0))
         )
         exponent = delta_s / sigma_s
@@ -120,9 +119,9 @@ def generate_transients(
     dec_lims: AstroPydanticQuantity[u.deg] | None = None,
     positions: AstroPydanticQuantity[u.deg] | None = None,
     peak_amplitudes: AstroPydanticQuantity[u.Jy] | None = None,
-    peak_times: list | None = None,
-    flare_widths: list | None = None,
-    flare_morphs: list = None,
+    peak_times: list[Time] | None = None,
+    flare_widths: list[TimeDelta] | None = None,
+    flare_morphs: list[str] = None,
     beam_params: list = None,
     uniform_on_sky=False,
     log: FilteringBoundLogger | None = None,

@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from datetime import timedelta
 from typing import Literal
 
 from astropy import units as u
+from astropy.time import TimeDelta
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
@@ -47,8 +47,8 @@ class FixedSourceGeneratorConfig(SourceSimulationConfig):
 class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
     simulation_type: Literal["gaussian_transient"] = "gaussian_transient"
 
-    flare_width_shortest: timedelta
-    flare_width_longest: timedelta
+    flare_width_shortest: AstroPydanticQuantity[u.s]
+    flare_width_longest: AstroPydanticQuantity[u.s]
     peak_amplitude_minimum: AstroPydanticQuantity[u.Jy]
     peak_amplitude_maximum: AstroPydanticQuantity[u.Jy]
     number: int
@@ -62,8 +62,12 @@ class GaussianTransientSourceGeneratorConfig(SourceSimulationConfig):
         return GaussianTransientSourceGenerator(
             flare_earliest_time=self.flare_earliest_time,
             flare_latest_time=self.flare_latest_time,
-            flare_width_shortest=self.flare_width_shortest,
-            flare_width_longest=self.flare_width_longest,
+            flare_width_shortest=TimeDelta(
+                self.flare_width_shortest.to_value("s"), format="sec"
+            ),
+            flare_width_longest=TimeDelta(
+                self.flare_width_longest.to_value("s"), format="sec"
+            ),
             peak_amplitude_minimum=self.peak_amplitude_minimum,
             peak_amplitude_maximum=self.peak_amplitude_maximum,
             number=self.number,
@@ -78,8 +82,8 @@ class SOCatSourceGeneratorConfig(SourceSimulationConfig):
     fraction_gaussian: float = 0.5
     flare_earliest_time: AstroPydanticTime
     flare_latest_time: AstroPydanticTime
-    flare_width_shortest: timedelta
-    flare_width_longest: timedelta
+    flare_width_shortest: AstroPydanticQuantity[u.s]
+    flare_width_longest: AstroPydanticQuantity[u.s]
     peak_amplitude_minimum_factor: float = 1.0
     peak_amplitude_maximum_factor: float = 5.0
 
@@ -91,8 +95,12 @@ class SOCatSourceGeneratorConfig(SourceSimulationConfig):
             fraction_gaussian=self.fraction_gaussian,
             flare_earliest_time=self.flare_earliest_time,
             flare_latest_time=self.flare_latest_time,
-            flare_width_shortest=self.flare_width_shortest,
-            flare_width_longest=self.flare_width_longest,
+            flare_width_shortest=TimeDelta(
+                self.flare_width_shortest.to_value("s"), format="sec"
+            ),
+            flare_width_longest=TimeDelta(
+                self.flare_width_longest.to_value("s"), format="sec"
+            ),
             peak_amplitude_minimum_factor=self.peak_amplitude_minimum_factor,
             peak_amplitude_maximum_factor=self.peak_amplitude_maximum_factor,
             log=log,
