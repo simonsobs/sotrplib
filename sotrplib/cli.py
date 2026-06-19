@@ -46,12 +46,11 @@ def main():
     )
     log = structlog.get_logger()
 
+    maps = None
     if isinstance(config.maps, MapGeneratorConfig):
         maps = config.maps.to_generator(log=log)
     elif isinstance(config.maps, list):
         maps = [m.to_map(log=log) for m in config.maps]
-    else:
-        maps = None
 
     if maps is not None:
         pipeline.run(maps)
