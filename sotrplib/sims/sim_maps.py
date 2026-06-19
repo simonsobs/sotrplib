@@ -351,10 +351,10 @@ def inject_sources(
             continue
 
         # Check if the source is flaring at the observation time
-        if isinstance(observation_time, Time):
-            source_obs_time = observation_time.unix
-        else:
+        if isinstance(observation_time, enmap.ndmap):
             source_obs_time = observation_time[int(pix[0]), int(pix[1])]
+        else:
+            source_obs_time = observation_time.unix
 
         if (
             hasattr(source, "peak_time")

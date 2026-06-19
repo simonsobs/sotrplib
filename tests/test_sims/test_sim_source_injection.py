@@ -381,9 +381,9 @@ def test_sim_maps_inject_sources():
 
     base_map.build()
     sources, _ = generator.generate(input_map=base_map)
-    timestamp = start_time.unix + 30 * 60  # 30 minutes into the observation
+    observation_time = start_time + TimeDelta(30 * 60, format="sec")
     injected_map, _ = sim_maps.inject_sources(
-        base_map, sources, observation_time=timestamp
+        base_map, sources, observation_time=observation_time
     )
     injected_map.finalize()
 
