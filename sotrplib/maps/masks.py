@@ -1,8 +1,7 @@
-from datetime import datetime
-
 import numpy as np
 import structlog
 from astropy import units as u
+from astropy.time import Time
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
@@ -22,7 +21,7 @@ def mask_dustgal(
 
 def mask_planets(
     input_map: enmap.ndmap,
-    mask_time: datetime | list[datetime],
+    mask_time: Time | list[Time],
     array: str | None = None,
     frequency: str | None = None,
     mask_radius=10 * u.arcmin,

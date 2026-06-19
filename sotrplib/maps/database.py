@@ -3,7 +3,6 @@ Read maps from the map tracking database.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -286,10 +285,7 @@ def check_if_processed(
     for r in session_results:
         if (r.processing_status == completed_status) | (
             r.processing_status == processing_status
-        ) & (
-            (datetime.now(timezone.utc).timestamp() - r.processing_start)
-            < stale_limit.to_value("s")
-        ):
+        ) & ((Time.now().unix - r.processing_start) < stale_limit.to_value("s")):
             return True
     return False
 
@@ -307,7 +303,7 @@ def set_processing_start(map_id: int, session=None):
             TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id)
         ]
     for r in session_results:
-        r.processing_start = datetime.now(timezone.utc).timestamp()
+        r.processing_start = Time.now().unix
         r.processing_status = "processing"
 
         session.add(r)
@@ -396,7 +392,7 @@ def set_processing_end(map_id: int, session=None):
             f"No processing_start status found for map_id {map_id} when trying to set processing_end."
         )
     for r in session_result:
-        r.processing_end = datetime.now(timezone.utc).timestamp()
+        r.processing_end = Time.now().unix
         r.processing_status = "completed"
         session.add(r)
         session.commit()

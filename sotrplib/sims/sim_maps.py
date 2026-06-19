@@ -279,7 +279,7 @@ def photutils_sim_n_sources(
 def inject_sources(
     imap: enmap.ndmap | ProcessableMap,
     sources: list[SimulatedSource],
-    observation_time: float | enmap.ndmap,
+    observation_time: Time | enmap.ndmap,
     freq: str = "f090",
     arr: str | None = None,
     instrument: str | None = None,
@@ -351,8 +351,8 @@ def inject_sources(
             continue
 
         # Check if the source is flaring at the observation time
-        if isinstance(observation_time, float):
-            source_obs_time = observation_time
+        if isinstance(observation_time, Time):
+            source_obs_time = observation_time.unix
         else:
             source_obs_time = observation_time[int(pix[0]), int(pix[1])]
 

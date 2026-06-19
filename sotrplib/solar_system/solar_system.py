@@ -367,9 +367,7 @@ def get_sso_ephems_at_time(
                 distance=distance.km * u.km,
                 frame="icrs",
             )
-            sso_ephems[p]["time"] = Time(
-                [t.utc_datetime().timestamp() for t in skyfield_time], format="unix"
-            )
+            sso_ephems[p]["time"] = sample_times
 
     log.info(
         "solar_system.get_sso_ephems_at_time.ephemerides_computed",
