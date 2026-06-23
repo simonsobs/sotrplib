@@ -1,11 +1,10 @@
-import datetime
 import os
 
 import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from pixell import enmap
 
 np.random.seed(42)
@@ -68,8 +67,8 @@ def dummy_gaussian_source():
     return GaussianTransientSimulatedSource(
         position=SkyCoord(ra=1.1 * u.deg, dec=-2.2 * u.deg),
         peak_amplitude=1.0 * u.Jy,
-        peak_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
-        flare_width=datetime.timedelta(days=1),
+        peak_time=Time("2025-01-01", format="iso", scale="utc"),
+        flare_width=TimeDelta(1, format="jd"),
     )
 
 
@@ -144,9 +143,8 @@ def dummy_map(sim_map_params, ones_map_set):
         rho_filename=ones_map_set["rho"],
         kappa_filename=ones_map_set["kappa"],
         time_filename=ones_map_set["time"],
-        start_time=datetime.datetime.now(tz=datetime.UTC)
-        - 1 * datetime.timedelta(days=1),
-        end_time=datetime.datetime.now(tz=datetime.UTC),
+        start_time=Time.now() - TimeDelta(1, format="jd"),
+        end_time=Time.now(),
     )
     DummyMap.build()
     DummyMap.add_time_offset(DummyMap.observation_start)

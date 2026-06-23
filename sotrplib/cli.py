@@ -38,13 +38,13 @@ def parse_args() -> ArgumentParser:
 def main():
     args = parse_args()
     config = Settings.from_file(args.config)
+
     pipeline = config.to_runner()
 
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
     )
     log = structlog.get_logger()
-
 
     maps = None
     if isinstance(config.maps, MapGeneratorConfig):

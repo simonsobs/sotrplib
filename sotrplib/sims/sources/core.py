@@ -10,6 +10,7 @@ import numpy as np
 import structlog
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import TimeDelta
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pydantic import BaseModel
@@ -333,16 +334,16 @@ class TransientSourceSimulation(SourceSimulation):
             ra_lims=None,
             dec_lims=None,
             peak_amplitudes=(
-                self.parameters.min_flux.to_value("Jy"),
-                self.parameters.max_flux.to_value("Jy"),
+                self.parameters.min_flux,
+                self.parameters.max_flux,
             ),
             peak_times=(
-                input_map.observation_start.timestamp(),
-                input_map.observation_end.timestamp(),
+                input_map.observation_start,
+                input_map.observation_end,
             ),
             flare_widths=(
-                self.parameters.min_width.to_value("d"),
-                self.parameters.max_width.to_value("d"),
+                TimeDelta(self.parameters.min_width.to_value("s"), format="sec"),
+                TimeDelta(self.parameters.max_width.to_value("s"), format="sec"),
             ),
             uniform_on_sky=False,
         )

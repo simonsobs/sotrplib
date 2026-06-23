@@ -1,7 +1,6 @@
-import datetime
-
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 from structlog import get_logger
 
 from sotrplib.sims import (
@@ -21,7 +20,7 @@ log = get_logger()
 def test_fixed_source_type():
     position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
     flux = u.Quantity(1.0, "Jy")
-    time = datetime.datetime.now(tz=datetime.UTC)
+    time = Time.now()
 
     source = sim_sources.FixedSimulatedSource(position=position, flux=flux)
     assert source.flux(time=time) == flux
@@ -31,8 +30,8 @@ def test_fixed_source_type():
 def test_gaussian_source_type():
     position = SkyCoord(ra=90.0 * u.deg, dec=0.0 * u.deg)
     flux = u.Quantity(1.0, "Jy")
-    width = datetime.timedelta(days=1)
-    time = datetime.datetime.now(tz=datetime.UTC)
+    width = TimeDelta(1, format="jd")
+    time = Time.now()
 
     source = sim_sources.GaussianTransientSimulatedSource(
         position=position, peak_time=time, flare_width=width, peak_amplitude=flux
@@ -40,8 +39,12 @@ def test_gaussian_source_type():
 
     # Peak flux as described
     assert u.isclose(source.flux(time=time), flux, rtol=0.001)
-    assert source.flux(time=time - datetime.timedelta(hours=1)) < source.flux(time=time)
-    assert source.flux(time=time + datetime.timedelta(hours=1)) < source.flux(time=time)
+    assert source.flux(time=time - TimeDelta(3600, format="sec")) < source.flux(
+        time=time
+    )
+    assert source.flux(time=time + TimeDelta(3600, format="sec")) < source.flux(
+        time=time
+    )
 
     assert source.position(time=time) == position
     assert source.position(time=time - width) == position
@@ -55,7 +58,7 @@ def test_fixed_source_generation():
     right = 20.0 * u.deg
     bottom = 0.0 * u.deg
     top = 10.0 * u.deg
-    time = datetime.datetime.now(tz=datetime.UTC)
+    time = Time.now()
     number = 32
 
     generator = sim_source_generators.FixedSourceGenerator(
@@ -85,12 +88,12 @@ def test_gaussian_source_generation():
     right = 20.0 * u.deg
     bottom = 0.0 * u.deg
     top = 10.0 * u.deg
-    time = datetime.datetime.now(tz=datetime.UTC)
-    dt = datetime.timedelta(hours=2)
+    time = Time.now()
+    dt = TimeDelta(2 * 3600, format="sec")
     earliest = time - dt
     latest = time + dt
-    shortest = datetime.timedelta(hours=1.0)
-    longest = datetime.timedelta(hours=2.0)
+    shortest = TimeDelta(3600, format="sec")
+    longest = TimeDelta(2 * 3600, format="sec")
     number = 32
 
     generator = sim_source_generators.GaussianTransientSourceGenerator(
@@ -130,9 +133,8 @@ def test_source_injection_into_map():
         catalog_fraction=0.5,
     )
 
-    start_obs = datetime.datetime.now(tz=datetime.UTC)
-    -datetime.timedelta(hours=2)
-    end_obs = datetime.datetime.now(tz=datetime.UTC)
+    start_obs = Time.now() - TimeDelta(7200, format="sec")
+    end_obs = Time.now()
 
     base_map = maps.SimulatedMap(
         observation_start=start_obs,
@@ -170,7 +172,7 @@ def test_source_injection_forced_photometry():
     bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
     top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
-    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+    start_time = Time("2025-10-01T00:00:00", format="isot", scale="utc")
     number = 3
 
     generator = sim_source_generators.FixedSourceGenerator(
@@ -184,7 +186,7 @@ def test_source_injection_forced_photometry():
         sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
     start_obs = start_time
-    end_obs = start_time + datetime.timedelta(hours=2)
+    end_obs = start_time + TimeDelta(7200, format="sec")
     base_map = maps.SimulatedMap(
         observation_start=start_obs,
         observation_end=end_obs,
@@ -226,7 +228,7 @@ def test_source_injection_blind_search():
     bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
     top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.001, "Jy")
-    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+    start_time = Time("2025-10-01T00:00:00", format="isot", scale="utc")
     number = 4
 
     generator = sim_source_generators.FixedSourceGenerator(
@@ -240,7 +242,7 @@ def test_source_injection_blind_search():
         sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
     )
     start_obs = start_time
-    end_obs = start_time + datetime.timedelta(hours=2)
+    end_obs = start_time + TimeDelta(7200, format="sec")
     base_map = maps.SimulatedMap(
         observation_start=start_obs,
         observation_end=end_obs,
@@ -287,7 +289,7 @@ def test_source_injection_blind_search_SAT():
     bottom = map_sim_params.center_dec - map_sim_params.width_dec / 2.5
     top = map_sim_params.center_dec + map_sim_params.width_dec / 2.5
     map_sim_params.map_noise = u.Quantity(0.1, "Jy")
-    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+    start_time = Time("2025-10-01T00:00:00", format="isot", scale="utc")
     number = 1
 
     generator = sim_source_generators.FixedSourceGenerator(
@@ -302,7 +304,7 @@ def test_source_injection_blind_search_SAT():
     )
 
     start_obs = start_time
-    end_obs = start_time + datetime.timedelta(hours=2)
+    end_obs = start_time + TimeDelta(7200, format="sec")
     base_map = maps.SimulatedMap(
         observation_start=start_obs,
         observation_end=end_obs,
@@ -351,13 +353,13 @@ def test_sim_maps_inject_sources():
     min_flux = u.Quantity(1.0, "Jy")
     max_flux = u.Quantity(5.0, "Jy")
     number = 8
-    start_time = datetime.datetime.fromisoformat("2025-10-01T00:00:00+00:00")
+    start_time = Time("2025-10-01T00:00:00", format="isot", scale="utc")
 
     generator = sim_source_generators.GaussianTransientSourceGenerator(
-        flare_earliest_time=start_time - datetime.timedelta(hours=1),
-        flare_latest_time=start_time + datetime.timedelta(hours=1),
-        flare_width_shortest=datetime.timedelta(minutes=10),
-        flare_width_longest=datetime.timedelta(minutes=30),
+        flare_earliest_time=start_time - TimeDelta(3600, format="sec"),
+        flare_latest_time=start_time + TimeDelta(3600, format="sec"),
+        flare_width_shortest=TimeDelta(600, format="sec"),
+        flare_width_longest=TimeDelta(1800, format="sec"),
         peak_amplitude_minimum=min_flux,
         peak_amplitude_maximum=max_flux,
         number=number,
@@ -366,7 +368,7 @@ def test_sim_maps_inject_sources():
 
     base_map = maps.SimulatedMap(
         observation_start=start_time,
-        observation_end=start_time + datetime.timedelta(hours=1),
+        observation_end=start_time + TimeDelta(3600, format="sec"),
         frequency="f090",
         array="pa5",
         simulation_parameters=maps.SimulationParameters(
@@ -379,9 +381,9 @@ def test_sim_maps_inject_sources():
 
     base_map.build()
     sources, _ = generator.generate(input_map=base_map)
-    timestamp = start_time.timestamp() + 30 * 60  # 30 minutes into the observation
+    observation_time = start_time + TimeDelta(30 * 60, format="sec")
     injected_map, _ = sim_maps.inject_sources(
-        base_map, sources, observation_time=timestamp
+        base_map, sources, observation_time=observation_time
     )
     injected_map.finalize()
 

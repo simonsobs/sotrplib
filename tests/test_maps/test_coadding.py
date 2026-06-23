@@ -1,9 +1,8 @@
-import datetime
-
 import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 
 from sotrplib.maps.core import RhoAndKappaMap
 from sotrplib.maps.map_coadding import RhoKappaMapCoadder
@@ -19,7 +18,7 @@ def test_rhokappa_coadder_separate(separate_map_set_1, separate_map_set_2):
     map_path_1 = separate_map_set_1
     map_path_2 = separate_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -27,15 +26,15 @@ def test_rhokappa_coadder_separate(separate_map_set_1, separate_map_set_2):
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
 
@@ -71,7 +70,7 @@ def test_rhokappa_coadder_overlapping(overlapping_map_set_1, overlapping_map_set
     map_path_1 = overlapping_map_set_1
     map_path_2 = overlapping_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -79,15 +78,15 @@ def test_rhokappa_coadder_overlapping(overlapping_map_set_1, overlapping_map_set
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
     [input_maps[i].build() for i in range(len(input_maps))]
@@ -118,7 +117,7 @@ def test_coadding_with_sources_in_separate_maps(
     map_path_1 = separate_map_set_1
     map_path_2 = separate_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -126,15 +125,15 @@ def test_coadding_with_sources_in_separate_maps(
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
 
@@ -202,7 +201,7 @@ def test_coadding_with_sources_in_overlapping_maps(
     map_path_1 = overlapping_map_set_1
     map_path_2 = overlapping_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -210,15 +209,15 @@ def test_coadding_with_sources_in_overlapping_maps(
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
 

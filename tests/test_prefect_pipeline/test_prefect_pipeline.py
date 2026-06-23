@@ -2,9 +2,8 @@
 Tests running the pipeline under prefect with simulated data.
 """
 
-import datetime
-
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 from prefect.testing.utilities import prefect_test_harness
 
 from sotrplib.handlers.prefect import PrefectRunner
@@ -23,9 +22,8 @@ def test_basic_pipeline(tmp_path, fit_mode: str):
     Tests a complete setup of the basic pipeline run.
     """
     empty_map = SimulatedMap(
-        observation_start=datetime.datetime.now(tz=datetime.timezone.utc)
-        - datetime.timedelta(days=1),
-        observation_end=datetime.datetime.now(tz=datetime.timezone.utc),
+        observation_start=Time.now() - TimeDelta(1, format="jd"),
+        observation_end=Time.now(),
     )
 
     maps = [empty_map, empty_map]

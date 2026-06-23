@@ -6,11 +6,11 @@ together (since 1997).
 import math
 import random
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 
 import numpy as np
 from astropy import units as u
 from astropy.table import Table
+from astropy.time import Time
 from photutils.psf import GaussianPSF
 from photutils.psf.simulation import make_model_image
 from structlog import get_logger
@@ -96,9 +96,7 @@ class PhotutilsSourceInjector(SourceInjector):
 
         valid_sources = list(filter(source_in_map, simulated_sources))
         observed_times = [
-            datetime.fromtimestamp(
-                float(input_map.time_mean[source_to_array_index(x)]), tz=timezone.utc
-            )
+            Time(float(input_map.time_mean[source_to_array_index(x)]), format="unix")
             for x in valid_sources
         ]
         log = log.bind(num_valid_sources=len(valid_sources))

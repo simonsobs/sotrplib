@@ -2,10 +2,9 @@
 Fixtures for the dependency-injected completely simulated pipeline.
 """
 
-import datetime
-
 import pytest
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 
 from sotrplib.sims.maps import SimulatedMap, SimulationParameters
 from sotrplib.sims.sources.core import (
@@ -27,9 +26,8 @@ map_sim_params = SimulationParameters(
 def empty_map():
     map = SimulatedMap(
         simulation_parameters=map_sim_params,
-        observation_start=datetime.datetime.now(tz=datetime.UTC),
-        observation_end=datetime.datetime.now(tz=datetime.UTC)
-        + datetime.timedelta(hours=8),
+        observation_start=Time.now(),
+        observation_end=Time.now() + TimeDelta(8 * 3600, format="sec"),
     )
 
     map.build()

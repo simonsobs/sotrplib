@@ -3,10 +3,10 @@ Read maps from the map tracking database.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -23,7 +23,6 @@ from mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
 from mapcat.pointing.poly import PolynomialPointingModel
 from mapcat.toolkit.update_sky_coverage import dec_to_index, ra_to_index
-from pydantic import AwareDatetime
 from sqlalchemy import tuple_
 from sqlmodel import select
 from structlog import get_logger
@@ -48,8 +47,8 @@ class MapCatDatabaseReader(ABC):
     frequency: str | None = None
     array: str | None = None
     number_to_read: int | None = 1
-    start_time: AwareDatetime | None = None
-    end_time: AwareDatetime | None = None
+    start_time: Time | None = None
+    end_time: Time | None = None
     map_ids: list[int] | None = None
     sources: list[RegisteredSource] | None = None
     sky_box: tuple[SkyCoord, SkyCoord] | None = None
@@ -62,8 +61,8 @@ class MapCatDatabaseReader(ABC):
     def __init__(
         self,
         number_to_read: int | None = None,
-        start_time: AwareDatetime | None = None,
-        end_time: AwareDatetime | None = None,
+        start_time: Time | None = None,
+        end_time: Time | None = None,
         map_ids: list[int] | None = None,
         sources: list[RegisteredSource] | None = None,
         frequency: str | None = None,
@@ -73,16 +72,16 @@ class MapCatDatabaseReader(ABC):
         map_units: u.Unit | None = None,
         rerun: bool = False,
         rerun_pointing_model: bool = False,
-        stale_processing_time: timedelta = timedelta(hours=2),
+        stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
         self.start_time = (
             start_time
             if start_time is not None
-            else datetime.now(timezone.utc) - timedelta(days=1)
+            else Time.now() - TimeDelta(1, format="jd")
         )
-        self.end_time = end_time if end_time is not None else datetime.now(timezone.utc)
+        self.end_time = end_time if end_time is not None else Time.now()
         self.map_ids = map_ids or []
         self.sources = sources or []
         self.frequency = frequency
@@ -122,13 +121,9 @@ class MapCatDatabaseReader(ABC):
         )
 
         if self.start_time is not None:
-            query = query.where(
-                DepthOneMapTable.stop_time >= self.start_time.timestamp()
-            )
+            query = query.where(DepthOneMapTable.stop_time >= self.start_time.unix)
         if self.end_time is not None:
-            query = query.where(
-                DepthOneMapTable.start_time <= self.end_time.timestamp()
-            )
+            query = query.where(DepthOneMapTable.start_time <= self.end_time.unix)
 
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
@@ -216,8 +211,8 @@ class IntensityMapReader(MapCatDatabaseReader):
             inverse_variance_filename=mapcat_settings.depth_one_parent
             / result.ivar_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
             sky_box=self.sky_box,
             intensity_units=self.map_units,
             frequency=result.frequency,
@@ -238,8 +233,8 @@ class RhoKappaMapReader(MapCatDatabaseReader):
             rho_filename=mapcat_settings.depth_one_parent / result.rho_path,
             kappa_filename=mapcat_settings.depth_one_parent / result.kappa_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
             sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
@@ -260,8 +255,8 @@ class FluxMapReader(MapCatDatabaseReader):
             flux_filename=mapcat_settings.depth_one_parent / result.flux_path,
             snr_filename=mapcat_settings.depth_one_parent / result.snr_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=datetime.fromtimestamp(result.start_time, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(result.stop_time, tz=timezone.utc),
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
             sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
@@ -276,7 +271,7 @@ def check_if_processed(
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
-    stale_limit=timedelta(hours=2),
+    stale_limit: TimeDelta = TimeDelta(2 * 3600, format="sec"),
 ) -> bool:
     ## session is mapcat_settings.session() whatever that is
     if session is None:
@@ -290,10 +285,7 @@ def check_if_processed(
     for r in session_results:
         if (r.processing_status == completed_status) | (
             r.processing_status == processing_status
-        ) & (
-            (datetime.now(timezone.utc).timestamp() - r.processing_start)
-            < stale_limit.total_seconds()
-        ):
+        ) & ((Time.now().unix - r.processing_start) < stale_limit.to_value("s")):
             return True
     return False
 
@@ -311,7 +303,7 @@ def set_processing_start(map_id: int, session=None):
             TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id)
         ]
     for r in session_results:
-        r.processing_start = datetime.now(timezone.utc).timestamp()
+        r.processing_start = Time.now().unix
         r.processing_status = "processing"
 
         session.add(r)
@@ -400,7 +392,7 @@ def set_processing_end(map_id: int, session=None):
             f"No processing_start status found for map_id {map_id} when trying to set processing_end."
         )
     for r in session_result:
-        r.processing_end = datetime.now(timezone.utc).timestamp()
+        r.processing_end = Time.now().unix
         r.processing_status = "completed"
         session.add(r)
         session.commit()

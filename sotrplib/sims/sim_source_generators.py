@@ -6,12 +6,11 @@ the random generation of those sources.
 
 import random
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
 
 import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from pydantic import AwareDatetime
+from astropy.time import Time, TimeDelta
 from socat.client.settings import SOCatClientSettings
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -35,20 +34,18 @@ from .sim_sources import (
 )
 
 
-def random_datetime(start, end):
-    """Generate a random datetime between `start` and `end`"""
-    delta = end - start
-    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+def random_datetime(start: Time, end: Time) -> Time:
+    """Generate a random Time between `start` and `end`"""
+    int_delta = int((end - start).to_value("s"))
     random_second = random.randrange(int_delta)
-    return start + timedelta(seconds=random_second)
+    return start + TimeDelta(random_second, format="sec")
 
 
-def random_timedelta(min_td, max_td):
-    """Generate a random timedelta between `min_td` and `max_td`"""
-    delta = max_td - min_td
-    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+def random_timedelta(min_td: TimeDelta, max_td: TimeDelta) -> TimeDelta:
+    """Generate a random TimeDelta between `min_td` and `max_td`"""
+    int_delta = int((max_td - min_td).to_value("s"))
     random_second = random.randrange(int_delta)
-    return min_td + timedelta(seconds=random_second)
+    return min_td + TimeDelta(random_second, format="sec")
 
 
 class SimulatedSourceGenerator(ABC):
@@ -57,7 +54,7 @@ class SimulatedSourceGenerator(ABC):
         self,
         input_map: ProcessableMap | None = None,
         sky_box: tuple[SkyCoord, SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ) -> tuple[list[SimulatedSource], SourceCatalog]:
         """
         Generate the simulated sources, optionally within a map or a sky_box on the sky.
@@ -93,7 +90,7 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         self,
         input_map: ProcessableMap | None = None,
         sky_box: tuple[SkyCoord, SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ):
         if sky_box is None and input_map is None:
             sky_box = [
@@ -167,10 +164,10 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
     def __init__(
         self,
-        flare_earliest_time: AwareDatetime | None,
-        flare_latest_time: AwareDatetime | None,
-        flare_width_shortest: timedelta,
-        flare_width_longest: timedelta,
+        flare_earliest_time: Time | None,
+        flare_latest_time: Time | None,
+        flare_width_shortest: TimeDelta,
+        flare_width_longest: TimeDelta,
         peak_amplitude_minimum: u.Quantity,
         peak_amplitude_maximum: u.Quantity,
         number: int,
@@ -191,7 +188,7 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
         self,
         input_map: ProcessableMap | None = None,
         sky_box: tuple[SkyCoord, SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ):
         if sky_box is None and input_map is None:
             sky_box = [
@@ -237,19 +234,17 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
 
         source_ids = [uuid.create() for _ in range(self.number)]
 
-        def random_datetime(start, end):
-            """Generate a random datetime between `start` and `end`"""
-            delta = end - start
-            int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+        def random_datetime(start: Time, end: Time) -> Time:
+            """Generate a random Time between `start` and `end`"""
+            int_delta = int((end - start).to_value("s"))
             random_second = random.randrange(int_delta)
-            return start + timedelta(seconds=random_second)
+            return start + TimeDelta(random_second, format="sec")
 
-        def random_timedelta(min_td, max_td):
-            """Generate a random timedelta between `min_td` and `max_td`"""
-            delta = max_td - min_td
-            int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+        def random_timedelta(min_td: TimeDelta, max_td: TimeDelta) -> TimeDelta:
+            """Generate a random TimeDelta between `min_td` and `max_td`"""
+            int_delta = int((max_td - min_td).to_value("s"))
             random_second = random.randrange(int_delta)
-            return min_td + timedelta(seconds=random_second)
+            return min_td + TimeDelta(random_second, format="sec")
 
         if input_map is not None:
             positions = generate_random_positions_in_map(self.number, input_map.flux)
@@ -333,10 +328,10 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         self,
         fraction_fixed: float,
         fraction_gaussian: float,
-        flare_earliest_time: datetime,
-        flare_latest_time: datetime,
-        flare_width_shortest: timedelta,
-        flare_width_longest: timedelta,
+        flare_earliest_time: Time,
+        flare_latest_time: Time,
+        flare_width_shortest: TimeDelta,
+        flare_width_longest: TimeDelta,
         peak_amplitude_minimum_factor: float,
         peak_amplitude_maximum_factor: float,
         log: FilteringBoundLogger | None = None,
@@ -374,7 +369,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         self,
         input_map: ProcessableMap | None = None,
         sky_box: tuple[SkyCoord, SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ):
         self.log = self.log.bind(
             func="sim_source_generator.SOCatSourceGenerator.generate"

@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from itertools import combinations
 from typing import Iterable
 
@@ -14,7 +13,6 @@ from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder
 from sotrplib.maps.pointing import (
     EmptyPointingOffset,
     MapPointingOffset,
-    save_model_maps,
 )
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
@@ -152,11 +150,15 @@ class BaseRunner:
         """
         if not maps:
             return (None, None)
-        start_time = datetime.max.replace(tzinfo=timezone.utc)
-        end_time = datetime.min.replace(tzinfo=timezone.utc)
+
+        start_time = None
+        end_time = None
         for input_map in maps:
-            start_time = min(input_map.observation_start, start_time)
-            end_time = max(input_map.observation_end, end_time)
+            if start_time is None or input_map.observation_start < start_time:
+                start_time = input_map.observation_start
+            if end_time is None or input_map.observation_end > end_time:
+                end_time = input_map.observation_end
+
         return (start_time, end_time)
 
     def simulate_sources(
@@ -221,17 +223,6 @@ class BaseRunner:
                 save_pointing_model(
                     input_map.map_id, pointing_model, pointing_model_stats
                 )
-
-        ## this is dumb and should be fixed.
-        for o in self.map_outputs:
-            if "pointing_residual_map" in o.field_ids:
-                self.profilable_task(save_model_maps)(
-                    self.pointing_residual_model,
-                    pointing_model,
-                    input_map,
-                    filename_prefix=f"{o.directory}/pointing_residual_{input_map.map_id}",
-                )
-                break
 
         forced_photometry_candidates = self.profilable_task(
             self.forced_photometry.force

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from pixell import enmap
 from structlog import get_logger
 
@@ -126,13 +127,15 @@ def test_inject_sources_empty_and_not_flaring(
 ):
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Empty sources list
-    out_map, injected = sim_maps.inject_sources(test_map, [], 0.0, log=log)
+    out_map, injected = sim_maps.inject_sources(
+        test_map, [], Time(0.0, format="unix"), log=log
+    )
     assert isinstance(out_map, enmap.ndmap)
     assert injected == []
     # Not flaring: peak_time far from observation_time
 
     out_map, injected = sim_maps.inject_sources(
-        test_map, [dummy_gaussian_source], 0.0, log=log
+        test_map, [dummy_gaussian_source], Time(0.0, format="unix"), log=log
     )
     assert injected == []
 
@@ -141,7 +144,9 @@ def test_inject_sources_out_of_bounds(sim_map_params, dummy_fixed_source, log=lo
     test_map = sim_maps.make_enmap(**sim_map_params["maps"], log=log)
     # Place source out of bounds
     dummy_fixed_source._position = SkyCoord(ra=0.0 * u.deg, dec=90.0 * u.deg)
-    _, injected = sim_maps.inject_sources(test_map, [dummy_fixed_source], 0.0, log=log)
+    _, injected = sim_maps.inject_sources(
+        test_map, [dummy_fixed_source], Time(0.0, format="unix"), log=log
+    )
     assert injected == []
 
 
@@ -158,7 +163,9 @@ def test_inject_sources_nan_mapval(sim_map_params, dummy_fixed_source, log=log):
         ]
     )
     test_map[int(x), int(y)] = np.nan
-    _, injected = sim_maps.inject_sources(test_map, [dummy_fixed_source], 0.0, log=log)
+    _, injected = sim_maps.inject_sources(
+        test_map, [dummy_fixed_source], Time(0.0, format="unix"), log=log
+    )
     assert injected == []
 
 

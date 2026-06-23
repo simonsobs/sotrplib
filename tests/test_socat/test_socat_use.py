@@ -3,9 +3,8 @@ Tests for the SOCat source catalog integration
 """
 
 import os
-from datetime import datetime, timedelta
 
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 
 
 def test_socat_read(socat_pickle):
@@ -35,9 +34,9 @@ def test_socat_source_generator(socat_pickle):
 
     from sotrplib.sims.sim_source_generators import SOCatSourceGenerator
 
-    flare_start = datetime.now()
-    flare_end = flare_start + timedelta(days=1)
-    flare_width_shortest = timedelta(hours=1)
+    flare_start = Time.now()
+    flare_end = flare_start + TimeDelta(1, format="jd")
+    flare_width_shortest = TimeDelta(3600, format="sec")
     flare_width_longest = flare_width_shortest * 2.0
 
     source_generator = SOCatSourceGenerator(

@@ -2,7 +2,6 @@
 Map testing
 """
 
-import datetime
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from astropy import units as u
+from astropy.time import Time
 from pixell import enmap
 
 
@@ -131,7 +131,7 @@ def create_time_map(
 ):
     shape, wcs = build_wcs(map_params, mapkey)
     time_map = enmap.zeros(shape, wcs=wcs)
-    time_map += datetime.datetime(2025, 10, 10, 0, 0, 0).timestamp()
+    time_map += Time("2025-10-10", format="iso").unix
     time_map.write(full_path, fmt="fits")
 
 
@@ -216,8 +216,8 @@ def db_result(separate_map_set_1):
     r.flux_path = paths["rho"]
     r.snr_path = paths["kappa"]
     r.mean_time_path = paths["time"]
-    r.start_time = datetime.datetime.now(datetime.timezone.utc).timestamp() - 3600
-    r.stop_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    r.start_time = Time.now().unix - 3600
+    r.stop_time = Time.now().unix
     r.frequency = "f090"
     r.tube_slot = "pa5"
     return r

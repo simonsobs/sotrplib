@@ -5,10 +5,10 @@ Dealing with sources once they've been found.
 import json
 import pickle
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from astropy.time import Time
 from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -67,7 +67,7 @@ class JSONSerializer(SourceOutput):
     ):
         filename = (
             self.directory
-            / f"{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.json"
+            / f"{Time.now().isot[:19].replace('T', '-').replace(':', '-')}.json"
         )
         with filename.open("w") as handle:
             json.dump(
@@ -103,7 +103,7 @@ class PickleSerializer(SourceOutput):
     ):
         filename = (
             self.directory
-            / f"{map_id}_{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.pickle"
+            / f"{map_id}_{Time.now().isot[:19].replace('T', '-').replace(':', '-')}.pickle"
         )
         with filename.open("wb") as handle:
             pickle.dump(

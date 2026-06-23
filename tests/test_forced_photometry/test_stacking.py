@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
-
 import numpy as np
+from astropy.time import Time, TimeDelta
 from mapcat.toolkit import update_sky_coverage
 
 from sotrplib.maps.database import FluxMapReader, RhoKappaMapReader
@@ -16,10 +15,8 @@ def test_stacker(database_sessionmaker, create_test_maps):
 
     update_sky_coverage.core(session=database_sessionmaker, convention="standard")
 
-    date_string = "2025-01-10 00:00:00"
-    format_code = "%Y-%m-%d %H:%M:%S"
-    end_time = datetime.strptime(date_string, format_code)
-    start_time = end_time - timedelta(days=11)
+    end_time = Time("2025-01-10T00:00:00", scale="utc")
+    start_time = end_time - TimeDelta(11, format="jd")
 
     db_reader = RhoKappaMapReader(
         number_to_read=None,
@@ -61,7 +58,7 @@ def test_stacker(database_sessionmaker, create_test_maps):
 
     for i in range(10):
         assert np.isclose(
-            Stamps[0].times[i] - start_time.timestamp(),
+            Stamps[0].times[i] - start_time.unix,
             float(d1tables[0].ctime),
             rtol=1e-3,
         )
