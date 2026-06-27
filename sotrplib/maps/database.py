@@ -30,7 +30,12 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.sources import RegisteredSource
 
-from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
+from .core import (
+    FluxAndSNRMap,
+    IntensityAndInverseVarianceMap,
+    RhoAndKappaMap,
+    SPTFluxAndSNRMap,
+)
 from .pointing import PointingModel
 
 
@@ -257,6 +262,27 @@ class FluxMapReader(MapCatDatabaseReader):
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
             start_time=Time(result.start_time, format="unix"),
             end_time=Time(result.stop_time, format="unix"),
+            sky_box=self.sky_box,
+            flux_units=self.map_units,
+            frequency=result.frequency,
+            array=result.tube_slot,
+            instrument=self.instrument,
+            log=self.log,
+        )
+
+
+class SPTMapReader(MapCatDatabaseReader):
+    """Reader for SPT maps, yielding SPTFluxMap objects."""
+
+    default_map_units = u.Unit("mJy")
+    _valid_unit_equivalent = u.mJy
+
+    def _build_map(self, result):
+        return SPTFluxAndSNRMap(
+            map_filename=mapcat_settings.depth_one_parent / result.map_path,
+            start_time=Time(
+                result.start_time, format="unix"
+            ),  # only start time is accurate. end time is in file.
             sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,

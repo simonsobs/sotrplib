@@ -72,6 +72,49 @@ def make_enmap(
         return zeros(shape, wcs=wcs)
 
 
+def make_sim_spt_time_map(
+    imap: enmap.ndmap,
+    start_time: Time,
+    end_time: Time,
+) -> enmap.ndmap:
+    """
+    A simple time map simulation where time is linearly
+    interpolated between start_time and end_time across the map.
+    Each pixel is observed at a unique time, assuming a
+    2x2 deg focal plane and a 1 deg/s scan speed,
+    a raster back and forth, and a 12.5' elevation step.
+    Scan goes from (low az, low el) to (high az, high el),
+    which is (high RA, high dec) to (low RA, low dec)
+    """
+    start_timestamp = start_time.unix
+    end_timestamp = end_time.unix
+
+    # Find the observed region (non-zero, finite pixels)
+    observed = np.isfinite(imap) & (imap != 0)
+    time_map = enmap.zeros(imap.shape, wcs=imap.wcs, dtype=np.float64)
+
+    if not np.any(observed):
+        return time_map
+
+    # Bounding box of the observed region
+    rows, cols = np.where(observed)
+    row_min, row_max = rows.min(), rows.max()
+    col_min, col_max = cols.min(), cols.max()
+
+    # enmap: row 0 = high dec, col 0 = high RA
+    # Scan: (high RA, high dec) → (low RA, low dec), so time increases with both row and col
+    row_frac = (np.arange(row_min, row_max + 1) - row_min) / max(row_max - row_min, 1)
+    col_frac = (np.arange(col_min, col_max + 1) - col_min) / max(col_max - col_min, 1)
+
+    time_offset = (row_frac[:, None] + col_frac[None, :]) / 2
+    time_map[row_min : row_max + 1, col_min : col_max + 1] = time_offset * (
+        end_timestamp - start_timestamp
+    )
+    time_map[~observed] = 0.0
+
+    return time_map
+
+
 def make_time_map(
     imap: enmap.ndmap,
     start_time: Time,

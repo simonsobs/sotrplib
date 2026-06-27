@@ -68,3 +68,40 @@ def pixell_map_union(map1, map2, op=lambda a, b: a + b):
     omap.insert(map1)
     omap.insert(map2, op=op)
     return omap
+
+
+def get_spt_subfield_box(subfield: str, pad_ra=3.0 * u.deg, pad_dec=2.0 * u.deg) -> Box:
+    """Get the pixell box for a given SPT subfield.
+
+    Args:
+        subfield: Name of the SPT subfield (e.g., 'ra0hdec-52.25').
+    """
+    subfield_boxes = {
+        "ra0hdec-44.75": ((-50, 50), (-47.5, -42)),
+        "ra0hdec-52.25": ((-50, 50), (-55, -49.5)),
+        "ra0hdec-59.75": ((-50, 50), (-62.5, -57)),
+        "ra0hdec-67.25": ((-50, 50), (-70, -64.5)),
+    }
+    if subfield not in subfield_boxes:
+        raise ValueError(
+            f"Subfield {subfield} not found in list of \
+                         SPT subfields: {list(subfield_boxes.keys())}"
+        )
+
+    ra_range, dec_range = subfield_boxes[subfield]
+    ra_min, ra_max = ra_range
+    dec_min, dec_max = dec_range
+
+    # Apply padding
+    ra_min -= pad_ra.to_value(u.deg)
+    ra_max += pad_ra.to_value(u.deg)
+    dec_min -= pad_dec.to_value(u.deg)
+    dec_max += pad_dec.to_value(u.deg)
+
+    # convert to radians
+    ra_min = np.deg2rad(ra_min)
+    ra_max = np.deg2rad(ra_max)
+    dec_min = np.deg2rad(dec_min)
+    dec_max = np.deg2rad(dec_max)
+
+    return [[dec_min, ra_max], [dec_max, ra_min]]

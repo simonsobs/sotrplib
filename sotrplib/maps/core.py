@@ -18,6 +18,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.utils import (
     enmap_box_to_skycoord,
+    get_spt_subfield_box,
     pixell_map_union,
     skycoord_box_to_enmap_box,
 )
@@ -1053,6 +1054,128 @@ class FluxAndSNRMap(ProcessableMap):
         self.flux = self.get_flux()
         self.apply_mask()
         self.finalized = True
+
+
+class SPTFluxAndSNRMap(FluxAndSNRMap):
+    """
+    SPT maps read from a .g3 file.
+
+    The g3 file is expected to contain a T-only map frame with a weighted T map
+    and unpolarized (or polarized) weights.  flux = T / W_TT (unweighted T),
+    snr = T / sqrt(W_TT).
+
+    Uses spt3g_software's fitsio.save_skymap_fits to convert the g3 frame to
+    FITS, which is then loaded into pixell enmaps.
+    """
+
+    def __init__(
+        self,
+        map_filename: Path,
+        start_time: Time,
+        end_time: Time | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
+        instrument: str | None = None,
+        flux_units: Unit = u.mJy,
+        mask: ndmap | None = None,
+        map_id: str | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.map_filename = Path(map_filename)
+        self.observation_start = start_time
+        self.observation_end = end_time
+        self.sky_box = sky_box
+        self.frequency = frequency
+        self.array = array
+        self.instrument = instrument
+        self.flux_units = flux_units
+        self.mask = mask
+        self.map_resolution = None
+        if map_id is not None:
+            self.map_id = map_id
+        self._hits = None
+        self.log = log or structlog.get_logger()
+
+    @property
+    def bbox(self) -> np.ndarray:
+        # After build(), flux/snr are set; delegate to ProcessableMap.bbox.
+        # We skip FluxAndSNRMap.bbox's fallback that reads self.flux_filename.
+        for attr in self._available_maps:
+            if (m := getattr(self, attr, None)) is not None:
+                return enmap.box(m.shape, m.wcs)
+        return None
+
+    def build(self):
+        from spt3g import core
+
+        log = self.log.bind(map_filename=self.map_filename)
+
+        T_map = None
+        W_map = None
+        for frame in core.G3File(str(self.map_filename)):
+            if frame.type == core.G3FrameType.Observation:
+                self.start_time = Time(
+                    frame["ObservationStart"].time / core.G3Units.s, format="unix"
+                )
+                self.end_time = Time(
+                    frame["ObservationStop"].time / core.G3Units.s, format="unix"
+                )
+                self.map_id = frame["ObservationId"] + "_" + frame["SourceName"]
+            elif frame.type == core.G3FrameType.Map:
+                T_map = frame["T"]
+                W_map = frame.get("Wpol", frame.get("Wunpol", None))
+                break
+
+        if T_map is None:
+            raise ValueError(f"No map frame found in {self.map_filename}")
+        if W_map is None:
+            raise ValueError(f"No weights found in map frame in {self.map_filename}")
+
+        log.debug("spt_flux_snr.g3_read")
+
+        enmap_box = get_spt_subfield_box(frame["SourceName"])  # this is subfield.
+
+        # SPT maps use ZEA projection; box= in read_map doesn't work for
+        # non-CAR projections, so read the full map and reproject to CAR.
+        T_enmap = enmap.read_map(T_map, wcs=T_map.wcs)
+        W_TT_enmap = enmap.read_map(W_map.TT, wcs=W_map.TT.wcs)
+        log.debug("spt_flux_snr.enmap_created")
+
+        if enmap_box is not None:
+            res = np.sqrt(T_enmap.pixsize())
+            shape, wcs = enmap.geometry(pos=enmap_box, res=res, proj="car")
+            T_enmap = enmap.project(T_enmap, shape, wcs)
+            W_TT_enmap = enmap.project(W_TT_enmap, shape, wcs)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            self.flux = T_enmap / W_TT_enmap / core.G3Units.mJy
+            self.snr = T_enmap * (W_TT_enmap**-0.5)
+
+        self.map_resolution = u.Quantity(
+            abs(self.flux.wcs.wcs.cdelt[0]), self.flux.wcs.wcs.cunit[0]
+        )
+
+        log = log.new(time_filename=self.time_filename)
+        if self.time_filename is not None:
+            try:
+                time_map = enmap.read_map(str(self.time_filename), sel=0, box=enmap_box)
+                assert type(time_map) is enmap.ndmap
+            except (IndexError, AttributeError, AssertionError):
+                time_map = enmap.read_map(str(self.time_filename), box=enmap_box)
+        else:
+            from sotrplib.sims.sim_maps import make_sim_spt_time_map
+
+            time_map = make_sim_spt_time_map(self.flux, self.start_time, self.end_time)
+            log.debug("spt_flux_snr.time.none")
+
+        self.time_first = time_map
+        self.time_last = time_map
+        self.time_mean = time_map
+
+        self.add_time_offset(self.observation_start)
+        self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
 
 
 class CoaddedRhoKappaMap(ProcessableMap):
