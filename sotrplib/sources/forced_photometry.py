@@ -438,7 +438,7 @@ def gaussian_fit(
             source_type=source.source_type,
             instrument=input_map.instrument,
             array=input_map.array,
-            frequency=get_frequency(input_map.frequency),
+            frequency=get_frequency(input_map.frequency, instrument=input_map.instrument),
             flags=source_flags,
             fit_method="lmfit_2d_gaussian",
             crossmatches=[

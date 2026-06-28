@@ -270,6 +270,12 @@ def get_frequency(freq: str, arr: str = None, instrument: str | None = None):
             "f220": 225 * u.GHz,
             "f280": 280 * u.GHz,
         }
+    if instrument is not None and instrument.upper() == "SPT3G":
+        frequency = {
+            "90GHz": 90 * u.GHz,
+            "150GHz": 150 * u.GHz,
+            "220GHz": 220 * u.GHz,
+        }
 
     if freq not in frequency:
         valid_freqs = ", ".join(sorted(frequency.keys()))
@@ -300,6 +306,12 @@ def get_fwhm(freq: str, arr: str = None, instrument: str | None = None):
             "f150": 17.6 * u.arcmin,
             "f220": 13.5 * u.arcmin,
             "f280": 12.1 * u.arcmin,
+        }
+    if instrument is not None and instrument.upper() == "SPT3G":
+        fwhm = {
+            "90GHz": 1.6 * u.arcmin,
+            "150GHz": 1.3 * u.arcmin,
+            "220GHz": 1.0 * u.arcmin,
         }
     if freq not in fwhm:
         valid_freqs = ", ".join(sorted(fwhm.keys()))

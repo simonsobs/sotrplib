@@ -1,0 +1,63 @@
+{
+    "maps": {
+            "map_generator_type": "spt_mapcat_database",
+            "number_to_read": 1,
+            "instrument": "SPT3G",
+            "frequency": "90GHz",
+            "rerun": "True",
+            "box":[
+                    {
+                    "ra":{"value":-5,"unit":"deg"},
+                    "dec":{"value":-48,"unit":"deg"}
+                    },
+                    {
+                    "ra":{"value":5,"unit":"deg"},
+                    "dec":{"value":-44,"unit":"deg"}
+                    }
+                ]
+        },
+    "source_catalogs": [
+        {
+            "catalog_type": "socat"
+        }
+    ],
+    "preprocessors": [
+        {
+            "preprocessor_type": "edge_mask",
+            "mask_on": "snr",
+            "edge_width": "10.0 arcmin"
+        }
+    ],
+    "postprocessors": [
+       {
+            "postprocessor_type": "flatfield",
+            "sigma_val": 5.0,
+            "tile_size": ".5 deg"
+        }
+    ],
+    "source_subtractor": {
+            "subtractor_type": "photutils"
+    },
+    "blind_search": {
+            "search_type": "photutils",
+            "snr_threshold": 10.0
+    },
+    "forced_photometry": {
+        "photometry_type": "lmfit",
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy",
+        "min_flux": "0.01 Jy",
+        "thumbnail_half_width": "4 arcmin",
+        "allowable_center_offset": "1.0 arcmin",
+        "near_source_rel_flux_limit": 1.0
+    },
+    "sifter": {
+        "sifter_type": "default"
+    },
+    "source_outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}

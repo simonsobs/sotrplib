@@ -128,7 +128,7 @@ class BaseRunner:
     ) -> tuple[SkyCoord, SkyCoord] | None:
         if not maps:
             return None
-
+        
         # set defaults so that any real map will update them.
         dec_min = np.inf
         dec_max = -np.inf

@@ -1073,6 +1073,8 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         map_filename: Path,
         start_time: Time,
         end_time: Time | None = None,
+        time_filename: Path | None = None,
+        info_filename: Path | None = None,
         sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -1085,6 +1087,8 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         self.map_filename = Path(map_filename)
         self.observation_start = start_time
         self.observation_end = end_time
+        self.time_filename = time_filename
+        self.info_filename = info_filename
         self.sky_box = sky_box
         self.frequency = frequency
         self.array = array
@@ -1092,6 +1096,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         self.flux_units = flux_units
         self.mask = mask
         self.map_resolution = None
+        self.subfield = None
         if map_id is not None:
             self.map_id = map_id
         self._hits = None
@@ -1104,10 +1109,11 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
                 return enmap.box(m.shape, m.wcs)
-        return None
+        #[[dec_min, ra_max], [dec_max, ra_min]]
+        return [[-72*np.pi/180, 53*np.pi/180], [-40*np.pi/180, 53*np.pi/180]]
 
     def build(self):
-        from spt3g import core
+        from spt3g import core, std_processing
 
         log = self.log.bind(map_filename=self.map_filename)
 
@@ -1121,7 +1127,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
                 self.end_time = Time(
                     frame["ObservationStop"].time / core.G3Units.s, format="unix"
                 )
-                self.map_id = frame["ObservationId"] + "_" + frame["SourceName"]
+                self.subfield = frame["SourceName"]
             elif frame.type == core.G3FrameType.Map:
                 T_map = frame["T"]
                 W_map = frame.get("Wpol", frame.get("Wunpol", None))
@@ -1132,31 +1138,30 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         if W_map is None:
             raise ValueError(f"No weights found in map frame in {self.map_filename}")
 
-        log.debug("spt_flux_snr.g3_read")
+        log.info("spt_flux_snr.g3_read")
 
-        enmap_box = get_spt_subfield_box(frame["SourceName"])  # this is subfield.
+        enmap_box = get_spt_subfield_box(self.subfield)  # this is subfield.
 
         # SPT maps use ZEA projection; box= in read_map doesn't work for
         # non-CAR projections, so read the full map and reproject to CAR.
-        T_enmap = enmap.read_map(T_map, wcs=T_map.wcs)
-        W_TT_enmap = enmap.read_map(W_map.TT, wcs=W_map.TT.wcs)
-        log.debug("spt_flux_snr.enmap_created")
+        T_map = enmap.enmap(T_map, wcs=T_map.wcs)
+        W_map = enmap.enmap(W_map.TT, wcs=W_map.TT.wcs)
+        log.info("spt_flux_snr.enmap_created")
 
         if enmap_box is not None:
-            res = np.sqrt(T_enmap.pixsize())
+            res = np.sqrt(T_map.pixsize())
             shape, wcs = enmap.geometry(pos=enmap_box, res=res, proj="car")
-            T_enmap = enmap.project(T_enmap, shape, wcs)
-            W_TT_enmap = enmap.project(W_TT_enmap, shape, wcs)
-
+            T_map = enmap.project(T_map, shape, wcs)
+            W_map = enmap.project(W_map, shape, wcs)
+        log.info("spt_flux_snr.map_reprojected")
         with np.errstate(divide="ignore", invalid="ignore"):
-            self.flux = T_enmap / W_TT_enmap / core.G3Units.mJy
-            self.snr = T_enmap * (W_TT_enmap**-0.5)
+            self.flux = T_map / W_map / core.G3Units.mJy
+            self.snr = T_map * (W_map**-0.5)
 
         self.map_resolution = u.Quantity(
             abs(self.flux.wcs.wcs.cdelt[0]), self.flux.wcs.wcs.cunit[0]
         )
-
-        log = log.new(time_filename=self.time_filename)
+        
         if self.time_filename is not None:
             try:
                 time_map = enmap.read_map(str(self.time_filename), sel=0, box=enmap_box)

@@ -18,11 +18,17 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
     FluxAndSNRMap,
+    SPTFluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     ProcessableMap,
     RhoAndKappaMap,
 )
-from sotrplib.maps.database import FluxMapReader, IntensityMapReader, RhoKappaMapReader
+from sotrplib.maps.database import (
+    SPTMapReader,
+    FluxMapReader, 
+    IntensityMapReader, 
+    RhoKappaMapReader
+)
 from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
@@ -202,6 +208,35 @@ class FluxAndSNRMapConfig(MapConfig):
         )
 
 
+class SPTFluxAndSNRMapConfig(MapConfig):
+    map_type: Literal["spt_flux_and_snr"] = "spt_flux_and_snr"
+    flux_map_path: Path
+    snr_map_path: Path
+    time_map_path: Path | None = None
+    info_path: Path | None = None
+    frequency: str | None = "f090"
+    array: str | None = "all"
+    instrument: str | None = "SPT3G"
+    observation_start: AstroPydanticTime | None = None
+    observation_end: AstroPydanticTime | None = None
+    sky_box: list[AstroPydanticICRS] | None = None
+    flux_units: AstroPydanticUnit = u.Unit("Jy")
+
+    def to_map(self, log: FilteringBoundLogger | None = None) -> SPTFluxAndSNRMap:
+        return SPTFluxAndSNRMap(
+            map_filename=self.flux_map_path,
+            time_filename=self.time_map_path,
+            start_time=self.observation_start,
+            end_time=self.observation_end,
+            sky_box=self.sky_box,
+            frequency=self.frequency,
+            array=self.array,
+            instrument=self.instrument,
+            flux_units=self.flux_units,
+            log=log,
+        )
+
+
 class MapCatDatabaseConfig(MapGeneratorConfig):
     map_generator_type: Literal["mapcat_database"] = "mapcat_database"
     frequency: str | None = None
@@ -238,6 +273,36 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             log=log,
         )
 
+class SPTMapCatDatabaseConfig(MapGeneratorConfig):
+    map_generator_type: Literal["spt_mapcat_database"] = "spt_mapcat_database"
+    frequency: str | None = None
+    array: str | None = "all"
+    instrument: str | None = "SPT3G"
+    number_to_read: int | None = None  ## if None, all in database will be read
+    start_time: AstroPydanticTime | None = None
+    end_time: AstroPydanticTime | None = None
+    map_ids: list[int] | None = None
+    sky_box: list[AstroPydanticICRS] | None = None
+    map_units: AstroPydanticUnit = u.Unit("mJy")
+    rerun: bool = False
+
+    def to_generator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Iterable[ProcessableMap]:
+        _reader_cls = SPTMapReader
+        return _reader_cls(
+            number_to_read=self.number_to_read,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            frequency=self.frequency,
+            array=self.array,
+            instrument=self.instrument,
+            sky_box=self.sky_box,
+            map_ids=self.map_ids,
+            map_units=self.map_units,
+            rerun=self.rerun,
+            log=log,
+        )
 
 AllMapConfigTypes = (
     SimulatedMapConfig
@@ -245,6 +310,7 @@ AllMapConfigTypes = (
     | RhoKappaMapConfig
     | InverseVarianceMapConfig
     | FluxAndSNRMapConfig
+    | SPTFluxAndSNRMapConfig
 )
 
-AllMapGeneratorConfigTypes = MapCatDatabaseConfig | list[AllMapConfigTypes]
+AllMapGeneratorConfigTypes = SPTMapCatDatabaseConfig | MapCatDatabaseConfig | list[AllMapConfigTypes]

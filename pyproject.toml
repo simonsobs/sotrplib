@@ -20,7 +20,7 @@ dependencies = [
     "pydantic-settings",
     "tqdm",
     "filelock",
-    "photutils",
+    "photutils>=2.0",
     "structlog",
     "scikit-image",
     "socat @ git+https://github.com/simonsobs/socat",
@@ -31,6 +31,7 @@ dependencies = [
     "pyinstrument",
     "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
     "soauth",
+    "pexpect",
     "uuid7-standard",
 ]
 
@@ -44,6 +45,10 @@ dev = [
 ]
 prefect = [
     "prefect",
+]
+spt = [
+    "spt3g @ git+https://github.com/CMB-S4/spt3g_software",
+    
 ]
 
 [project.scripts]

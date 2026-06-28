@@ -81,12 +81,6 @@ class MapCatDatabaseReader(ABC):
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
-        self.start_time = (
-            start_time
-            if start_time is not None
-            else Time.now() - TimeDelta(1, format="jd")
-        )
-        self.end_time = end_time if end_time is not None else Time.now()
         self.map_ids = map_ids or []
         self.sources = sources or []
         self.frequency = frequency
@@ -153,6 +147,7 @@ class MapCatDatabaseReader(ABC):
             query = query.join(DepthOneMapTable.depth_one_sky_coverage).where(
                 tuple_(SkyCoverageTable.x, SkyCoverageTable.y).in_(points)
             )
+        
         return query
 
     def map_list(self):
@@ -165,7 +160,6 @@ class MapCatDatabaseReader(ABC):
         )
 
         query = self.build_query()
-
         maps = []
         with mapcat_settings.session() as session:
             results = session.execute(query).scalars().all()
