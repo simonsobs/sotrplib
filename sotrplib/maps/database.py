@@ -89,6 +89,8 @@ class MapCatDatabaseReader(ABC):
         self.map_units = map_units if map_units is not None else self.default_map_units
         self.sky_box = sky_box
         self.rerun = rerun
+        self.start_time = start_time
+        self.end_time = end_time
         self.rerun_pointing_model = rerun_pointing_model
         self._map_list = None
         self.stale_processing_time = stale_processing_time
@@ -118,7 +120,6 @@ class MapCatDatabaseReader(ABC):
             if self.array
             else query
         )
-
         if self.start_time is not None:
             query = query.where(DepthOneMapTable.stop_time >= self.start_time.unix)
         if self.end_time is not None:

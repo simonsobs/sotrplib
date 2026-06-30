@@ -162,6 +162,9 @@ class MeasuredSource(RegisteredSource):
                     ],
                 ],
             )
+            shape=thumb.shape
+            if shape[0] == 0 or shape[1] == 0:
+                raise ValueError("Thumbnail is empty; cannot extract.")
 
         self.thumbnail_res = (
             thumb.wcs.wcs.cdelt * u.deg

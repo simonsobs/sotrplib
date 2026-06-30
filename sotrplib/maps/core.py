@@ -1108,13 +1108,13 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         # We skip FluxAndSNRMap.bbox's fallback that reads self.flux_filename.
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
-                return enmap.box(m.shape, m.wcs)
+                return m.box()
         #[[dec_min, ra_max], [dec_max, ra_min]]
         return [[-72*np.pi/180, 53*np.pi/180], [-40*np.pi/180, -53*np.pi/180]]
 
     def build(self):
         from spt3g import core, maps
-
+        
         log = self.log.bind(map_filename=self.map_filename)
 
         T_map = None
@@ -1140,17 +1140,16 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
             raise ValueError(f"No weights found in map frame in {self.map_filename}")
 
         log.info("spt_flux_snr.g3_read")
-
+        
         enmap_box = None
-        if self.sky_box is not None:
-            enmap_box = skycoord_box_to_enmap_box(self.sky_box)
+        # sky_box not yet implemented for spt maps
+        #if self.sky_box is not None:
+        #    enmap_box = skycoord_box_to_enmap_box(self.sky_box)
 
-        # SPT maps use ZEA projection; box= in read_map doesn't work for
-        # non-CAR projections, so read the full map and reproject to CAR.
         T_map = enmap.enmap(T_map, wcs=T_map.wcs)
         W_map = enmap.enmap(W_map.TT, wcs=W_map.TT.wcs)
         log.info("spt_flux_snr.enmap_created")
-
+        
         # cut out the requested sky box if provided
         if enmap_box is not None:
             T_map = enmap.submap(T_map, box=enmap_box)
@@ -1177,7 +1176,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
 
             time_map = make_sim_spt_time_map(self.flux, self.start_time, self.end_time)
             log.debug("spt_flux_snr.time.none")
-
+        
         self.time_first = time_map
         self.time_last = time_map
         self.time_mean = time_map

@@ -145,7 +145,13 @@ class LmFitGaussian2DFitter:
         """
         self.model = lmfit.Model(gaussian_2d_lmfit, independent_vars=["x", "y"])
         ny, nx = self.source.thumbnail.shape
-
+        if ny == 0 or nx == 0:
+            self.log.error(
+                "Gaussian2DFitter.thumbnail_empty",
+                source=self.source.source_id,
+                thumbnail_shape=self.source.thumbnail.shape,
+            )
+            raise ValueError("Thumbnail is empty; cannot fit Gaussian.")
         # Define coordinate system centered at the image middle (i.e. the thumbnail center)
         x = np.arange(nx) - (nx - 1) / 2
         y = np.arange(ny) - (ny - 1) / 2
