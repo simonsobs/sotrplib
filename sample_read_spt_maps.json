@@ -1,20 +1,10 @@
 {
     "maps": {
             "map_generator_type": "spt_mapcat_database",
-            "number_to_read": 1,
+            "number_to_read": 3,
             "instrument": "SPT3G",
             "frequency": "90GHz",
-            "rerun": "True",
-            "box":[
-                    {
-                    "ra":{"value":-5,"unit":"deg"},
-                    "dec":{"value":-48,"unit":"deg"}
-                    },
-                    {
-                    "ra":{"value":5,"unit":"deg"},
-                    "dec":{"value":-44,"unit":"deg"}
-                    }
-                ]
+            "rerun": "True"
         },
     "source_catalogs": [
         {

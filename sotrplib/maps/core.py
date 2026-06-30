@@ -1110,10 +1110,10 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
             if (m := getattr(self, attr, None)) is not None:
                 return enmap.box(m.shape, m.wcs)
         #[[dec_min, ra_max], [dec_max, ra_min]]
-        return [[-72*np.pi/180, 53*np.pi/180], [-40*np.pi/180, 53*np.pi/180]]
+        return [[-72*np.pi/180, 53*np.pi/180], [-40*np.pi/180, -53*np.pi/180]]
 
     def build(self):
-        from spt3g import core, std_processing
+        from spt3g import core, maps
 
         log = self.log.bind(map_filename=self.map_filename)
 
@@ -1129,6 +1129,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
                 )
                 self.subfield = frame["SourceName"]
             elif frame.type == core.G3FrameType.Map:
+                maps.CropMaps(frame,pad=10*core.G3Units.arcmin)
                 T_map = frame["T"]
                 W_map = frame.get("Wpol", frame.get("Wunpol", None))
                 break
@@ -1140,7 +1141,9 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
 
         log.info("spt_flux_snr.g3_read")
 
-        enmap_box = get_spt_subfield_box(self.subfield)  # this is subfield.
+        enmap_box = None
+        if self.sky_box is not None:
+            enmap_box = skycoord_box_to_enmap_box(self.sky_box)
 
         # SPT maps use ZEA projection; box= in read_map doesn't work for
         # non-CAR projections, so read the full map and reproject to CAR.
@@ -1148,12 +1151,13 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         W_map = enmap.enmap(W_map.TT, wcs=W_map.TT.wcs)
         log.info("spt_flux_snr.enmap_created")
 
+        # cut out the requested sky box if provided
         if enmap_box is not None:
-            res = np.sqrt(T_map.pixsize())
-            shape, wcs = enmap.geometry(pos=enmap_box, res=res, proj="car")
-            T_map = enmap.project(T_map, shape, wcs)
-            W_map = enmap.project(W_map, shape, wcs)
+            T_map = enmap.submap(T_map, box=enmap_box)
+            W_map = enmap.submap(W_map, box=enmap_box)
+        
         log.info("spt_flux_snr.map_reprojected")
+
         with np.errstate(divide="ignore", invalid="ignore"):
             self.flux = T_map / W_map / core.G3Units.mJy
             self.snr = T_map * (W_map**-0.5)

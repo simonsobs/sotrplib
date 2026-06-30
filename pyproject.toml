@@ -47,7 +47,7 @@ prefect = [
     "prefect",
 ]
 spt = [
-    "spt3g @ git+https://github.com/CMB-S4/spt3g_software",
+    "spt3g @ git+https://github.com/CMB-S4/spt3g_software@map_box",
     
 ]
 
