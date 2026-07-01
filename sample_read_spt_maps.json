@@ -1,10 +1,12 @@
 {
     "maps": {
             "map_generator_type": "spt_mapcat_database",
-            "number_to_read": 3,
+            "number_to_read": 300,
             "instrument": "SPT3G",
             "frequency": "90GHz",
-            "rerun": "True"
+            "rerun": "True",
+            "start_time": "2019-08-31T00:00:00Z",
+            "end_time": "2019-09-01T00:00:00Z"
         },
     "source_catalogs": [
         {
@@ -30,11 +32,11 @@
     },
     "blind_search": {
             "search_type": "photutils",
-            "snr_threshold": 10.0
+            "snr_threshold": 5.0
     },
     "forced_photometry": {
         "photometry_type": "lmfit",
-        "reproject_thumbnails": "True",
+        "reproject_thumbnails": "False",
         "flux_limit_centroid": "0.1 Jy",
         "min_flux": "0.01 Jy",
         "thumbnail_half_width": "4 arcmin",
