@@ -18,7 +18,6 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.utils import (
     enmap_box_to_skycoord,
-    get_spt_subfield_box,
     pixell_map_union,
     skycoord_box_to_enmap_box,
 )
