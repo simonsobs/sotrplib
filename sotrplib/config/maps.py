@@ -18,16 +18,16 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import (
     FluxAndSNRMap,
-    SPTFluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     ProcessableMap,
     RhoAndKappaMap,
+    SPTFluxAndSNRMap,
 )
 from sotrplib.maps.database import (
+    FluxMapReader,
+    IntensityMapReader,
+    RhoKappaMapReader,
     SPTMapReader,
-    FluxMapReader, 
-    IntensityMapReader, 
-    RhoKappaMapReader
 )
 from sotrplib.sims.maps import (
     SimulatedMap,

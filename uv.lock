@@ -3829,7 +3829,7 @@ requires-dist = [
     { name = "skyfield" },
     { name = "soauth" },
     { name = "socat", git = "https://github.com/simonsobs/socat" },
-    { name = "spt3g", marker = "extra == 'spt'", git = "https://github.com/CMB-S4/spt3g_software?rev=map_box" },
+    { name = "spt3g", marker = "extra == 'spt'", git = "https://github.com/CMB-S4/spt3g_software" },
     { name = "structlog" },
     { name = "tqdm" },
     { name = "uuid7-standard" },
@@ -3847,8 +3847,8 @@ wheels = [
 
 [[package]]
 name = "spt3g"
-version = "1.0.1.post1.dev43+g0d4430bf2"
-source = { git = "https://github.com/CMB-S4/spt3g_software?rev=map_box#0d4430bf2883ea2216c544f374a67b709a7a7fde" }
+version = "1.0.1.post1.dev33+g04df06ea6"
+source = { git = "https://github.com/CMB-S4/spt3g_software#04df06ea6a2caa516583c2ba50d6757d9130dd5a" }
 dependencies = [
     { name = "astropy" },
     { name = "numpy" },
