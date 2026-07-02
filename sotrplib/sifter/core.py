@@ -14,6 +14,7 @@ from astropydantic import AstroPydanticQuantity
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.sifter.transient_crossmatch import TransientCrossmatcher
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.sources import MeasuredSource
 
@@ -60,10 +61,12 @@ class SimpleCatalogSifter(SiftingProvider):
         self,
         radius: u.Quantity = u.Quantity(2.0, "arcmin"),
         method: Literal["closest", "all"] = "all",
+        transient_crossmatcher: TransientCrossmatcher | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.radius = radius
         self.method = method
+        self.transient_crossmatcher = transient_crossmatcher
         self.log = log or structlog.get_logger()
 
     def sift(
@@ -101,6 +104,11 @@ class SimpleCatalogSifter(SiftingProvider):
                 log = log.info("sifter.simple.no_match")
                 transient_candidates.append(source)
 
+        if self.transient_crossmatcher is not None:
+            transient_candidates = self.transient_crossmatcher.crossmatch(
+                transient_candidates
+            )
+
         result = SifterResult(
             source_candidates=source_candidates,
             transient_candidates=transient_candidates,
@@ -127,6 +135,8 @@ class DefaultSifter(SiftingProvider):
     "if True, will crossmatch with the million quasar catalog and add the source name to the source_id."
     additional_catalogs: dict[str, Any]
     "a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}."
+    transient_crossmatcher: TransientCrossmatcher | None
+    "if set, crossmatch transient candidates with external catalogs and rank the matches."
     log: FilteringBoundLogger
     "Structlog logger for logging information during the sifting process."
     debug: bool
@@ -142,6 +152,7 @@ class DefaultSifter(SiftingProvider):
         crossmatch_with_gaia: bool = True,
         crossmatch_with_million_quasar: bool = True,
         additional_catalogs: dict[str, Any] | None = None,
+        transient_crossmatcher: TransientCrossmatcher | None = None,
         log: FilteringBoundLogger | None = None,
         debug: bool = False,
     ):
@@ -157,6 +168,7 @@ class DefaultSifter(SiftingProvider):
         self.crossmatch_with_gaia = crossmatch_with_gaia
         self.crossmatch_with_million_quasar = crossmatch_with_million_quasar
         self.additional_catalogs = additional_catalogs or dict()
+        self.transient_crossmatcher = transient_crossmatcher
         self.log = log or structlog.get_logger()
         self.debug = debug
 
@@ -196,6 +208,11 @@ class DefaultSifter(SiftingProvider):
             log=self.log,
             debug=self.debug,
         )
+
+        if self.transient_crossmatcher is not None:
+            transient_candidates = self.transient_crossmatcher.crossmatch(
+                transient_candidates
+            )
 
         return SifterResult(
             source_candidates=source_candidates,
