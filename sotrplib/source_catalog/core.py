@@ -96,7 +96,10 @@ class RegisteredSourceCatalog(SourceCatalog):
         self.sources = sources
 
     def add_sources(self, sources: list[RegisteredSource]):
-        self.sources.extend(sources)
+        self._sources.extend(sources)
+        self._catalog_positions = np.array(
+            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in self._sources]
+        )
 
     @property
     def sources(self):
