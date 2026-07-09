@@ -10,6 +10,7 @@ on:
       - main
   schedule:
     - cron: "0 0 * * *"
+  pull_request_target:
 
 jobs:
   runtest:
@@ -48,6 +49,7 @@ jobs:
 
       - name: Post summary
         uses: actions/github-script@v8
+        if: github.event_name == 'pull_request'
         with:
           script: |
             const fs = require('fs');
