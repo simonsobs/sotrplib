@@ -27,7 +27,7 @@ def socat_pickle(tmp_path_factory):
 
     # Fill with some sample sources
     for i in range(128):
-        client.create(
+        client.create_source(
             position=ICRS(
                 ra=random.uniform(0, 360) * u.degree,
                 dec=random.uniform(-90, 90) * u.degree,

@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
 
 import astropy.units as u
-import numpy as np
 import structlog
 from pixell import enmap
-from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import CoaddedRhoKappaMap, ProcessableMap
@@ -20,11 +18,37 @@ class MapCoadder(ABC):
     """
 
     @abstractmethod
+    def coadd_maps(self, input_maps: list[ProcessableMap]) -> ProcessableMap:
+        """Coadd a list of ProcessableMap objects into a single coadded map."""
+        return
+
+    @abstractmethod
+    def group_maps(
+        self, input_maps: list[ProcessableMap]
+    ) -> list[list[ProcessableMap]]:
+        """
+        Group input maps by frequency and array. Returns a list of lists of
+        ProcessableMap objects.
+        """
+        return
+
+    @abstractmethod
     def coadd(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
+        """
+        Coadd all maps according the coadder's grouping strategy and return a list of
+        coadded maps.
+        """
         return
 
 
 class EmptyMapCoadder(MapCoadder):
+    def coadd_maps(self, input_maps: list[ProcessableMap]) -> ProcessableMap:
+        assert len(input_maps) == 1, "EmptyMapCoadder can only coadd a single map"
+        return input_maps[0]
+
+    def group_maps(self, input_maps):
+        return [[input_map] for input_map in input_maps]
+
     def coadd(self, input_maps: list[ProcessableMap]) -> list[ProcessableMap]:
         return input_maps
 
@@ -53,19 +77,56 @@ class RhoKappaMapCoadder(MapCoadder):
         instrument: str | None = None,
         log: FilteringBoundLogger | None = None,
     ):
-        self.map_depth = None
         self.frequencies = frequencies
         self.arrays = arrays if arrays is not None else ["coadd"]
         self.instrument = instrument
-
-        self.input_map_times: list[float] = []
-        self.time_last = None
-        self.time_first = None
-        self.time_mean = None
-        self.observation_start = None
-        self.observation_end = None
-        self.map_depth = None
         self.log = log or structlog.get_logger()
+
+    def group_maps(
+        self, input_maps: list[ProcessableMap]
+    ) -> list[list[ProcessableMap]]:
+        """
+        Group input maps by frequency and array. Returns a list of lists of maps.
+        Within each list, the maps all have the same frequency and array.
+        """
+        map_sets = list()
+        for arr in self.arrays:
+            for freq in self.frequencies:
+                map_sets.append(self._get_valid_maps(input_maps, freq, arr))
+        map_sets = [ms for ms in map_sets if ms]  # filter out empty map sets
+        return map_sets
+
+    def _get_valid_maps(self, input_maps: list[ProcessableMap], freq: str, arr: str):
+        """
+        Identify which maps match the provided frequency and array.
+        """
+        good_maps = [True] * len(input_maps)
+        for i, imap in enumerate(input_maps):
+            if imap.frequency != freq:
+                good_maps[i] = False
+            if arr != "coadd" and arr != imap.array:
+                good_maps[i] = False
+
+        if not any(good_maps):
+            self.log.debug(
+                "rhokappamapcoadder.coadd.no_good_maps",
+                n_input_maps=len(input_maps),
+                frequency=freq,
+                array=arr,
+            )
+            return list()
+        if not all(good_maps):
+            self.log.info(
+                "rhokappamapcoadder.coadd.dropping_maps",
+                n_input_maps=len(input_maps),
+                n_dropped_maps=len([good for good in good_maps if not good]),
+                frequency=freq,
+                array=arr,
+            )
+
+        valid_input_maps = [imap for imap, good in zip(input_maps, good_maps) if good]
+
+        return valid_input_maps
 
     def coadd(self, input_maps: list[ProcessableMap]):
         """
@@ -93,228 +154,109 @@ class RhoKappaMapCoadder(MapCoadder):
         coadded_maps = []
         for arr in self.arrays:
             for freq in self.frequencies:
-                good_maps = [True] * len(input_maps)
-                for i, imap in enumerate(input_maps):
-                    if imap.frequency != freq:
-                        good_maps[i] = False
-                    if arr != "coadd" and arr != imap.array:
-                        good_maps[i] = False
-                if not any(good_maps):
-                    self.log.warning(
-                        "rhokappamapcoadder.coadd.no_good_maps",
-                        n_input_maps=len(input_maps),
-                        frequency=freq,
-                        array=arr,
-                    )
-                    continue
-                if not all(good_maps):
-                    self.log.info(
-                        "rhokappamapcoadder.coadd.dropping_maps",
-                        n_input_maps=len(input_maps),
-                        n_dropped_maps=len([good for good in good_maps if not good]),
-                        frequency=freq,
-                        array=arr,
-                    )
+                valid_input_maps = self._get_valid_maps(input_maps, freq, arr)
 
-                valid_input_maps = [
-                    imap for imap, good in zip(input_maps, good_maps) if good
-                ]
-
-                base_map = valid_input_maps[0]
-                base_map.build()
-
-                self.time_last = None
-                self.time_first = None
-                self.time_mean = None
-                self.observation_start = None
-                self.observation_end = None
-                self.map_depth = None
-                self.input_map_times = []
-
-                self.log.info(
-                    "rhokappamapcoadder.base_map.built",
-                    map_start_time=base_map.observation_start,
-                    map_end_time=base_map.observation_end,
-                    frequency=freq,
-                    array=arr,
-                )
-
-                self.rho = enmap.enmap(base_map.rho)
-                self.kappa = enmap.enmap(base_map.kappa)
-                self.mask = (
-                    enmap.enmap(base_map.mask) if base_map.mask is not None else None
-                )
-
-                self.map_resolution = u.Quantity(
-                    abs(base_map.rho.wcs.wcs.cdelt[0]), base_map.rho.wcs.wcs.cunit[0]
-                )
-                self.flux_units = base_map.flux_units
-
-                self.get_time_and_mapdepth(base_map)
-                self.update_map_times(base_map)
-
-                if len(valid_input_maps) == 1:
-                    self.log.warning(
-                        "rhokappamapcoadder.coadd.single_map_warning", n_maps_coadded=1
-                    )
-                    self.n_maps = 1
-                    coadded_maps.append(base_map)
+                if not valid_input_maps:
                     continue
 
-                for sourcemap in valid_input_maps[1:]:
-                    sourcemap.build()
-                    self.log.info(
-                        "rhokappamapcoadder.source_map.built",
-                        map_start_time=sourcemap.observation_start,
-                        map_end_time=sourcemap.observation_end,
-                        map_frequency=sourcemap.frequency,
-                    )
-                    ## will want to do a weighted sum using inverse variance.
-                    if sourcemap.flux_units != self.flux_units:
-                        flux_conv = u.Quantity(1.0, sourcemap.flux_units).to(
-                            self.flux_units
-                        )
-                        sourcemap.rho *= flux_conv
-                        sourcemap.kappa /= flux_conv * flux_conv
-
-                    self.rho = enmap.map_union(
-                        self.rho,
-                        sourcemap.rho,
-                    )
-                    self.kappa = enmap.map_union(
-                        self.kappa,
-                        sourcemap.kappa,
-                    )
-                    if self.mask is not None and sourcemap.mask is not None:
-                        self.mask = enmap.map_union(
-                            self.mask,
-                            enmap.enmap(sourcemap.mask),
-                        )
-                    elif sourcemap.mask is not None:
-                        self.mask = enmap.enmap(sourcemap.mask)
-
-                    self.get_time_and_mapdepth(sourcemap)
-                    self.update_map_times(sourcemap)
-
-                self.n_maps = len(self.input_map_times)
-                self.log.info(
-                    "rhokappamapcoadder.coadd.finalized",
-                    n_maps_coadded=self.n_maps,
-                    coadd_start_time=self.observation_start,
-                    coadd_end_time=self.observation_end,
-                    freq=freq,
-                    arr=arr,
-                )
-                self.observation_length = self.observation_end - self.observation_start
-                with np.errstate(divide="ignore"):
-                    self.time_mean /= self.map_depth
-
-                if self.mask is not None:
-                    self.mask[self.mask > 0] = 1
-
-                coadded_maps.append(
-                    CoaddedRhoKappaMap(
-                        rho=self.rho,
-                        kappa=self.kappa,
-                        observation_start=self.observation_start,
-                        observation_end=self.observation_end,
-                        time_first=self.time_first,
-                        time_mean=self.time_mean,
-                        time_last=self.time_last,
-                        observation_length=self.observation_length,
-                        array=arr,
-                        frequency=freq,
-                        instrument=self.instrument,
-                        flux_units=self.flux_units,
-                        mask=self.mask,
-                        map_resolution=self.map_resolution,
-                        hits=self.map_depth,
-                    )
-                )
+                coadded_maps.append(self.coadd_maps(valid_input_maps))
 
         return coadded_maps
 
-    def get_time_and_mapdepth(self, new_map):
-        if isinstance(new_map.time_mean, ndmap):
-            if self.time_mean is None:
-                self.time_mean = enmap.enmap(new_map.time_mean)
-                self.map_depth = enmap.enmap(new_map.time_mean)
-                self.map_depth[self.map_depth > 0] = 1.0
-            else:
-                self.time_mean = enmap.map_union(
-                    self.time_mean,
-                    new_map.time_mean,
-                )
-                new_map_depth = enmap.enmap(new_map.time_mean)
-                new_map_depth[new_map_depth > 0] = 1.0
-                self.map_depth = enmap.map_union(
-                    self.map_depth,
-                    new_map_depth,
-                )
-        else:
-            self.log.error(
-                "rhokappamapcoadder.get_time_and_mapdepth.no_time_mean",
+    def coadd_maps(self, valid_input_maps: list[ProcessableMap]) -> ProcessableMap:
+        base_map = valid_input_maps[0]
+        base_map.build()
+        freq = base_map.frequency
+        arr = base_map.array
+
+        coadd = CoaddedRhoKappaMap(
+            rho=base_map.rho,
+            kappa=base_map.kappa,
+            observation_start=base_map.observation_start,
+            observation_end=base_map.observation_end,
+            time_first=base_map.time_first,
+            time_mean=base_map.time_mean,
+            time_last=base_map.time_last,
+            observation_length=base_map.observation_end - base_map.observation_start,
+            array=arr,
+            frequency=freq,
+            instrument=self.instrument,
+            flux_units=base_map.flux_units,
+            mask=base_map.mask,
+            map_resolution=base_map.map_resolution,
+            hits=base_map.hits,
+            map_ids=[base_map.map_id],
+        )
+
+        self.log.info(
+            "rhokappamapcoadder.coadd.built",
+            map_start_time=coadd.observation_start,
+            map_end_time=coadd.observation_end,
+            frequency=freq,
+            array=arr,
+        )
+
+        if len(valid_input_maps) == 1:
+            self.log.warning(
+                "rhokappamapcoadder.coadd.single_map_warning", n_maps_coadded=1
             )
-        ## get earliest start time per pixel ... can I use map_union with a<b or b<a or something?
-        if isinstance(new_map.time_first, ndmap):
-            if self.time_first is None:
-                self.time_first = enmap.enmap(new_map.time_first)
-            else:
-                self.time_first = pixell_map_union(
-                    self.time_first,
-                    new_map.time_first,
-                    op=np.minimum,
+            n_maps = 1
+            return coadd
+
+        for sourcemap in valid_input_maps[1:]:
+            sourcemap.build()
+            self.log.info(
+                "rhokappamapcoadder.source_map.built",
+                map_start_time=sourcemap.observation_start,
+                map_end_time=sourcemap.observation_end,
+                map_frequency=sourcemap.frequency,
+            )
+            ## will want to do a weighted sum using inverse variance.
+            if sourcemap.flux_units != coadd.flux_units:
+                flux_conv = u.Quantity(1.0, sourcemap.flux_units).to(coadd.flux_units)
+                sourcemap.rho *= flux_conv
+                sourcemap.kappa /= flux_conv * flux_conv
+
+            coadd.rho = enmap.map_union(
+                coadd.rho,
+                sourcemap.rho,
+            )
+            coadd.kappa = enmap.map_union(
+                coadd.kappa,
+                sourcemap.kappa,
+            )
+            if coadd.mask is not None and sourcemap.mask is not None:
+                coadd.mask = enmap.map_union(
+                    coadd.mask,
+                    enmap.enmap(sourcemap.mask),
                 )
-        else:
-            self.log.error(
-                "rhokappamapcoadder.get_time_and_mapdepth.no_time_first",
+            elif sourcemap.mask is not None:
+                coadd.mask = enmap.enmap(sourcemap.mask)
+
+            coadd.update_times(sourcemap)
+            coadd._hits = enmap.map_union(
+                coadd.hits,
+                sourcemap.hits,
             )
-        ## get latest end time per pixel ... can I use map_union with a>b or b>a or something?
-        if isinstance(new_map.time_last, ndmap):
-            if self.time_last is None:
-                self.time_last = enmap.enmap(new_map.time_last)
-            else:
-                self.time_last = pixell_map_union(
-                    self.time_last,
-                    new_map.time_last,
-                    op=np.maximum,
-                )
-        else:
-            self.log.error(
-                "rhokappamapcoadder.get_time_and_mapdepth.no_time_last",
-            )
+            coadd.map_ids.append(sourcemap.map_id)
 
-    def update_map_times(self, new_map):
-        if self.observation_start is None:
-            self.observation_start = new_map.observation_start
-        else:
-            self.observation_start = min(
-                self.observation_start, new_map.observation_start
-            )
-        if self.observation_end is None:
-            self.observation_end = new_map.observation_end
-        else:
-            self.observation_end = max(self.observation_end, new_map.observation_end)
-        time_delta = new_map.observation_end - new_map.observation_start
-        mid_time = new_map.observation_start + (time_delta / 2)
-        self.input_map_times.append(mid_time)
+        n_maps = len(coadd.input_map_times)
+        self.log.info(
+            "rhokappamapcoadder.coadd.completed",
+            n_maps_coadded=n_maps,
+            coadd_start_time=coadd.observation_start,
+            coadd_end_time=coadd.observation_end,
+            freq=freq,
+            arr=arr,
+        )
+        self.log.info(
+            "rhokappamapcoadder.sourcemap.time_mean",
+            time_mean=sourcemap.time_mean,
+            alt_time_mean=coadd.time_mean,
+        )
+        coadd.observation_length = coadd.observation_end - coadd.observation_start
 
+        if coadd.mask is not None:
+            coadd.mask[coadd.mask > 0] = 1
 
-def pixell_map_union(map1, map2, op=lambda a, b: a + b):
-    """Create a new pixell map that is the union of map1 and map2.
-    The new map will have the shape and wcs that covers both input maps.
-    The pixel values will be combined using the provided operation.
-
-    Args:
-        map1: First input pixell map.
-        map2: Second input pixell map.
-        op: Function to combine pixel values (default is addition).
-
-    """
-    from pixell import enmap
-
-    oshape, owcs = enmap.union_geometry([map1.geometry, map2.geometry])
-    omap = enmap.zeros(map1.shape[:-2] + oshape[-2:], owcs, map1.dtype)
-    omap.insert(map1)
-    omap.insert(map2, op=op)
-    return omap
+        return coadd

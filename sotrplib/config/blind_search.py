@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
+import astropy.units as u
+from astropydantic import AstroPydanticQuantity
 from numpydantic import NDArray
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
@@ -36,6 +38,7 @@ class PhotutilsBlindSearchConfig(BlindSearchConfig):
     search_type: Literal["photutils"] = "photutils"
     parameters: BlindSearchParameters | None = None
     pixel_mask: NDArray | None = None
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] | None = None
 
     def to_search_provider(
         self, log: FilteringBoundLogger | None = None
@@ -43,6 +46,7 @@ class PhotutilsBlindSearchConfig(BlindSearchConfig):
         return SigmaClipBlindSearch(
             parameters=self.parameters,
             pixel_mask=self.pixel_mask,
+            thumbnail_half_width=self.thumbnail_half_width,
             log=log,
         )
 

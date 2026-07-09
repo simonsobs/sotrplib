@@ -3,14 +3,8 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.forced_photometry import (
-    convert_catalog_to_registered_source_objects,
+    convert_dict_catalog_to_registered_source_objects,
 )
-
-
-class SourceCatalog:
-    def __init__(self, ra, dec):
-        self.ra = ra
-        self.dec = dec
 
 
 def load_act_catalog(
@@ -299,7 +293,7 @@ def load_catalog(
             sources = sources[source_mask]
         log.info("load_catalog.load_in_map", total_in_map_sources=sum(source_mask))
 
-    sources = convert_catalog_to_registered_source_objects(sources, log=log)
+    sources = convert_dict_catalog_to_registered_source_objects(sources, log=log)
 
     log.info("load_catalog.complete")
     return sources

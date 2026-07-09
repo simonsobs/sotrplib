@@ -1,10 +1,8 @@
-import datetime
-
 import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from matplotlib import pylab as plt
+from astropy.time import Time, TimeDelta
 
 from sotrplib.maps.core import RhoAndKappaMap
 from sotrplib.maps.map_coadding import RhoKappaMapCoadder
@@ -20,7 +18,7 @@ def test_rhokappa_coadder_separate(separate_map_set_1, separate_map_set_2):
     map_path_1 = separate_map_set_1
     map_path_2 = separate_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -28,15 +26,15 @@ def test_rhokappa_coadder_separate(separate_map_set_1, separate_map_set_2):
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
 
@@ -56,20 +54,14 @@ def test_rhokappa_coadder_separate(separate_map_set_1, separate_map_set_2):
     assert coadd.flux is not None
     assert coadd.snr is not None
     assert coadd.time_mean is not None
-    corners = coadd.bbox
-    assert corners[0].ra.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].ra, input_maps[1].bbox[0].ra).to_value(u.deg)
-    )
-    assert corners[0].dec.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].dec, input_maps[1].bbox[0].dec).to_value(u.deg)
-    )
-
-    assert corners[1].ra.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].ra, input_maps[1].bbox[1].ra).to_value(u.deg)
-    )
-    assert corners[1].dec.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].dec, input_maps[1].bbox[1].dec).to_value(u.deg)
-    )
+    corners = (
+        coadd.bbox
+    )  # [[dec_min, ra_max], [dec_max, ra_min]] in radians (pixell east-left)
+    b0, b1 = input_maps[0].bbox, input_maps[1].bbox
+    assert corners[0][0] == pytest.approx(min(b0[0][0], b1[0][0]))  # dec_min
+    assert corners[0][1] == pytest.approx(max(b0[0][1], b1[0][1]))  # ra_max (east edge)
+    assert corners[1][0] == pytest.approx(max(b0[1][0], b1[1][0]))  # dec_max
+    assert corners[1][1] == pytest.approx(min(b0[1][1], b1[1][1]))  # ra_min (west edge)
     assert np.all(coadd.hits <= 1)
 
 
@@ -78,7 +70,7 @@ def test_rhokappa_coadder_overlapping(overlapping_map_set_1, overlapping_map_set
     map_path_1 = overlapping_map_set_1
     map_path_2 = overlapping_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -86,15 +78,15 @@ def test_rhokappa_coadder_overlapping(overlapping_map_set_1, overlapping_map_set
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
     [input_maps[i].build() for i in range(len(input_maps))]
@@ -108,20 +100,14 @@ def test_rhokappa_coadder_overlapping(overlapping_map_set_1, overlapping_map_set
     assert coadd.flux is not None
     assert coadd.snr is not None
     assert coadd.time_mean is not None
-    corners = coadd.bbox
-    assert corners[0].ra.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].ra, input_maps[1].bbox[0].ra).to_value(u.deg)
-    )
-    assert corners[0].dec.to_value(u.deg) == pytest.approx(
-        min(input_maps[0].bbox[0].dec, input_maps[1].bbox[0].dec).to_value(u.deg)
-    )
-
-    assert corners[1].ra.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].ra, input_maps[1].bbox[1].ra).to_value(u.deg)
-    )
-    assert corners[1].dec.to_value(u.deg) == pytest.approx(
-        max(input_maps[0].bbox[1].dec, input_maps[1].bbox[1].dec).to_value(u.deg)
-    )
+    corners = (
+        coadd.bbox
+    )  # [[dec_min, ra_max], [dec_max, ra_min]] in radians (pixell east-left)
+    b0, b1 = input_maps[0].bbox, input_maps[1].bbox
+    assert corners[0][0] == pytest.approx(min(b0[0][0], b1[0][0]))  # dec_min
+    assert corners[0][1] == pytest.approx(max(b0[0][1], b1[0][1]))  # ra_max (east edge)
+    assert corners[1][0] == pytest.approx(max(b0[1][0], b1[1][0]))  # dec_max
+    assert corners[1][1] == pytest.approx(min(b0[1][1], b1[1][1]))  # ra_min (west edge)
     assert ~np.all(coadd.hits <= 1)
 
 
@@ -131,7 +117,7 @@ def test_coadding_with_sources_in_separate_maps(
     map_path_1 = separate_map_set_1
     map_path_2 = separate_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -139,15 +125,15 @@ def test_coadding_with_sources_in_separate_maps(
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
 
@@ -177,24 +163,10 @@ def test_coadding_with_sources_in_separate_maps(
     coadder = RhoKappaMapCoadder(frequencies=["f090"])
     coadded_maps = coadder.coadd(input_maps=input_maps)
     coadd = coadded_maps[0]
-
     coadd.finalize()
-    plt.figure()
-    ax = plt.subplot(projection=coadd.flux.wcs)
-    im = ax.imshow(coadd.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("coadded_map.png")
-    plt.close()
     injector = source_injector.PhotutilsSourceInjector()
-    new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
+    _, new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
     new_map.finalize()
-
-    plt.figure()
-    ax = plt.subplot(projection=new_map.flux.wcs)
-    im = ax.imshow(new_map.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("coadded_map_w_source.png")
-    plt.close()
 
     assert new_map != coadd
     assert new_map.original_map == coadd
@@ -211,14 +183,16 @@ def test_coadding_with_sources_in_separate_maps(
             separate_source_params["source2"]["ra"].to_value(u.rad),
         ]
     )
-    assert new_map.flux[int(source_pos_1[0]), int(source_pos_1[1])] == pytest.approx(
+    pix1 = int(source_pos_1[0]), int(source_pos_1[1])
+    pix2 = int(source_pos_2[0]), int(source_pos_2[1])
+    assert new_map.flux[pix1] - float(coadd.flux[pix1]) == pytest.approx(
         separate_source_params["source1"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert new_map.flux[int(source_pos_2[0]), int(source_pos_2[1])] == pytest.approx(
+    assert new_map.flux[pix2] - float(coadd.flux[pix2]) == pytest.approx(
         separate_source_params["source2"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert coadd.hits[int(source_pos_1[0]), int(source_pos_1[1])] == 1
-    assert coadd.hits[int(source_pos_2[0]), int(source_pos_2[1])] == 1
+    assert coadd.hits[pix1] == 1
+    assert coadd.hits[pix2] == 1
 
 
 def test_coadding_with_sources_in_overlapping_maps(
@@ -227,7 +201,7 @@ def test_coadding_with_sources_in_overlapping_maps(
     map_path_1 = overlapping_map_set_1
     map_path_2 = overlapping_map_set_2
 
-    start_time = datetime.datetime(2025, 10, 10, 0, 0, 0)
+    start_time = Time("2025-10-10", format="iso")
     input_maps = [
         RhoAndKappaMap(
             rho_filename=map_path_1["rho"],
@@ -235,15 +209,15 @@ def test_coadding_with_sources_in_overlapping_maps(
             time_filename=map_path_1["time"],
             frequency="f090",
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(hours=1),
+            end_time=start_time + TimeDelta(3600, format="sec"),
         ),
         RhoAndKappaMap(
             rho_filename=map_path_2["rho"],
             kappa_filename=map_path_2["kappa"],
             time_filename=map_path_2["time"],
             frequency="f090",
-            start_time=start_time + datetime.timedelta(hours=1),
-            end_time=start_time + datetime.timedelta(hours=2),
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
         ),
     ]
 
@@ -275,22 +249,9 @@ def test_coadding_with_sources_in_overlapping_maps(
     coadd = coadded_maps[0]
 
     coadd.finalize()
-    plt.figure()
-    ax = plt.subplot(projection=coadd.flux.wcs)
-    im = ax.imshow(coadd.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("overlaping_coadded_map.png")
-    plt.close()
     injector = source_injector.PhotutilsSourceInjector()
-    new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
+    _, new_map = injector.inject(input_map=coadd, simulated_sources=simulated_sources)
     new_map.finalize()
-
-    plt.figure()
-    ax = plt.subplot(projection=new_map.flux.wcs)
-    im = ax.imshow(new_map.flux)
-    plt.colorbar(im, ax=ax, label="Flux (Jy)")
-    plt.savefig("overlapping_coadded_map_w_source.png")
-    plt.close()
 
     assert new_map != coadd
     assert new_map.original_map == coadd
@@ -307,11 +268,13 @@ def test_coadding_with_sources_in_overlapping_maps(
             overlapping_source_params["source2"]["ra"].to_value(u.rad),
         ]
     )
-    assert new_map.flux[int(source_pos_1[0]), int(source_pos_1[1])] == pytest.approx(
+    pix1 = int(source_pos_1[0]), int(source_pos_1[1])
+    pix2 = int(source_pos_2[0]), int(source_pos_2[1])
+    assert new_map.flux[pix1] - float(coadd.flux[pix1]) == pytest.approx(
         overlapping_source_params["source1"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert new_map.flux[int(source_pos_2[0]), int(source_pos_2[1])] == pytest.approx(
+    assert new_map.flux[pix2] - float(coadd.flux[pix2]) == pytest.approx(
         overlapping_source_params["source2"]["flux"].to_value(u.Jy), abs=0.5
     )
-    assert coadd.hits[int(source_pos_1[0]), int(source_pos_1[1])] == 2
-    assert coadd.hits[int(source_pos_2[0]), int(source_pos_2[1])] == 1
+    assert coadd.hits[pix1] == 2
+    assert coadd.hits[pix2] == 1

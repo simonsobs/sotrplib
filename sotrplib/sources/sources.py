@@ -2,6 +2,7 @@ from typing import Literal, Optional
 
 import numpy as np
 import structlog
+import uuid7 as uuid
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
@@ -23,14 +24,15 @@ class CrossMatch(BaseModel):
     ra: AstroPydanticQuantity[u.deg] | None = None
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
-    source_id: str
+    source_id: str | uuid.UUID
+    source_type: str | None = None
     probability: float | None = None
     angular_separation: AstroPydanticQuantity[u.deg] | None = None
     flux: AstroPydanticQuantity[u.mJy] | None = None
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     catalog_name: str | None = None
-    catalog_idx: int | None = None
+    catalog_idx: int | str | uuid.UUID | None = None
     alternate_names: list[str] | None = None
 
 
@@ -44,9 +46,9 @@ class RegisteredSource(BaseSource):
     Extendedness and positional uncertainty is stored if available.
     """
 
-    source_id: str | None = None
+    source_id: str | uuid.UUID | None = None
     source_type: (
-        Literal["extragalactic", "star", "asteroid", "simulated", "unknown"] | None
+        Literal["extragalactic", "star", "sso", "simulated", "unknown"] | None
     ) = None
 
     crossmatches: list[CrossMatch] | None = None
@@ -60,6 +62,8 @@ class RegisteredSource(BaseSource):
     observation_start_time: AstroPydanticTime | None = None
     observation_mean_time: AstroPydanticTime | None = None
     observation_end_time: AstroPydanticTime | None = None
+
+    flags: list[str] | None = None
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
@@ -94,6 +98,9 @@ class MeasuredSource(RegisteredSource):
     Since it's being measured, it is assumed to be a RegisteredSource which
     undergoes a particular forced photometry style flux measurement.
 
+    Simulated sources may also be stored in this class since we may wish to
+    recover, or "measure", the injected parameters.
+
     """
 
     snr: float | None = None
@@ -104,12 +111,18 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_ra: AstroPydanticQuantity[u.deg] | None = None
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
-    measurement_type: Literal["forced", "blind"] = "forced"
+    measurement_type: Literal["forced", "blind", "simulated"] = "forced"
+    measurement_id: str | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
 
-    fit_method: Literal["2d_gaussian", "nearest_neighbor", "spline"] = "2d_gaussian"
+    fit_method: Literal[
+        "lmfit_2d_gaussian",
+        "nearest_neighbor",
+        "spline",
+        "simulated",
+    ] = "lmfit_2d_gaussian"
     fit_params: dict | None = None
     fit_failed: bool = False
     fit_failure_reason: str | None = None
@@ -150,7 +163,9 @@ class MeasuredSource(RegisteredSource):
                 ],
             )
 
-        self.thumbnail_res = input_map.map_resolution
+        self.thumbnail_res = (
+            thumb.wcs.wcs.cdelt * u.deg
+        )  ## list of two values; 0 is RA, 1 is Dec
         self.thumbnail_unit = input_map.flux_units
         self.thumbnail = np.asarray(thumb)
 

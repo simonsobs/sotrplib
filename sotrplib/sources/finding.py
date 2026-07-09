@@ -1,5 +1,7 @@
 import numpy as np
+import uuid7
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
 from numpydantic import NDArray
 from photutils import segmentation as pseg
@@ -64,9 +66,9 @@ def get_source_observation_time(
         if isinstance(timemap, ProcessableMap):
             t_start, t_mean, t_end = timemap.get_pixel_times((y, x))
         else:
-            t_mean = timemap[y, x]
-            t_start = np.nan
-            t_end = np.nan
+            t_mean = Time(timemap[y, x], format="unix")
+            t_start = None
+            t_end = None
         # Set the extracted source times, backwards compatibility
         extracted_sources[f]["observation_mean_time"] = t_mean
         extracted_sources[f]["observation_start_time"] = t_start
@@ -94,9 +96,6 @@ def extract_sources(
 
     High snr pixels are returned by photutils and grouped into sources based on their
     significance and the minrad values.
-
-    Apply pointing offset correction to detected sources if pointing_residuals is supplied.
-
     """
     log = log or get_logger()
     log.bind(func_name="extract_sources")
@@ -189,6 +188,7 @@ def extract_sources(
             "semimajor_sigma": peaks["semimajor_sigma"][j].value * inmap.map_resolution,
             "semiminor_sigma": peaks["semiminor_sigma"][j].value * inmap.map_resolution,
             "orientation": peaks["orientation"][j].value * u.deg,
+            "measurement_id": str(uuid7.create()),
         }
 
     log.info(
@@ -238,6 +238,7 @@ def convert_outstruct_to_measured_source_objects(
         k = 2.0 * np.sqrt(2.0 * np.log(2.0))  # ≈ 2.354820045
         ms.fwhm_ra = k * sigma_ra
         ms.fwhm_dec = k * sigma_dec
+
         outlist.append(ms)
 
     return outlist

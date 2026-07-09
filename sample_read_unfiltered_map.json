@@ -3,24 +3,26 @@
         {
             "map_type": "inverse_variance",
             "intensity_map_path": "./depth1_1538613353_pa5_f090_map.fits",
-            "weights_map_path": "./15386/depth1_1538613353_pa5_f090_ivar.fits",
+            "weights_map_path": "./depth1_1538613353_pa5_f090_ivar.fits",
             "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
             "frequency": "f090",
             "band": "pa5",
             "intensity_units": "K",
-            "box": {"value":[
-                        [-40,300],
-                        [-50,320]
-                    ],
-                    "unit": "deg"
-                }
+            "box":[
+                    {
+                    "ra":{"value":138.52,"unit":"deg"},
+                    "dec":{"value":-13.095,"unit":"deg"}
+                    },
+                    {
+                    "ra":{"value":140.52,"unit":"deg"},
+                    "dec":{"value":-11.095,"unit":"deg"}
+                    }
+                ]
         }
     ],
     "source_catalogs": [
         {
-            "catalog_type": "socat",
-            "path": "./PS_S19_f090_2pass_optimalCatalog.fits",
-            "flux_lower_limit": "0.1 Jy"
+            "catalog_type": "socat"
         }
     ],
     "preprocessors": [
@@ -38,8 +40,10 @@
             "search_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy",
-        "reproject_thumbnails": "True"
+        "photometry_type": "lmfit",
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy",
+        "min_flux": "0.01 Jy"
     },
     "sifter": {
         "sifter_type": "default"

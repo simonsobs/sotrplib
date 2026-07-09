@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyinstrument
 import pytest
+import structlog
 from astropy.coordinates import SkyCoord
 
 from sotrplib.config.config import Settings
@@ -56,12 +57,24 @@ def calculate_separation(candidate: MeasuredSource) -> float:
 def main():
     config = Settings.from_file("regression.json")
     pipeline = config.to_runner()
+
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
+    )
+    log = structlog.get_logger()
+
+    maps = config.maps
+    if hasattr(maps, "to_generator"):
+        maps = maps.to_generator(log=log)
+    else:
+        maps = [mm.to_map(log=log) for mm in maps]
+
     with pyinstrument.Profiler(interval=0.01) as profiler:
-        results = pipeline.run()
+        results = pipeline.run(maps)
     profiler.write_html("profile.html")
     print(profiler.output_text(unicode=True, color=True))
     result = results[0]
-    photometry, sifter_result, _ = result
+    photometry, sifter_result = result
 
     found = [candidate for candidate in photometry if not candidate.fit_failed]
     # some forced photometry candidates don't have offsets
@@ -75,12 +88,8 @@ def main():
     # simulated catalogs have a random number added to the id
     # assume this corresponds to the first element
     cat = pipeline.source_catalogs[0]
-    simulation_base = int(cat.sources[0].source_id.split("-")[1])
     flux_ratios = [
-        candidate.flux
-        / cat.source_by_id(
-            int(candidate.source_id.split("-")[1]) - simulation_base
-        ).flux
+        candidate.flux / cat.source_by_id(candidate.source_id).flux
         for candidate in found
     ]
 

@@ -1,5 +1,6 @@
 import pytest
 from astropy import units as u
+from astropy.time import Time
 from structlog import get_logger
 
 log = get_logger()
@@ -88,9 +89,11 @@ def test_random_positions_with_map(sim_map_params, log=log):
 def test_random_flare_times(log=log):
     from sotrplib.sims.sim_utils import generate_random_flare_times
 
+    start_time = Time(1.4e9, format="unix")
+    end_time = Time(1.7e9, format="unix")
     flare_times = generate_random_flare_times(
-        10, start_time=1.4e9, end_time=1.7e9, log=log
+        10, start_time=start_time, end_time=end_time, log=log
     )
     assert len(flare_times) == 10
     for t in flare_times:
-        assert 1.4e9 <= t <= 1.7e9
+        assert start_time <= t <= end_time

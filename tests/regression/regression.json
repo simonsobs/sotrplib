@@ -25,7 +25,7 @@
         "injector_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy"
+        "photometry_type": "lmfit"
     },
     "source_subtractor": {
         "subtractor_type": "photutils"

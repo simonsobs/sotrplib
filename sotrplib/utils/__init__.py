@@ -1,3 +1,3 @@
-from . import actpol_utils, plot, utils
+from . import plot, utils
 
-__all__ = ["actpol_utils", "plot", "utils"]
+__all__ = ["plot", "utils"]

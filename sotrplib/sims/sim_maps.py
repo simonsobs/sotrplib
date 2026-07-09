@@ -1,16 +1,15 @@
-from datetime import datetime
-
 import numpy as np
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sims.sim_sources import SimTransient
+from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.forced_photometry import (
-    convert_catalog_to_registered_source_objects,
+    convert_dict_catalog_to_registered_source_objects,
 )
 from sotrplib.sources.sources import MeasuredSource
 
@@ -22,11 +21,12 @@ def make_enmap(
     width_dec: AstroPydanticQuantity[u.deg] = 1.0 * u.deg,
     resolution: AstroPydanticQuantity[u.arcmin] = 0.5 * u.arcmin,
     map_noise: AstroPydanticQuantity[u.Jy] = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """ """
     from pixell.enmap import geometry, zeros
 
+    log = log if log else get_logger()
     log = log.bind(func_name="make_enmap")
     if (width_ra <= 0 * u.deg) or (width_dec <= 0 * u.deg):
         log.error(
@@ -53,8 +53,8 @@ def make_enmap(
 
     box = np.array(
         [
-            [min_dec.to_value(u.rad), min_ra.to_value(u.rad)],
-            [max_dec.to_value(u.rad), max_ra.to_value(u.rad)],
+            [min_dec.to_value(u.rad), max_ra.to_value(u.rad)],
+            [max_dec.to_value(u.rad), min_ra.to_value(u.rad)],
         ]
     )
     shape, wcs = geometry(box, res=resolution.to_value(u.rad))
@@ -74,15 +74,15 @@ def make_enmap(
 
 def make_time_map(
     imap: enmap.ndmap,
-    start_time: datetime,
-    end_time: datetime,
+    start_time: Time,
+    end_time: Time,
 ) -> enmap.ndmap:
     """
     A simple time map simulation where each pixel is observed at a unique time.
     """
     shape = imap.shape
-    start_timestamp = start_time.timestamp()
-    end_timestamp = end_time.timestamp()
+    start_timestamp = start_time.unix
+    end_timestamp = end_time.unix
 
     time_offset_y = (end_timestamp - start_timestamp) / shape[1]
 
@@ -101,7 +101,7 @@ def make_noise_map(
     map_noise_Jy: AstroPydanticQuantity[u.Jy] = 0.01 * u.Jy,
     map_mean_Jy: AstroPydanticQuantity[u.Jy] = 0.0 * u.Jy,
     seed: int = None,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Create a noise map with the same shape and WCS as the input map.
@@ -119,6 +119,7 @@ def make_noise_map(
 
     from ..maps.maps import edge_map
 
+    log = log if log else get_logger()
     shape = imap.shape
     wcs = imap.wcs
     noise_map = enmap.zeros(shape, wcs=wcs)
@@ -265,7 +266,7 @@ def photutils_sim_n_sources(
         params,
         imap=sim_map if isinstance(sim_map, enmap.ndmap) else sim_map.flux,
     )
-    injected_sources = convert_catalog_to_registered_source_objects(
+    injected_sources = convert_dict_catalog_to_registered_source_objects(
         injected_sources, source_type="simulated", log=log
     )
 
@@ -277,19 +278,20 @@ def photutils_sim_n_sources(
 
 def inject_sources(
     imap: enmap.ndmap | ProcessableMap,
-    sources: list[SimTransient],
-    observation_time: float | enmap.ndmap,
+    sources: list[SimulatedSource],
+    observation_time: Time | enmap.ndmap,
     freq: str = "f090",
-    arr: str = None,
+    arr: str | None = None,
+    instrument: str | None = None,
     debug: bool = False,
     log: FilteringBoundLogger | None = None,
 ):
     """
-    Inject a list of SimTransient objects into the input map.
+    Inject a list of SimulatedSource objects into the input map.
 
     Parameters:
     - imap: enmap.ndmap, the input map to inject sources into.
-    - sources: list of SimTransient objects.
+    - sources: list of SimulatedSource objects.
     - observation_time: float or enmap.ndmap, the time of the observation.
     - freq: str, the frequency of the observation.
     - arr: str, the array name (optional).
@@ -325,7 +327,7 @@ def inject_sources(
         raise ValueError("Input map must be a ProcessableMap or enmap.ndmap object")
 
     mapres = abs(wcs.wcs.cdelt[0]) * u.deg
-    fwhm = get_fwhm(freq, arr=arr)
+    fwhm = get_fwhm(freq, arr=arr, instrument=instrument)
     fwhm_pixels = (fwhm / mapres).value
 
     log.info("inject_sources.injecting_sources", n_sources=len(sources))
@@ -333,7 +335,8 @@ def inject_sources(
     removed_sources = {"not_flaring": 0, "out_of_bounds": 0}
     for source in tqdm(sources, desc="Injecting sources", disable=not debug):
         # Check if source is within the map bounds
-        ra, dec = source.ra, source.dec
+        source_position = source.position(observation_time)
+        ra, dec = source_position.ra, source_position.dec
         pix = sky2pix(shape, wcs, np.asarray([dec.to("rad").value, ra.to("rad").value]))
         if not (0 <= pix[0] < shape[-2] and 0 <= pix[1] < shape[-1]):
             removed_sources["out_of_bounds"] += 1
@@ -348,16 +351,23 @@ def inject_sources(
             continue
 
         # Check if the source is flaring at the observation time
-        if isinstance(observation_time, float):
-            source_obs_time = observation_time
-        else:
+        if isinstance(observation_time, enmap.ndmap):
             source_obs_time = observation_time[int(pix[0]), int(pix[1])]
+        else:
+            source_obs_time = observation_time.unix
 
-        if abs(source.peak_time - source_obs_time) > 3 * source.flare_width:
-            removed_sources["not_flaring"] += 1
-            continue
-
-        flux = source.get_flux(source_obs_time)
+        if (
+            hasattr(source, "peak_time")
+            and hasattr(source, "flare_width")
+            and source.peak_time is not None
+            and source.flare_width is not None
+        ):
+            if abs(
+                source.peak_time.unix - source_obs_time
+            ) > 3 * source.flare_width.to_value("s"):
+                removed_sources["not_flaring"] += 1
+                continue
+        flux = source.flux(Time(source_obs_time, format="unix"))
 
         inj_source = MeasuredSource(
             ra=ra,
@@ -409,7 +419,7 @@ def inject_random_sources(
     sim_params: dict,
     fwhm_arcmin: u.Quantity[u.arcmin] = 2.2 * u.arcmin,
     add_noise: bool = False,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Inject sources into a map using photutils.
@@ -425,6 +435,7 @@ def inject_random_sources(
     - add_noise: bool, if True, add sim_params['maps']['map_noise'] to the map.
         Assumes this is already injected since sim maps load this by default.
     """
+    log = log if log else get_logger()
     log = log.bind(func_name="inject_random_sources")
     if not sim_params:
         log.info("inject_random_sources.no_sim_params", sim_params=sim_params)
@@ -493,7 +504,9 @@ def inject_simulated_sources(
     catalog_sources += inject_random_sources(
         mapdata,
         sim_params,
-        fwhm_arcmin=get_fwhm(mapdata.frequency, arr=mapdata.array),
+        fwhm_arcmin=get_fwhm(
+            mapdata.frequency, arr=mapdata.array, instrument=mapdata.instrument
+        ),
         add_noise=False,
         log=log,
     )

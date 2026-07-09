@@ -15,7 +15,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.source_catalog.core import SourceCatalog
-from sotrplib.sources.sources import CrossMatch, MeasuredSource
+from sotrplib.sources.sources import MeasuredSource
 
 
 @dataclass
@@ -93,9 +93,7 @@ class SimpleCatalogSifter(SiftingProvider):
             )
 
             if matches:
-                source.crossmatches = [
-                    CrossMatch(source_id=m.source_id) for m in matches
-                ]
+                source.crossmatches = matches
                 log = log.bind(number_of_matches=len(matches))
                 log = log.info("sifter.simple.matched")
                 source_candidates.append(source)
@@ -152,9 +150,9 @@ class DefaultSifter(SiftingProvider):
         self.ra_jitter = ra_jitter
         self.dec_jitter = dec_jitter
         self.cuts = cuts or {
-            "fwhm_ra": [0.5 * u.arcmin, 5.0 * u.arcmin],
-            "fwhm_dec": [0.5 * u.arcmin, 5.0 * u.arcmin],
+            "fwhm": [0.5, 2.5],
             "snr": [5.0, np.inf],
+            "observation_mean_time": [1, np.inf],
         }
         self.crossmatch_with_gaia = crossmatch_with_gaia
         self.crossmatch_with_million_quasar = crossmatch_with_million_quasar
@@ -181,7 +179,7 @@ class DefaultSifter(SiftingProvider):
             extracted_sources=sources,
             catalog_sources=list(
                 itertools.chain(
-                    *[c.get_sources_in_box(box=input_map.bbox) for c in catalogs]
+                    *[c.get_sources_in_map(input_map=input_map) for c in catalogs]
                 )
             ),
             input_map=input_map,

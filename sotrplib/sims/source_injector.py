@@ -6,11 +6,11 @@ together (since 1997).
 import math
 import random
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 
 import numpy as np
 from astropy import units as u
 from astropy.table import Table
+from astropy.time import Time
 from photutils.psf import GaussianPSF
 from photutils.psf.simulation import make_model_image
 from structlog import get_logger
@@ -28,7 +28,7 @@ class SourceInjector(ABC):
         self,
         input_map: ProcessableMap,
         simulated_sources: list[SimulatedSource],
-    ) -> ProcessableMapWithSimulatedSources:
+    ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
         return
 
 
@@ -36,9 +36,9 @@ class EmptySourceInjector(SourceInjector):
     def inject(
         self,
         input_map: ProcessableMap,
-        simulated_sources: list[SimulatedSource],
-    ) -> ProcessableMapWithSimulatedSources:
-        return input_map
+        simulated_sources: list[SimulatedSource] = [],
+    ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
+        return ([], input_map)
 
 
 class PhotutilsSourceInjector(SourceInjector):
@@ -64,7 +64,7 @@ class PhotutilsSourceInjector(SourceInjector):
         self,
         input_map: ProcessableMap,
         simulated_sources: list[SimulatedSource],
-    ) -> ProcessableMapWithSimulatedSources:
+    ) -> tuple[list[SimulatedSource], ProcessableMapWithSimulatedSources]:
         # Create the photutils source injection table and 'model image' - the
         # template to add to the map.
 
@@ -96,9 +96,7 @@ class PhotutilsSourceInjector(SourceInjector):
 
         valid_sources = list(filter(source_in_map, simulated_sources))
         observed_times = [
-            datetime.fromtimestamp(
-                float(input_map.time_mean[source_to_array_index(x)]), tz=timezone.utc
-            )
+            Time(float(input_map.time_mean[source_to_array_index(x)]), format="unix")
             for x in valid_sources
         ]
         log = log.bind(num_valid_sources=len(valid_sources))
@@ -168,6 +166,12 @@ class PhotutilsSourceInjector(SourceInjector):
 
         log.info("source_injection.photutils.complete")
 
-        return ProcessableMapWithSimulatedSources(
-            flux=new_flux, snr=new_snr, time=input_map.time_mean, original_map=input_map
+        return (
+            valid_sources,
+            ProcessableMapWithSimulatedSources(
+                flux=new_flux,
+                snr=new_snr,
+                time=input_map.time_mean,
+                original_map=input_map,
+            ),
         )

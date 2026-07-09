@@ -13,6 +13,9 @@ class SourceSubtractedMap(ProcessableMap):
     def __init__(self):
         return
 
+    def _compute_hits(self):
+        return
+
 
 class SourceSubtractor(ABC):
     @abstractmethod

@@ -6,11 +6,11 @@ the random generation of those sources.
 
 import random
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
 
+import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from pydantic import AwareDatetime
+from astropy.time import Time, TimeDelta
 from socat.client.settings import SOCatClientSettings
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -34,20 +34,18 @@ from .sim_sources import (
 )
 
 
-def random_datetime(start, end):
-    """Generate a random datetime between `start` and `end`"""
-    delta = end - start
-    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+def random_datetime(start: Time, end: Time) -> Time:
+    """Generate a random Time between `start` and `end`"""
+    int_delta = int((end - start).to_value("s"))
     random_second = random.randrange(int_delta)
-    return start + timedelta(seconds=random_second)
+    return start + TimeDelta(random_second, format="sec")
 
 
-def random_timedelta(min_td, max_td):
-    """Generate a random timedelta between `min_td` and `max_td`"""
-    delta = max_td - min_td
-    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+def random_timedelta(min_td: TimeDelta, max_td: TimeDelta) -> TimeDelta:
+    """Generate a random TimeDelta between `min_td` and `max_td`"""
+    int_delta = int((max_td - min_td).to_value("s"))
     random_second = random.randrange(int_delta)
-    return min_td + timedelta(seconds=random_second)
+    return min_td + TimeDelta(random_second, format="sec")
 
 
 class SimulatedSourceGenerator(ABC):
@@ -55,12 +53,12 @@ class SimulatedSourceGenerator(ABC):
     def generate(
         self,
         input_map: ProcessableMap | None = None,
-        box: tuple[SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ) -> tuple[list[SimulatedSource], SourceCatalog]:
         """
-        Generate the simulated sources, optionally within a map or a box on the sky.
-        If input_map is provided, box is to be ignored and inject only within the map area.
+        Generate the simulated sources, optionally within a map or a sky_box on the sky.
+        If input_map is provided, sky_box is to be ignored and inject only within the map area.
         If time_range is provided, it specifies the time range for the simulation.
         Returns both the list of the core 'sources' for use in the source
         simulator, as well as a source catlaog that contains at least some of
@@ -91,11 +89,11 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
     def generate(
         self,
         input_map: ProcessableMap | None = None,
-        box: tuple[SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ):
-        if box is None and input_map is None:
-            box = [
+        if sky_box is None and input_map is None:
+            sky_box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
@@ -103,22 +101,22 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         if input_map is not None:
             positions = generate_random_positions_in_map(self.number, input_map.flux)
         else:
+            # sky_box[0] = (ra_min, dec_min), sky_box[1] = (ra_max, dec_max).
+            # When the box wraps RA=0, sky_box[0].ra > sky_box[1].ra (e.g. 357° vs 3°);
+            # generate_random_positions handles that by converting to negative RA.
             positions = generate_random_positions(
                 self.number,
-                ra_lims=(box[0].ra, box[1].ra),
-                dec_lims=(box[0].dec, box[1].dec),
+                ra_lims=(sky_box[0].ra, sky_box[1].ra),
+                dec_lims=(sky_box[0].dec, sky_box[1].dec),
             )
 
-        log = self.log.bind(box=box)
+        log = self.log.bind(sky_box=sky_box)
 
         # Potential issue with this setup is that you've got overlapping sources..?
         # But that's something we should probably handle anyway...
         # Another issue is that we're not actually generating sources on the
         # sphere, but that is not critical.
-        base = random.randint(0, 100000)
-
-        log = log.bind(base_id=base)
-
+        source_ids = [uuid.create() for _ in range(self.number)]
         sources = [
             RegisteredSource(
                 ra=positions[i][1],
@@ -128,11 +126,22 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
                     self.min_flux.to_value("Jy"), self.max_flux.to_value("Jy")
                 )
                 * u.Jy,
-                source_id=f"sim-{base + i:07d}",
+                source_id=source_ids[i],
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
+                crossmatches=[
+                    CrossMatch(
+                        source_id=source_ids[i],
+                        source_type="simulated_fixed",
+                        catalog_name="simulated",
+                        ra=positions[i][1],
+                        dec=positions[i][0],
+                        angular_separation=0.0 * u.deg,
+                        catalog_idx=source_ids[i],
+                    )
+                ],
             )
             for i in range(self.number)
         ]
@@ -155,10 +164,10 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
 class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
     def __init__(
         self,
-        flare_earliest_time: AwareDatetime | None,
-        flare_latest_time: AwareDatetime | None,
-        flare_width_shortest: timedelta,
-        flare_width_longest: timedelta,
+        flare_earliest_time: Time | None,
+        flare_latest_time: Time | None,
+        flare_width_shortest: TimeDelta,
+        flare_width_longest: TimeDelta,
         peak_amplitude_minimum: u.Quantity,
         peak_amplitude_maximum: u.Quantity,
         number: int,
@@ -178,11 +187,11 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
     def generate(
         self,
         input_map: ProcessableMap | None = None,
-        box: tuple[SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ):
-        if box is None and input_map is None:
-            box = [
+        if sky_box is None and input_map is None:
+            sky_box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
@@ -219,35 +228,34 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
 
         log = self.log.bind(
             n=self.number,
-            box=box,
+            sky_box=sky_box,
             time_range=[self.flare_earliest_time, self.flare_latest_time],
         )
 
-        base = random.randint(0, 100000)
+        source_ids = [uuid.create() for _ in range(self.number)]
 
-        log = log.bind(base_id=base)
-
-        def random_datetime(start, end):
-            """Generate a random datetime between `start` and `end`"""
-            delta = end - start
-            int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+        def random_datetime(start: Time, end: Time) -> Time:
+            """Generate a random Time between `start` and `end`"""
+            int_delta = int((end - start).to_value("s"))
             random_second = random.randrange(int_delta)
-            return start + timedelta(seconds=random_second)
+            return start + TimeDelta(random_second, format="sec")
 
-        def random_timedelta(min_td, max_td):
-            """Generate a random timedelta between `min_td` and `max_td`"""
-            delta = max_td - min_td
-            int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+        def random_timedelta(min_td: TimeDelta, max_td: TimeDelta) -> TimeDelta:
+            """Generate a random TimeDelta between `min_td` and `max_td`"""
+            int_delta = int((max_td - min_td).to_value("s"))
             random_second = random.randrange(int_delta)
-            return min_td + timedelta(seconds=random_second)
+            return min_td + TimeDelta(random_second, format="sec")
 
         if input_map is not None:
             positions = generate_random_positions_in_map(self.number, input_map.flux)
         else:
+            # sky_box[0] = (ra_min, dec_min), sky_box[1] = (ra_max, dec_max).
+            # When the box wraps RA=0, sky_box[0].ra > sky_box[1].ra (e.g. 357° vs 3°);
+            # generate_random_positions handles that by converting to negative RA.
             positions = generate_random_positions(
                 self.number,
-                ra_lims=(box[0].ra, box[1].ra),
-                dec_lims=(box[0].dec, box[1].dec),
+                ra_lims=(sky_box[0].ra, sky_box[1].ra),
+                dec_lims=(sky_box[0].dec, sky_box[1].dec),
             )
 
         sources = [
@@ -260,16 +268,20 @@ class GaussianTransientSourceGenerator(SimulatedSourceGenerator):
                     self.peak_amplitude_maximum.to_value("Jy"),
                 )
                 * u.Jy,
-                source_id=f"sim-{base + i:07d}",
+                source_id=source_ids[i],
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
                 err_flux=0.0 * u.Jy,
                 crossmatches=[
                     CrossMatch(
-                        source_id=f"sim-{base + i:07d}",
+                        source_id=source_ids[i],
                         catalog_name="simulated",
+                        source_type="simulated_gaussian",
+                        ra=positions[i][1],
+                        dec=positions[i][0],
                         angular_separation=0.0 * u.deg,
+                        catalog_idx=source_ids[i],
                     )
                 ],
             )
@@ -316,10 +328,10 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         self,
         fraction_fixed: float,
         fraction_gaussian: float,
-        flare_earliest_time: datetime,
-        flare_latest_time: datetime,
-        flare_width_shortest: timedelta,
-        flare_width_longest: timedelta,
+        flare_earliest_time: Time,
+        flare_latest_time: Time,
+        flare_width_shortest: TimeDelta,
+        flare_width_longest: TimeDelta,
         peak_amplitude_minimum_factor: float,
         peak_amplitude_maximum_factor: float,
         log: FilteringBoundLogger | None = None,
@@ -355,8 +367,9 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
 
     def generate(
         self,
-        box: tuple[SkyCoord] | None = None,
-        time_range: tuple[AwareDatetime | None, AwareDatetime | None] | None = None,
+        input_map: ProcessableMap | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        time_range: tuple[Time | None, Time | None] | None = None,
     ):
         self.log = self.log.bind(
             func="sim_source_generator.SOCatSourceGenerator.generate"
@@ -364,13 +377,15 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
         socat_client_settings = SOCatClientSettings()
         socat_client = socat_client_settings.client
 
-        if box is None:
-            box = [
+        if sky_box is None:
+            sky_box = [
                 SkyCoord(ra=0.0 * u.deg, dec=-89.99 * u.deg),
                 SkyCoord(ra=359.99 * u.deg, dec=89.99 * u.deg),
             ]
 
-        sources = socat_client.get_box(lower_left=box[0], upper_right=box[1])
+        sources = socat_client.get_box_fixed(
+            lower_left=sky_box[0], upper_right=sky_box[1]
+        )
         random.shuffle(sources)
 
         number_of_sources = len(sources)
@@ -382,7 +397,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
             n_sources=number_of_sources,
             n_fixed=number_of_fixed,
             n_flares=number_of_flares,
-            box=box,
+            sky_box=sky_box,
         )
         all_sources = [
             RegisteredSource(
@@ -390,7 +405,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                 dec=source.position.dec,
                 frequency=90.0 * u.GHz,
                 flux=source.flux if source.flux is not None else u.Quantity(0.0, "Jy"),
-                source_id=str(source.id),
+                source_id=source.source_id,
                 source_type="simulated",
                 err_ra=0.0 * u.deg,
                 err_dec=0.0 * u.deg,
@@ -399,7 +414,7 @@ class SOCatSourceGenerator(SimulatedSourceGenerator):
                     CrossMatch(
                         ra=source.position.ra,
                         dec=source.position.dec,
-                        source_id=str(source.id),
+                        source_id=source.source_id,
                         catalog_name="socat",
                         alternate_names=[source.name] if source.name else [],
                     )

@@ -1,9 +1,13 @@
-import datetime
 import os
 
+import numpy as np
 import pytest
 from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 from pixell import enmap
+
+np.random.seed(42)
 
 
 @pytest.fixture
@@ -48,16 +52,24 @@ def sim_transient_params():
 
 
 @pytest.fixture
-def dummy_source():
-    from sotrplib.sims.sim_sources import SimTransient
+def dummy_fixed_source():
+    from sotrplib.sims.sim_sources import FixedSimulatedSource
 
-    ds = SimTransient()
-    ds.ra = 1.1 * u.deg
-    ds.dec = -2.2 * u.deg
-    ds.flux = 1.0 * u.Jy
-    ds.peak_time = 0.0
-    ds.flare_width = 1.0
-    return ds
+    return FixedSimulatedSource(
+        position=SkyCoord(ra=1.1 * u.deg, dec=-2.2 * u.deg), flux=1.0 * u.Jy
+    )
+
+
+@pytest.fixture
+def dummy_gaussian_source():
+    from sotrplib.sims.sim_sources import GaussianTransientSimulatedSource
+
+    return GaussianTransientSimulatedSource(
+        position=SkyCoord(ra=1.1 * u.deg, dec=-2.2 * u.deg),
+        peak_amplitude=1.0 * u.Jy,
+        peak_time=Time("2025-01-01", format="iso", scale="utc"),
+        flare_width=TimeDelta(1, format="jd"),
+    )
 
 
 def build_wcs(sim_map_params):
@@ -131,9 +143,8 @@ def dummy_map(sim_map_params, ones_map_set):
         rho_filename=ones_map_set["rho"],
         kappa_filename=ones_map_set["kappa"],
         time_filename=ones_map_set["time"],
-        start_time=datetime.datetime.now(tz=datetime.UTC)
-        - 1 * datetime.timedelta(days=1),
-        end_time=datetime.datetime.now(tz=datetime.UTC),
+        start_time=Time.now() - TimeDelta(1, format="jd"),
+        end_time=Time.now(),
     )
     DummyMap.build()
     DummyMap.add_time_offset(DummyMap.observation_start)
@@ -141,3 +152,22 @@ def dummy_map(sim_map_params, ones_map_set):
     DummyMap.frequency = "f090"
     DummyMap.array = "sim"
     return DummyMap
+
+
+@pytest.fixture
+def obs_times():
+    return (
+        Time("2024-01-01T00:00:00", format="isot", scale="utc"),
+        Time("2024-01-01T01:00:00", format="isot", scale="utc"),
+    )
+
+
+@pytest.fixture
+def flux_enmap():
+    """Small synthetic enmap centred on (ra=16 deg, dec=-2 deg)."""
+    shape, wcs = enmap.geometry(
+        pos=np.deg2rad([[-3.0, 18.0], [-1.0, 14.0]]),
+        res=np.deg2rad(0.5 / 60),
+        proj="car",
+    )
+    return enmap.zeros(shape, wcs=wcs)

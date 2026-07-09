@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import structlog
 from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import TimeDelta
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from pydantic import BaseModel
@@ -45,6 +47,7 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.observation_length = original_map.observation_length
         self.observation_start = original_map.observation_start
         self.observation_end = original_map.observation_end
+        self.observation_time = original_map.observation_time
 
         self.flux_units = original_map.flux_units
         self.frequency = original_map.frequency
@@ -52,12 +55,32 @@ class ProcessableMapWithSimulatedSources(ProcessableMap):
         self.array = original_map.array
         self.finalized = original_map.finalized
         self.map_resolution = original_map.map_resolution
-        self.box = original_map.box
+        self.sky_box = original_map.sky_box
 
         return
+
+    @property
+    def bbox(self) -> np.ndarray:
+        return enmap.box(self.flux.shape, self.flux.wcs)
 
     def build(self):
         return
+
+    def _compute_hits(self):
+        return (abs(self.flux) > 0).astype(np.int32)
+
+    def _compute_valid_pixel_mask(self):
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map = bool_map & (self.mask > 0)
+        return bool_map
+
+    def filter_sources(self, source_positions: SkyCoord):
+        bool_map = (abs(self.flux) > 0).astype(np.int32) & (np.isfinite(self.flux))
+        if self.mask is not None:
+            bool_map *= self.mask
+
+        return self._core_filter_sources(source_positions, bool_map)
 
     def get_pixel_times(self, pix):
         return super().get_pixel_times(pix)
@@ -311,16 +334,16 @@ class TransientSourceSimulation(SourceSimulation):
             ra_lims=None,
             dec_lims=None,
             peak_amplitudes=(
-                self.parameters.min_flux.to_value("Jy"),
-                self.parameters.max_flux.to_value("Jy"),
+                self.parameters.min_flux,
+                self.parameters.max_flux,
             ),
             peak_times=(
-                input_map.observation_start.timestamp(),
-                input_map.observation_end.timestamp(),
+                input_map.observation_start,
+                input_map.observation_end,
             ),
             flare_widths=(
-                self.parameters.min_width.to_value("d"),
-                self.parameters.max_width.to_value("d"),
+                TimeDelta(self.parameters.min_width.to_value("s"), format="sec"),
+                TimeDelta(self.parameters.max_width.to_value("s"), format="sec"),
             ),
             uniform_on_sky=False,
         )

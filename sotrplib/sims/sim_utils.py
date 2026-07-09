@@ -1,14 +1,18 @@
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.sims.sim_sources import SimTransient
-from sotrplib.sources.sources import MeasuredSource
+if TYPE_CHECKING:
+    from sotrplib.sources.sources import MeasuredSource
 
 
 def generate_random_positions_in_map(
@@ -41,8 +45,8 @@ def generate_random_positions_in_map(
 def generate_random_positions(
     n: int,
     imap: enmap.ndmap = None,
-    ra_lims: AstroPydanticQuantity[u.deg] | None = None,
-    dec_lims: AstroPydanticQuantity[u.deg] | None = None,
+    ra_lims: tuple[AstroPydanticQuantity[u.deg]] | None = None,
+    dec_lims: tuple[AstroPydanticQuantity[u.deg]] | None = None,
     edge_buffer: AstroPydanticQuantity[u.deg] = 5 * u.arcmin,
     log: FilteringBoundLogger | None = None,
 ):
@@ -64,7 +68,7 @@ def generate_random_positions(
         if imap is not None:
             shape, wcs = imap.shape, imap.wcs
             dec_min, dec_max = enmap.box(shape, wcs)[:, 0] * u.rad
-            ra_min, ra_max = enmap.box(shape, wcs)[:, 1] * u.rad
+            ra_max, ra_min = enmap.box(shape, wcs)[:, 1] * u.rad
             ra_lims = (ra_min + edge_buffer, ra_max - edge_buffer)
             dec_lims = (dec_min + edge_buffer, dec_max - edge_buffer)
         else:
@@ -74,7 +78,7 @@ def generate_random_positions(
     ## assume that if limits are something like (350,10) that the ra limits wrap 0, so -10,10
     if ra_lims[0] > ra_lims[1]:
         if ra_lims[0] > 180 * u.deg:
-            ra_lims[0] -= 360 * u.deg
+            ra_lims = (ra_lims[0] - 360 * u.deg, ra_lims[1])
 
     # Generate RA uniformly between ra_lims
     ra = (
@@ -95,48 +99,34 @@ def generate_random_positions(
 
 def generate_random_flare_times(
     n: int,
-    start_time: float | str = 1.4e9,
-    end_time: float | str = 1.7e9,
+    start_time: Time = Time(1.4e9, format="unix"),
+    end_time: Time = Time(1.7e9, format="unix"),
     log=None,
-):
+) -> list[Time]:
     """
-    Generate n random flare times uniformly distributed between start_time and end_time.
-    Arguments:
-        n (int): Number of flare times to generate.
-        start_time (float | str): Start time in unix timestamp or string formatted as "yyyy-mm-dd HH:MM:SS".
-        end_time (float | str): End time in unix timestamp or string formatted as "yyyy-mm-dd HH:MM:SS".
-    Returns:
-        numpy array: Array of random flare times.
+    Generate n random Time values uniformly distributed between start_time and end_time.
     """
-    from datetime import datetime
-
-    # Convert string times to unix timestamps if necessary
-    if isinstance(start_time, str):
-        start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S").timestamp()
-    if isinstance(end_time, str):
-        end_time = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S").timestamp()
-
-    return np.random.uniform(start_time, end_time, n)
+    int_delta = int((end_time - start_time).to_value("s"))
+    return [
+        start_time + TimeDelta(np.random.randint(int_delta), format="sec")
+        for _ in range(n)
+    ]
 
 
 def generate_random_flare_widths(
     n: int,
-    min_width: float = 0.1,
-    max_width: float = 10.0,
+    min_width: TimeDelta = TimeDelta(0.1, format="jd"),
+    max_width: TimeDelta = TimeDelta(10.0, format="jd"),
     log=None,
-):
+) -> list[TimeDelta]:
     """
-    Generate n random flare widths uniformly distributed between min_width and max_width.
-
-    Arguments:
-        n (int): Number of flare widths to generate.
-        min_width (float): Minimum flare width.
-        max_width (float): Maximum flare width.
-
-    Returns:
-        numpy array: Array of random flare widths.
+    Generate n random TimeDelta values uniformly distributed between min_width and max_width.
     """
-    return np.random.uniform(min_width, max_width, n)
+    int_delta = int((max_width - min_width).to_value("s"))
+    return [
+        min_width + TimeDelta(np.random.randint(int_delta), format="sec")
+        for _ in range(n)
+    ]
 
 
 def generate_random_flare_amplitudes(
@@ -279,101 +269,9 @@ def dec_lims_valid(
     return True
 
 
-def save_transients_to_db(
-    transients: list[SimTransient],
-    db_path: str,
-    log: FilteringBoundLogger | None = None,
-):
-    """
-    Save a list of SimTransient objects to a SQLite database.
-
-    Parameters:
-    - transients: List of SimTransient objects to save.
-    - db_path: Path to the SQLite database file.
-    """
-    import pickle as pk
-    import sqlite3
-
-    log = log or get_logger()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            position BLOB,
-            peak_amplitude REAL,
-            peak_time REAL,
-            flare_width REAL,
-            flare_morph TEXT,
-            beam_params BLOB
-        )
-    """)
-    for transient in transients:
-        cursor.execute(
-            """
-            INSERT INTO transients (position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (
-                pk.dumps((transient.dec.to(u.deg).value, transient.ra.to(u.deg).value)),
-                transient.peak_amplitude.to(u.Jy).value,
-                transient.peak_time,
-                transient.flare_width,
-                transient.flare_morph,
-                pk.dumps(transient.beam_params),
-            ),
-        )
-    conn.commit()
-    conn.close()
-
-
-def load_transients_from_db(
-    db_path,
-    log=None,
-) -> list[SimTransient]:
-    """
-    Load a list of SimTransient objects from a SQLite database.
-
-    Parameters:
-    - db_path: Path to the SQLite database file.
-
-    Returns:
-    - List of SimTransient objects.
-    """
-    import pickle as pk
-    import sqlite3
-
-    from .sim_sources import SimTransient
-
-    if not db_path:
-        return []
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT position, peak_amplitude, peak_time, flare_width, flare_morph, beam_params FROM transients"
-    )
-    rows = cursor.fetchall()
-    conn.close()
-
-    transients = []
-    for row in rows:
-        position = pk.loads(row[0])
-        beam_params = pk.loads(row[5])
-        transient = SimTransient(
-            position=(position[0] * u.deg, position[1] * u.deg),
-            peak_amplitude=row[1] * u.Jy,
-            peak_time=row[2],
-            flare_width=row[3],
-            flare_morph=row[4],
-            beam_params=beam_params,
-        )
-        transients.append(transient)
-    return transients
-
-
 def load_config_yaml(
     config_path: str,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Load a configuration file in YAML format.
@@ -397,7 +295,7 @@ def load_config_yaml(
 
 def get_sim_map_group(
     sim_params,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     freq_arr_idx = (
         sim_params["array_info"]["arr"] + "_" + sim_params["array_info"]["freq"]
@@ -424,7 +322,7 @@ def make_2d_gaussian_model_param_table(
     nominal_fwhm: u.Quantity = 2.2 * u.arcmin,
     verbose: bool = False,
     cuts={},
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Create a 2D Gaussian model parameter table from the sources detected in the image.
@@ -434,6 +332,7 @@ def make_2d_gaussian_model_param_table(
     """
     from astropy.table import QTable
 
+    log = log or get_logger()
     log = log.bind(func_name="make_2d_gaussian_model_param_table")
     model_params = {
         "x_0": [],

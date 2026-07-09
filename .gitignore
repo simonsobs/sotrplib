@@ -57,3 +57,28 @@ docs/_build/
 
 # test config files
 test_*.json
+
+# test scripts
+scripts/*/test*.py
+
+# any databases
+*sqlite
+*parquet
+
+# any map files
+*.fits
+
+# any ephemeris / orbital param files
+*.bsp
+*.txt
+*.csv
+
+# ipynb checkpoints
+.ipynb_checkpoints
+
+# any maps
+*.fits
+
+# environment configs
+run_act_prefect_env
+act_sotrp_env

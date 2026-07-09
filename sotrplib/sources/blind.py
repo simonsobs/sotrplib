@@ -1,23 +1,24 @@
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropydantic import AstroPydanticQuantity
+from mapcat.pointing.base import PointingModelProtocol
 from pixell import enmap
 from pydantic import BaseModel
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.pointing import MapPointingOffset
 from sotrplib.sources.core import BlindSearchProvider
 from sotrplib.sources.finding import extract_sources
 from sotrplib.sources.sources import MeasuredSource
+from sotrplib.utils.utils import get_fwhm
 
 
 class EmptyBlindSearch(BlindSearchProvider):
     def search(
         self,
         input_map: ProcessableMap,
-        pointing_residuals: MapPointingOffset | None = None,
+        pointing_model: PointingModelProtocol | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         return [], []
 
@@ -41,16 +42,18 @@ class SigmaClipBlindSearch(BlindSearchProvider):
         log: FilteringBoundLogger | None = None,
         parameters: BlindSearchParameters | None = None,
         pixel_mask: enmap.ndmap | None = None,
+        thumbnail_half_width: AstroPydanticQuantity[u.deg] | None = None,
     ):
         self.log = log or get_logger()
         self.parameters = parameters if parameters else BlindSearchParameters()
         self.pixel_mask = pixel_mask
+        self.thumbnail_half_width = thumbnail_half_width
         self.log.info("sigma_clip_blind_search.initialized", parameters=self.parameters)
 
     def search(
         self,
         input_map: ProcessableMap,
-        pointing_residuals: MapPointingOffset | None = None,
+        pointing_model: PointingModelProtocol | None = None,
     ) -> tuple[list[MeasuredSource], list[enmap.ndmap]]:
         if not input_map.finalized:
             raise ValueError(
@@ -73,13 +76,29 @@ class SigmaClipBlindSearch(BlindSearchProvider):
             pixel_mask=self.pixel_mask,
             log=self.log,
         )
+
+        thumb_width = (
+            self.thumbnail_half_width
+            if self.thumbnail_half_width is not None
+            else (
+                5
+                * get_fwhm(
+                    arr=input_map.array,
+                    freq=input_map.frequency,
+                    instrument=input_map.instrument,
+                )
+            )
+        )
+
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
-            source.extract_thumbnail(input_map, reproject_thumb=True)
-            if pointing_residuals:
-                source_pos = pointing_residuals.apply_offset_at_position(
-                    SkyCoord(ra=source.ra, dec=source.dec)
-                )
-                source.ra = source_pos.ra
-                source.dec = source_pos.dec
+            source.extract_thumbnail(
+                input_map, thumb_width=thumb_width, reproject_thumb=True
+            )
+            if pointing_model:
+                pos = SkyCoord(ra=source.ra, dec=source.dec, frame="icrs")
+                corrected = pointing_model.predict(pos)
+                source.ra = corrected.ra
+                source.dec = corrected.dec
+
         return extracted_sources, []

@@ -1,21 +1,29 @@
 import math
 from abc import ABC, abstractmethod
-from datetime import timedelta
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
-from pydantic import AwareDatetime
+from structlog.types import FilteringBoundLogger
+
+from sotrplib.sources.sources import RegisteredSource
 
 
 class SimulatedSource(ABC):
     @abstractmethod
-    def position(self, time: AwareDatetime) -> SkyCoord:
+    def position(self, time: Time) -> SkyCoord:
         return
 
     @abstractmethod
-    def flux(self, time: AwareDatetime) -> u.Quantity:
+    def flux(self, time: Time) -> u.Quantity:
+        return
+
+    @abstractmethod
+    def _to_registered_fixed(
+        self, time: Time, frequency: AstroPydanticQuantity[u.GHz] | None = None
+    ) -> RegisteredSource:
         return
 
 
@@ -30,19 +38,31 @@ class FixedSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time):
+    def position(self, time: Time | None = None) -> SkyCoord:
         return self._position
 
-    def flux(self, time):
+    def flux(self, time: Time | None = None) -> u.Quantity:
         return self._flux
+
+    def _to_registered_fixed(
+        self,
+        time: Time | None = None,
+        frequency: AstroPydanticQuantity[u.GHz] | None = None,
+    ) -> RegisteredSource:
+        return RegisteredSource(
+            ra=self.position(time).ra,
+            dec=self.position(time).dec,
+            flux=self.flux(time),
+            frequency=frequency,
+        )
 
 
 class GaussianTransientSimulatedSource(SimulatedSource):
     def __init__(
         self,
         position: SkyCoord,
-        peak_time: AwareDatetime,
-        flare_width: timedelta,
+        peak_time: Time,
+        flare_width: TimeDelta,
         peak_amplitude: u.Quantity = 0.0 * u.Jy,
     ):
         """
@@ -63,16 +83,29 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
         return
 
-    def position(self, time: AwareDatetime) -> SkyCoord:
+    def position(self, time: Time | None = None) -> SkyCoord:
         return self._position
 
-    def flux(self, time: AwareDatetime) -> u.Quantity:
-        delta_time = time - self.peak_time
-
-        sigma = self.flare_width / (2.0 * math.sqrt(2.0 * math.log(2.0)))
-        exponent = delta_time / sigma
+    def flux(self, time: Time) -> u.Quantity:
+        delta_s = (time - self.peak_time).to_value("s")
+        sigma_s = self.flare_width.to_value("s") / (
+            2.0 * math.sqrt(2.0 * math.log(2.0))
+        )
+        exponent = delta_s / sigma_s
 
         return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)
+
+    def _to_registered_fixed(
+        self,
+        time: Time | None = None,
+        frequency: AstroPydanticQuantity[u.GHz] | None = None,
+    ) -> RegisteredSource:
+        return RegisteredSource(
+            ra=self.position(time).ra,
+            dec=self.position(time).dec,
+            flux=self.flux(time),
+            frequency=frequency,
+        )
 
 
 class SimTransient:
@@ -86,12 +119,12 @@ def generate_transients(
     dec_lims: AstroPydanticQuantity[u.deg] | None = None,
     positions: AstroPydanticQuantity[u.deg] | None = None,
     peak_amplitudes: AstroPydanticQuantity[u.Jy] | None = None,
-    peak_times: list | None = None,
-    flare_widths: list | None = None,
-    flare_morphs: list = None,
+    peak_times: list[Time] | None = None,
+    flare_widths: list[TimeDelta] | None = None,
+    flare_morphs: list[str] = None,
     beam_params: list = None,
     uniform_on_sky=False,
-    log=None,
+    log: FilteringBoundLogger | None = None,
 ):
     """
     Generate a list of simulated transient sources.
@@ -192,15 +225,22 @@ def generate_transients(
     ):
         raise ValueError("All input lists must be of the same length.")
 
-    # for i in range(len(positions)):
-    # transient = SimTransient(
-    #     position=(positions[i][0], positions[i][1]),
-    #     peak_amplitude=peak_amplitudes[i],
-    #     peak_time=peak_times[i],
-    #     flare_width=flare_widths[i],
-    #     flare_morph=flare_morphs[i],
-    #     beam_params=beam_params[i],
-    # )
-    # transients.append(transient)
+    for i in range(len(positions)):
+        if flare_morphs[i] == "Gaussian":
+            transient = GaussianTransientSimulatedSource(
+                position=SkyCoord(ra=positions[i][1], dec=positions[i][0]),
+                peak_amplitude=peak_amplitudes[i],
+                peak_time=peak_times[i],
+                flare_width=flare_widths[i],
+            )
+        elif flare_morphs[i] == "Fixed":
+            transient = FixedSimulatedSource(
+                position=SkyCoord(ra=positions[i][1], dec=positions[i][0]),
+                flux=peak_amplitudes[i],
+            )
+        else:
+            raise ValueError(f"Unsupported flare morphology: {flare_morphs[i]}")
 
-    # return transients
+        transients.append(transient)
+
+    return transients

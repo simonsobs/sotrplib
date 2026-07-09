@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,7 +16,7 @@ from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
 from .map_coadding import AllMapCoadderConfigTypes, EmptyMapCoadderConfig
 from .maps import AllMapGeneratorConfigTypes
-from .outputs import AllOutputConfigTypes
+from .outputs import MapOutputConfigTypes, SourceOutputConfigTypes
 from .pointing_residual import (
     AllPointingResidualConfigTypes,
     EmptyPointingResidualConfig,
@@ -87,14 +88,19 @@ class Settings(BaseSettings):
     sifter: AllSifterConfigTypes = Field(default_factory=EmptySifterConfig)
     "Sifting settings"
 
-    outputs: list[AllOutputConfigTypes] = []
+    source_outputs: list[SourceOutputConfigTypes] = []
     "Source output settings"
+
+    map_outputs: list[MapOutputConfigTypes] = []
+    "Map output settings"
 
     runner: Literal["basic", "prefect"] = "basic"
     "Runner to use for the pipeline: 'basic' or 'prefect'"
 
     profile: bool = False
     "Enable pyinstrument profiling"
+
+    log_level: int | str = logging.INFO
 
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(env_prefix="sotrp_", extra="ignore")
@@ -106,12 +112,12 @@ class Settings(BaseSettings):
             return cls.model_validate_json(handle.read())
 
     def to_dependencies(self) -> dict[str, Any]:
+        structlog.configure(
+            wrapper_class=structlog.make_filtering_bound_logger(self.log_level),
+        )
         log = structlog.get_logger()
 
         contents = {
-            "maps": self.maps.to_generator(log=log)
-            if not isinstance(self.maps, list)
-            else [x.to_map(log=log) for x in self.maps],
             "map_coadder": self.map_coadder.to_coadder(log=log),
             "source_simulators": [
                 x.to_simulator(log=log) for x in self.source_simulators
@@ -122,7 +128,7 @@ class Settings(BaseSettings):
             ],
             "preprocessors": [x.to_preprocessor(log=log) for x in self.preprocessors],
             "pointing_provider": self.pointing_provider.to_forced_photometry(log=log),
-            "pointing_residual": self.pointing_residual.to_residuals(log=log),
+            "pointing_residual_model": self.pointing_residual.to_residuals(log=log),
             "postprocessors": [
                 x.to_postprocessor(log=log) for x in self.postprocessors
             ],
@@ -130,7 +136,8 @@ class Settings(BaseSettings):
             "source_subtractor": self.source_subtractor.to_source_subtractor(log=log),
             "blind_search": self.blind_search.to_search_provider(log=log),
             "sifter": self.sifter.to_sifter(log=log),
-            "outputs": [x.to_output(log=log) for x in self.outputs],
+            "source_outputs": [x.to_output(log=log) for x in self.source_outputs],
+            "map_outputs": [x.to_output(log=log) for x in self.map_outputs],
         }
         return contents
 

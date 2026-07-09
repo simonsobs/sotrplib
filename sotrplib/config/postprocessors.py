@@ -26,10 +26,11 @@ class PostprocessorConfig(BaseModel, ABC):
 
 class GalaxyMaskConfig(PostprocessorConfig):
     postprocessor_type: Literal["galaxy_mask"] = "galaxy_mask"
-    mask_filename: Path
+    mask_path: Path
+    invert: bool = False
 
     def to_postprocessor(self, log: FilteringBoundLogger | None = None) -> GalaxyMask:
-        return GalaxyMask(mask_filename=self.mask_filename)
+        return GalaxyMask(mask_path=self.mask_path, invert=self.invert, log=log)
 
 
 class FlatfieldConfig(PostprocessorConfig):

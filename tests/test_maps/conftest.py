@@ -2,12 +2,14 @@
 Map testing
 """
 
-import datetime
 import os
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from astropy import units as u
+from astropy.time import Time
 from pixell import enmap
 
 
@@ -88,30 +90,21 @@ def overlapping_source_params():
 
 
 def build_wcs(map_params, mapkey):
-    nx, ny = (
-        int(map_params[mapkey]["width_ra"] / map_params[mapkey]["resolution"]),
-        int(map_params[mapkey]["width_dec"] / map_params[mapkey]["resolution"]),
-    )
-    nshape = (ny, nx)
-    wcs = enmap.wcsutils.car(
-        pos=[
-            [
-                map_params[mapkey]["center_ra"].to(u.deg).value
-                - 0.5 * map_params[mapkey]["width_ra"].to(u.deg).value,
-                map_params[mapkey]["center_dec"].to(u.deg).value
-                - 0.5 * map_params[mapkey]["width_dec"].to(u.deg).value,
-            ],
-            [
-                map_params[mapkey]["center_ra"].to(u.deg).value
-                + 0.5 * map_params[mapkey]["width_ra"].to(u.deg).value,
-                map_params[mapkey]["center_dec"].to(u.deg).value
-                + 0.5 * map_params[mapkey]["width_dec"].to(u.deg).value,
-            ],
-        ],
-        shape=nshape,
-        res=map_params[mapkey]["resolution"].to(u.deg).value,
-    )
-    return nshape, wcs
+    res = map_params[mapkey]["resolution"].to_value(u.rad)
+    ra_min = (
+        map_params[mapkey]["center_ra"] - 0.5 * map_params[mapkey]["width_ra"]
+    ).to_value(u.rad)
+    ra_max = (
+        map_params[mapkey]["center_ra"] + 0.5 * map_params[mapkey]["width_ra"]
+    ).to_value(u.rad)
+    dec_min = (
+        map_params[mapkey]["center_dec"] - 0.5 * map_params[mapkey]["width_dec"]
+    ).to_value(u.rad)
+    dec_max = (
+        map_params[mapkey]["center_dec"] + 0.5 * map_params[mapkey]["width_dec"]
+    ).to_value(u.rad)
+    box = np.array([[dec_min, ra_max], [dec_max, ra_min]])
+    return enmap.geometry(box, res=res)
 
 
 def create_map(
@@ -138,7 +131,7 @@ def create_time_map(
 ):
     shape, wcs = build_wcs(map_params, mapkey)
     time_map = enmap.zeros(shape, wcs=wcs)
-    time_map += datetime.datetime(2025, 10, 10, 0, 0, 0).timestamp()
+    time_map += Time("2025-10-10", format="iso").unix
     time_map.write(full_path, fmt="fits")
 
 
@@ -207,3 +200,50 @@ def overlapping_map_set_2(tmp_path, overlapping_map_params):
     yield map_paths
     for x in map_paths.values():
         os.unlink(x)
+
+
+@pytest.fixture
+def db_result(separate_map_set_1):
+    """Mock DepthOneMapTable row pointing at the tmp FITS files."""
+    paths = separate_map_set_1
+    r = MagicMock()
+    r.map_id = 42
+    r.map_path = paths["map"]
+    r.ivar_path = paths["ivar"]
+    r.rho_path = paths["rho"]
+    r.kappa_path = paths["kappa"]
+    # reuse rho/kappa as stand-ins for flux/snr (same shape, valid FITS)
+    r.flux_path = paths["rho"]
+    r.snr_path = paths["kappa"]
+    r.mean_time_path = paths["time"]
+    r.start_time = Time.now().unix - 3600
+    r.stop_time = Time.now().unix
+    r.frequency = "f090"
+    r.tube_slot = "pa5"
+    return r
+
+
+@pytest.fixture
+def mock_session(db_result):
+    """Mock DB session returning one db_result row."""
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = [db_result]
+    return session
+
+
+@pytest.fixture
+def mock_mapcat(mock_session):
+    """
+    Patches mapcat_settings, check_if_processed, and set_processing_start so
+    that map_list() runs without a real database connection.
+    """
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_processed", return_value=False),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        # session() is used as a context manager; wire __enter__ to our mock
+        settings.session.return_value.__enter__.return_value = mock_session
+        yield settings

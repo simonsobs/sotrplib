@@ -11,6 +11,7 @@ from typing import Literal
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
+from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.filters.filters import matched_filter_depth1_map
@@ -18,8 +19,10 @@ from sotrplib.maps.core import (
     MatchedFilteredIntensityAndInverseVarianceMap,
     ProcessableMap,
 )
-from sotrplib.maps.maps import clean_map, kappa_clean
-from sotrplib.maps.masks import mask_edge
+
+# avoid importing maps at module import time to prevent circular imports;
+# import inside methods where needed
+from sotrplib.maps.masks import mask_dustgal, mask_edge, mask_planets
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -29,6 +32,37 @@ class MapPreprocessor(ABC):
         """
         Provides preprocessing for the input map
         """
+        return input_map
+
+
+class PlanetMasker(MapPreprocessor):
+    mask_radius: AstroPydanticQuantity = 15 * u.arcmin
+
+    def __init__(
+        self,
+        mask_radius: AstroPydanticQuantity = 15 * u.arcmin,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_radius = mask_radius
+        self.log = log or structlog.get_logger()
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(func="PlanetMasker.preprocess")
+        log.info(
+            "PlanetMasker.preprocess.masking_planets",
+            mask_radius=self.mask_radius,
+            time_range=[input_map.observation_start, input_map.observation_end],
+        )
+        planet_mask = mask_planets(
+            input_map.time_mean,
+            [input_map.observation_start, input_map.observation_end],
+            mask_radius=self.mask_radius,
+            log=log,
+        )
+        input_map.mask = (
+            input_map.mask * planet_mask if input_map.mask is not None else planet_mask
+        )
+        log.info("PlanetMasker.preprocess.completed")
         return input_map
 
 
@@ -46,6 +80,8 @@ class KappaRhoCleaner(MapPreprocessor):
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         # TODO: Figure out what warnings this raises
+        from sotrplib.maps.maps import clean_map, kappa_clean
+
         input_map.kappa = kappa_clean(kappa=input_map.kappa, rho=input_map.rho)
         input_map.rho = clean_map(
             imap=input_map.rho,
@@ -67,8 +103,9 @@ class MatchedFilter(MapPreprocessor):
         apod_edge: AstroPydanticQuantity = 10 * u.arcmin,
         apod_holes: AstroPydanticQuantity = 5 * u.arcmin,
         noisemask_lim: float | None = None,
+        noisemask_radius: AstroPydanticQuantity = 10 * u.arcmin,
         highpass: bool = False,
-        band_height: AstroPydanticQuantity = 0 * u.degree,
+        band_height: AstroPydanticQuantity = 1 * u.degree,
         shift: float = 0,
         simple: bool = False,
         simple_lknee: float = 1000,
@@ -84,6 +121,7 @@ class MatchedFilter(MapPreprocessor):
         self.apod_edge = apod_edge
         self.apod_holes = apod_holes
         self.noisemask_lim = noisemask_lim
+        self.noisemask_radius = noisemask_radius
         self.highpass = highpass
         self.band_height = band_height
         self.shift = shift
@@ -96,18 +134,27 @@ class MatchedFilter(MapPreprocessor):
 
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         rho, kappa = matched_filter_depth1_map(
-            imap=input_map.intensity / input_map.intensity_units.to(u.uK),
-            ivarmap=input_map.inverse_variance
-            * input_map.intensity_units.to(u.uK) ** 2,
-            band_center=get_frequency(input_map.frequency),
+            imap=input_map.intensity * input_map.intensity_units.to(u.K),
+            ivarmap=input_map.inverse_variance / input_map.intensity_units.to(u.K) ** 2,
+            band_center=get_frequency(
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            ),
             infofile=self.infofile,
             maskfile=self.maskfile,
-            beam_fwhm=get_fwhm(input_map.frequency),
+            source_mask=input_map.mask,
+            beam_fwhm=get_fwhm(
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            ),
             beam1d=self.beam1d,
             shrink_holes=self.shrink_holes,
             apod_edge=self.apod_edge,
             apod_holes=self.apod_holes,
             noisemask_lim=self.noisemask_lim,
+            noisemask_radius=self.noisemask_radius,
             highpass=self.highpass,
             band_height=self.band_height,
             shift=self.shift,
@@ -159,7 +206,51 @@ class EdgeMask(MapPreprocessor):
             return input_map
 
         edge_mask = mask_edge(imap=mask_map, pix_num=number_of_pixels)
-        input_map.mask = edge_mask
+        input_map.mask = (
+            edge_mask if input_map.mask is None else input_map.mask * edge_mask
+        )
         self.log.info("EdgeMask.preprocess completed")
 
+        return input_map
+
+
+class GalaxyMask(MapPreprocessor):
+    mask_path: Path
+
+    def __init__(
+        self,
+        mask_path: Path | None = None,
+        invert: bool = False,
+        mask_map: enmap.ndmap | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_path = mask_path
+        self.mask_map = mask_map
+        self.invert = invert
+        self.log = log or structlog.get_logger()
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(func="GalaxyMask.preprocess")
+        if self.mask_map is None and self.mask_path is None:
+            log.error(
+                "GalaxyMask.preprocess.no_mask",
+                message="No mask provided for GalaxyMask preprocessor",
+            )
+            return input_map
+
+        if self.mask_map is None and self.mask_path is not None:
+            self.mask_map = enmap.read_map(str(self.mask_path))
+
+        galaxy_mask = mask_dustgal(
+            input_map.hits,
+            galmask=self.mask_map,
+            log=log,
+        )
+        if self.invert:
+            galaxy_mask = 1 - galaxy_mask
+        input_map.mask = (
+            input_map.mask * galaxy_mask if input_map.mask is not None else galaxy_mask
+        )
+
+        log.info("GalaxyMask.preprocess.completed")
         return input_map
