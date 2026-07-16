@@ -1084,8 +1084,8 @@ class CoaddedRhoKappaMap(ProcessableMap):
         mask: ndmap | None = None,
         map_resolution: u.Quantity | None = None,
         hits: ndmap | None = None,
-        map_ids: list = [],
-        input_map_times: list = [],
+        map_ids: list | None = None,
+        input_map_times: list | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho = rho
@@ -1105,8 +1105,10 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.mask = mask
         self._hits = hits
         self.map_resolution = map_resolution
-        self.map_ids = map_ids
-        self.input_map_times = input_map_times
+        self.map_ids = list(map_ids) if map_ids is not None else []
+        self.input_map_times = (
+            list(input_map_times) if input_map_times is not None else []
+        )
         self.log = log or structlog.get_logger()
 
     def build(self):
@@ -1136,7 +1138,13 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.input_map_times.append(mid_time)
 
         ## get map union if adding two maps, use hits-weighted mean.
-        total_hits = self._compute_hits()
+        ## Note: this must be the accumulated hit *count* matching self.hits
+        ## after this map is folded in (mirroring the coadd._hits update the
+        ## caller does right after this call) -- self._compute_hits() would
+        ## instead give a 0/1 "is this pixel covered" indicator, which is
+        ## always 1 once any map has touched a pixel, silently turning the
+        ## running weighted mean into an ever-growing (never renormalized) sum.
+        total_hits = enmap.map_union(self.hits, new_map.hits)
         hit_mask = total_hits > 0
         if isinstance(new_map.time_mean, ndmap):
             if self.time_mean is None:
@@ -1212,3 +1220,85 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
         super().finalize()
+
+
+class CoaddedIntensityAndInverseVarianceMap(CoaddedRhoKappaMap):
+    """
+    A coadded intensity/inverse-variance map, built from multiple raw
+    (unfiltered) depth-1 observations via an inverse-variance-weighted mean.
+
+    Unlike CoaddedRhoKappaMap, the inputs here have not been matched
+    filtered, so `intensity` is directly the ivar-weighted mean map rather
+    than a rho/kappa ratio. Filtering should be applied as a preprocessor on
+    the resulting coadd, not on the individual input maps.
+    """
+
+    _available_maps: tuple[str, ...] = ("intensity", "flux", "snr")
+
+    def __init__(
+        self,
+        intensity: ndmap,
+        inverse_variance: ndmap,
+        observation_start: Time,
+        observation_end: Time,
+        time_first: ndmap | None = None,
+        time_mean: ndmap | None = None,
+        time_last: ndmap | None = None,
+        observation_length: TimeDelta | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
+        instrument: str | None = None,
+        intensity_units: Unit = u.K,
+        mask: ndmap | None = None,
+        map_resolution: u.Quantity | None = None,
+        hits: ndmap | None = None,
+        map_ids: list | None = None,
+        input_map_times: list | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.intensity = intensity
+        self.inverse_variance = inverse_variance
+        self.matched_filtered = False
+        self.time_first = time_first
+        self.time_mean = time_mean
+        self.time_last = time_last
+        self.observation_start = observation_start
+        self.observation_end = observation_end
+        self.observation_length = observation_length
+        self.observation_time = observation_end - 0.5 * observation_length
+        self.sky_box = sky_box
+        self.frequency = frequency
+        self.array = array
+        self.instrument = instrument
+        self.intensity_units = intensity_units
+        self.mask = mask
+        self._hits = hits
+        self.map_resolution = map_resolution
+        self.map_ids = list(map_ids) if map_ids is not None else []
+        self.input_map_times = (
+            list(input_map_times) if input_map_times is not None else []
+        )
+        self.log = log or structlog.get_logger()
+
+    def build(self):
+        pass
+
+    def _compute_hits(self):
+        return (self.inverse_variance > 0).astype(np.int32)
+
+    def _compute_valid_pixel_mask(self):
+        bool_map = (self.inverse_variance > 0).astype(np.int32) & (
+            np.isfinite(self.inverse_variance)
+        )
+        if self.mask is not None:
+            bool_map = bool_map & (self.mask > 0)
+        return bool_map
+
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.intensity / np.sqrt(self.inverse_variance)
+        return snr
+
+    def get_flux(self):
+        return self.intensity
