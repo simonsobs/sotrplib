@@ -294,7 +294,7 @@ class LmFitGaussian2DFitter:
         )
 
         amplitude = AstroPydanticQuantity(
-            amplitude + offset, self.source.thumbnail_unit
+            amplitude - offset, self.source.thumbnail_unit
         )
         amplitude_err = (
             AstroPydanticQuantity(
@@ -413,7 +413,16 @@ def gaussian_fit(
         ## apply pointing residuals to source position
         source_pos = SkyCoord(ra=source.ra, dec=source.dec)
         if pointing_model is not None:
-            source_pos = pointing_model.predict(source_pos)
+            corrected = pointing_model.predict(source_pos)
+            # Workaround for mapcat's PolynomialPointingModel.predict()
+            # returning array-shaped ra/dec even for scalar input (see
+            # https://github.com/simonsobs/mapcat/pull/TODO). Remove once
+            # that fix is merged and pinned.
+            source_pos = SkyCoord(
+                ra=np.atleast_1d(corrected.ra)[0],
+                dec=np.atleast_1d(corrected.dec)[0],
+                frame=corrected.frame,
+            )
 
         source.ra = source_pos.ra
         source.dec = source_pos.dec
