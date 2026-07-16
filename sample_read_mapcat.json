@@ -13,7 +13,7 @@
         }
     ],
     "pointing_provider": {
-        "photometry_type": "scipy_pointing",
+        "photometry_type": "lmfit_pointing",
         "thumbnail_half_width": "6 arcmin",
         "min_flux": "0.3 Jy",
         "reproject_thumbnails": "True",
@@ -64,7 +64,7 @@
             "search_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy",
+        "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
         "min_flux": "0.01 Jy",
@@ -75,7 +75,7 @@
     "sifter": {
         "sifter_type": "default"
     },
-    "outputs": [
+    "source_outputs": [
         {
             "output_type": "pickle",
             "directory": "."
