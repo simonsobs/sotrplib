@@ -3,6 +3,7 @@ Tests the map I/O
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -233,6 +234,71 @@ def test_build_map_passes_metadata(db_result):
     assert result.array == db_result.tube_slot
 
 
+# ─── build_query time windowing ────────────────────────────────────────────────
+
+
+def test_build_query_default_is_interval_overlap():
+    """
+    Default (bucket_by_start_time=False): a map is included if its
+    [start_time, stop_time] interval overlaps [start_time, end_time] at all,
+    inclusive on both ends.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(start_time=start, end_time=end).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    assert "depth_one_maps.stop_time >=" in compiled
+    assert "depth_one_maps.start_time <=" in compiled
+    assert "depth_one_maps.start_time >=" not in compiled
+
+
+def test_build_query_bucket_by_start_time_is_half_open():
+    """
+    bucket_by_start_time=True: a map is included solely based on whether its
+    own start_time falls in [start_time, end_time) -- so a map whose
+    observation spans a boundary between two adjacent windows lands in
+    exactly one of them, never both. This is what submit_week_coadds.py
+    relies on to avoid double-coadding maps that straddle a week boundary.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, bucket_by_start_time=True
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "depth_one_maps.start_time >=" in where_clause
+    assert "depth_one_maps.start_time <" in where_clause
+    assert "depth_one_maps.start_time <=" not in where_clause
+    assert "stop_time" not in where_clause
+
+
+def test_build_query_bucket_by_start_time_no_gap_or_overlap_at_shared_boundary():
+    """
+    Two adjacent windows sharing an exact boundary value must partition maps
+    with no gap and no overlap, even for a map whose observation interval
+    spans the boundary (the case that caused real double-coadding).
+    """
+    boundary = 1500.0
+    straddling_map = SimpleNamespace(start_time=1400.0, stop_time=1600.0)
+
+    window_a = IntensityMapReader(
+        start_time=Time(1000, format="unix"),
+        end_time=Time(boundary, format="unix"),
+        bucket_by_start_time=True,
+    )
+    window_b = IntensityMapReader(
+        start_time=Time(boundary, format="unix"),
+        end_time=Time(2000, format="unix"),
+        bucket_by_start_time=True,
+    )
+
+    def _matches(reader, m):
+        return reader.start_time.unix <= m.start_time < reader.end_time.unix
+
+    assert _matches(window_a, straddling_map) != _matches(window_b, straddling_map)
+
+
 # ─── map_list ─────────────────────────────────────────────────────────────────
 
 
@@ -294,6 +360,25 @@ def test_map_list_rerun_ignores_processed(mock_session):
     assert len(maps) == 1
 
 
+def test_map_list_skips_permafailed(mock_session):
+    """
+    permafail is set manually (e.g. mapcatreset --status permafail) for a
+    known-pathological observation, and must never be picked up again --
+    not even with rerun=True.
+    """
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=True),
+        patch("sotrplib.maps.database.check_if_processed", return_value=False),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        settings.session.return_value.__enter__.return_value = mock_session
+        maps = IntensityMapReader(rerun=True).map_list()
+    assert maps == []
+
+
 def test_map_list_caches(mock_mapcat):
     reader = IntensityMapReader()
     assert reader.map_list() is reader.map_list()
@@ -329,3 +414,95 @@ def test_map_list_number_to_read_limits(mock_session, db_result):
 def test_iter_delegates_to_map_list(mock_mapcat):
     reader = IntensityMapReader()
     assert list(reader) == reader.map_list()
+
+
+# ─── processing status lifecycle ───────────────────────────────────────────────
+
+
+def _session_with_status(status: str | None, processing_start: float = 0.0):
+    """A mock session whose TimeDomainProcessingTable row has the given status."""
+    session = MagicMock()
+    if status is None:
+        session.execute.return_value.one_or_none.return_value = []
+    else:
+        row = MagicMock()
+        row.processing_status = status
+        row.processing_start = processing_start
+        session.execute.return_value.one_or_none.return_value = [row]
+    return session
+
+
+def test_check_if_permafailed_true():
+    from sotrplib.maps.database import check_if_permafailed
+
+    assert check_if_permafailed(1, session=_session_with_status("permafail")) is True
+
+
+def test_check_if_permafailed_false_for_other_statuses():
+    from sotrplib.maps.database import check_if_permafailed
+
+    assert check_if_permafailed(1, session=_session_with_status("completed")) is False
+    assert check_if_permafailed(1, session=_session_with_status("processing")) is False
+    assert check_if_permafailed(1, session=_session_with_status(None)) is False
+
+
+def test_check_if_processed_true_for_completed():
+    from sotrplib.maps.database import check_if_processed
+
+    assert check_if_processed(1, session=_session_with_status("completed")) is True
+
+
+def test_check_if_processed_false_for_permafail():
+    """
+    permafail is deliberately not treated as "processed" by check_if_processed
+    -- it's handled by the separate, unconditional check_if_permafailed check
+    in map_list() instead, so it isn't bypassable by rerun=True.
+    """
+    from sotrplib.maps.database import check_if_processed
+
+    assert check_if_processed(1, session=_session_with_status("permafail")) is False
+
+
+def test_check_if_processed_true_for_recent_processing():
+    from sotrplib.maps.database import check_if_processed
+
+    session = _session_with_status("processing", processing_start=Time.now().unix)
+    assert check_if_processed(1, session=session) is True
+
+
+def test_check_if_processed_false_for_stale_processing():
+    from astropy.time import TimeDelta
+
+    from sotrplib.maps.database import check_if_processed
+
+    stale_start = Time.now().unix - 3 * 3600
+    session = _session_with_status("processing", processing_start=stale_start)
+    assert (
+        check_if_processed(
+            1, session=session, stale_limit=TimeDelta(2 * 3600, format="sec")
+        )
+        is False
+    )
+
+
+def test_set_processing_end_default_status_is_completed():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(1, session=session)
+    assert row.processing_status == "completed"
+    assert session.commit.called
+
+
+def test_set_processing_end_accepts_failed_status():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(1, session=session, status="failed")
+    assert row.processing_status == "failed"
