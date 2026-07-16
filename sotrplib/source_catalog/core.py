@@ -96,7 +96,25 @@ class RegisteredSourceCatalog(SourceCatalog):
         self.sources = sources
 
     def add_sources(self, sources: list[RegisteredSource]):
-        self.sources.extend(sources)
+        self._sources.extend(sources)
+        self._catalog_positions = np.array(
+            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in self._sources]
+        )
+
+    @property
+    def sources(self):
+        return self._sources
+
+    @sources.setter
+    def sources(self, sources: list[RegisteredSource]):
+        self._sources = sources
+        self._catalog_positions = np.array(
+            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in sources]
+        )
+
+    @property
+    def catalog_positions(self):
+        return self._catalog_positions
 
     def get_sources_in_map(
         self,
@@ -202,12 +220,9 @@ class RegisteredSourceCatalog(SourceCatalog):
         if len(self.sources) == 0:
             return []
 
-        catalog_positions = np.array(
-            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in self.sources]
-        )
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("radian").value, dec.to("radian").value]],
-            pos2=catalog_positions,
+            pos2=self.catalog_positions,
             rmax=radius.to("radian").value,
             mode=method,
             coords="radec",
