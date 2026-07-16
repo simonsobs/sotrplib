@@ -22,7 +22,12 @@ from sotrplib.maps.core import (
     ProcessableMap,
     RhoAndKappaMap,
 )
-from sotrplib.maps.database import FluxMapReader, IntensityMapReader, RhoKappaMapReader
+from sotrplib.maps.database import (
+    CoaddRhoKappaMapReader,
+    FluxMapReader,
+    IntensityMapReader,
+    RhoKappaMapReader,
+)
 from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
@@ -241,6 +246,45 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
         )
 
 
+class CoaddMapCatDatabaseConfig(MapGeneratorConfig):
+    """
+    Config for CoaddRhoKappaMapReader -- reads depth-1 coadds (mapcat's
+    depth_one_coadds table) instead of individual depth-1 maps. Selection is
+    either by explicit coadd_id, an explicit start/end range, or a single
+    instant (target_time) that should fall within exactly one coadd's
+    observation window per band.
+    """
+
+    map_generator_type: Literal["mapcat_coadd_database"] = "mapcat_coadd_database"
+    frequency: str | None = None
+    instrument: str | None = None
+    coadd_type: str | None = None
+    coadd_ids: list[str] | None = None
+    number_to_read: int | None = None  ## if None, all matching coadds will be read
+    target_time: AstroPydanticTime | None = None
+    start_time: AstroPydanticTime | None = None
+    end_time: AstroPydanticTime | None = None
+    map_units: AstroPydanticUnit = u.Unit("Jy")
+    rerun: bool = False
+
+    def to_generator(
+        self, log: FilteringBoundLogger | None = None
+    ) -> Iterable[ProcessableMap]:
+        return CoaddRhoKappaMapReader(
+            frequency=self.frequency,
+            instrument=self.instrument,
+            coadd_type=self.coadd_type,
+            coadd_ids=self.coadd_ids,
+            target_time=self.target_time,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            number_to_read=self.number_to_read,
+            map_units=self.map_units,
+            rerun=self.rerun,
+            log=log,
+        )
+
+
 AllMapConfigTypes = (
     SimulatedMapConfig
     | SimulatedMapFromGeometryConfig
@@ -249,4 +293,6 @@ AllMapConfigTypes = (
     | FluxAndSNRMapConfig
 )
 
-AllMapGeneratorConfigTypes = MapCatDatabaseConfig | list[AllMapConfigTypes]
+AllMapGeneratorConfigTypes = (
+    MapCatDatabaseConfig | CoaddMapCatDatabaseConfig | list[AllMapConfigTypes]
+)

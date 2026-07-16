@@ -310,6 +310,157 @@ class FluxMapReader(MapCatDatabaseReader):
         )
 
 
+class CoaddRhoKappaMapReader:
+    """
+    Reader for depth-1 coadds (mapcat's depth_one_coadds table), yielding
+    RhoAndKappaMap objects. Not a MapCatDatabaseReader subclass -- coadds
+    have no tube_slot/array column and a different processing-status target
+    (coadd_id, not map_id), so build_query()/map_list() are different enough
+    that sharing the base class would fight it more than it would help.
+
+    Coadds are already non-overlapping in time by construction (see
+    submit_week_coadds.py's bucket_by_start_time), so selection is either by
+    explicit coadd_id, an explicit start/end range (interval overlap, like
+    MapCatDatabaseReader's default), or a single instant (target_time) that
+    should fall within exactly one coadd's [start_time, stop_time] --
+    there's no windowing/double-count concern here the way there is for
+    depth-1 maps, so plain interval containment is correct and sufficient.
+    """
+
+    default_map_units = u.Unit("Jy")
+    _valid_unit_equivalent = u.Jy
+
+    def __init__(
+        self,
+        frequency: str | None = None,
+        instrument: str | None = None,
+        coadd_type: str | None = None,
+        coadd_ids: list[str] | None = None,
+        target_time: Time | None = None,
+        start_time: Time | None = None,
+        end_time: Time | None = None,
+        number_to_read: int | None = None,
+        map_units: u.Unit | None = None,
+        rerun: bool = False,
+        stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.frequency = frequency
+        self.instrument = instrument
+        self.coadd_type = coadd_type
+        self.coadd_ids = coadd_ids or []
+        self.target_time = target_time
+        self.start_time = start_time
+        self.end_time = end_time
+        self.number_to_read = number_to_read
+        self.map_units = map_units if map_units is not None else self.default_map_units
+        self.rerun = rerun
+        self.stale_processing_time = stale_processing_time
+        self._map_list = None
+        self.log = log or get_logger()
+        self._validate_units()
+
+    def _validate_units(self):
+        if not self.map_units.is_equivalent(self._valid_unit_equivalent):
+            raise ValueError(
+                f"map_units must be equivalent to {self._valid_unit_equivalent} for "
+                f"{type(self).__name__}, got {self.map_units}"
+            )
+
+    def build_query(self):
+        query = select(DepthOneCoaddTable)
+
+        if self.frequency:
+            query = query.where(DepthOneCoaddTable.frequency == self.frequency)
+        if self.coadd_type:
+            query = query.where(DepthOneCoaddTable.coadd_type == self.coadd_type)
+        if self.coadd_ids:
+            query = query.where(
+                DepthOneCoaddTable.coadd_id.in_(_to_uuid_list(self.coadd_ids))
+            )
+
+        if self.target_time is not None:
+            query = query.where(
+                DepthOneCoaddTable.start_time <= self.target_time.unix,
+                DepthOneCoaddTable.stop_time >= self.target_time.unix,
+            )
+        else:
+            if self.start_time is not None:
+                query = query.where(
+                    DepthOneCoaddTable.stop_time >= self.start_time.unix
+                )
+            if self.end_time is not None:
+                query = query.where(DepthOneCoaddTable.start_time <= self.end_time.unix)
+        return query
+
+    def _build_map(self, result) -> RhoAndKappaMap:
+        return RhoAndKappaMap(
+            rho_filename=mapcat_settings.depth_one_parent / result.rho_path,
+            kappa_filename=mapcat_settings.depth_one_parent / result.kappa_path,
+            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            start_time=Time(result.start_time, format="unix"),
+            end_time=Time(result.stop_time, format="unix"),
+            flux_units=self.map_units,
+            frequency=result.frequency,
+            array=None,
+            instrument=self.instrument,
+            log=self.log,
+        )
+
+    def map_list(self):
+        if self._map_list is not None:
+            return self._map_list
+
+        self.log.info(
+            "CoaddRhoKappaMapReader.connecting_to_db",
+            db_url=mapcat_settings.database_name,
+        )
+
+        query = self.build_query()
+
+        maps = []
+        with mapcat_settings.session() as session:
+            results = session.execute(query).scalars().all()
+            self.log.info(
+                "CoaddRhoKappaMapReader.found_coadds", number_found=len(results)
+            )
+            if self.number_to_read is None:
+                self.number_to_read = len(results)
+            for result in results:
+                if check_if_permafailed(coadd_id=result.coadd_id, session=session):
+                    self.log.info(
+                        "CoaddRhoKappaMapReader.skipping_permafailed_coadd",
+                        coadd_id=result.coadd_id,
+                    )
+                    continue
+
+                if not self.rerun and check_if_processed(
+                    coadd_id=result.coadd_id,
+                    session=session,
+                    stale_limit=self.stale_processing_time,
+                ):
+                    self.log.info(
+                        "CoaddRhoKappaMapReader.skipping_processed_coadd",
+                        coadd_id=result.coadd_id,
+                    )
+                    continue
+
+                m = self._build_map(result)
+                m.map_id = str(result.coadd_id)
+                m.is_coadd = True
+                m._parent_database = mapcat_settings.database_name
+                maps.append(m)
+                self.coadd_ids.append(m.map_id)
+                set_processing_start(coadd_id=m.map_id, session=session)
+                if len(maps) >= self.number_to_read:
+                    break
+        self._map_list = maps
+        return maps
+
+    def __iter__(self):
+        return iter(self.map_list())
+
+
 def _resolve_processing_target(
     map_id: str | uuid.UUID | None, coadd_id: str | uuid.UUID | None
 ) -> tuple:
