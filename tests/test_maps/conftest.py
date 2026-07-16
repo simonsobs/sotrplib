@@ -207,7 +207,7 @@ def db_result(separate_map_set_1):
     """Mock DepthOneMapTable row pointing at the tmp FITS files."""
     paths = separate_map_set_1
     r = MagicMock()
-    r.map_id = 42
+    r.map_id = "11111111-1111-1111-1111-111111111111"
     r.map_path = paths["map"]
     r.ivar_path = paths["ivar"]
     r.rho_path = paths["rho"]

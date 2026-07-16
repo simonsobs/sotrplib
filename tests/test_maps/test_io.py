@@ -119,7 +119,7 @@ def db_result(separate_map_set_1):
     """Mock DepthOneMapTable row pointing at the tmp FITS files from conftest."""
     paths = separate_map_set_1
     r = MagicMock()
-    r.map_id = 42
+    r.map_id = "11111111-1111-1111-1111-111111111111"
     r.map_path = paths["map"]
     r.ivar_path = paths["ivar"]
     r.rho_path = paths["rho"]
@@ -322,13 +322,13 @@ def test_map_list_flux_type(mock_mapcat):
 
 def test_map_list_sets_map_id(mock_mapcat, db_result):
     maps = IntensityMapReader().map_list()
-    assert maps[0].map_id == db_result.map_id
+    assert maps[0].map_id == str(db_result.map_id)
 
 
 def test_map_list_appends_map_id(mock_mapcat, db_result):
     reader = IntensityMapReader()
     reader.map_list()
-    assert db_result.map_id in reader.map_ids
+    assert str(db_result.map_id) in reader.map_ids
 
 
 def test_map_list_skips_processed(mock_session):
@@ -387,7 +387,7 @@ def test_map_list_caches(mock_mapcat):
 def test_map_list_number_to_read_limits(mock_session, db_result):
     """number_to_read=1 stops after the first map even when the DB has more rows."""
     db_result2 = MagicMock()
-    db_result2.map_id = 99
+    db_result2.map_id = "22222222-2222-2222-2222-222222222222"
     db_result2.map_path = db_result.map_path
     db_result2.ivar_path = db_result.ivar_path
     db_result2.mean_time_path = db_result.mean_time_path
@@ -435,21 +435,50 @@ def _session_with_status(status: str | None, processing_start: float = 0.0):
 def test_check_if_permafailed_true():
     from sotrplib.maps.database import check_if_permafailed
 
-    assert check_if_permafailed(1, session=_session_with_status("permafail")) is True
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("permafail"),
+        )
+        is True
+    )
 
 
 def test_check_if_permafailed_false_for_other_statuses():
     from sotrplib.maps.database import check_if_permafailed
 
-    assert check_if_permafailed(1, session=_session_with_status("completed")) is False
-    assert check_if_permafailed(1, session=_session_with_status("processing")) is False
-    assert check_if_permafailed(1, session=_session_with_status(None)) is False
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("completed"),
+        )
+        is False
+    )
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("processing"),
+        )
+        is False
+    )
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111", session=_session_with_status(None)
+        )
+        is False
+    )
 
 
 def test_check_if_processed_true_for_completed():
     from sotrplib.maps.database import check_if_processed
 
-    assert check_if_processed(1, session=_session_with_status("completed")) is True
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("completed"),
+        )
+        is True
+    )
 
 
 def test_check_if_processed_false_for_permafail():
@@ -460,14 +489,23 @@ def test_check_if_processed_false_for_permafail():
     """
     from sotrplib.maps.database import check_if_processed
 
-    assert check_if_processed(1, session=_session_with_status("permafail")) is False
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("permafail"),
+        )
+        is False
+    )
 
 
 def test_check_if_processed_true_for_recent_processing():
     from sotrplib.maps.database import check_if_processed
 
     session = _session_with_status("processing", processing_start=Time.now().unix)
-    assert check_if_processed(1, session=session) is True
+    assert (
+        check_if_processed("11111111-1111-1111-1111-111111111111", session=session)
+        is True
+    )
 
 
 def test_check_if_processed_false_for_stale_processing():
@@ -479,7 +517,9 @@ def test_check_if_processed_false_for_stale_processing():
     session = _session_with_status("processing", processing_start=stale_start)
     assert (
         check_if_processed(
-            1, session=session, stale_limit=TimeDelta(2 * 3600, format="sec")
+            "11111111-1111-1111-1111-111111111111",
+            session=session,
+            stale_limit=TimeDelta(2 * 3600, format="sec"),
         )
         is False
     )
@@ -492,7 +532,7 @@ def test_set_processing_end_default_status_is_completed():
     session = MagicMock()
     session.execute.return_value.one_or_none.return_value = [row]
 
-    set_processing_end(1, session=session)
+    set_processing_end("11111111-1111-1111-1111-111111111111", session=session)
     assert row.processing_status == "completed"
     assert session.commit.called
 
@@ -504,5 +544,117 @@ def test_set_processing_end_accepts_failed_status():
     session = MagicMock()
     session.execute.return_value.one_or_none.return_value = [row]
 
-    set_processing_end(1, session=session, status="failed")
+    set_processing_end(
+        "11111111-1111-1111-1111-111111111111", session=session, status="failed"
+    )
     assert row.processing_status == "failed"
+
+
+# ─── map_id/coadd_id dual-target generalization ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "func_name",
+    [
+        "check_if_permafailed",
+        "check_if_processed",
+        "set_processing_start",
+        "set_processing_end",
+    ],
+)
+def test_status_functions_reject_neither_target(func_name):
+    import sotrplib.maps.database as db_module
+
+    func = getattr(db_module, func_name)
+    with pytest.raises(ValueError, match="Exactly one of map_id or coadd_id"):
+        func(session=MagicMock())
+
+
+@pytest.mark.parametrize(
+    "func_name",
+    [
+        "check_if_permafailed",
+        "check_if_processed",
+        "set_processing_start",
+        "set_processing_end",
+    ],
+)
+def test_status_functions_reject_both_targets(func_name):
+    import sotrplib.maps.database as db_module
+
+    func = getattr(db_module, func_name)
+    with pytest.raises(ValueError, match="Exactly one of map_id or coadd_id"):
+        func(1, coadd_id=2, session=MagicMock())
+
+
+def test_check_if_permafailed_works_with_coadd_id():
+    from sotrplib.maps.database import check_if_permafailed
+
+    session = _session_with_status("permafail")
+    assert (
+        check_if_permafailed(
+            coadd_id="33333333-3333-3333-3333-333333333333", session=session
+        )
+        is True
+    )
+
+
+def test_set_processing_start_creates_row_for_coadd_id():
+    """A coadd-linked TimeDomainProcessingTable row should be created with
+    coadd_id set and map_id left None, not the other way around."""
+    from sotrplib.maps.database import set_processing_start
+
+    session = _session_with_status(None)
+    set_processing_start(
+        coadd_id="44444444-4444-4444-4444-444444444444", session=session
+    )
+    created_row = session.add.call_args.args[0]
+    assert str(created_row.coadd_id) == "44444444-4444-4444-4444-444444444444"
+    assert created_row.map_id is None
+
+
+def test_set_processing_start_does_not_couple_processing_status_id_to_map_id():
+    """
+    Regression test: set_processing_start() used to do
+    TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id),
+    directly reusing map_id's value as a *different* autoincrement PK
+    column. That's a hard type error once map_id is a UUID (can't assign a
+    UUID string into an int PK) -- the fix lets processing_status_id
+    autoincrement instead of being set explicitly.
+    """
+    from sotrplib.maps.database import set_processing_start
+
+    session = _session_with_status(None)
+    set_processing_start("019f6c0c-7a24-7ad7-85a3-68acbc551549", session=session)
+    created_row = session.add.call_args.args[0]
+    assert str(created_row.map_id) == "019f6c0c-7a24-7ad7-85a3-68acbc551549"
+    # processing_status_id must not have been forced to equal map_id
+    assert getattr(created_row, "processing_status_id", None) != (
+        "019f6c0c-7a24-7ad7-85a3-68acbc551549"
+    )
+
+
+def test_set_processing_end_works_with_coadd_id():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(
+        coadd_id="44444444-4444-4444-4444-444444444444",
+        session=session,
+        status="completed",
+    )
+    assert row.processing_status == "completed"
+    assert session.commit.called
+
+
+def test_set_processing_end_raises_with_target_specific_message_for_coadd():
+    from sotrplib.maps.database import set_processing_end
+
+    session = _session_with_status(None)
+    with pytest.raises(ValueError, match="coadd_id 44444444"):
+        set_processing_end(
+            coadd_id="44444444-4444-4444-4444-444444444444", session=session
+        )

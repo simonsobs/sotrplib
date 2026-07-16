@@ -127,6 +127,12 @@ def main():
                 coadd_id=coadd_id,
                 n_maps=len(map_ids),
             )
+            # A coadd's id doesn't exist until register_coadd() has already
+            # finished, so unlike maps (which get set_processing_start()
+            # before we know if they'll succeed), a coadd only ever gets
+            # this one terminal status row, written once the outcome is
+            # known.
+            set_processing_end(coadd_id=coadd_id, status="completed")
     except Exception:
         log.error(
             "sotrp_coadd.failed",

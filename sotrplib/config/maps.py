@@ -210,7 +210,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     number_to_read: int | None = None  ## if None, all in database will be read
     start_time: AstroPydanticTime | None = None
     end_time: AstroPydanticTime | None = None
-    map_ids: list[int] | None = None
+    map_ids: list[str] | None = None
     sky_box: list[AstroPydanticICRS] | None = None
     map_units: AstroPydanticUnit = u.Unit("K")
     map_type: Literal["intensity", "flux", "rhokappa"] = "intensity"
