@@ -27,7 +27,7 @@ def stream_coadd(
     preprocessors: list[MapPreprocessor],
     coadder: RhoKappaMapCoadder,
     log: FilteringBoundLogger | None = None,
-) -> tuple[ProcessableMap | None, list[int]]:
+) -> tuple[ProcessableMap | None, list[str]]:
     """
     Build, preprocess, and merge `maps` into a single coadd one at a time.
 
@@ -60,7 +60,7 @@ def stream_coadd(
     log = log or get_logger()
 
     running: ProcessableMap | None = None
-    map_ids: list[int] = []
+    map_ids: list[str] = []
 
     for raw_map in maps:
         raw_map.build()

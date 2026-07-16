@@ -2,6 +2,7 @@
 Read maps from the map tracking database.
 """
 
+import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -36,6 +37,28 @@ from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
 from .pointing import PointingModel
 
 
+def _to_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
+    """
+    Coerce a map_id/coadd_id value to a real uuid.UUID before it crosses
+    into mapcat's ORM layer. mapcat's map_id/coadd_id columns use
+    sa.Uuid() (as_uuid=True), whose bind processor expects an actual
+    uuid.UUID instance and errors (AttributeError: 'str' object has no
+    attribute 'hex') if handed a plain string. Needed both for query
+    filters (`.where(Column == value)`/`.in_(values)`) and for
+    constructing rows directly (e.g. TimeDomainProcessingTable(map_id=...))
+    -- SQLModel's table=True classes, unlike plain Pydantic models, don't
+    validate/coerce field values on construction, so a string assigned to a
+    UUID-typed field is stored as-is rather than converted.
+    """
+    if value is None or isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
+
+
+def _to_uuid_list(values) -> list[uuid.UUID]:
+    return [_to_uuid(v) for v in values]
+
+
 class MapCatDatabaseReader(ABC):
     """
     Base reader for maps from the map tracking database. Note that the
@@ -51,7 +74,7 @@ class MapCatDatabaseReader(ABC):
     number_to_read: int | None = 1
     start_time: Time | None = None
     end_time: Time | None = None
-    map_ids: list[int] | None = None
+    map_ids: list[str] | None = None
     sources: list[RegisteredSource] | None = None
     sky_box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
@@ -65,7 +88,7 @@ class MapCatDatabaseReader(ABC):
         number_to_read: int | None = None,
         start_time: Time | None = None,
         end_time: Time | None = None,
-        map_ids: list[int] | None = None,
+        map_ids: list[str] | None = None,
         sources: list[RegisteredSource] | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -138,7 +161,9 @@ class MapCatDatabaseReader(ABC):
                 query = query.where(DepthOneMapTable.start_time <= self.end_time.unix)
 
         if self.map_ids:
-            query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
+            query = query.where(
+                DepthOneMapTable.map_id.in_(_to_uuid_list(self.map_ids))
+            )
 
         if self.sources:
             points = []
@@ -199,7 +224,7 @@ class MapCatDatabaseReader(ABC):
                     continue
 
                 m = self._build_map(result)
-                m.map_id = result.map_id
+                m.map_id = str(result.map_id)
                 m._parent_database = mapcat_settings.database_name
                 m.pointing_model = (
                     None
@@ -285,10 +310,26 @@ class FluxMapReader(MapCatDatabaseReader):
         )
 
 
-def _get_processing_row(map_id: int, session) -> TimeDomainProcessingTable | None:
-    query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.map_id == map_id
-    )
+def _resolve_processing_target(
+    map_id: str | uuid.UUID | None, coadd_id: str | uuid.UUID | None
+) -> tuple:
+    """Validate exactly one of map_id/coadd_id was given and return the
+    (column, value) pair to filter TimeDomainProcessingTable on."""
+    if (map_id is None) == (coadd_id is None):
+        raise ValueError("Exactly one of map_id or coadd_id must be provided.")
+    if map_id is not None:
+        return TimeDomainProcessingTable.map_id, _to_uuid(map_id)
+    return TimeDomainProcessingTable.coadd_id, _to_uuid(coadd_id)
+
+
+def _get_processing_row(
+    map_id: str | uuid.UUID | None = None,
+    *,
+    coadd_id: str | uuid.UUID | None = None,
+    session,
+) -> TimeDomainProcessingTable | None:
+    column, value = _resolve_processing_target(map_id, coadd_id)
+    query = select(TimeDomainProcessingTable).where(column == value)
     result = session.execute(query).one_or_none()
     if result is None:
         return None
@@ -297,22 +338,30 @@ def _get_processing_row(map_id: int, session) -> TimeDomainProcessingTable | Non
     return None
 
 
-def check_if_permafailed(map_id: int, session=None) -> bool:
+def check_if_permafailed(
+    map_id: str | uuid.UUID | None = None,
+    *,
+    coadd_id: str | uuid.UUID | None = None,
+    session=None,
+) -> bool:
     """
-    True if a map has been manually marked "permafail" (e.g. via mapcat's
-    `mapcatreset --status permafail`) -- a known-pathological observation
-    that should never be picked up again by the pipeline, even with
-    rerun=True. This is the only status the pipeline itself never sets;
-    it's set by a human once a map is known to be permanently unusable.
+    True if a map or coadd has been manually marked "permafail" (e.g. via
+    mapcat's `mapcatreset --status permafail`) -- a known-pathological
+    observation that should never be picked up again by the pipeline, even
+    with rerun=True. This is the only status the pipeline itself never
+    sets; it's set by a human once something is known to be permanently
+    unusable.
     """
     if session is None:
         session = mapcat_settings.session()
-    row = _get_processing_row(map_id, session)
+    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
     return row is not None and row.processing_status == "permafail"
 
 
 def check_if_processed(
-    map_id: int,
+    map_id: str | uuid.UUID | None = None,
+    *,
+    coadd_id: str | uuid.UUID | None = None,
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
@@ -321,7 +370,7 @@ def check_if_processed(
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    row = _get_processing_row(map_id, session)
+    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
     if row is None:
         return False
     if row.processing_status == completed_status:
@@ -333,32 +382,38 @@ def check_if_processed(
     return False
 
 
-def set_processing_start(map_id: int, session=None):
+def set_processing_start(
+    map_id: str | uuid.UUID | None = None,
+    *,
+    coadd_id: str | uuid.UUID | None = None,
+    session=None,
+):
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.map_id == map_id
-    )
-    session_results = session.execute(query).one_or_none()
-    if session_results is None:
-        session_results = [
-            TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id)
-        ]
-    for r in session_results:
-        r.processing_start = Time.now().unix
-        r.processing_status = "processing"
-
-        session.add(r)
-        session.commit()
+    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
+    if row is None:
+        # SQLModel table=True classes don't validate/coerce field values on
+        # construction (unlike plain Pydantic models), so a string map_id
+        # would otherwise be stored as-is and break at INSERT time when
+        # SQLAlchemy's Uuid bind processor expects a real uuid.UUID.
+        row = TimeDomainProcessingTable(
+            map_id=_to_uuid(map_id), coadd_id=_to_uuid(coadd_id)
+        )
+    row.processing_start = Time.now().unix
+    row.processing_status = "processing"
+    session.add(row)
+    session.commit()
     return
 
 
-def load_pointing_model(map_id: int, session=None) -> PointingModel | None:
+def load_pointing_model(map_id: str | uuid.UUID, session=None) -> PointingModel | None:
     """Load a pointing model from the DB for a given map, or None if not found."""
     if session is None:
         session = mapcat_settings.session()
-    query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
+    query = select(PointingResidualTable).where(
+        PointingResidualTable.map_id == _to_uuid(map_id)
+    )
     result = session.execute(query).one_or_none()
 
     if result is None:
@@ -379,7 +434,7 @@ def load_pointing_model(map_id: int, session=None) -> PointingModel | None:
 
 
 def save_pointing_model(
-    map_id: int,
+    map_id: str | uuid.UUID,
     pointing_model: PointingModel,
     pointing_model_stats: PointingModelStats,
     session=None,
@@ -407,12 +462,16 @@ def save_pointing_model(
         raise ValueError(
             f"Unsupported pointing model type {type(pointing_model)} for saving to DB."
         )
-    query = select(PointingResidualTable).where(PointingResidualTable.map_id == map_id)
+    query = select(PointingResidualTable).where(
+        PointingResidualTable.map_id == _to_uuid(map_id)
+    )
     result = session.execute(query).one_or_none()
     if result is None:
         result = [
             PointingResidualTable(
-                map_id=map_id, residual_model=model, residual_stats=pointing_model_stats
+                map_id=_to_uuid(map_id),
+                residual_model=model,
+                residual_stats=pointing_model_stats,
             )
         ]
     for row in result:
@@ -422,41 +481,44 @@ def save_pointing_model(
         session.commit()
 
 
-def set_processing_end(map_id: int, session=None, status: str = "completed"):
+def set_processing_end(
+    map_id: str | uuid.UUID | None = None,
+    *,
+    coadd_id: str | uuid.UUID | None = None,
+    session=None,
+    status: str = "completed",
+):
     """
-    Mark a map's processing as finished, with the given terminal status
-    (default "completed"; pass status="failed" when the caller is handling
-    an exception). "permafail" is intentionally not set here -- it's a
-    manual-only status for known-pathological observations (see
+    Mark a map's or coadd's processing as finished, with the given terminal
+    status (default "completed"; pass status="failed" when the caller is
+    handling an exception). "permafail" is intentionally not set here --
+    it's a manual-only status for known-pathological observations (see
     check_if_permafailed), never set automatically by the pipeline.
     """
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.processing_status_id == map_id
-    )
-    session_result = session.execute(query).one_or_none()
-    if session_result is None:
+    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
+    if row is None:
+        target = f"map_id {map_id}" if map_id is not None else f"coadd_id {coadd_id}"
         raise ValueError(
-            f"No processing_start status found for map_id {map_id} when trying to set processing_end."
+            f"No processing_start status found for {target} when trying to set processing_end."
         )
-    for r in session_result:
-        r.processing_end = Time.now().unix
-        r.processing_status = status
-        session.add(r)
-        session.commit()
+    row.processing_end = Time.now().unix
+    row.processing_status = status
+    session.add(row)
+    session.commit()
     return
 
 
 def register_coadd(
     coadd,
-    map_ids: list[int],
+    map_ids: list[str | uuid.UUID],
     coadd_name: str,
     coadd_type: str,
     output_paths: dict[str, Path],
     session=None,
-) -> int:
+) -> uuid.UUID:
     """
     Register a finished coadd, and link it to the depth-1 maps that went
     into it, in the mapcat database.
@@ -466,7 +528,7 @@ def register_coadd(
     coadd : CoaddedRhoKappaMap
         The finished coadd (must have frequency/observation_start/
         observation_end set).
-    map_ids : list[int]
+    map_ids : list[str | uuid.UUID]
         map_id of every depth-1 map merged into this coadd (e.g. as
         returned by sotrplib.maps.streaming_coadd.stream_coadd).
     coadd_name : str
@@ -511,7 +573,9 @@ def register_coadd(
     )
 
     if map_ids:
-        query = select(DepthOneMapTable).where(DepthOneMapTable.map_id.in_(map_ids))
+        query = select(DepthOneMapTable).where(
+            DepthOneMapTable.map_id.in_(_to_uuid_list(map_ids))
+        )
         row.maps = list(session.execute(query).scalars().all())
 
     session.add(row)

@@ -108,7 +108,7 @@ def test_register_coadd_writes_row_and_links(separate_map_set_1):
         settings.depth_one_parent = depth_one_parent
         register_coadd(
             coadd=coadd,
-            map_ids=[7],
+            map_ids=["11111111-1111-1111-1111-111111111111"],
             coadd_name="f090_test_coadd",
             coadd_type="depth1_streaming_coadd",
             output_paths=output_paths,
