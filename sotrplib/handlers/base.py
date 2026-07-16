@@ -38,6 +38,16 @@ from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 __all__ = ["BaseRunner"]
 
 
+def _mark_processing_end(input_map: ProcessableMap, status: str) -> None:
+    """set_processing_end(), routed to coadd_id= or map_id= depending on
+    whether input_map came from a coadd reader (CoaddRhoKappaMapReader) or
+    a depth-1 map reader."""
+    if input_map.is_coadd:
+        set_processing_end(coadd_id=input_map.map_id, status=status)
+    else:
+        set_processing_end(map_id=input_map.map_id, status=status)
+
+
 class BaseRunner:
     maps: Iterable[ProcessableMap]
     map_coadder: MapCoadder | None
@@ -111,7 +121,7 @@ class BaseRunner:
         output_map = input_map
         if not np.any(output_map.hits > 0):
             if input_map._parent_database is not None:
-                set_processing_end(input_map.map_id)
+                _mark_processing_end(input_map, status="completed")
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -261,19 +271,21 @@ class BaseRunner:
                 self.profilable_task(output.output)(input_map=input_map)
 
             if input_map._parent_database is not None:
-                self.profilable_task(set_processing_end)(input_map.map_id)
+                self.profilable_task(_mark_processing_end)(
+                    input_map, status="completed"
+                )
             return forced_photometry_candidates, sifter_result
         except Exception:
             # input_map may have been reassigned above (e.g. by
-            # source_injector.inject); map_id/_parent_database are set by
-            # the reader at construction time, well before build(), so
-            # they're present on whichever object we're holding at the
+            # source_injector.inject); map_id/_parent_database/is_coadd are
+            # set by the reader at construction time, well before build(),
+            # so they're present on whichever object we're holding at the
             # point of failure. Mark the map "failed" (instead of leaving
             # it dangling as "processing", which would make the reader
             # silently skip it on the next attempt) and re-raise so the
             # failure is still visible to the caller/pipeline.
             if getattr(input_map, "_parent_database", None) is not None:
-                set_processing_end(input_map.map_id, status="failed")
+                _mark_processing_end(input_map, status="failed")
             raise
 
     def crossmatch_pair(

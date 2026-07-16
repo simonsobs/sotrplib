@@ -104,6 +104,11 @@ class ProcessableMap(ABC):
     _parent_database: Path | None = None
     "Path to the parent database for this map, if any"
 
+    is_coadd: bool = False
+    "True if map_id identifies a mapcat depth_one_coadds row rather than a "
+    "depth_one_maps row -- tells callers (e.g. BaseRunner) whether "
+    "processing-status tracking should use coadd_id= or map_id=."
+
     _pointing_model: PointingModel | None = None
 
     _available_maps: tuple[str, ...] = ("flux", "snr")
