@@ -52,7 +52,21 @@ def build_config(
     output_dir: Path,
     socat_db_path: Path,
     rerun: bool,
+    also_output_lightcurvedb: bool = False,
 ) -> dict:
+    source_outputs = [{"output_type": "pickle", "directory": str(output_dir)}]
+    if also_output_lightcurvedb:
+        # Opt-in, not unconditional: source_outputs are called with no
+        # per-writer try/except (sotrplib/handlers/base.py), so a
+        # LightcurveDBOutput failure -- e.g. an unreachable lightcurvedb
+        # deployment, which is the normal case from many environments --
+        # would fail this map's *entire* processing, not just skip the
+        # lightcurvedb upload. Only turn this on where lightcurvedb is
+        # actually known to be reachable. upsert_sources is False: this
+        # is for *ongoing* monitoring of sources already registered via
+        # dispatch_historical_extraction.py, not for creating new ones.
+        source_outputs.append({"output_type": "lightcurvedb", "upsert_sources": False})
+
     return {
         "maps": {
             "map_generator_type": "mapcat_coadd_database",
@@ -119,9 +133,7 @@ def build_config(
             # required), which is what supplies the trajectories.
             "crossmatch_sso_trajectories": True,
         },
-        "source_outputs": [
-            {"output_type": "pickle", "directory": str(output_dir)},
-        ],
+        "source_outputs": source_outputs,
     }
 
 
@@ -219,6 +231,15 @@ def parse_args():
         action="store_true",
         help="Actually sbatch the generated scripts. Without this, only writes files.",
     )
+    p.add_argument(
+        "--also-output-lightcurvedb",
+        action="store_true",
+        help="Also upload each map's forced-photometry measurements directly to "
+        "lightcurvedb, alongside pickle output. Only enable where lightcurvedb is "
+        "known to be reachable from the compute nodes these jobs run on -- "
+        "source_outputs are not individually error-handled, so a failed upload "
+        "fails that map's entire processing, not just the lightcurvedb step.",
+    )
     return p.parse_args()
 
 
@@ -244,6 +265,7 @@ def main():
             output_dir=output_dir,
             socat_db_path=args.socat_db_path,
             rerun=args.rerun,
+            also_output_lightcurvedb=args.also_output_lightcurvedb,
         )
         config_file = config_dir / f"{tag}.json"
         config_file.write_text(json.dumps(config, indent=2))
