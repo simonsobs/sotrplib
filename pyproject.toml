@@ -23,11 +23,12 @@ dependencies = [
     "photutils",
     "structlog",
     "scikit-image",
+    "scikit-learn",
     "socat @ git+https://github.com/simonsobs/socat",
     "skyfield",
     "astropydantic",
     "numpydantic",
-    "mapcat @ git+https://github.com/simonsobs/mapcat",
+    "mapcat @ git+https://github.com/simonsobs/mapcat@uuid",
     "pyinstrument",
     "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
     "soauth",
@@ -48,6 +49,7 @@ prefect = [
 
 [project.scripts]
 "sotrp" = "sotrplib.cli:main"
+"sotrp-coadd" = "sotrplib.coadd_cli:main"
 
 [tool.ruff.lint]
 extend-select = ["I"]

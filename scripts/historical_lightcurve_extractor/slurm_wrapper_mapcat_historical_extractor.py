@@ -34,6 +34,7 @@ P.add_argument(
     action="store",
     default=[],
     nargs="+",
+    required=True,
     help="Source ids of sources to extract.",
 )
 
@@ -43,6 +44,16 @@ P.add_argument(
     default="10 mJy",
     type=str,
     help="Flux threshold for source extraction, json compatible quantity.",
+)
+
+P.add_argument(
+    "--socat-db-path",
+    action="store",
+    default="",
+    help="Path to a sqlite socat database. The sources given via --ra/--dec/--flux/"
+    "--source-id are added to this database (creating it if needed) so the slurm "
+    "jobs can look them up as monitored sources. If empty, defaults to "
+    "'tmp_socat.db' inside --out-dir.",
 )
 
 P.add_argument(
@@ -142,10 +153,23 @@ P.add_argument(
     help="Optics tubes to analyze, default for nominal SO is i1,i3,i4,i6,c1,i5. ",
 )
 
+P.add_argument(
+    "--also-output-lightcurvedb",
+    action="store_true",
+    default=False,
+    help="Also add a 'lightcurvedb' source_output alongside 'pickle', so this "
+    "sweep's forced-photometry measurements get uploaded directly to "
+    "lightcurvedb. Assumes the source(s) given via --ra/--dec/--source-id are "
+    "already registered in socat and synced into lightcurvedb before this "
+    "runs (upsert_sources is left False).",
+)
+
 args = P.parse_args()
 
 
-def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_out_dir):
+def generate_slurm_header(
+    jobname, groupname, cpu_per_task, script_dir, slurm_out_dir, socat_db_path
+):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
 #SBATCH -A {groupname}                    # group name, by default simonsobs
@@ -156,22 +180,17 @@ def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_ou
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
 
-module load soconda/3.11/v0.6.3
-
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
-cd {script_dir}
 
+cd {script_dir}
 source .venv/bin/activate
 
-export socat_client_client_type=pickle
-export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
+export socat_client_client_type=db
+export socat_model_database_name={socat_db_path}
 
 export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
 export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
 
-if [ ! -e "socat.pickle" ]; then
-    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
-fi
 
 """
     return slurm_header
@@ -186,9 +205,16 @@ def generate_config_json(
     box_size: float = 0.5,
     source_ra: float | None = None,
     source_dec: float | None = None,
-    source_flux: float | None = None,
-    source_id: str | None = None,
+    also_output_lightcurvedb: bool = False,
 ):
+    source_outputs = '{"output_type": "pickle", "directory": "' + str(output_dir) + '"}'
+    if also_output_lightcurvedb:
+        # upsert_sources is False: the source is expected to already be
+        # registered in socat (and synced into lightcurvedb) before this
+        # historical sweep runs, not created on the fly from whatever this
+        # sweep happens to crossmatch against.
+        source_outputs += ', {"output_type": "lightcurvedb", "upsert_sources": false}'
+
     config_text = f"""{{
     "maps": {{
         "map_generator_type": "mapcat_database",
@@ -210,23 +236,7 @@ def generate_config_json(
     }},
     "source_catalogs": [
         {{
-            "catalog_type": "socat",
-            "flux_lower_limit": "{flux_low_limit}",
-            "additional_positions":
-            [
-                    {{
-                    "ra":{{"value":{source_ra},"unit":"deg"}},
-                    "dec":{{"value":{source_dec},"unit":"deg"}}
-                    }}
-            ],
-            "additional_fluxes":["{source_flux} Jy"],
-            "additional_source_ids":["{source_id}"]
-        }}
-    ],
-    "sso_catalogs": [
-        {{
-            "catalog_type": "sso",
-            "db_path": "./sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "catalog_type": "socat"
         }}
     ],
     "preprocessors": [
@@ -259,14 +269,8 @@ def generate_config_json(
             "tile_size": "0.5 deg"
         }}
     ],
-    "source_subtractor": {{
-            "subtractor_type": "photutils"
-    }},
-    "blind_search": {{
-            "search_type": "photutils"
-    }},
     "forced_photometry": {{
-        "photometry_type": "scipy",
+        "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "{thumbnail_half_width}",
@@ -277,12 +281,7 @@ def generate_config_json(
         "sifter_type": "default",
         "min_match_radius": "5.0 arcmin"
     }},
-    "outputs": [
-        {{
-            "output_type": "pickle",
-            "directory": "{output_dir}"
-        }}
-    ]
+    "source_outputs": [{source_outputs}]
 }}
 """
     return config_text
@@ -317,6 +316,32 @@ if not os.path.exists(args.out_dir):
 if not os.path.exists(args.slurm_script_dir):
     os.mkdir(args.slurm_script_dir)
 
+if not args.socat_db_path:
+    args.socat_db_path = os.path.join(args.out_dir, "tmp_socat.db")
+args.socat_db_path = os.path.abspath(args.socat_db_path)
+
+## Build a temporary socat sqlite database and register the requested
+## sources in it as monitored sources, so the slurm jobs can look them up.
+if args.source_id:
+    os.environ["socat_client_client_type"] = "db"
+    os.environ["socat_model_database_name"] = args.socat_db_path
+
+    from astropy import units as u
+    from astropy.coordinates import ICRS
+    from socat.client.settings import SOCatClientSettings
+
+    socat_client = SOCatClientSettings().client
+    for s, source_id in enumerate(args.source_id):
+        socat_client.create_source(
+            position=ICRS(ra=float(args.ra[s]) * u.deg, dec=float(args.dec[s]) * u.deg),
+            flux=float(args.flux[s]) * u.Jy if args.flux else None,
+            name=source_id,
+            flags={"monitored": True},
+        )
+    print(
+        f"Created socat database at {args.socat_db_path} with {len(args.source_id)} source(s)."
+    )
+
 n = 0
 
 
@@ -333,12 +358,9 @@ for band in args.bands:
                         thumbnail_half_width=args.thumbnail_radius,
                         source_ra=float(args.ra[s]),
                         source_dec=float(args.dec[s]),
-                        source_flux=float(args.flux[s])
-                        if args.flux is not None
-                        else 0.1,
-                        source_id=source,
                         box_size=args.box_half_width,
                         output_dir=args.out_dir,
+                        also_output_lightcurvedb=args.also_output_lightcurvedb,
                     )
                 )
             slurm_text = generate_slurm_header(
@@ -347,6 +369,7 @@ for band in args.bands:
                 str(args.ncores),
                 args.script_dir if args.script_dir else os.getcwd(),
                 args.slurm_out_dir,
+                args.socat_db_path,
             )
             slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_{source}_sotrp.log "
 

@@ -184,6 +184,44 @@ class SOCat(SourceCatalog):
 
         return [all_sources[i] for i in range(len(all_sources)) if inside[i]]
 
+    def get_sso_generators_in_map(
+        self, input_map: ProcessableMap
+    ) -> dict[str, SourceGenerator]:
+        """
+        Get raw SourceGenerators (not evaluated at any single time) for
+        every solar-system object whose ephemeris has at least one point
+        within the map's sky box during [observation_start, observation_end].
+
+        Unlike get_sources_in_map, this does not collapse each object to a
+        single position -- the returned SourceGenerator.at_time(t) can be
+        called for any t within the generator's own [t_min, t_max] (the
+        ephemeris points it was built from), which is what
+        sotrplib.sifter.sso_crossmatch.crossmatch_sso_trajectories needs to
+        sample an object's full trajectory across a multi-day coadd rather
+        than a single snapshot.
+
+        Returns a dict keyed by object name (not id, to match
+        RegisteredSource.source_id's convention elsewhere in this class).
+        """
+        if input_map.observation_start is None or input_map.observation_end is None:
+            self.log.warning(
+                "socat.get_sso_generators_in_map.no_observation_time",
+                map_id=input_map.map_id,
+            )
+            return {}
+
+        source_generators = self.catalog.get_box(
+            lower_left=input_map.sky_box[0],
+            upper_right=input_map.sky_box[1],
+            t_min=Time(input_map.observation_start) - _TIME_RANGE_PADDING,
+            t_max=Time(input_map.observation_end) + _TIME_RANGE_PADDING,
+        )
+        return {
+            sg.source.name: sg
+            for sg in source_generators
+            if isinstance(sg.source, SolarSystemObject)
+        }
+
     def get_all_sources(self, t: Time | None = None) -> list[RegisteredSource]:
         """
         Just a helper function to get all the sources in the

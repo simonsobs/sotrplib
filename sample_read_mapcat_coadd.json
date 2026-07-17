@@ -1,46 +1,17 @@
 {
     "maps": {
-            "map_generator_type": "mapcat_database",
-            "number_to_read": 1,
-            "instrument": "SOLAT",
+            "map_generator_type": "mapcat_coadd_database",
             "frequency": "f090",
-            "array": "i6",
-            "rerun": "True"
+            "target_time": "2025-09-10T00:00:00",
+            "map_units": "mJy",
+            "rerun": true
         },
     "source_catalogs": [
         {
             "catalog_type": "socat"
         }
     ],
-    "pointing_provider": {
-        "photometry_type": "lmfit_pointing",
-        "thumbnail_half_width": "6 arcmin",
-        "min_flux": "0.3 Jy",
-        "reproject_thumbnails": "True",
-        "allowable_center_offset": "3.0 arcmin",
-        "near_source_rel_flux_limit": 0.3
-    },
-    "pointing_residual": {
-        "pointing_residual_type": "mean",
-        "min_snr": 5.0,
-        "min_sources": 5,
-        "sigma_clip_level": 3.0,
-        "polynomial_order": 3
-
-    },
     "preprocessors": [
-        {
-            "preprocessor_type": "planet_mask",
-            "mask_radius": "15 arcmin"
-        },
-        {
-            "preprocessor_type": "matched_filter",
-            "band_height": "1 deg",
-            "shrink_holes": "5 arcmin",
-            "noisemask_lim": 0.1,
-            "noisemask_radius": "10 arcmin",
-            "apod_holes": "10 arcmin"
-        },
         {
             "preprocessor_type": "kappa_rho"
         },

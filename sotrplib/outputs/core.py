@@ -187,10 +187,11 @@ class MapOutputSerializer(MapOutput):
         self.field_ids = field_ids
         self.log = log or get_logger()
 
-    def output(self, input_map: ProcessableMap):
+    def output(self, input_map: ProcessableMap) -> dict[str, Path]:
         log = self.log
         # make sure output directory exists
         self.directory.mkdir(parents=True, exist_ok=True)
+        written: dict[str, Path] = {}
         for field_id in self.field_ids:
             if hasattr(input_map, field_id):
                 map_to_save = getattr(input_map, field_id)
@@ -205,6 +206,7 @@ class MapOutputSerializer(MapOutput):
                     self.directory / f"{input_map.get_map_str_id()}_{field_id}.fits"
                 )
                 enmap.write_map(str(filename), map_to_save)
+                written[field_id] = filename
                 log.info(
                     "MapOutputSerializer.saved_map",
                     field_id=field_id,
@@ -217,3 +219,4 @@ class MapOutputSerializer(MapOutput):
                     field_id=field_id,
                     map_id=input_map.get_map_str_id(),
                 )
+        return written

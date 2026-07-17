@@ -6,6 +6,7 @@ import asyncio
 from datetime import timezone
 from uuid import UUID
 
+import uuid7
 from astropy.time import Time
 from lightcurvedb.config import Settings as LightcurveDBSettings
 from lightcurvedb.models.cutout import Cutout
@@ -38,7 +39,7 @@ class LightcurveDBOutput(SourceOutput):
         self.upsert_sources = upsert_sources
         self.log = log or get_logger()
 
-    async def _get_source_translations(self) -> dict[int, UUID]:
+    async def _get_source_translations(self) -> dict[UUID, UUID]:
         async with self.settings.backend as backend:
             return {st.socat_id: st.source_id for st in await backend.sources.get_all()}
 
@@ -60,7 +61,7 @@ class LightcurveDBOutput(SourceOutput):
                     )
                     continue
 
-                socat_id = int(source.crossmatches[0].catalog_idx)
+                socat_id = source.crossmatches[0].catalog_idx
 
                 if socat_id not in source_translations:
                     source_id = await backend.sources.create(
@@ -87,7 +88,7 @@ class LightcurveDBOutput(SourceOutput):
     def _convert_internal_to_lightcurvedb_source(
         self,
         input_measurement: MeasuredSource,
-        socat_to_internal: dict[int, UUID],
+        socat_to_internal: dict[UUID, UUID],
         map_time: Time | None = None,
         map_id: str | None = None,
     ) -> tuple[FluxMeasurement, Cutout] | None:
@@ -99,11 +100,10 @@ class LightcurveDBOutput(SourceOutput):
             )
             return None
 
-        source_id = socat_to_internal.get(
-            int(input_measurement.crossmatches[0].catalog_idx)
-        )
+        source_id = socat_to_internal.get(input_measurement.crossmatches[0].catalog_idx)
 
         fm = FluxMeasurement(
+            measurement_id=uuid7.create(),
             frequency=90,
             module="i1",
             source_id=source_id,
@@ -177,7 +177,7 @@ class LightcurveDBOutput(SourceOutput):
     def _convert_all_sources(
         self,
         sources: list[MeasuredSource],
-        socat_to_internal: dict[int, UUID],
+        socat_to_internal: dict[UUID, UUID],
         map_time: Time | None = None,
         map_id: str | None = None,
     ) -> tuple[list[FluxMeasurement], list[Cutout]]:
@@ -201,18 +201,23 @@ class LightcurveDBOutput(SourceOutput):
         cutouts: list[Cutout],
     ) -> int:
         async with self.settings.backend as backend:
-            flux_measurement_ids = await backend.fluxes.create_batch(flux_measurements)
+            # create_batch() doesn't return the created IDs (neither the
+            # postgres nor the parquet backend implementation does, despite
+            # _upload_sources previously assuming otherwise) -- use each
+            # FluxMeasurement's own measurement_id (client-generated above)
+            # to link its cutout instead of relying on a return value.
+            await backend.fluxes.create_batch(flux_measurements)
             processed_cutouts = [
                 Cutout(
-                    measurement_id=fm_id,
+                    measurement_id=fm.measurement_id,
                     **cutout.model_dump(exclude={"measurement_id"}),
                 )
-                for fm_id, cutout in zip(flux_measurement_ids, cutouts)
+                for fm, cutout in zip(flux_measurements, cutouts)
                 if cutout is not None
             ]
             await backend.cutouts.create_batch(processed_cutouts)
 
-        return len(flux_measurement_ids)
+        return len(flux_measurements)
 
     async def _flux_upload_flow(
         self,
