@@ -78,6 +78,9 @@ def build_config(
     coadd_name: str,
     coadd_type: str,
     register: bool,
+    use_socat: bool,
+    ephem_file_path: Path | None,
+    asteroid_mask_radius: str,
 ) -> dict:
     matched_filter: dict = {
         "preprocessor_type": "matched_filter",
@@ -89,6 +92,40 @@ def build_config(
     }
     if beam1d is not None:
         matched_filter["beam1d"] = str(beam1d)
+
+    preprocessors = [
+        {"preprocessor_type": "planet_mask", "mask_radius": "15 arcmin"},
+    ]
+    if use_socat or ephem_file_path is not None:
+        asteroid_mask: dict = {
+            "preprocessor_type": "asteroid_mask",
+            "use_socat": use_socat,
+            "mask_radius": asteroid_mask_radius,
+        }
+        if ephem_file_path is not None:
+            # Pad the loaded ephemeris slice beyond the map window: asteroid
+            # position interpolation (interpolate_ephem) needs several
+            # sample points within +-0.5 day of each target time, so an
+            # asteroid crossing right at the window edge needs ephemeris
+            # rows just outside [start_time, end_time] to interpolate
+            # correctly. Only loaded as SOCat's fallback -- see
+            # AsteroidMasker.
+            pad = 1.0 * 86400.0
+            asteroid_mask["ephem_file_path"] = str(ephem_file_path)
+            asteroid_mask["start_time"] = iso(start_time - pad)
+            asteroid_mask["end_time"] = iso(end_time + pad)
+        preprocessors.append(asteroid_mask)
+    preprocessors.extend(
+        [
+            matched_filter,
+            {"preprocessor_type": "kappa_rho"},
+            {
+                "preprocessor_type": "edge_mask",
+                "mask_on": "kappa",
+                "edge_width": "10.0 arcmin",
+            },
+        ]
+    )
 
     return {
         "instrument": instrument,
@@ -103,16 +140,7 @@ def build_config(
             "rerun": rerun,
             "bucket_by_start_time": True,
         },
-        "preprocessors": [
-            {"preprocessor_type": "planet_mask", "mask_radius": "15 arcmin"},
-            matched_filter,
-            {"preprocessor_type": "kappa_rho"},
-            {
-                "preprocessor_type": "edge_mask",
-                "mask_on": "kappa",
-                "edge_width": "10.0 arcmin",
-            },
-        ],
+        "preprocessors": preprocessors,
         "map_coadder": {
             "coadd_type": "rhokappa",
             "frequencies": [frequency],
@@ -149,7 +177,7 @@ source .venv/bin/activate
 
 export MAPCAT_DEPTH_ONE_PARENT={depth_one_parent}
 export MAPCAT_DATABASE_NAME={database_name}
-
+{socat_env}
 srun --overlap sotrp-coadd -c {config_file} > {log_file} 2>&1
 """
 
@@ -229,6 +257,39 @@ def parse_args():
         default="profile_{frequency}_1756699200_20000000000.txt",
         help="Path template (relative to --repo-dir) for the matched-filter 1D beam profile "
         "per frequency. Only used if the resolved file exists; set to '' to disable.",
+    )
+    p.add_argument(
+        "--socat-db-path",
+        type=Path,
+        default=None,
+        help="Path to a socat sqlite database. Used (via --use-socat, on by default) as the "
+        "primary source of asteroid/SSO positions for masking. If not given, SOCat is only "
+        "used if socat_model_database_name/socat_client_pickle_path are already set in your "
+        "environment; otherwise asteroid masking falls straight to --ephem-file-path.",
+    )
+    p.add_argument(
+        "--use-socat",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use SOCat as the primary source of asteroid/SSO positions for masking "
+        "(falls back to --ephem-file-path if SOCat is unconfigured or a query fails).",
+    )
+    p.add_argument(
+        "--ephem-file-path",
+        type=str,
+        default="sotrplib/solar_system/JPL_batched_ephemerides_2023-01-01_2033-01-01.parquet",
+        help="Path (relative to --repo-dir, or absolute) to a JPL Horizons asteroid "
+        "ephemeris parquet file (see sotrplib.solar_system.download_ephem_from_horizons), "
+        "used as a fallback asteroid mask source if SOCat is unavailable. Masks asteroids "
+        "in each individual depth-1 map before it's merged into the coadd, so they don't "
+        "smear across many days of summed pixels. Set to '' to disable the fallback "
+        "entirely (asteroid masking then depends solely on SOCat).",
+    )
+    p.add_argument(
+        "--asteroid-mask-radius",
+        type=str,
+        default="10 arcmin",
+        help="Radius to mask around each detected asteroid position.",
     )
     p.add_argument(
         "--repo-dir",
@@ -329,9 +390,20 @@ def main():
                 coadd_name=f"{frequency}_{int(w_start)}_{int(w_stop)}",
                 coadd_type=args.coadd_type,
                 register=args.register_coadds,
+                use_socat=args.use_socat,
+                ephem_file_path=args.ephem_file_path if args.ephem_file_path else None,
+                asteroid_mask_radius=args.asteroid_mask_radius,
             )
             config_file = config_dir / f"{tag}.json"
             config_file.write_text(json.dumps(config, indent=2))
+
+            socat_env = ""
+            if args.use_socat:
+                socat_env = "export socat_client_client_type=db\n"
+                if args.socat_db_path:
+                    socat_env += (
+                        f"export socat_model_database_name={args.socat_db_path}\n"
+                    )
 
             log_file = slurm_dir / f"{tag}.log"
             slurm_text = SLURM_HEADER.format(
@@ -344,6 +416,7 @@ def main():
                 repo_dir=args.repo_dir,
                 depth_one_parent=args.depth_one_parent,
                 database_name=args.database_name,
+                socat_env=socat_env,
                 config_file=config_file,
                 log_file=log_file,
             )
