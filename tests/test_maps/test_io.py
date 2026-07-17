@@ -58,6 +58,52 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
     runner.run([input_map])
 
 
+def test_rhokappa_time_is_relative_default_applies_offset(separate_map_set_1):
+    """
+    Depth-1 time maps are written as seconds-since-observation-start, so by
+    default (time_is_relative=True) build() must add the observation start
+    time to get absolute unix time.
+    """
+    paths = separate_map_set_1
+    start_time = Time("2025-01-01T00:00:00Z")
+    input_map = RhoAndKappaMap(
+        rho_filename=paths["rho"],
+        kappa_filename=paths["kappa"],
+        time_filename=paths["time"],
+        start_time=start_time,
+        end_time=Time("2025-01-01T12:00:00Z"),
+        flux_units=u.Jy,
+    )
+    input_map.build()
+
+    raw_value = Time("2025-10-10", format="iso").unix
+    assert input_map.time_mean[input_map.time_mean > 0][0] == pytest.approx(
+        raw_value + start_time.unix
+    )
+
+
+def test_rhokappa_time_is_relative_false_skips_offset(separate_map_set_1):
+    """
+    Coadd time maps (CoaddedRhoKappaMap.update_times) are already absolute
+    unix time -- time_is_relative=False must leave them untouched, or
+    every timestamp derived from a coadd doubles (see CoaddRhoKappaMapReader).
+    """
+    paths = separate_map_set_1
+    input_map = RhoAndKappaMap(
+        rho_filename=paths["rho"],
+        kappa_filename=paths["kappa"],
+        time_filename=paths["time"],
+        start_time=Time("2025-01-01T00:00:00Z"),
+        end_time=Time("2025-01-01T12:00:00Z"),
+        flux_units=u.Jy,
+        time_is_relative=False,
+    )
+    input_map.build()
+
+    raw_value = Time("2025-10-10", format="iso").unix
+    assert input_map.time_mean[input_map.time_mean > 0][0] == pytest.approx(raw_value)
+
+
 def test_basic_pipeline_ivar(separate_map_set_1):
     """
     Tests a complete setup of the basic pipeline run with input intensity, inverse variance maps

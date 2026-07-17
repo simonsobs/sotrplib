@@ -404,6 +404,11 @@ class CoaddRhoKappaMapReader:
             frequency=result.frequency,
             array=None,
             instrument=self.instrument,
+            # Coadd time maps (CoaddedRhoKappaMap.update_times) are written
+            # as absolute unix time already, unlike depth-1 time maps
+            # (seconds-since-observation-start) -- RhoAndKappaMap.build()
+            # must not apply add_time_offset() a second time here.
+            time_is_relative=False,
             log=self.log,
         )
 

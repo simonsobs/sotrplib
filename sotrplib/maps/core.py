@@ -752,11 +752,13 @@ class RhoAndKappaMap(ProcessableMap):
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
         map_id: str | None = None,
+        time_is_relative: bool = True,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
         self.kappa_filename = kappa_filename
         self.time_filename = time_filename
+        self.time_is_relative = time_is_relative
         self.info_filename = info_filename
         self.observation_start = start_time
         self.observation_end = end_time
@@ -821,7 +823,12 @@ class RhoAndKappaMap(ProcessableMap):
         self.time_last = time_map
         self.time_mean = time_map
 
-        self.add_time_offset(self.observation_start)
+        # Depth-1 time maps are written as seconds-since-observation-start
+        # and need add_time_offset() to become absolute unix time. Coadd
+        # time maps (see CoaddedRhoKappaMap.update_times) are already
+        # absolute -- offsetting them again would double every timestamp.
+        if self.time_is_relative:
+            self.add_time_offset(self.observation_start)
         self.observation_length = self.observation_end - self.observation_start
         self.observation_time = self.observation_start + self.observation_length / 2
         return
