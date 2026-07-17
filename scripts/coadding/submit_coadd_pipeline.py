@@ -108,7 +108,17 @@ def build_config(
             "allowable_center_offset": "1.0 arcmin",
             "near_source_rel_flux_limit": 1.0,
         },
-        "sifter": {"sifter_type": "default"},
+        "sifter": {
+            "sifter_type": "default",
+            # Coadds span the full week window, so a single static
+            # per-map-mean-time SSO position (source_catalogs above) can
+            # miss objects that crossed the field earlier/later in the
+            # week -- sample each SSO's trajectory across the coadd's
+            # full observation window instead. Always on here since this
+            # script always configures socat (--socat-db-path is
+            # required), which is what supplies the trajectories.
+            "crossmatch_sso_trajectories": True,
+        },
         "source_outputs": [
             {"output_type": "pickle", "directory": str(output_dir)},
         ],
