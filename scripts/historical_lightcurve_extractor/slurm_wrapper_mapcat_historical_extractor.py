@@ -153,6 +153,17 @@ P.add_argument(
     help="Optics tubes to analyze, default for nominal SO is i1,i3,i4,i6,c1,i5. ",
 )
 
+P.add_argument(
+    "--also-output-lightcurvedb",
+    action="store_true",
+    default=False,
+    help="Also add a 'lightcurvedb' source_output alongside 'pickle', so this "
+    "sweep's forced-photometry measurements get uploaded directly to "
+    "lightcurvedb. Assumes the source(s) given via --ra/--dec/--source-id are "
+    "already registered in socat and synced into lightcurvedb before this "
+    "runs (upsert_sources is left False).",
+)
+
 args = P.parse_args()
 
 
@@ -194,7 +205,16 @@ def generate_config_json(
     box_size: float = 0.5,
     source_ra: float | None = None,
     source_dec: float | None = None,
+    also_output_lightcurvedb: bool = False,
 ):
+    source_outputs = '{"output_type": "pickle", "directory": "' + str(output_dir) + '"}'
+    if also_output_lightcurvedb:
+        # upsert_sources is False: the source is expected to already be
+        # registered in socat (and synced into lightcurvedb) before this
+        # historical sweep runs, not created on the fly from whatever this
+        # sweep happens to crossmatch against.
+        source_outputs += ', {"output_type": "lightcurvedb", "upsert_sources": false}'
+
     config_text = f"""{{
     "maps": {{
         "map_generator_type": "mapcat_database",
@@ -261,12 +281,7 @@ def generate_config_json(
         "sifter_type": "default",
         "min_match_radius": "5.0 arcmin"
     }},
-    "source_outputs": [
-        {{
-            "output_type": "pickle",
-            "directory": "{output_dir}"
-        }}
-    ]
+    "source_outputs": [{source_outputs}]
 }}
 """
     return config_text
@@ -345,6 +360,7 @@ for band in args.bands:
                         source_dec=float(args.dec[s]),
                         box_size=args.box_half_width,
                         output_dir=args.out_dir,
+                        also_output_lightcurvedb=args.also_output_lightcurvedb,
                     )
                 )
             slurm_text = generate_slurm_header(
