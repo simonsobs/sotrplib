@@ -161,6 +161,9 @@ class DefaultSifterConfig(SifterConfig):
     sifter_type: Literal["default"] = "default"
     min_match_radius: AstroPydanticQuantity[u.arcmin] = 1.5 * u.arcmin
     transient_crossmatch: TransientCrossmatchConfig | None = None
+    crossmatch_sso_trajectories: bool = False
+    sso_crossmatch_radius: AstroPydanticQuantity[u.arcmin] = 5.0 * u.arcmin
+    sso_crossmatch_cadence: AstroPydanticQuantity[u.hour] = 2.0 * u.hour
 
     def to_sifter(self, log: FilteringBoundLogger | None = None) -> SiftingProvider:
         return DefaultSifter(
@@ -168,6 +171,9 @@ class DefaultSifterConfig(SifterConfig):
             transient_crossmatcher=self.transient_crossmatch.to_crossmatcher(log=log)
             if self.transient_crossmatch is not None
             else None,
+            crossmatch_sso_trajectories=self.crossmatch_sso_trajectories,
+            sso_crossmatch_radius=self.sso_crossmatch_radius,
+            sso_crossmatch_cadence=self.sso_crossmatch_cadence,
             log=log,
         )
 
