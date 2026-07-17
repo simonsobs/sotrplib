@@ -95,7 +95,10 @@ def build_config(
             }
         ],
         "source_subtractor": {"subtractor_type": "photutils"},
-        "blind_search": {"search_type": "photutils"},
+        "blind_search": {
+            "search_type": "photutils",
+            "thumbnail_half_width": "10 arcmin",
+        },
         "forced_photometry": {
             "photometry_type": "lmfit",
             "reproject_thumbnails": "True",
