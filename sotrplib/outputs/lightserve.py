@@ -3,6 +3,7 @@ Output data directly to lightserve.
 """
 
 import httpx
+import uuid7
 from lightcurvedb.models.cutout import Cutout
 from lightcurvedb.models.flux import FluxMeasurement
 from soauth.toolkit.client import SOAuth
@@ -58,8 +59,12 @@ class LightServeOutput(SourceOutput):
         total_uploads = 0
 
         source_translations = client.get("/sources/").json()
+        # socat_id comes back from JSON as a plain string (UUIDs serialize
+        # to strings), so normalize both sides of the lookup to str() --
+        # source.crossmatches[0].catalog_idx may be a real uuid.UUID object
+        # depending on which crossmatch mechanism produced it.
         socat_to_internal = {
-            st["socat_id"]: st["source_id"] for st in source_translations
+            str(st["socat_id"]): st["source_id"] for st in source_translations
         }
 
         for source in forced_photometry_candidates + sifter_result.source_candidates:
@@ -72,9 +77,10 @@ class LightServeOutput(SourceOutput):
                 continue
 
             fm = FluxMeasurement(
+                measurement_id=uuid7.create(),
                 frequency=90,
                 module="i1",
-                source_id=socat_to_internal[int(source.crossmatches[0].source_id)],
+                source_id=socat_to_internal[str(source.crossmatches[0].catalog_idx)],
                 time=source.observation_mean_time.to_datetime(),
                 ra=source.ra.to_value("deg"),
                 dec=source.dec.to_value("deg"),
