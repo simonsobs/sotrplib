@@ -3,11 +3,12 @@ from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
+from astropydantic import AstroPydanticQuantity, AstroPydanticTime
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.preprocessor import (
+    AsteroidMasker,
     EdgeMask,
     GalaxyMask,
     KappaRhoCleaner,
@@ -33,6 +34,31 @@ class PlanetMaskConfig(PreprocessorConfig):
 
     def to_preprocessor(self, log: FilteringBoundLogger | None = None) -> PlanetMasker:
         return PlanetMasker(mask_radius=self.mask_radius, log=log)
+
+
+class AsteroidMaskConfig(PreprocessorConfig):
+    preprocessor_type: Literal["asteroid_mask"] = "asteroid_mask"
+    use_socat: bool = True
+    ephem_file_path: Path | None = None
+    start_time: AstroPydanticTime | None = None
+    end_time: AstroPydanticTime | None = None
+    mask_radius: AstroPydanticQuantity = 10 * u.arcmin
+    interp_time_range: AstroPydanticQuantity = 0.5 * u.day
+    interp_to: AstroPydanticQuantity | None = 10 * u.min
+
+    def to_preprocessor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> AsteroidMasker:
+        return AsteroidMasker(
+            use_socat=self.use_socat,
+            ephem_file_path=self.ephem_file_path,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            mask_radius=self.mask_radius,
+            interp_time_range=self.interp_time_range,
+            interp_to=self.interp_to,
+            log=log,
+        )
 
 
 class KappaRhoCleanerConfig(PreprocessorConfig):
@@ -119,4 +145,5 @@ AllPreprocessorConfigTypes = (
     | EdgeMaskConfig
     | PlanetMaskConfig
     | GalaxyMaskConfig
+    | AsteroidMaskConfig
 )
