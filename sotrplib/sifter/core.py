@@ -137,6 +137,17 @@ class DefaultSifter(SiftingProvider):
     "a dictionary of additional catalogs to crossmatch with, in the form of {name:catalog}."
     transient_crossmatcher: TransientCrossmatcher | None
     "if set, crossmatch transient candidates with external catalogs and rank the matches."
+    crossmatch_sso_trajectories: bool
+    "if True, additionally check noise/transient candidates against solar-system-object "
+    "trajectories sampled across the map's full observation window (via any catalog in "
+    "`catalogs` that implements get_sso_generators_in_map, e.g. SOCat) rather than only "
+    "each object's position at a single map-mean time. Matters for week coadds, where an "
+    "SSO can move well outside a single-snapshot match radius over the observation window; "
+    "for depth-1 maps the static per-map crossmatch already covers this."
+    sso_crossmatch_radius: AstroPydanticQuantity[u.arcmin]
+    "match radius for the SSO trajectory crossmatch."
+    sso_crossmatch_cadence: AstroPydanticQuantity[u.hour]
+    "sampling cadence for the SSO trajectory crossmatch -- see sotrplib.sifter.sso_crossmatch."
     log: FilteringBoundLogger
     "Structlog logger for logging information during the sifting process."
     debug: bool
@@ -153,6 +164,9 @@ class DefaultSifter(SiftingProvider):
         crossmatch_with_million_quasar: bool = True,
         additional_catalogs: dict[str, Any] | None = None,
         transient_crossmatcher: TransientCrossmatcher | None = None,
+        crossmatch_sso_trajectories: bool = False,
+        sso_crossmatch_radius: u.Quantity = u.Quantity(5.0, "arcmin"),
+        sso_crossmatch_cadence: u.Quantity = u.Quantity(2.0, "hour"),
         log: FilteringBoundLogger | None = None,
         debug: bool = False,
     ):
@@ -169,6 +183,9 @@ class DefaultSifter(SiftingProvider):
         self.crossmatch_with_million_quasar = crossmatch_with_million_quasar
         self.additional_catalogs = additional_catalogs or dict()
         self.transient_crossmatcher = transient_crossmatcher
+        self.crossmatch_sso_trajectories = crossmatch_sso_trajectories
+        self.sso_crossmatch_radius = sso_crossmatch_radius
+        self.sso_crossmatch_cadence = sso_crossmatch_cadence
         self.log = log or structlog.get_logger()
         self.debug = debug
 
@@ -209,6 +226,17 @@ class DefaultSifter(SiftingProvider):
             debug=self.debug,
         )
 
+        if self.crossmatch_sso_trajectories:
+            noise_candidates, transient_candidates, sso_candidates = (
+                self._crossmatch_sso_trajectories(
+                    noise_candidates=noise_candidates,
+                    transient_candidates=transient_candidates,
+                    catalogs=catalogs,
+                    input_map=input_map,
+                )
+            )
+            source_candidates = source_candidates + sso_candidates
+
         if self.transient_crossmatcher is not None:
             transient_candidates = self.transient_crossmatcher.crossmatch(
                 transient_candidates
@@ -219,3 +247,66 @@ class DefaultSifter(SiftingProvider):
             transient_candidates=transient_candidates,
             noise_candidates=noise_candidates,
         )
+
+    def _crossmatch_sso_trajectories(
+        self,
+        noise_candidates: list[MeasuredSource],
+        transient_candidates: list[MeasuredSource],
+        catalogs: list[SourceCatalog],
+        input_map: ProcessableMap,
+    ) -> tuple[list[MeasuredSource], list[MeasuredSource], list[MeasuredSource]]:
+        """
+        Check noise/transient candidates against solar-system-object
+        trajectories from any catalog in `catalogs` that implements
+        get_sso_generators_in_map (e.g. SOCat) -- unlike the static
+        catalog_sources crossmatch above (one position per object, at the
+        map's mean time), this samples each object's trajectory across
+        the map's full observation window, which matters for week coadds
+        where an object can move well outside a single-snapshot match
+        radius. Run before transient_crossmatcher so candidates already
+        explained by a known SSO don't also spend external-catalog
+        crossmatch calls (e.g. Gaia).
+
+        Returns (remaining_noise, remaining_transient, sso_matched), with
+        matched candidates removed from their original bucket.
+        """
+        from astropy.time import Time
+
+        from sotrplib.sifter.sso_crossmatch import crossmatch_sso_trajectories
+
+        if input_map.observation_start is None or input_map.observation_end is None:
+            self.log.warning(
+                "sifter.defaultsifter.sso_crossmatch.no_observation_time",
+                map_id=input_map.map_id,
+            )
+            return noise_candidates, transient_candidates, []
+
+        sso_generators = {}
+        for catalog in catalogs:
+            get_generators = getattr(catalog, "get_sso_generators_in_map", None)
+            if get_generators is None:
+                continue
+            sso_generators.update(get_generators(input_map))
+
+        if not sso_generators:
+            return noise_candidates, transient_candidates, []
+
+        candidates = noise_candidates + transient_candidates
+        crossmatch_sso_trajectories(
+            candidates=candidates,
+            sso_generators=sso_generators,
+            t_min=Time(input_map.observation_start),
+            t_max=Time(input_map.observation_end),
+            radius=self.sso_crossmatch_radius,
+            cadence=self.sso_crossmatch_cadence,
+            log=self.log,
+        )
+
+        matched_ids = {id(c) for c in candidates if c.source_type == "sso"}
+        remaining_noise = [c for c in noise_candidates if id(c) not in matched_ids]
+        remaining_transient = [
+            c for c in transient_candidates if id(c) not in matched_ids
+        ]
+        sso_matched = [c for c in candidates if id(c) in matched_ids]
+
+        return remaining_noise, remaining_transient, sso_matched
