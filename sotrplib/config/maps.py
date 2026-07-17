@@ -264,7 +264,10 @@ class CoaddMapCatDatabaseConfig(MapGeneratorConfig):
     target_time: AstroPydanticTime | None = None
     start_time: AstroPydanticTime | None = None
     end_time: AstroPydanticTime | None = None
-    map_units: AstroPydanticUnit = u.Unit("Jy")
+    # mJy, not Jy: coadds are built from matched-filtered depth-1 maps
+    # (MatchedFilter hardcodes flux_units=mJy), and FITS files don't persist
+    # that unit -- see CoaddRhoKappaMapReader's docstring.
+    map_units: AstroPydanticUnit = u.Unit("mJy")
     rerun: bool = False
 
     def to_generator(

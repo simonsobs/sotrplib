@@ -325,9 +325,17 @@ class CoaddRhoKappaMapReader:
     should fall within exactly one coadd's [start_time, stop_time] --
     there's no windowing/double-count concern here the way there is for
     depth-1 maps, so plain interval containment is correct and sufficient.
+
+    default_map_units is mJy, not Jy: coadd rho/kappa FITS files are built
+    by coadding matched-filtered depth-1 maps (see
+    sotrplib.maps.preprocessor.MatchedFilter), whose output flux_units is
+    hardcoded to mJy -- and RhoKappaMapCoadder.coadd_maps() carries that
+    label through to the coadd unchanged. FITS files don't persist astropy
+    unit metadata, so a reader with the wrong default silently mislabels
+    every flux downstream by 1000x (mJy-scale numbers reported as Jy).
     """
 
-    default_map_units = u.Unit("Jy")
+    default_map_units = u.Unit("mJy")
     _valid_unit_equivalent = u.Jy
 
     def __init__(
