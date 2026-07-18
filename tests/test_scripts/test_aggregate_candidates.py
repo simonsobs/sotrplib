@@ -391,6 +391,29 @@ def _write_pickle(path: Path, map_id: str, transient_candidates: list[MeasuredSo
         pickle.dump(data, fh)
 
 
+def test_load_candidates_uuid_map_id_falls_back_to_observation_time(tmp_path):
+    """mapcat-pipeline pickles carry bare-UUID map_ids; the record epoch
+    must come from the source's own observation_mean_time so these stay on
+    the time-bucketed depth-1 clustering path."""
+    pickle_dir = tmp_path / "pickles"
+    pickle_dir.mkdir()
+    obs_time = Time("2025-09-10T12:34:56")
+    _write_pickle(
+        pickle_dir / "mapcat.pickle",
+        "013712c3-c99b-41e1-8a42-b06a167ad872",
+        [make_source(observation_mean_time=obs_time)],
+    )
+
+    records = load_candidates(
+        find_pickle_files(pickle_dir, "*.pickle", recursive=True),
+        include_noise=False,
+    )
+    assert len(records) == 1
+    assert records[0].epoch_unix == pytest.approx(obs_time.unix)
+    assert records[0].band == "f090"
+    assert records[0].tube == "i1"
+
+
 def test_main_end_to_end_smoke(tmp_path):
     pickle_dir = tmp_path / "pickles"
     pickle_dir.mkdir()

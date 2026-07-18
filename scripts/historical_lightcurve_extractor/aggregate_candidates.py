@@ -131,6 +131,14 @@ def load_candidates(
                     )
                 if resolved_tube is None:
                     resolved_tube = source.array
+                resolved_epoch = epoch_unix
+                if resolved_epoch is None and source.observation_mean_time is not None:
+                    # mapcat-pipeline depth-1 map_ids are bare UUIDs with no
+                    # embedded time; the source's own mean observation time
+                    # (as unix seconds, matching the epoch_unix contract used
+                    # by the clustering bucket arithmetic) keeps these records
+                    # on the time-bucketed path instead of the coadd path.
+                    resolved_epoch = float(source.observation_mean_time.unix)
 
                 records.append(
                     CandidateRecord(
@@ -138,7 +146,7 @@ def load_candidates(
                         map_id=map_id,
                         band=resolved_band,
                         tube=resolved_tube,
-                        epoch_unix=epoch_unix,
+                        epoch_unix=resolved_epoch,
                         bucket=bucket,
                         pickle_path=pickle_path,
                     )
