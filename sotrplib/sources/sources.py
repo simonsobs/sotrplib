@@ -135,6 +135,8 @@ class MeasuredSource(RegisteredSource):
     fit_params: dict | None = None
     fit_failed: bool = False
     fit_failure_reason: str | None = None
+    beam_model_residual: float | None = None
+    "Fractional RMS residual of a fixed-beam Gaussian model over the thumbnail core (~1/SNR for a true point source); large values flag detections that are not beam shaped, e.g. planet-masking artifacts."
 
     thumbnail: NDArray | None = None
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None

@@ -199,6 +199,46 @@ def test_apply_qa_cuts_max_fwhm_ratio():
     assert tally.get("max_fwhm_ratio") == 1
 
 
+def test_apply_qa_cuts_max_beam_residual():
+    beamlike = make_record(source=make_source())
+    beamlike.source.beam_model_residual = 0.05
+    artifact = make_record(source=make_source())
+    artifact.source.beam_model_residual = 0.9
+    unmeasured = make_record(source=make_source())  # no residual, no thumbnail
+    kept, tally = apply_qa_cuts(
+        [beamlike, artifact, unmeasured],
+        min_snr=0.0,
+        max_fwhm_ratio=1000.0,
+        max_flux_jy=1000.0,
+        require_thumbnail=False,
+        max_beam_residual=0.3,
+    )
+    assert kept == [beamlike, unmeasured]
+    assert tally.get("max_beam_residual") == 1
+
+
+def test_apply_qa_cuts_max_beam_residual_computed_from_thumbnail():
+    # old pickle: no stored residual, but a thumbnail is present. A flat
+    # top-hat disk is nothing like the beam, so it must be cut and the
+    # computed residual cached on the source.
+    x = np.arange(41) - 20
+    X, Y = np.meshgrid(x, x)
+    disk = np.where(np.hypot(X, Y) <= 6.0, 1.0, 0.0)
+    artifact = make_record(source=make_source(thumbnail=disk))
+    artifact.source.thumbnail_res = u.Quantity([0.5, 0.5], "arcmin")
+    kept, tally = apply_qa_cuts(
+        [artifact],
+        min_snr=0.0,
+        max_fwhm_ratio=1000.0,
+        max_flux_jy=1000.0,
+        require_thumbnail=False,
+        max_beam_residual=0.3,
+    )
+    assert kept == []
+    assert tally.get("max_beam_residual") == 1
+    assert artifact.source.beam_model_residual > 0.3
+
+
 # --- apply_time_window ---
 
 

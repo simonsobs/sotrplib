@@ -112,6 +112,10 @@ class LmFitGaussian2DFitter:
         Whether the thumbnail was reprojected (affects RA offset sign), by default False
     allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
         Maximum allowable offset from the thumbnail center for the fit, by default u.Quantity(1.0, "arcmin")
+    fix_fwhm : bool, optional
+        If True, pin the Gaussian widths to `fwhm_guess` (circular beam,
+        theta fixed) so only amplitude, a bounded center, and a constant
+        offset are fit. Used for beam-model residual tests.
     """
 
     def __init__(
@@ -123,6 +127,7 @@ class LmFitGaussian2DFitter:
         allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
             1.0, "arcmin"
         ),
+        fix_fwhm: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -132,6 +137,7 @@ class LmFitGaussian2DFitter:
         self.force_center = force_center
         self.reprojected = reprojected
         self.allowable_center_offset = allowable_center_offset
+        self.fix_fwhm = fix_fwhm
         self.fit_method = "lmfit"
         self.model = None
 
@@ -201,6 +207,10 @@ class LmFitGaussian2DFitter:
         self.initial_guess["sigma_x"].set(min=0.0, max=nx)
         self.initial_guess["sigma_y"].set(min=0.0, max=ny)
         self.initial_guess["theta"].set(min=0, max=np.pi)
+        if self.fix_fwhm:
+            self.initial_guess["sigma_x"].set(value=sigma_guess[0], vary=False)
+            self.initial_guess["sigma_y"].set(value=sigma_guess[1], vary=False)
+            self.initial_guess["theta"].set(value=0.0, vary=False)
         self.log.debug(
             "Gaussian2DFitter.model_initialized",
             fit_method=self.fit_method,
@@ -325,6 +335,71 @@ class LmFitGaussian2DFitter:
         return self.fit_params
 
 
+def fit_beam_model_residual(
+    source: MeasuredSource,
+    beam_fwhm: u.Quantity,
+    reprojected: bool = False,
+    allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+    aperture_scale: float = 1.0,
+    log: FilteringBoundLogger | None = None,
+) -> float | None:
+    """
+    Fractional RMS residual of a beam-shaped model over the thumbnail core.
+
+    Fits a circular Gaussian whose width is pinned to the instrument beam
+    (only amplitude, a bounded sub-pixel center, and a constant offset are
+    free) and returns
+
+        rms(thumbnail - model) / amplitude
+
+    over pixels within `aperture_scale * beam_fwhm` of the fitted center.
+    A true point source scores ~1/SNR, while sharp-edged features that are
+    not beam shaped (e.g. planet-masking artifacts, satellite streaks)
+    score much higher regardless of brightness.
+
+    Returns None if the thumbnail is missing or invalid, the fit fails, or
+    the fitted amplitude is non-positive (nothing beam-like to test).
+    """
+    log = log or get_logger()
+    if (
+        source.thumbnail is None
+        or source.thumbnail_res is None
+        or np.any(np.isnan(source.thumbnail))
+    ):
+        return None
+    try:
+        fitter = LmFitGaussian2DFitter(
+            source,
+            fwhm_guess=beam_fwhm,
+            reprojected=reprojected,
+            allowable_center_offset=allowable_center_offset,
+            fix_fwhm=True,
+            log=log,
+        )
+        fitter.initialize_model()
+        result = fitter.model.fit(
+            source.thumbnail, fitter.initial_guess, x=fitter.X, y=fitter.Y
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("beam_model_residual.fit_failed", error=str(exc))
+        return None
+    if not result.success:
+        log.warning("beam_model_residual.fit_failed", error=result.message)
+        return None
+    amplitude = result.params["amplitude"].value
+    if not np.isfinite(amplitude) or amplitude <= 0:
+        return None
+    model_image = fitter.model.eval(result.params, x=fitter.X, y=fitter.Y)
+    res_pix = np.abs(source.thumbnail_res.to(u.arcmin).value)
+    dx = (fitter.X - result.params["x0"].value) * res_pix[0]
+    dy = (fitter.Y - result.params["y0"].value) * res_pix[1]
+    aperture = np.hypot(dx, dy) <= aperture_scale * beam_fwhm.to(u.arcmin).value
+    if not np.any(aperture):
+        return None
+    residual = source.thumbnail - model_image
+    return float(np.sqrt(np.mean(residual[aperture] ** 2)) / amplitude)
+
+
 def gaussian_fit(
     input_map: ProcessableMap,
     source_list: list[RegisteredSource],
@@ -336,6 +411,7 @@ def gaussian_fit(
     pointing_model: PointingModel | None = None,
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     goodness_of_fit_threshold: float | None = None,
+    compute_beam_residual: bool = True,
     flags: dict = {},
     log: FilteringBoundLogger | None = None,
     debug: bool = False,
@@ -378,6 +454,11 @@ def gaussian_fit(
     goodness_of_fit_threshold : float or None, optional
         If not None, the minimum R^2 value for the fit to be considered successful.
         If None, no R^2 value cut is applied. The default is None.
+    compute_beam_residual : bool, optional
+        If True (default), also fit a fixed-width beam model to each
+        thumbnail and store the fractional RMS residual on
+        ``MeasuredSource.beam_model_residual``, for rejecting detections
+        that are not beam shaped (e.g. planet-masking artifacts).
     flags : dict, optional
         Dictionary mapping flag names (str) to boolean lists of length
         ``len(source_list)``. For each source, all flag names whose list entry
@@ -399,6 +480,15 @@ def gaussian_fit(
 
     log = log.bind(func_name="lmfit_2d_gaussian_fit")
     preamble = "sources.fitting.lmfit_2d_gaussian_fit."
+    beam_fwhm = (
+        fwhm
+        if fwhm is not None
+        else get_fwhm(
+            freq=input_map.frequency,
+            arr=input_map.array,
+            instrument=input_map.instrument,
+        )
+    )
     fit_sources = []
     for i in tqdm(
         range(len(source_list)),
@@ -527,13 +617,7 @@ def gaussian_fit(
         fitter = LmFitGaussian2DFitter(
             forced_source,
             reprojected=reproject_thumb,
-            fwhm_guess=fwhm
-            if fwhm is not None
-            else get_fwhm(
-                freq=input_map.frequency,
-                arr=input_map.array,
-                instrument=input_map.instrument,
-            ),
+            fwhm_guess=beam_fwhm,
             force_center=forced_source.flux < flux_lim_fit_centroid
             if forced_source.flux is not None
             else False,
@@ -571,6 +655,14 @@ def gaussian_fit(
         forced_source.err_fwhm_ra = fit.fwhm_ra_err
         forced_source.err_fwhm_dec = fit.fwhm_dec_err
         forced_source.fit_params = fit.model_dump()
+        if compute_beam_residual:
+            forced_source.beam_model_residual = fit_beam_model_residual(
+                forced_source,
+                beam_fwhm=beam_fwhm,
+                reprojected=reproject_thumb,
+                allowable_center_offset=allowable_center_offset,
+                log=log,
+            )
         fit_sources.append(forced_source)
 
     n_successful = 0

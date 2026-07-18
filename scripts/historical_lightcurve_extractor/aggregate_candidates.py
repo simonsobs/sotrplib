@@ -34,6 +34,7 @@ import structlog
 from astropy.time import Time
 from sklearn.cluster import DBSCAN
 
+from sotrplib.sources.forced_photometry import fit_beam_model_residual
 from sotrplib.sources.sources import MeasuredSource
 from sotrplib.utils.utils import get_fwhm, radec_to_str_name
 
@@ -203,6 +204,7 @@ def apply_qa_cuts(
     max_fwhm_ratio: float,
     max_flux_jy: float,
     require_thumbnail: bool,
+    max_beam_residual: float | None = None,
 ) -> tuple[list[CandidateRecord], dict[str, int]]:
     tally: Counter[str] = Counter()
     kept = []
@@ -241,6 +243,26 @@ def apply_qa_cuts(
                 ):
                     tally["max_fwhm_ratio"] += 1
                     continue
+
+        if max_beam_residual is not None:
+            residual = source.beam_model_residual
+            if (
+                residual is None
+                and source.thumbnail is not None
+                and record.band is not None
+            ):
+                ## pickles written before beam_model_residual existed:
+                ## compute it from the stored thumbnail
+                try:
+                    residual = fit_beam_model_residual(
+                        source, beam_fwhm=get_fwhm(record.band, record.tube)
+                    )
+                    source.beam_model_residual = residual
+                except KeyError:
+                    residual = None
+            if residual is not None and residual > max_beam_residual:
+                tally["max_beam_residual"] += 1
+                continue
 
         if record.band is None:
             record.qa_flags.append("unresolved_band")
@@ -375,6 +397,11 @@ def summarize_cluster(cluster: list[CandidateRecord], used_names: Counter) -> di
             if representative.source.fwhm_dec is not None
             else ""
         ),
+        "beam_model_residual": (
+            representative.source.beam_model_residual
+            if representative.source.beam_model_residual is not None
+            else ""
+        ),
         "crossmatched": crossmatched,
         "known_source_id": known_source_id,
         "thumbnail_png": "",
@@ -425,6 +452,7 @@ _CSV_COLUMNS = [
     "last_obs_unix",
     "fwhm_ra_arcmin",
     "fwhm_dec_arcmin",
+    "beam_model_residual",
     "crossmatched",
     "known_source_id",
     "thumbnail_png",
@@ -475,6 +503,16 @@ def main():  # pragma: no cover
     )
     parser.add_argument("--min-snr", type=float, default=8.0)
     parser.add_argument("--max-fwhm-ratio", type=float, default=3.0)
+    parser.add_argument(
+        "--max-beam-residual",
+        type=float,
+        default=None,
+        help="Reject detections whose fixed-beam Gaussian model leaves a "
+        "fractional RMS residual above this (a point source scores ~1/SNR; "
+        "planet-masking artifacts score much higher). Computed from the "
+        "stored thumbnail when the pickle predates the field. Try 0.3 with "
+        "the default --min-snr. Default: off.",
+    )
     parser.add_argument("--max-flux-jy", type=float, default=100.0)
     parser.add_argument("--require-thumbnail", action="store_true", default=False)
     parser.add_argument(
@@ -509,6 +547,7 @@ def main():  # pragma: no cover
         max_fwhm_ratio=args.max_fwhm_ratio,
         max_flux_jy=args.max_flux_jy,
         require_thumbnail=args.require_thumbnail,
+        max_beam_residual=args.max_beam_residual,
     )
 
     clusters = cluster_candidates(
