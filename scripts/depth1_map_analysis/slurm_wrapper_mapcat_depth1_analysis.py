@@ -2,6 +2,8 @@ import argparse as ap
 import os
 from getpass import getuser
 
+from astropy.time import Time, TimeDelta
+
 USER = getuser()
 
 P = ap.ArgumentParser(
@@ -31,6 +33,39 @@ P.add_argument(
     help="SNR threshold for source finding",
     default=5.0,
     type=float,
+)
+
+P.add_argument(
+    "--start-date",
+    action="store",
+    default="",
+    help="ISO date (e.g. 2025-09-04). With --end-date, switches to time-chunked "
+    "mode: one slurm job per --days-per-job window, each processing every "
+    "map (all tubes) whose start_time falls in the window, one sotrp "
+    "process per band.",
+)
+
+P.add_argument(
+    "--end-date",
+    action="store",
+    default="",
+    help="ISO date (exclusive upper bound) for time-chunked mode.",
+)
+
+P.add_argument(
+    "--days-per-job",
+    action="store",
+    default=1,
+    type=int,
+    help="Days of maps per slurm job in time-chunked mode.",
+)
+
+P.add_argument(
+    "--pythonpath",
+    action="store",
+    default="",
+    help="If set, exported as PYTHONPATH in each slurm job, e.g. a git worktree "
+    "whose sotrplib should shadow the editable install in the venv.",
 )
 
 
@@ -148,7 +183,9 @@ P.add_argument(
 args = P.parse_args()
 
 
-def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_out_dir):
+def generate_slurm_header(
+    jobname, groupname, cpu_per_task, script_dir, slurm_out_dir, pythonpath=""
+):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
 #SBATCH -A {groupname}                    # group name, by default simonsobs
@@ -172,17 +209,21 @@ export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
 export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
 export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
 
-if [ ! -e "socat.pickle" ]; then
+if [ ! -e "catmaker_090_3pass_socat.pickle" ]; then
     socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
 fi
 
 """
+    if pythonpath:
+        slurm_header += f"export PYTHONPATH={pythonpath}\n\n"
     return slurm_header
 
 
 def generate_config_json(
     frequency: str | None = None,
     array: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
     pointing_flux_threshold="0.3 Jy",
     flux_low_limit="0.01 Jy",
     thumbnail_half_width="0.2 deg",
@@ -190,25 +231,25 @@ def generate_config_json(
     min_pointing_sources=10,
     output_dir="./",
 ):
+    array_entry = f'\n        "array": "{array}",' if array else ""
+    time_window_entry = (
+        f'\n        "start_time": "{start_time}",'
+        f'\n        "end_time": "{end_time}",'
+        '\n        "bucket_by_start_time": "True",'
+        if start_time and end_time
+        else ""
+    )
     config_text = f"""{{
     "maps": {{
         "map_generator_type": "mapcat_database",
         "number_to_read": 1000000,
         "instrument": "SOLAT",
-        "frequency": "{frequency}",
-        "array": "{array}",
+        "frequency": "{frequency}",{array_entry}{time_window_entry}
         "rerun": "True"
     }},
     "source_catalogs": [
         {{
-            "catalog_type": "socat",
-            "flux_lower_limit": "{flux_low_limit}"
-        }}
-    ],
-    "sso_catalogs": [
-        {{
-            "catalog_type": "sso",
-            "db_path": "./sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
+            "catalog_type": "socat"
         }}
     ],
     "pointing_provider": {{
@@ -216,7 +257,7 @@ def generate_config_json(
         "thumbnail_half_width": "{thumbnail_half_width}",
         "min_flux": "{pointing_flux_threshold}",
         "reproject_thumbnails": "True",
-        "allowable_centroid_offset": "3.0 arcmin"
+        "allowable_center_offset": "3.0 arcmin"
     }},
     "pointing_residual": {{
         "pointing_residual_type": "median",
@@ -271,7 +312,7 @@ def generate_config_json(
         "sifter_type": "default",
         "min_match_radius": "5.0 arcmin"
     }},
-    "outputs": [
+    "source_outputs": [
         {{
             "output_type": "pickle",
             "directory": "{output_dir}"
@@ -314,32 +355,78 @@ if not os.path.exists(args.slurm_script_dir):
 n = 0
 
 
-for band in args.bands:
-    for tube in args.optics_tubes:
-        config_file = args.slurm_script_dir + f"{tube}_{band}_config.json"
-        with open(config_file, "w") as f:
-            f.write(
-                generate_config_json(
-                    frequency=band,
-                    array=tube,
-                    pointing_flux_threshold=args.pointing_flux_threshold,
-                    flux_low_limit=args.flux_threshold,
-                    thumbnail_half_width=args.thumbnail_radius,
-                    min_snr=args.snr_threshold,
-                    output_dir=args.out_dir,
-                )
-            )
+if args.start_date and args.end_date:
+    ## time-chunked mode: one job per --days-per-job window, one sotrp
+    ## process per band inside the job, all tubes selected via the mapcat
+    ## time window (bucket_by_start_time avoids double-processing maps
+    ## whose observation spans a chunk boundary).
+    chunk_start = Time(args.start_date)
+    stop = Time(args.end_date)
+    chunk_width = TimeDelta(args.days_per_job * 86400, format="sec")
+    while chunk_start < stop:
+        chunk_end = min(chunk_start + chunk_width, stop)
+        tag = chunk_start.strftime("%Y%m%d")
         slurm_text = generate_slurm_header(
-            f"sotrp_{tube}_{band}_depth1",
+            f"sotrp_d1_{tag}",
             args.group_name,
-            str(args.ncores),
+            str(len(args.bands)),
             args.script_dir if args.script_dir else os.getcwd(),
             args.slurm_out_dir,
+            pythonpath=args.pythonpath,
         )
-        slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_sotrp.log "
-
-        with open(f"{args.slurm_script_dir}/{tube}_{band}_sub.slurm", "w") as f:
+        for band in args.bands:
+            config_file = args.slurm_script_dir + f"{tag}_{band}_config.json"
+            with open(config_file, "w") as f:
+                f.write(
+                    generate_config_json(
+                        frequency=band,
+                        start_time=chunk_start.isot,
+                        end_time=chunk_end.isot,
+                        pointing_flux_threshold=args.pointing_flux_threshold,
+                        flux_low_limit=args.flux_threshold,
+                        thumbnail_half_width=args.thumbnail_radius,
+                        min_snr=args.snr_threshold,
+                        output_dir=args.out_dir,
+                    )
+                )
+            slurm_text += (
+                f"srun --overlap --ntasks=1 --cpus-per-task=1 sotrp -c {config_file} "
+                f"> {args.out_dir}{tag}_{band}_sotrp.log &\nsleep 1\n"
+            )
+        slurm_text += "wait\n"
+        with open(f"{args.slurm_script_dir}/{tag}_sub.slurm", "w") as f:
             f.write(slurm_text)
+        n += 1
+        chunk_start = chunk_end
+    print(f"Generated {n} time-chunked slurm jobs ({args.days_per_job} day(s) each).")
+else:
+    for band in args.bands:
+        for tube in args.optics_tubes:
+            config_file = args.slurm_script_dir + f"{tube}_{band}_config.json"
+            with open(config_file, "w") as f:
+                f.write(
+                    generate_config_json(
+                        frequency=band,
+                        array=tube,
+                        pointing_flux_threshold=args.pointing_flux_threshold,
+                        flux_low_limit=args.flux_threshold,
+                        thumbnail_half_width=args.thumbnail_radius,
+                        min_snr=args.snr_threshold,
+                        output_dir=args.out_dir,
+                    )
+                )
+            slurm_text = generate_slurm_header(
+                f"sotrp_{tube}_{band}_depth1",
+                args.group_name,
+                str(args.ncores),
+                args.script_dir if args.script_dir else os.getcwd(),
+                args.slurm_out_dir,
+                pythonpath=args.pythonpath,
+            )
+            slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_sotrp.log "
+
+            with open(f"{args.slurm_script_dir}/{tube}_{band}_sub.slurm", "w") as f:
+                f.write(slurm_text)
 
 
 print("#" * 50)
