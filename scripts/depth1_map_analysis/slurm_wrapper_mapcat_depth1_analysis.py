@@ -68,6 +68,13 @@ P.add_argument(
     "whose sotrplib should shadow the editable install in the venv.",
 )
 
+P.add_argument(
+    "--socat-db",
+    action="store",
+    default=f"/scratch/gpfs/SIMONSOBS/users/{USER}/scratch/socat.db",
+    help="Path to the socat sqlite database used as the known-source catalog.",
+)
+
 
 P.add_argument(
     "--sim-transients",
@@ -184,7 +191,7 @@ args = P.parse_args()
 
 
 def generate_slurm_header(
-    jobname, groupname, cpu_per_task, script_dir, slurm_out_dir, pythonpath=""
+    jobname, groupname, cpu_per_task, script_dir, slurm_out_dir, socat_db, pythonpath=""
 ):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
@@ -203,15 +210,11 @@ cd {script_dir}
 
 source .venv/bin/activate
 
-export socat_client_client_type=pickle
-export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
+export socat_client_client_type=db
+export socat_model_database_name={socat_db}
 
 export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
 export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
-
-if [ ! -e "catmaker_090_3pass_socat.pickle" ]; then
-    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
-fi
 
 """
     if pythonpath:
@@ -242,7 +245,6 @@ def generate_config_json(
     config_text = f"""{{
     "maps": {{
         "map_generator_type": "mapcat_database",
-        "number_to_read": 1000000,
         "instrument": "SOLAT",
         "frequency": "{frequency}",{array_entry}{time_window_entry}
         "rerun": "True"
@@ -372,6 +374,7 @@ if args.start_date and args.end_date:
             str(len(args.bands)),
             args.script_dir if args.script_dir else os.getcwd(),
             args.slurm_out_dir,
+            socat_db=args.socat_db,
             pythonpath=args.pythonpath,
         )
         for band in args.bands:
@@ -421,6 +424,7 @@ else:
                 str(args.ncores),
                 args.script_dir if args.script_dir else os.getcwd(),
                 args.slurm_out_dir,
+                socat_db=args.socat_db,
                 pythonpath=args.pythonpath,
             )
             slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_sotrp.log "
