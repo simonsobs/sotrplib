@@ -106,6 +106,7 @@ def test_bright_galaxy_outranks_quasar_and_dim_star(candidate):
         mags=[19.0],
         source_type="quasar",
         n_background=50,
+        background_mag=19.0,
     )
     star_catalog = make_catalog(
         "stars",
@@ -113,6 +114,7 @@ def test_bright_galaxy_outranks_quasar_and_dim_star(candidate):
         mags=[19.5],
         source_type="star",
         n_background=500,
+        background_mag=19.5,
     )
     crossmatcher = TransientCrossmatcher(
         catalogs=[star_catalog, quasar_catalog, galaxy_catalog],
@@ -129,6 +131,18 @@ def test_bright_galaxy_outranks_quasar_and_dim_star(candidate):
     assert all(m.probability is not None for m in matched.crossmatches)
     # candidate classified from the best match
     assert matched.source_type == "extragalactic"
+
+
+def test_rare_agn_outranks_plausibly_coincidental_star():
+    # NGC 1068 regression: an AGN matched at 100x lower chance probability
+    # must outrank a star whose type prior is higher but which is a
+    # plausible chance alignment (P_chance ~ 1%).
+    matches = [
+        CrossMatch(source_id="star", source_type="star", chance_probability=1.0e-2),
+        CrossMatch(source_id="agn", source_type="agn", chance_probability=1.0e-4),
+    ]
+    ranked = rank_crossmatches(matches)
+    assert ranked[0].source_id == "agn"
 
 
 def test_no_match_leaves_candidate_untouched(candidate):
@@ -191,8 +205,13 @@ def test_rank_crossmatches_priors():
     ranked = rank_crossmatches(matches)
     # equal chance probability: the type prior breaks the tie
     assert ranked[0].source_id == "galaxy"
-    assert ranked[0].match_score == pytest.approx(DEFAULT_TYPE_PRIORS["galaxy"] * 0.9)
-    assert ranked[1].match_score == pytest.approx(DEFAULT_TYPE_PRIORS["quasar"] * 0.9)
+    # scores are posterior odds: prior * (1 - P_chance) / P_chance
+    assert ranked[0].match_score == pytest.approx(
+        DEFAULT_TYPE_PRIORS["galaxy"] * 0.9 / 0.1
+    )
+    assert ranked[1].match_score == pytest.approx(
+        DEFAULT_TYPE_PRIORS["quasar"] * 0.9 / 0.1
+    )
 
 
 MILLIQUAS_SAMPLE = """Results from heasarc_milliquas: Million Quasars Catalog (MILLIQUAS), Version 8 (2 August 2023)

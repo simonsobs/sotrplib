@@ -5,15 +5,18 @@ likely each is to be the true counterpart.
 
 Each external catalog supplies matches with a chance-coincidence
 probability P_chance (see `source_catalog.external_catalogs`). Matches
-are then scored as
+are then scored with likelihood-ratio (posterior-odds) weighting
 
-    match_score = type_prior * (1 - P_chance)
+    match_score = type_prior * (1 - P_chance) / P_chance
 
 so that brightness and rarity enter through P_chance (a bright nearby
 galaxy is far rarer than a 20th-mag star, so a close match to one is far
 less likely to be a coincidence) while the type prior encodes which
-object classes are more plausible counterparts (a nearby galaxy takes
-precedence over a background quasar of comparable chance probability).
+object classes are more plausible counterparts. Dividing by P_chance
+means a rare, secure association always outranks a common one: a modest
+type prior cannot promote a plausibly-coincidental star over a nearby
+galaxy matched at 100x lower chance probability. A score above ~1 means
+the association is favored over pure coincidence.
 """
 
 import numpy as np
@@ -23,6 +26,10 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.source_catalog.external_catalogs import ExternalCatalog
 from sotrplib.sources.sources import CrossMatch, MeasuredSource
+
+## floor on P_chance when forming the odds ratio, so an exact positional
+## coincidence (P_chance = 0) gives a large finite score instead of inf
+MIN_CHANCE_PROBABILITY = 1.0e-6
 
 DEFAULT_TYPE_PRIORS: dict[str, float] = {
     "galaxy": 1.0,
@@ -51,20 +58,22 @@ def rank_crossmatches(
     Score and sort crossmatches, most likely counterpart first.
 
     Sets `probability` (association probability, 1 - P_chance) and
-    `match_score` (prior-weighted score used for the ordering) on each
-    match. Matches without a chance probability get a neutral 0.5.
+    `match_score` (prior-weighted posterior odds used for the ordering)
+    on each match. Matches without a chance probability get a neutral
+    association probability of 0.5 (even odds).
     """
     priors = type_priors or DEFAULT_TYPE_PRIORS
     unknown_prior = priors.get("unknown", 0.2)
     for match in matches:
         prior = priors.get(match.source_type or "unknown", unknown_prior)
-        association = (
-            1.0 - match.chance_probability
-            if match.chance_probability is not None
-            else 0.5
-        )
+        if match.chance_probability is not None:
+            association = 1.0 - match.chance_probability
+            odds = association / max(match.chance_probability, MIN_CHANCE_PROBABILITY)
+        else:
+            association = 0.5
+            odds = 1.0
         match.probability = association
-        match.match_score = prior * association
+        match.match_score = prior * odds
     return sorted(matches, key=lambda m: m.match_score, reverse=True)
 
 
@@ -75,7 +84,8 @@ class TransientCrossmatcher:
 
     The match radius per candidate is the larger of `match_radius` and
     `position_error_scale` times the candidate's positional uncertainty.
-    Matches with match_score below `min_score` are dropped. If
+    Matches with match_score below `min_score` are dropped (scores are
+    posterior odds, so ~1 is the coin-flip point). If
     `set_source_type` is True, the candidate's source_type is set from
     the best match (e.g. galaxy/quasar -> "extragalactic").
     """
