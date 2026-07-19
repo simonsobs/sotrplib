@@ -303,6 +303,37 @@ def test_cluster_candidates_time_buckets_depth1_records():
     assert len(clusters) == 2
 
 
+def test_cluster_candidates_links_across_bin_edges():
+    """Detections chain transitively through +-eps_hours pairwise links:
+    t0, t0+5h, t0+10h all merge with a 6h window, even though fixed 6h
+    bins would have split them."""
+    t0 = 1_700_000_000
+    recs = [
+        make_record(
+            source=make_source(ra_deg=10.0, dec_deg=5.0),
+            epoch_unix=t0 + hours * 3600,
+        )
+        for hours in (0, 5, 10)
+    ]
+    clusters = cluster_candidates(recs, eps_arcmin=5.0, eps_hours=6.0)
+    assert len(clusters) == 1
+    assert len(clusters[0]) == 3
+
+
+def test_cluster_candidates_handles_ra_wrap():
+    """deep56 straddles RA=0: a pair at 359.99 and 0.01 deg is ~1 arcmin
+    apart on the sky, not ~360 deg."""
+    a = make_record(
+        source=make_source(ra_deg=359.99, dec_deg=0.0), epoch_unix=1_700_000_000
+    )
+    b = make_record(
+        source=make_source(ra_deg=0.01, dec_deg=0.0), epoch_unix=1_700_001_000
+    )
+    clusters = cluster_candidates([a, b], eps_arcmin=5.0, eps_hours=6.0)
+    assert len(clusters) == 1
+    assert len(clusters[0]) == 2
+
+
 def test_cluster_candidates_coadd_records_are_position_only():
     a = make_record(
         source=make_source(ra_deg=10.0, dec_deg=5.0),

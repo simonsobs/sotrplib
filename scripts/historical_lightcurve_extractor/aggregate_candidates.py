@@ -291,28 +291,32 @@ def cluster_candidates(
     eps_hours: float,
 ) -> list[list[CandidateRecord]]:
     """Merge repeat detections of the same object across bands/tubes/
-    pickles by sky position. depth-1 records (resolvable epoch_unix) are
-    additionally time-bucketed before spatial clustering -- a fixed time
-    window is meaningless for coadd records, since a coadd candidate's own
-    observation_mean_time is an average over whichever depth-1 visits
-    happened to touch that pixel, not a real shared observation epoch."""
+    pickles by sky position. depth-1 records (resolvable epoch_unix) link
+    whenever they are within eps_arcmin AND eps_hours of any existing
+    member (single linkage), so a physical coincidence never splits on an
+    arbitrary bin edge. Coadd records are clustered by position only -- a
+    coadd candidate's own observation_mean_time is an average over
+    whichever depth-1 visits happened to touch that pixel, not a real
+    shared observation epoch."""
     depth1 = [r for r in records if r.epoch_unix is not None]
     coadd = [r for r in records if r.epoch_unix is None]
 
     clusters: list[list[CandidateRecord]] = []
     clusters.extend(_spatial_cluster(coadd, eps_arcmin))
-
-    if depth1:
-        bucket_width_sec = eps_hours * 3600.0
-        time_buckets: dict[int, list[CandidateRecord]] = {}
-        for record in depth1:
-            time_buckets.setdefault(
-                int(record.epoch_unix // bucket_width_sec), []
-            ).append(record)
-        for bucket_records in time_buckets.values():
-            clusters.extend(_spatial_cluster(bucket_records, eps_arcmin))
-
+    clusters.extend(_spacetime_cluster(depth1, eps_arcmin, eps_hours))
     return clusters
+
+
+def _flat_sky_arcmin(records: list[CandidateRecord]) -> np.ndarray:
+    """Flat-sky (x, y) positions in arcmin: x = ra*cos(dec), y = dec, with
+    RA recentered on the first record so fields straddling RA=0 (e.g.
+    deep56) don't produce ~360 deg artificial separations."""
+    ra = np.array([r.source.ra.to_value("deg") for r in records])
+    dec = np.array([r.source.dec.to_value("deg") for r in records])
+    ra = (ra - ra[0] + 180.0) % 360.0 - 180.0
+    x = ra * 60.0 * np.cos(np.radians(np.mean(dec)))
+    y = dec * 60.0
+    return np.vstack([x, y]).T
 
 
 def _spatial_cluster(
@@ -323,19 +327,52 @@ def _spatial_cluster(
     if len(records) == 1:
         return [records]
 
-    dec_rad = np.array([r.source.dec.to_value("rad") for r in records])
-    ra_rad = np.array([r.source.ra.to_value("rad") for r in records])
-    mean_dec = np.mean(dec_rad)
-    # Flat-sky approximation (arcmin-scale eps): x = ra*cos(dec), y = dec.
-    x = np.degrees(ra_rad) * 60.0 * np.cos(mean_dec)
-    y = np.degrees(dec_rad) * 60.0
-    X = np.vstack([x, y]).T
-
-    labels = DBSCAN(eps=eps_arcmin, min_samples=1, metric="euclidean").fit_predict(X)
+    labels = DBSCAN(eps=eps_arcmin, min_samples=1, metric="euclidean").fit_predict(
+        _flat_sky_arcmin(records)
+    )
 
     clusters: dict[int, list[CandidateRecord]] = {}
     for label, record in zip(labels, records):
         clusters.setdefault(int(label), []).append(record)
+    return list(clusters.values())
+
+
+def _spacetime_cluster(
+    records: list[CandidateRecord], eps_arcmin: float, eps_hours: float
+) -> list[list[CandidateRecord]]:
+    """Single-linkage clustering via union-find: two records join the same
+    cluster when they are within eps_arcmin and eps_hours of each other,
+    and membership chains transitively through intermediate detections."""
+    if not records:
+        return []
+    if len(records) == 1:
+        return [records]
+
+    xy = _flat_sky_arcmin(records)
+    epochs = np.array([r.epoch_unix for r in records])
+    order = np.argsort(epochs)
+    window_sec = eps_hours * 3600.0
+
+    parent = list(range(len(records)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a_pos in range(len(order)):
+        i = order[a_pos]
+        for b_pos in range(a_pos + 1, len(order)):
+            j = order[b_pos]
+            if epochs[j] - epochs[i] > window_sec:
+                break
+            if np.hypot(*(xy[j] - xy[i])) <= eps_arcmin:
+                parent[find(j)] = find(i)
+
+    clusters: dict[int, list[CandidateRecord]] = {}
+    for idx, record in enumerate(records):
+        clusters.setdefault(find(idx), []).append(record)
     return list(clusters.values())
 
 
@@ -344,7 +381,10 @@ def summarize_cluster(cluster: list[CandidateRecord], used_names: Counter) -> di
 
     ras = np.array([r.source.ra.to_value("deg") for r in cluster])
     decs = np.array([r.source.dec.to_value("deg") for r in cluster])
-    mean_ra, mean_dec = float(np.mean(ras)), float(np.mean(decs))
+    # unwrap RA around the first member so clusters straddling RA=0
+    # average to ~0/360, not ~180
+    ras = ras[0] + ((ras - ras[0] + 180.0) % 360.0 - 180.0)
+    mean_ra, mean_dec = float(np.mean(ras) % 360.0), float(np.mean(decs))
     if len(cluster) > 1:
         seps = np.sqrt(
             ((ras - ras[:, None]) * np.cos(np.radians(mean_dec))) ** 2
