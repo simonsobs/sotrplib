@@ -529,6 +529,15 @@ def main():  # pragma: no cover
     parser.add_argument("--cluster-eps-arcmin", type=float, default=5.0)
     parser.add_argument("--cluster-eps-hours", type=float, default=6.0)
     parser.add_argument(
+        "--min-tubes",
+        type=int,
+        default=1,
+        help="Require detections from at least this many distinct optics "
+        "tubes for repeat confirmation. With 2, same-tube repeat passes "
+        "(e.g. the two visits of a day) no longer confirm a candidate on "
+        "their own, which suppresses per-tube systematics.",
+    )
+    parser.add_argument(
         "--save-thumbnail-pngs", action=argparse.BooleanOptionalAction, default=True
     )
     args = parser.parse_args()
@@ -572,7 +581,8 @@ def main():  # pragma: no cover
         if args.save_thumbnail_pngs:
             row["thumbnail_png"] = save_thumbnail_png(row, args.out_dir / "thumbnails")
         del row["_representative"]
-        (repeat_rows if row["n_detections"] >= 2 else singleton_rows).append(row)
+        confirmed = row["n_detections"] >= 2 and row["n_tubes"] >= args.min_tubes
+        (repeat_rows if confirmed else singleton_rows).append(row)
 
     write_csv(repeat_rows, out_csv)
     write_csv(singleton_rows, singleton_out_csv)
