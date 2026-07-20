@@ -96,7 +96,29 @@ def register_socat_sources(
     from socat.client.db import Client
 
     client = Client(db_url=f"sqlite:///{socat_db_path}")
+    ## re-runs of this dispatch (or the wrapper it chains to) must not
+    ## re-create sources: socat has no name-uniqueness constraint, so a
+    ## blind create_source duplicates every row. Query names straight
+    ## from sqlite -- the client has no lookup-by-name.
+    already_registered: set[str] = set()
+    if socat_db_path.exists():
+        import sqlite3
+
+        try:
+            with sqlite3.connect(socat_db_path) as connection:
+                already_registered = {
+                    row[0]
+                    for row in connection.execute("SELECT name FROM fixed_sources")
+                }
+        except sqlite3.Error:
+            already_registered = set()
     for row in rows:
+        if row["cluster_id"] in already_registered:
+            log.info(
+                "dispatch_historical_extraction.register_socat_sources.already_present",
+                cluster_id=row["cluster_id"],
+            )
+            continue
         source = client.create_source(
             position=ICRS(
                 ra=float(row["ra_deg"]) * u.deg, dec=float(row["dec_deg"]) * u.deg

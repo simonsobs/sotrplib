@@ -348,27 +348,31 @@ if args.source_id:
 
     from astropy import units as u
     from astropy.coordinates import ICRS
-    from astropy.time import Time
     from socat.client.settings import SOCatClientSettings
 
     socat_client = SOCatClientSettings().client
     ## dispatch_historical_extraction.py registers its candidates in the
     ## production socat.db before invoking this wrapper -- re-creating them
     ## here would duplicate rows (there is no name-uniqueness constraint),
-    ## so skip any source whose name is already registered as monitored.
-    already_monitored = set()
-    for generator in (
-        socat_client.get_monitored_sources(
-            t_min=Time("1970-01-01"), t_max=Time("2100-01-01")
-        )
-        or []
-    ):
-        name = getattr(getattr(generator, "source", None), "name", None)
-        if name:
-            already_monitored.add(name)
+    ## so skip any name already present. Queried straight from sqlite: the
+    ## client offers no lookup-by-name, and get_monitored_sources builds
+    ## SourceGenerators for every monitored SSO (slow, and crashes on
+    ## ephemerides with duplicate timestamps).
+    already_registered = set()
+    if os.path.exists(args.socat_db_path):
+        import sqlite3
+
+        try:
+            with sqlite3.connect(args.socat_db_path) as connection:
+                already_registered = {
+                    row[0]
+                    for row in connection.execute("SELECT name FROM fixed_sources")
+                }
+        except sqlite3.Error:
+            already_registered = set()
     n_created = 0
     for s, source_id in enumerate(args.source_id):
-        if source_id in already_monitored:
+        if source_id in already_registered:
             continue
         socat_client.create_source(
             position=ICRS(ra=float(args.ra[s]) * u.deg, dec=float(args.dec[s]) * u.deg),
