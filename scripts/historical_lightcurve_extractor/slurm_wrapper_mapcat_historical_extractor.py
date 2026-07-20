@@ -5,7 +5,12 @@ from getpass import getuser
 USER = getuser()
 
 P = ap.ArgumentParser(
-    description="Run sotrp on depth1 map in slurm job. Search maps in directory and make a .json config file for each observation.",
+    description="Run sotrp historical forced-photometry over every mapcat-"
+    "registered depth-1 map, per (frequency, optics tube). Registers the "
+    "given --ra/--dec/--source-id sources as monitored in --socat-db-path "
+    "(a fresh, batch-scoped db by default) and generates one slurm job per "
+    "band x tube that measures every registered source against every map "
+    "in a single pass.",
     formatter_class=ap.ArgumentDefaultsHelpFormatter,
 )
 P.add_argument(
@@ -114,14 +119,6 @@ P.add_argument(
 )
 
 P.add_argument(
-    "--box-half-width",
-    action="store",
-    default=0.5,
-    type=float,
-    help="Extracted box radius (half-width of square map, degrees), json compatible quantity.",
-)
-
-P.add_argument(
     "--ncores",
     action="store",
     default=12,
@@ -222,11 +219,17 @@ def generate_config_json(
     flux_low_limit="0.01 Jy",
     thumbnail_half_width="0.2 deg",
     output_dir="./",
-    box_size: float = 0.5,
-    source_ra: float | None = None,
-    source_dec: float | None = None,
     also_output_lightcurvedb: bool = False,
 ):
+    """No per-source spatial box: the sources actually measured on each map
+    are whichever registered sources in the (batch-scoped) socat database
+    fall inside that map's own footprint, so restricting the map query to a
+    box around one source only ever excluded maps, never widened the
+    per-map source list -- every map in mapcat_database's array+frequency
+    query already covers this field. Dropping it lets one job (per
+    frequency/array) sweep every source in the batch in a single pass over
+    each historical map, instead of one job per source re-reading the same
+    maps."""
     source_outputs = '{"output_type": "pickle", "directory": "' + str(output_dir) + '"}'
     if also_output_lightcurvedb:
         # upsert_sources is False: the source is expected to already be
@@ -242,17 +245,7 @@ def generate_config_json(
         "instrument": "SOLAT",
         "frequency": "{frequency}",
         "array": "{array}",
-        "rerun": "True",
-        "box":[
-                {{
-                "ra":{{"value":{source_ra - box_size},"unit":"deg"}},
-                "dec":{{"value":{source_dec - box_size},"unit":"deg"}}
-                }},
-                {{
-                "ra":{{"value":{source_ra + box_size},"unit":"deg"}},
-                "dec":{{"value":{source_dec + box_size},"unit":"deg"}}
-                }}
-            ]
+        "rerun": "True"
     }},
     "source_catalogs": [
         {{
@@ -387,42 +380,43 @@ if args.source_id:
         f"({len(args.source_id) - n_created} already present)."
     )
 
+## One job per (band, tube): every registered source in this batch's socat
+## database is measured against every historical map in a single pass,
+## instead of re-reading the same maps once per source (see
+## generate_config_json's docstring for why the per-source box was
+## removed).
 n = 0
-
 
 for band in args.bands:
     for tube in args.optics_tubes:
-        for s, source in enumerate(args.source_id):
-            config_file = args.slurm_script_dir + f"{tube}_{band}_{source}_config.json"
-            with open(config_file, "w") as f:
-                f.write(
-                    generate_config_json(
-                        frequency=band,
-                        array=tube,
-                        flux_low_limit=args.flux_threshold,
-                        thumbnail_half_width=args.thumbnail_radius,
-                        source_ra=float(args.ra[s]),
-                        source_dec=float(args.dec[s]),
-                        box_size=args.box_half_width,
-                        output_dir=args.out_dir,
-                        also_output_lightcurvedb=args.also_output_lightcurvedb,
-                    )
+        config_file = args.slurm_script_dir + f"{tube}_{band}_config.json"
+        with open(config_file, "w") as f:
+            f.write(
+                generate_config_json(
+                    frequency=band,
+                    array=tube,
+                    flux_low_limit=args.flux_threshold,
+                    thumbnail_half_width=args.thumbnail_radius,
+                    output_dir=args.out_dir,
+                    also_output_lightcurvedb=args.also_output_lightcurvedb,
                 )
-            slurm_text = generate_slurm_header(
-                f"historical_extractor_{tube}_{band}_{source}",
-                args.group_name,
-                str(args.ncores),
-                args.script_dir if args.script_dir else os.getcwd(),
-                args.slurm_out_dir,
-                args.socat_db_path,
-                pythonpath=args.pythonpath,
             )
-            slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_{source}_sotrp.log "
+        slurm_text = generate_slurm_header(
+            f"historical_extractor_{tube}_{band}",
+            args.group_name,
+            str(args.ncores),
+            args.script_dir if args.script_dir else os.getcwd(),
+            args.slurm_out_dir,
+            args.socat_db_path,
+            pythonpath=args.pythonpath,
+        )
+        slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_sotrp.log "
 
-            with open(
-                f"{args.slurm_script_dir}/{tube}_{band}_{source}_sub.slurm", "w"
-            ) as f:
-                f.write(slurm_text)
+        with open(f"{args.slurm_script_dir}/{tube}_{band}_sub.slurm", "w") as f:
+            f.write(slurm_text)
+        n += 1
+
+print(f"Generated {n} slurm job(s) for {len(args.source_id)} source(s).")
 
 
 print("#" * 50)
