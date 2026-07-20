@@ -15,9 +15,10 @@ For each candidate row:
   3. Dispatch the existing slurm_wrapper_mapcat_historical_extractor.py
      (unmodified sweep logic -- full band x tube matrix by default, since
      recovering an object in bands/tubes it wasn't originally seen in is
-     the whole point of a *historical* extractor) with
-     --also-output-lightcurvedb, so the sweep backfills lightcurvedb with
-     every historical epoch for the source, not just pickle output.
+     the whole point of a *historical* extractor). Pass
+     --also-output-lightcurvedb to additionally backfill lightcurvedb with
+     every historical epoch (needs a postgres reachable from the compute
+     nodes); otherwise the sweep writes pickle output only.
 
 Defaults to NOT submitting to SLURM (matching this repo's established
 generate-then-explicitly-submit convention) -- pass --submit to also
@@ -53,6 +54,8 @@ _PASSTHROUGH_FLAGS = [
     "group_name",
     "script_dir",
     "scratch_dir",
+    "pythonpath",
+    "also_output_lightcurvedb",
 ]
 
 
@@ -196,7 +199,6 @@ def build_wrapper_command(
         str(args.socat_db_path),
         "--out-dir",
         out_dir,
-        "--also-output-lightcurvedb",
     ]
     for flag in _PASSTHROUGH_FLAGS:
         value = getattr(args, flag)
@@ -292,6 +294,22 @@ def main():  # pragma: no cover
     parser.add_argument("--group-name", type=str, default=None)
     parser.add_argument("--script-dir", type=str, default=None)
     parser.add_argument("--scratch-dir", type=str, default=None)
+    parser.add_argument(
+        "--pythonpath",
+        type=str,
+        default=None,
+        help="Exported as PYTHONPATH in each slurm job (e.g. a worktree "
+        "checkout of sotrplib to run instead of the venv's editable install).",
+    )
+    parser.add_argument(
+        "--also-output-lightcurvedb",
+        action="store_true",
+        default=False,
+        help="Add the 'lightcurvedb' source_output to each sweep job. Off by "
+        "default: it needs a lightcurvedb postgres reachable from the compute "
+        "nodes, and an output failure fails the whole sotrp job (marking its "
+        "maps 'failed' in mapcat). Pickle output always happens regardless.",
+    )
 
     parser.add_argument("--submit", action="store_true", default=False)
     parser.add_argument("--dry-run", action="store_true", default=False)

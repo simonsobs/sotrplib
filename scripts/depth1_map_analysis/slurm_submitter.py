@@ -1,4 +1,5 @@
 import argparse as ap
+import os
 import subprocess as sp
 import time
 from glob import glob
@@ -21,7 +22,7 @@ P.add_argument(
 args = P.parse_args()
 
 
-slurm_files = glob(args.dir + "*.slurm")
+slurm_files = glob(os.path.join(args.dir, "*.slurm"))
 
 sleeptime = 0.1
 j0 = 0

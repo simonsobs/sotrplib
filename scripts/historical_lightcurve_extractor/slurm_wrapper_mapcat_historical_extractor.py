@@ -161,14 +161,32 @@ P.add_argument(
     "sweep's forced-photometry measurements get uploaded directly to "
     "lightcurvedb. Assumes the source(s) given via --ra/--dec/--source-id are "
     "already registered in socat and synced into lightcurvedb before this "
-    "runs (upsert_sources is left False).",
+    "runs (upsert_sources is left False). Requires a lightcurvedb postgres "
+    "reachable from the compute nodes -- an output failure fails the whole "
+    "sotrp job and marks its maps 'failed' in mapcat.",
+)
+
+P.add_argument(
+    "--pythonpath",
+    action="store",
+    default="",
+    type=str,
+    help="If set, exported as PYTHONPATH in each slurm job so the jobs run "
+    "sotrplib from this directory (e.g. a git worktree) instead of the "
+    "editable install the venv points at.",
 )
 
 args = P.parse_args()
 
 
 def generate_slurm_header(
-    jobname, groupname, cpu_per_task, script_dir, slurm_out_dir, socat_db_path
+    jobname,
+    groupname,
+    cpu_per_task,
+    script_dir,
+    slurm_out_dir,
+    socat_db_path,
+    pythonpath="",
 ):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
@@ -193,6 +211,8 @@ export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_
 
 
 """
+    if pythonpath:
+        slurm_header += f"export PYTHONPATH={pythonpath}\n\n"
     return slurm_header
 
 
@@ -328,18 +348,39 @@ if args.source_id:
 
     from astropy import units as u
     from astropy.coordinates import ICRS
+    from astropy.time import Time
     from socat.client.settings import SOCatClientSettings
 
     socat_client = SOCatClientSettings().client
+    ## dispatch_historical_extraction.py registers its candidates in the
+    ## production socat.db before invoking this wrapper -- re-creating them
+    ## here would duplicate rows (there is no name-uniqueness constraint),
+    ## so skip any source whose name is already registered as monitored.
+    already_monitored = set()
+    for generator in (
+        socat_client.get_monitored_sources(
+            t_min=Time("1970-01-01"), t_max=Time("2100-01-01")
+        )
+        or []
+    ):
+        name = getattr(getattr(generator, "source", None), "name", None)
+        if name:
+            already_monitored.add(name)
+    n_created = 0
     for s, source_id in enumerate(args.source_id):
+        if source_id in already_monitored:
+            continue
         socat_client.create_source(
             position=ICRS(ra=float(args.ra[s]) * u.deg, dec=float(args.dec[s]) * u.deg),
             flux=float(args.flux[s]) * u.Jy if args.flux else None,
             name=source_id,
             flags={"monitored": True},
         )
+        n_created += 1
     print(
-        f"Created socat database at {args.socat_db_path} with {len(args.source_id)} source(s)."
+        f"Registered {n_created} new source(s) in socat database at "
+        f"{args.socat_db_path} "
+        f"({len(args.source_id) - n_created} already present)."
     )
 
 n = 0
@@ -370,6 +411,7 @@ for band in args.bands:
                 args.script_dir if args.script_dir else os.getcwd(),
                 args.slurm_out_dir,
                 args.socat_db_path,
+                pythonpath=args.pythonpath,
             )
             slurm_text += f"srun --overlap sotrp -c {config_file} > {args.out_dir}{tube}_{band}_{source}_sotrp.log "
 
