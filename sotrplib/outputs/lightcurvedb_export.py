@@ -3,11 +3,17 @@ Convert a `pickle_to_parquet`-flattened table into lightcurvedb's ingest
 schema, and (optionally) actually push it through `Backend.sources` /
 `Backend.fluxes.ingest_dataframe` to prove the shape is correct.
 
-Only `forced_photometry` rows are eligible: those are measurements of an
-already-registered (socat) source, so they carry a stable `source_id` name
-we can key sources on. `source_candidates`/`transient_candidates`/
-`noise_candidates` rows are pre-identification blind detections with no
-durable source to attach a lightcurve to, so they're skipped here.
+`forced_photometry` and `transient_candidates` rows are eligible -- both
+resolve to a stable identity to key a lightcurvedb `Source` on:
+  - `forced_photometry` rows always carry their own `source_id` (a socat
+    catalog name, e.g. "ACT-S J0058.5+0620").
+  - `transient_candidates` rows have `source_id = None` (they're blind
+    detections); instead they resolve to either the sifter's own
+    crossmatch (a known source caught flaring -- reuses the *same*
+    catalog name, and thus the same registered Source, as its
+    forced_photometry measurements) or, if uncrossmatched, the pipeline's
+    own auto-generated transient name (e.g. "SO-T J023444+0757.9").
+`source_candidates`/`noise_candidates` rows have neither and are skipped.
 
 lightcurvedb's `flux_measurements` table wants exactly:
     measurement_id (uuid, optional -- backends fill it in), frequency (int),
@@ -22,6 +28,7 @@ resulting UUID.
 
 import argparse as ap
 import asyncio
+import json
 import sqlite3
 from io import BytesIO
 from pathlib import Path
@@ -32,6 +39,48 @@ from lightcurvedb.models.source import Source
 from structlog import get_logger
 
 log = get_logger()
+
+ELIGIBLE_CATEGORIES = ("forced_photometry", "transient_candidates")
+
+
+def resolve_source_identity(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add `_identity_name`/`_identity_socat_id` columns: own `source_id` if
+    set (forced_photometry, and any already-named transient), else the
+    sifter's crossmatch identity (a transient caught matching a known
+    source), so both categories can be grouped into `Source`s uniformly --
+    and a source flaring under both paths collapses onto the same Source.
+    """
+    names = []
+    socat_ids = []
+    for source_id, n_crossmatches, crossmatches in zip(
+        df["source_id"], df["n_crossmatches"], df["crossmatches"]
+    ):
+        if pd.notna(source_id):
+            names.append(source_id)
+            socat_ids.append(None)
+        elif n_crossmatches:
+            cm = json.loads(crossmatches)[0]
+            names.append(cm["source_id"])
+            socat_ids.append(cm.get("catalog_idx"))
+        else:
+            names.append(None)
+            socat_ids.append(None)
+
+    out = df.copy()
+    out["_identity_name"] = names
+    out["_identity_socat_id"] = socat_ids
+
+    unresolved = out["_identity_name"].isna().sum()
+    if unresolved:
+        log.warning(
+            "lightcurvedb_export.dropping_unresolvable_rows",
+            n=int(unresolved),
+            reason="no source_id and no crossmatch",
+        )
+        out = out[out["_identity_name"].notna()]
+
+    return out
 
 
 def load_socat_name_to_id(socat_db_path: Path) -> dict[str, str]:
@@ -51,15 +100,17 @@ def build_lightcurvedb_sources(
     df: pd.DataFrame, socat_name_to_id: dict[str, str]
 ) -> tuple[list[Source], dict[str, str]]:
     """
-    One `Source` per unique `source_id` name in `df` (a forced_photometry
-    slice), position taken as that name's mean measured ra/dec. Returns the
-    sources plus a name -> lightcurvedb-source_id (str UUID) map for
-    `build_flux_measurement_frame`.
+    One `Source` per unique resolved identity in `df` (see
+    `resolve_source_identity`), position taken as that identity's mean
+    *measured* ra/dec (the detection's own position, not the crossmatch's).
+    Returns the sources plus a name -> lightcurvedb-source_id (str UUID)
+    map for `build_flux_measurement_frame`.
     """
     sources = []
     name_to_lc_id = {}
-    for name, group in df.groupby("source_id"):
-        socat_id = socat_name_to_id.get(name)
+    for name, group in df.groupby("_identity_name"):
+        socat_id = group["_identity_socat_id"].dropna()
+        socat_id = socat_id.iloc[0] if len(socat_id) else socat_name_to_id.get(name)
         source = Source(
             socat_id=socat_id,
             name=name,
@@ -70,7 +121,7 @@ def build_lightcurvedb_sources(
         sources.append(source)
         name_to_lc_id[name] = str(source.source_id)
 
-    n_linked = sum(1 for n in name_to_lc_id if n in socat_name_to_id)
+    n_linked = sum(1 for s in sources if s.socat_id is not None)
     log.info(
         "lightcurvedb_export.built_sources",
         n_sources=len(sources),
@@ -83,15 +134,16 @@ def build_lightcurvedb_sources(
 def build_flux_measurement_frame(
     df: pd.DataFrame, name_to_lc_id: dict[str, str]
 ) -> pd.DataFrame:
-    """Reshape a `forced_photometry` slice of a `pickle_to_parquet` table
-    into lightcurvedb's flux-measurement ingest schema."""
-    missing = set(df["source_id"]) - set(name_to_lc_id)
+    """Reshape an eligible-category slice of a `pickle_to_parquet` table
+    (see `resolve_source_identity`) into lightcurvedb's flux-measurement
+    ingest schema."""
+    missing = set(df["_identity_name"]) - set(name_to_lc_id)
     if missing:
         raise ValueError(f"{len(missing)} source_id(s) have no lightcurvedb mapping")
 
     out = pd.DataFrame(
         {
-            "source_id": df["source_id"].map(name_to_lc_id),
+            "source_id": df["_identity_name"].map(name_to_lc_id),
             "frequency": df["frequency"].round().astype(int),
             "module": df["array"],
             "time": pd.to_datetime(
@@ -155,14 +207,20 @@ def main():
     args = parser.parse_args()
 
     df = pd.read_parquet(args.discovery_parquet)
-    fp = df[df["category"] == "forced_photometry"]
-    log.info("lightcurvedb_export.loaded", n_rows=len(df), n_forced_photometry=len(fp))
+    eligible = df[df["category"].isin(ELIGIBLE_CATEGORIES)]
+    eligible = resolve_source_identity(eligible)
+    log.info(
+        "lightcurvedb_export.loaded",
+        n_rows=len(df),
+        n_eligible=len(eligible),
+        by_category=eligible["category"].value_counts().to_dict(),
+    )
 
     socat_name_to_id = (
         load_socat_name_to_id(Path(args.socat_db)) if args.socat_db else {}
     )
-    sources, name_to_lc_id = build_lightcurvedb_sources(fp, socat_name_to_id)
-    flux_frame = build_flux_measurement_frame(fp, name_to_lc_id)
+    sources, name_to_lc_id = build_lightcurvedb_sources(eligible, socat_name_to_id)
+    flux_frame = build_flux_measurement_frame(eligible, name_to_lc_id)
 
     if args.out_flux_parquet:
         flux_frame.to_parquet(args.out_flux_parquet)
