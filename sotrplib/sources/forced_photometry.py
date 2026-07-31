@@ -294,7 +294,7 @@ class LmFitGaussian2DFitter:
         )
 
         amplitude = AstroPydanticQuantity(
-            amplitude - offset, self.source.thumbnail_unit
+            amplitude + offset, self.source.thumbnail_unit
         )
         amplitude_err = (
             AstroPydanticQuantity(
