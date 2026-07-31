@@ -117,3 +117,53 @@ def test_output_links_cutout_to_correct_measurement(tmp_path, lightcurvedb_setti
     assert len(cutouts) == 1
     assert str(cutouts.index[0]) == str(twenty_mjy_id)
     assert str(cutouts.index[0]) != str(ten_mjy_id)
+
+
+def test_output_creates_unregistered_source_when_upsert_enabled(
+    tmp_path, lightcurvedb_settings
+):
+    """A socat_id with no matching lightcurvedb source (get_by_socat_id
+    misses) should be created on the fly when upsert_sources=True, rather
+    than silently dropping the measurement."""
+    socat_id = uuid.uuid4()
+    candidate = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=True)
+
+    output.output(
+        forced_photometry_candidates=[candidate],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_id="test_map",
+    )
+
+    sources = pd.read_parquet(tmp_path / "sources.parquet")
+    assert len(sources) == 1
+    assert sources.iloc[0]["socat_id"] == str(socat_id)
+
+    lc_source_id = sources.index[0]
+    fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
+    assert len(fluxes) == 1
+    assert fluxes.iloc[0]["flux"] == pytest.approx(0.042)
+
+
+def test_output_skips_unregistered_source_when_upsert_disabled(
+    tmp_path, lightcurvedb_settings
+):
+    """A socat_id with no matching lightcurvedb source (get_by_socat_id
+    misses) should be skipped, not raise, when upsert_sources=False."""
+    socat_id = uuid.uuid4()
+    candidate = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=False)
+
+    # Must not raise, even though the source was never registered.
+    output.output(
+        forced_photometry_candidates=[candidate],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_id="test_map",
+    )
+
+    assert not (tmp_path / "sources.parquet").exists()
+    assert not any((tmp_path / "fluxes").glob("*.parquet"))
