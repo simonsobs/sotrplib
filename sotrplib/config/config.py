@@ -118,11 +118,27 @@ class Settings(BaseSettings):
             return cls.model_validate_json(handle.read())
 
     def to_dependencies(self) -> dict[str, Any]:
+        start_date = None
+
+        if isinstance(self.maps, list):
+            pass
+        else:
+            if getattr(self.maps, "start_time", None) is not None:
+                start_date = self.maps.start_time.date().isoformat()
+
         structlog.configure(
             wrapper_class=structlog.make_filtering_bound_logger(self.log_level),
         )
         log = structlog.get_logger()
+        source_outputs = []
 
+        for x in self.source_outputs:
+            output = x.to_output(log=log)
+
+            if hasattr(output, "directory") and start_date is not None:
+                output.directory = Path(output.directory) / start_date
+
+            source_outputs.append(output)
         contents = {
             "map_coadder": self.map_coadder.to_coadder(log=log),
             "source_simulators": [
@@ -143,7 +159,7 @@ class Settings(BaseSettings):
             "source_subtractor": self.source_subtractor.to_source_subtractor(log=log),
             "blind_search": self.blind_search.to_search_provider(log=log),
             "sifter": self.sifter.to_sifter(log=log),
-            "source_outputs": [x.to_output(log=log) for x in self.source_outputs],
+            "source_outputs": source_outputs,
             "map_outputs": [x.to_output(log=log) for x in self.map_outputs],
         }
         return contents

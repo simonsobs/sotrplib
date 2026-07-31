@@ -264,6 +264,7 @@ class BaseRunner:
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
                 map_id=input_map.map_id,
+                rho_map=input_map,
                 pointing_sources=pointing_sources,
                 injected_sources=injected_sources,
             )
@@ -276,13 +277,17 @@ class BaseRunner:
         return forced_photometry_candidates, sifter_result
 
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
-        return self.flow(self._run)(maps)
+        self._maps = maps
+        return self.flow(self._run)()
+        # return self.flow(self._run)(maps)
 
-    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    # def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    def _run(self):
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
+        maps = self._maps
         bbox = self.bbox(maps)
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(bbox, time_range)

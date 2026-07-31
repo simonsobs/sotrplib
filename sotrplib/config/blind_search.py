@@ -3,8 +3,8 @@ from typing import Literal
 
 import astropy.units as u
 from astropydantic import AstroPydanticQuantity
-from numpydantic import NDArray
-from pydantic import BaseModel
+from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.blind import (
@@ -37,6 +37,9 @@ class EmptyBlindSearchConfig(BlindSearchConfig):
 class PhotutilsBlindSearchConfig(BlindSearchConfig):
     search_type: Literal["photutils"] = "photutils"
     parameters: BlindSearchParameters | None = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     pixel_mask: NDArray | None = None
     thumbnail_half_width: AstroPydanticQuantity[u.deg] | None = None
 

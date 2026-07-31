@@ -150,6 +150,119 @@ class ProcessableMap(ABC):
         """
         return self._core_filter_sources(source_positions, self.get_valid_pixel_mask())
 
+    def get_kappa_thresholds(self):
+        kappa_map = self.kappa
+        print("get kappa thresh load in")
+
+        valid = np.isfinite(kappa_map) & (kappa_map > 0)
+
+        vals = kappa_map[valid]
+
+        n = len(vals)
+
+        p1 = int(0.01 * (n - 1))
+        p_frac = int(0.025 * (n - 1))
+        p_frac2 = int(0.05 * (n - 1))
+
+        part = np.partition(vals, [p1, p_frac, p_frac2])
+
+        kappa_thresh = part[
+            p1
+        ]  # value below which only 1% of pixels lie (lowest 1% of kappa so highest uncertainties)
+
+        frac_kappa_thresh10 = part[
+            p_frac
+        ]  # worst 2.5% pixels on the depth-1 map (threshold for 10x10 thumbnail)
+
+        frac_kappa_thresh40 = part[
+            p_frac2
+        ]  # worst 5% pixels on the depth-1 map (threshold for 40x40 thumbnail)
+        print("min =", np.min(vals))
+        print("max =", np.max(vals))
+        print("p1 =", p1)
+        print("threshold =", part[p1])
+
+        return (kappa_thresh, frac_kappa_thresh10, frac_kappa_thresh40)
+
+    ######### rejection function using kappa thresholds
+    def reject_badmaps(
+        self,
+        source_positions: SkyCoord,
+        time,
+        kappa_thresh,
+        frac_kappa_thresh10,
+        frac_kappa_thresh40,
+        frac_low_10x10=0.25,
+        frac_low_40x40=0.5,
+    ):
+        print("REJECT FUNCTION CALLED")
+
+        kappa_map = self._kappa_for_rejection
+        print("reject function load in")
+        # sky coordinates to pixel indices
+        pos = (
+            source_positions.dec.to_value("rad"),
+            source_positions.ra.to_value("rad"),
+        )  # of agn
+        y_f, x_f = kappa_map.sky2pix(
+            pos
+        )  # y,x pixel coordinates (to find in depth1 maps)
+        y, x = (
+            int(y_f),
+            int(x_f),
+        )  # for thumbnailing maps later on in this function (array slicing)
+
+        # basically, the 1% of pixels with the lowest inverse variance in the map are treated as candidates for rejection
+        # since uncertainty and kappa are inversely proportional, higher kappa -> lower uncertainty whereas lower kappa -> higher uncertainty. So, since we're taking the lowest 1% of kappa here (1st percentile), then only the worst and most unreliable values (that have large uncertainties) are considered the threshold.
+
+        # central pixel (point source)
+        k_center = kappa_map.at(pos, mode="nn")
+        print("SOURCE:", source_positions, "k_center:", k_center)
+        print(f"threshold:{kappa_thresh:.12e}")
+
+        # thumbnail slices centered on said source
+        k10_thumb = kappa_map[y - 5 : y + 5, x - 5 : x + 5]  # 10x10
+        k40_thumb = kappa_map[y - 20 : y + 20, x - 20 : x + 20]  # 40x40
+
+        reject = 1  # this means that the anything in the catalog that has 1 in this column is not rejected (by default)
+        reject_con = 0
+        BAD_TIMES = {
+            1502427600,
+            1502341200,
+            1502409600,
+        }  # cap was left on during the observations for these times so we don't use them
+
+        if (
+            k_center <= kappa_thresh
+        ):  # making sure the source is ACTUALLY at the center (equiv. to hits.at(pos) <= 10), rejects map cuz the source location itself is bad quality
+            reject = 0
+            reject_con = 1
+
+        # 10x10 thumbnail
+        # Note that frac_kappa_thresh10 and frac_kappa_thresh40 are defined in the process_info_files function
+        elif (
+            np.mean(k10_thumb <= frac_kappa_thresh10) >= frac_low_10x10
+        ):  # local neighborhood contamination
+            # this is basically saying that if you take 25% the pixels in this 10x10 thumbnail and their kappa (inverse variance) values are lower than the lowest 2.5% kappa values in the whole depth-1 map that this thumbnail is from, then it's got even higher noise than that worst 2.5% in the depth-1 map, and should thus be rejected
+            # (idk if that made sense but I can draw a little diagram if necessary!)
+            reject = 0
+            reject_con = 2
+
+        # 40x40 thumbnail
+        elif (
+            np.mean(k40_thumb <= frac_kappa_thresh40) >= frac_low_40x40
+        ):  # large scale contamination
+            reject = 0
+            reject_con = 3
+
+        # bad times
+        elif int(time) in BAD_TIMES:
+            reject = 0
+            reject_con = 4
+
+        # return after all checks
+        return reject, reject_con
+
     @property
     def hits(self):
         """
@@ -347,11 +460,12 @@ class ProcessableMap(ABC):
         apply mask if present.
         """
         del self.rho
+        self.kappa_thresholds = self.get_kappa_thresholds()
+        self._kappa_for_rejection = self.kappa.copy()
         del self.kappa
         self._valid_pixel_mask_cache = None
         self.apply_mask()
         self.finalized = True
-
         return
 
 
@@ -756,12 +870,32 @@ class RhoAndKappaMap(ProcessableMap):
         if enmap_box is not None:
             if enmap_box[0][1] < enmap_box[1][1]:
                 enmap_box[1][1] -= 2 * np.pi
+
+        print(str(self.rho_filename))
+        if enmap_box is not None:
+            if np.isnan(enmap_box).any() or not np.all(np.isfinite(enmap_box)):
+                self.log.warning(
+                    f"Invalid enmap_box detected for {str(self.rho_filename)}",
+                    enmap_box=enmap_box,
+                )
+                enmap_box = None
         try:
             self.rho = enmap.read_map(str(self.rho_filename), sel=0, box=enmap_box)
             assert type(self.rho) is enmap.ndmap
+            print("asserted enmap ndmap")
+            print("rho file:", self.rho_filename)
+            print("shape:", self.rho.shape)
+            print("CRVAL:", self.rho.wcs.wcs.crval)
+            print("CRPIX:", self.rho.wcs.wcs.crpix)
+            print("CDELT:", self.rho.wcs.wcs.cdelt)
         except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=enmap_box)
+            print("rho file:", self.rho_filename)
+            print("shape:", self.rho.shape)
+            print("CRVAL:", self.rho.wcs.wcs.crval)
+            print("CRPIX:", self.rho.wcs.wcs.crpix)
+            print("CDELT:", self.rho.wcs.wcs.cdelt)
 
         log = log.new(kappa_filename=self.kappa_filename)
         try:
@@ -864,6 +998,7 @@ class RhoAndKappaMap(ProcessableMap):
     def finalize(self):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
+        #  self.kappa_thresholds = self.get_kappa_thresholds() # can get the kappa thresholds here since it's one per depth1 map (can't do rejecting badmaps here since we're not calling the sources yet, just loading in the maps)
         super().finalize()
 
 

@@ -4,6 +4,7 @@ Dealing with sources once they've been found.
 
 import json
 import pickle
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,25 +91,43 @@ class PickleSerializer(SourceOutput):
 
     directory: Path
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, start_time: str | None = None):
         self.directory = directory
+        self.start_time = start_time
 
     def output(
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
         map_id: str,
+        rho_map,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
+        run_folder = ""
+        if self.start_time is not None:
+            dt = datetime.fromisoformat(self.start_time.replace("Z", "+00:00"))
+            run_folder = dt.date().isoformat()  # YYYY-MM-DD
+
+        output_dir = self.directory / run_folder
+        output_dir.mkdir(parents=True, exist_ok=True)
         filename = (
-            self.directory
+            output_dir
             / f"{map_id}_{datetime.now(tz=timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}.pickle"
         )
+        rho_filename = getattr(rho_map, "rho_filename", None)
+
+        depth1_unix = None
+        if rho_filename is not None:
+            match = re.search(r"(\d{10})", str(rho_filename))
+            if match:
+                depth1_unix = int(match.group(1))
+
         with filename.open("wb") as handle:
             pickle.dump(
                 obj={
                     "map_id": map_id,
+                    "depth1_unix_time": depth1_unix,
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
                     "pointing_sources": pointing_sources,

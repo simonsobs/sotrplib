@@ -1,7 +1,7 @@
 import numpy as np
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
-from numpydantic import NDArray
+from numpy.typing import NDArray
 from photutils import segmentation as pseg
 from pixell.enmap import ndmap
 from structlog import get_logger

@@ -4,9 +4,9 @@ import numpy as np
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
-from numpydantic import NDArray
+from numpy.typing import NDArray
 from pixell import reproject
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -102,6 +102,8 @@ class MeasuredSource(RegisteredSource):
 
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     snr: float | None = None
     offset_ra: AstroPydanticQuantity[u.deg] | None = None
     offset_dec: AstroPydanticQuantity[u.deg] | None = None
@@ -124,6 +126,8 @@ class MeasuredSource(RegisteredSource):
     fit_params: dict | None = None
     fit_failed: bool = False
     fit_failure_reason: str | None = None
+    badmap_flag: bool | None = None
+    badmap_reason: int | None = None
 
     thumbnail: NDArray | None = None
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None

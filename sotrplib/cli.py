@@ -44,7 +44,8 @@ def main():
     )
     log = structlog.get_logger()
 
-    maps = config.maps.to_generator(log=log)
+    reader = config.maps.to_generator(log=log)
+    maps = list(reader)
 
     if maps is not None:
         pipeline.run(maps)
