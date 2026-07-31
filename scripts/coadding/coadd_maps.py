@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
 from glob import glob
 
 import numpy as np
 from astropy import units as u
 from astropy.io import fits
+from astropy.time import Time
 from pixell import enmap
 from tqdm import tqdm
 
@@ -54,8 +54,8 @@ for i in tqdm(range(len(ivar_files))):
         inverse_variance_filename=ivar_files[i],
         time_filename=ivar_files[i].split("_ivar.fits")[0] + "_time.fits",
         info_filename=ivar_files[i].split("_ivar.fits")[0] + "_info.hdf5",
-        start_time=datetime.fromtimestamp(int(start), tz=timezone.utc),
-        end_time=datetime.fromtimestamp(int(stop), tz=timezone.utc),
+        start_time=Time(int(start), format="unix"),
+        end_time=Time(int(stop), format="unix"),
         frequency=band,
         array=ivar_files[i].split("_")[-3],
         intensity_units=u.uK,

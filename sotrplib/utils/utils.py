@@ -1,4 +1,3 @@
-import datetime
 import glob as glob
 import os
 import os.path as op
@@ -7,6 +6,7 @@ from typing import Union
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from pixell import enmap
 from pixell import utils as pixell_utils
 
@@ -78,29 +78,11 @@ def radec_to_str_name(
     return name
 
 
-def datetime_mean(datetime_objects):
-    """
-    Calculates the mean of a list of datetime objects.
-
-    Args:
-        datetime_objects (list): A list of datetime.datetime objects.
-
-    Returns:
-        datetime.datetime: The mean datetime object.
-    """
-    if not datetime_objects:
+def datetime_mean(times):
+    """Returns the mean of a list of astropy Time objects."""
+    if not times:
         return None
-
-    # Convert datetime objects to timestamps (seconds since epoch)
-    timestamps = [dt.timestamp() for dt in datetime_objects]
-
-    # Calculate the mean of the timestamps
-    mean_timestamp = sum(timestamps) / len(timestamps)
-
-    # Convert the mean timestamp back to a datetime object
-    mean_dt = datetime.datetime.fromtimestamp(mean_timestamp)
-
-    return mean_dt
+    return Time(np.mean([t.unix for t in times]), format="unix")
 
 
 def normalize_ra(ra_array):

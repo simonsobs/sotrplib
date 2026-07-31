@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import warnings
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import structlog
@@ -13,9 +16,11 @@ from pixell.utils import arcmin, degree
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.sources.sources import MeasuredSource
 
-from ..sims.sim_utils import make_2d_gaussian_model_param_table
+if TYPE_CHECKING:
+    from sotrplib.sources.sources import MeasuredSource
+
+# defer importing sim_utils until needed to avoid circular imports
 
 
 def get_map_info_from_filename(map_path):
@@ -475,6 +480,8 @@ def make_model_source_map(
 
     map_res = abs(imap.wcs.wcs.cdelt[0]) * u.deg
     log.bind(nominal_fwhm=nominal_fwhm, res=map_res)
+    from ..sims.sim_utils import make_2d_gaussian_model_param_table
+
     model_params = make_2d_gaussian_model_param_table(
         imap,
         sources,

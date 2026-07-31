@@ -1,5 +1,7 @@
 import numpy as np
+import uuid7
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
 from numpy.typing import NDArray
 from photutils import segmentation as pseg
@@ -64,9 +66,9 @@ def get_source_observation_time(
         if isinstance(timemap, ProcessableMap):
             t_start, t_mean, t_end = timemap.get_pixel_times((y, x))
         else:
-            t_mean = timemap[y, x]
-            t_start = np.nan
-            t_end = np.nan
+            t_mean = Time(timemap[y, x], format="unix")
+            t_start = None
+            t_end = None
         # Set the extracted source times, backwards compatibility
         extracted_sources[f]["observation_mean_time"] = t_mean
         extracted_sources[f]["observation_start_time"] = t_start
@@ -186,6 +188,7 @@ def extract_sources(
             "semimajor_sigma": peaks["semimajor_sigma"][j].value * inmap.map_resolution,
             "semiminor_sigma": peaks["semiminor_sigma"][j].value * inmap.map_resolution,
             "orientation": peaks["orientation"][j].value * u.deg,
+            "measurement_id": str(uuid7.create()),
         }
 
     log.info(

@@ -103,6 +103,7 @@ SourceOutputConfigTypes = (
     | JSONOutputConfig
     | LightcurveDBOutputConfig
     | LightServeOutputConfig
+    | CutoutImageOutputConfig
 )
 
-MapOutputConfigTypes = MapOutputConfig | CutoutImageOutputConfig
+MapOutputConfigTypes = MapOutputConfig

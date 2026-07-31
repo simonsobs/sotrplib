@@ -88,12 +88,8 @@ def main():
     # simulated catalogs have a random number added to the id
     # assume this corresponds to the first element
     cat = pipeline.source_catalogs[0]
-    simulation_base = int(cat.sources[0].source_id.split("-")[1])
     flux_ratios = [
-        candidate.flux
-        / cat.source_by_id(
-            int(candidate.source_id.split("-")[1]) - simulation_base
-        ).flux
+        candidate.flux / cat.source_by_id(candidate.source_id).flux
         for candidate in found
     ]
 

@@ -3,12 +3,13 @@ Output data directly to lightserve.
 """
 
 import asyncio
-import datetime
+from datetime import timezone
 from uuid import UUID
 
+from astropy.time import Time
 from lightcurvedb.config import Settings as LightcurveDBSettings
 from lightcurvedb.models.cutout import Cutout
-from lightcurvedb.models.flux import FluxMeasurementCreate
+from lightcurvedb.models.flux import FluxMeasurement
 from lightcurvedb.models.source import Source
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -87,9 +88,9 @@ class LightcurveDBOutput(SourceOutput):
         self,
         input_measurement: MeasuredSource,
         socat_to_internal: dict[int, UUID],
-        map_time: datetime.datetime,
+        map_time: Time | None = None,
         map_id: str | None = None,
-    ) -> tuple[FluxMeasurementCreate, Cutout] | None:
+    ) -> tuple[FluxMeasurement, Cutout] | None:
         if not input_measurement.crossmatches:
             self.log.warning(
                 "lightcurvedb.output.skipping_source_no_crossmatch",
@@ -102,14 +103,18 @@ class LightcurveDBOutput(SourceOutput):
             int(input_measurement.crossmatches[0].catalog_idx)
         )
 
-        fm = FluxMeasurementCreate(
+        fm = FluxMeasurement(
             frequency=90,
             module="i1",
             source_id=source_id,
             time=(
                 input_measurement.observation_mean_time.to_datetime()
                 if input_measurement.observation_mean_time is not None
-                else map_time
+                else (
+                    map_time.to_datetime(timezone=timezone.utc)
+                    if map_time is not None
+                    else None
+                )
             ),
             ra=input_measurement.ra.to_value("deg"),
             dec=input_measurement.dec.to_value("deg"),
@@ -148,7 +153,11 @@ class LightcurveDBOutput(SourceOutput):
                 time=(
                     input_measurement.observation_mean_time.to_datetime()
                     if input_measurement.observation_mean_time is not None
-                    else map_time
+                    else (
+                        map_time.to_datetime(timezone=timezone.utc)
+                        if map_time is not None
+                        else None
+                    )
                 ),
                 units=(
                     input_measurement.flux.unit.to_string()
@@ -169,9 +178,9 @@ class LightcurveDBOutput(SourceOutput):
         self,
         sources: list[MeasuredSource],
         socat_to_internal: dict[int, UUID],
-        map_time: datetime.datetime,
+        map_time: Time | None = None,
         map_id: str | None = None,
-    ) -> tuple[list[FluxMeasurementCreate], list[Cutout]]:
+    ) -> tuple[list[FluxMeasurement], list[Cutout]]:
         flux_measurements = []
         cutouts = []
 
@@ -188,7 +197,7 @@ class LightcurveDBOutput(SourceOutput):
 
     async def _upload_sources(
         self,
-        flux_measurements: list[FluxMeasurementCreate],
+        flux_measurements: list[FluxMeasurement],
         cutouts: list[Cutout],
     ) -> int:
         async with self.settings.backend as backend:
@@ -208,7 +217,7 @@ class LightcurveDBOutput(SourceOutput):
     async def _flux_upload_flow(
         self,
         forced_photometry_candidates: list[MeasuredSource],
-        map_time: datetime.datetime,
+        map_time: Time | None = None,
         map_id: str | None = None,
     ):
         socat_to_internal = await self._extract_and_upsert_sources(

@@ -1,4 +1,7 @@
+from itertools import combinations
+
 import numpy as np
+import uuid7
 from astropy import units as u
 from astropy.coordinates import angular_separation
 from astropydantic import AstroPydanticQuantity
@@ -693,3 +696,42 @@ def crossmatch_position_and_flux(
         raise ValueError("Some injected sources have mismatched fluxes.")
 
     return matched_mask, similar_fluxes
+
+
+def n_wise_crossmatch(
+    matches: list[list[tuple]], candidates: list[list[MeasuredSource]]
+) -> dict[str, list[tuple[str, str]]]:
+    map_pairs = list(combinations(candidates.keys(), 2))
+    match_by_pair = {
+        pair: {i: j for match in match_list for i, j in match}
+        for match_list, pair in zip(matches, map_pairs)
+    }
+
+    full_matches: dict = {}
+    node_to_key: dict = {}
+
+    for (map_id_1, map_id_2), d in match_by_pair.items():
+        for i, j in d.items():
+            k1 = node_to_key.get((map_id_1, i))
+            k2 = node_to_key.get((map_id_2, j))
+            if k1 is None and k2 is None:
+                # this sources hasn't been seen before, assign a new ID
+                new_key = str(uuid7.create())
+                full_matches[new_key] = {map_id_1: i, map_id_2: j}
+                node_to_key[(map_id_1, i)] = new_key
+                node_to_key[(map_id_2, j)] = new_key
+            elif k1 is None:
+                full_matches[k2][map_id_1] = i
+                node_to_key[(map_id_1, i)] = k2
+            elif k2 is None:
+                full_matches[k1][map_id_2] = j
+                node_to_key[(map_id_2, j)] = k1
+
+    output: dict[str, list[tuple[str, str]]] = {}
+    for key, indices_by_result in full_matches.items():
+        output[key] = []
+        for map_id, idx in indices_by_result.items():
+            candidates[map_id][idx].source_id = key
+            measurement_id = candidates[map_id][idx].measurement_id
+            output[key].append((map_id, measurement_id))
+    return output

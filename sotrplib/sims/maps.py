@@ -4,14 +4,15 @@ import astropy.units as u
 import numpy as np
 import structlog
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from astropy.units import Quantity
 from astropydantic import AstroPydanticQuantity
-from numpy.typing import ArrayLike
 from pixell import enmap
-from pydantic import AwareDatetime, BaseModel
+from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.utils import skycoord_box_to_enmap_box
 from sotrplib.sims import sim_maps
 
 
@@ -33,13 +34,13 @@ class SimulationParameters(BaseModel):
 class SimulatedMap(ProcessableMap):
     def __init__(
         self,
-        observation_start: AwareDatetime,
-        observation_end: AwareDatetime,
+        observation_start: Time,
+        observation_end: Time,
         frequency: str | None = None,
         array: str | None = None,
         instrument: str | None = None,
         simulation_parameters: SimulationParameters | None = None,
-        box: ArrayLike | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
         include_half_pixel_offset: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
@@ -56,8 +57,8 @@ class SimulatedMap(ProcessableMap):
             The array that this map represents.
         simulation_parameters: SimulationParameters, optional
             Parameters for the simulation. If None, defaults will be used.
-        box: np.ndarray, optional
-            Optional sky box to simulate in. Otherwise covers the whole sky.
+        box: tuple[SkyCoord, SkyCoord], optional
+            Optional sky box to simulate in. By default set via simulation_parameters.
         include_half_pixel_offset: bool, False
             Include the half-pixel offset in pixell constructors.
         log: FilteringBoundLogger, optional
@@ -65,7 +66,7 @@ class SimulatedMap(ProcessableMap):
         """
         self.observation_start = observation_start
         self.observation_end = observation_end
-        self.box = box
+        self.sky_box = sky_box
         self.include_half_pixel_offset = include_half_pixel_offset
         self.frequency = frequency or "f090"
         self.array = array or "pa5"
@@ -77,21 +78,24 @@ class SimulatedMap(ProcessableMap):
         self.log = log or structlog.get_logger()
 
     @property
-    def bbox(self):
-        return [
-            SkyCoord(
-                ra=self.simulation_parameters.center_ra
-                - self.simulation_parameters.width_ra,
-                dec=self.simulation_parameters.center_dec
-                - self.simulation_parameters.width_dec,
-            ),
-            SkyCoord(
-                ra=self.simulation_parameters.center_ra
-                + self.simulation_parameters.width_ra,
-                dec=self.simulation_parameters.center_dec
-                + self.simulation_parameters.width_dec,
-            ),
-        ]
+    def bbox(self) -> np.ndarray:
+        if (flux := getattr(self, "flux", None)) is not None:
+            return enmap.box(flux.shape, flux.wcs)
+        if self._sky_box is not None:
+            return skycoord_box_to_enmap_box(self._sky_box)
+        ra_min = (
+            self.simulation_parameters.center_ra - self.simulation_parameters.width_ra
+        ).to_value(u.rad)
+        ra_max = (
+            self.simulation_parameters.center_ra + self.simulation_parameters.width_ra
+        ).to_value(u.rad)
+        dec_min = (
+            self.simulation_parameters.center_dec - self.simulation_parameters.width_dec
+        ).to_value(u.rad)
+        dec_max = (
+            self.simulation_parameters.center_dec + self.simulation_parameters.width_dec
+        ).to_value(u.rad)
+        return np.array([[dec_min, ra_max], [dec_max, ra_min]])
 
     def build(self):
         log = self.log.bind(parameters=self.simulation_parameters)
@@ -167,7 +171,7 @@ class SimulatedMap(ProcessableMap):
 
         return self._core_filter_sources(source_positions, bool_map)
 
-    def get_pixel_times(self, pix):
+    def get_pixel_times(self, pix) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
@@ -182,8 +186,8 @@ class SimulatedMapFromGeometry(ProcessableMap):
         self,
         resolution: Quantity,
         geometry_source_map: Path,
-        start_time: AwareDatetime | None,
-        end_time: AwareDatetime | None,
+        start_time: Time | None,
+        end_time: Time | None,
         time_map_filename: Path | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -229,6 +233,13 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         self.observation_length = end_time - start_time
         self.log = log or structlog.get_logger()
+
+    @property
+    def bbox(self) -> np.ndarray:
+        if (flux := getattr(self, "flux", None)) is not None:
+            return enmap.box(flux.shape, flux.wcs)
+        shape, wcs = enmap.read_map_geometry(str(self.geometry_source_map))
+        return enmap.box(shape, wcs)
 
     def build(self):
         log = self.log.bind(geometry_source_map=self.geometry_source_map)
@@ -295,7 +306,7 @@ class SimulatedMapFromGeometry(ProcessableMap):
 
         return self._core_filter_sources(source_positions, bool_map)
 
-    def get_pixel_times(self, pix):
+    def get_pixel_times(self, pix) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
     def apply_mask(self):
