@@ -34,6 +34,15 @@ class CrossMatch(BaseModel):
     catalog_name: str | None = None
     catalog_idx: int | str | uuid.UUID | None = None
     alternate_names: list[str] | None = None
+    mag: float | None = None
+    "Optical magnitude of the matched object, if the catalog provides one."
+    redshift: float | None = None
+    distance: AstroPydanticQuantity[u.Mpc] | None = None
+    "Physical distance to the matched object, e.g. for nearby galaxies."
+    chance_probability: float | None = None
+    "Probability of an unrelated catalog object this bright landing this close by chance."
+    match_score: float | None = None
+    "Prior-weighted association score used to rank competing crossmatches."
 
 
 class RegisteredSource(BaseSource):
