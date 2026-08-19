@@ -118,7 +118,7 @@ class Settings(BaseSettings):
             pass
         else:
             if getattr(self.maps, "start_time", None) is not None:
-                start_date = self.maps.start_time.date().isoformat()
+                start_date = self.maps.start_time.to_datetime().date().isoformat()
 
         structlog.configure(
             wrapper_class=structlog.make_filtering_bound_logger(self.log_level),

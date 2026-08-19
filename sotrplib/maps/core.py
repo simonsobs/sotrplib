@@ -262,7 +262,7 @@ class ProcessableMap(ABC):
             reject_con = 3
 
         # bad times
-        elif int(time) in BAD_TIMES:
+        elif int(time.unix) in BAD_TIMES:
             reject = 0
             reject_con = 4
 
