@@ -21,6 +21,17 @@ class BaseSource(BaseModel):
 
 
 class CrossMatch(BaseModel):
+    """
+    A single crossmatch result against a catalog entry.
+
+    `catalog_idx` is the catalog's unique, stable identifier for the
+    matched entry (e.g. a socat UUID) and should be used for any lookup
+    that requires uniqueness (database joins, lightcurve linkage, etc.).
+    `source_id` is not guaranteed to be unique -- for some catalogs (e.g.
+    socat's SSO/monitored-source generators) it is a human-readable name
+    such as "Ceres" rather than an identifier.
+    """
+
     ra: AstroPydanticQuantity[u.deg] | None = None
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
