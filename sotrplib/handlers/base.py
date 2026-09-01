@@ -192,6 +192,8 @@ class BaseRunner:
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
     ) -> tuple[list[MeasuredSource], SifterResult]:
+        # Try,Except here to set the TimeDomainProcessingStatus as failed
+        # if any exception occurs during the processing of the map.
         try:
             input_map = self.profilable_task(self.build_map)(input_map)
 
