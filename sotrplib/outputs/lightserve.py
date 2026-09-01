@@ -61,7 +61,7 @@ class LightServeOutput(SourceOutput):
         source_translations = client.get("/sources/").json()
         # socat_id comes back from JSON as a plain string (UUIDs serialize
         # to strings), so normalize both sides of the lookup to str() --
-        # source.crossmatches[0].catalog_idx may be a real uuid.UUID object
+        # source.crossmatches[0].catalog_idx may be a real UUID7 object
         # depending on which crossmatch mechanism produced it.
         socat_to_internal = {
             str(st["socat_id"]): st["source_id"] for st in source_translations

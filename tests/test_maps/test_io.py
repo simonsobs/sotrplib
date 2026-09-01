@@ -3,10 +3,12 @@ Tests the map I/O
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from astropy import units as u
+from astropy.time import Time
 
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
@@ -182,6 +184,71 @@ def test_build_map_passes_metadata(db_result):
     assert result.array == db_result.tube_slot
 
 
+# ─── build_query time windowing ────────────────────────────────────────────────
+
+
+def test_build_query_default_is_interval_overlap():
+    """
+    Default (bucket_by_start_time=False): a map is included if its
+    [start_time, stop_time] interval overlaps [start_time, end_time] at all,
+    inclusive on both ends.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(start_time=start, end_time=end).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    assert "depth_one_maps.stop_time >=" in compiled
+    assert "depth_one_maps.start_time <=" in compiled
+    assert "depth_one_maps.start_time >=" not in compiled
+
+
+def test_build_query_bucket_by_start_time_is_half_open():
+    """
+    bucket_by_start_time=True: a map is included solely based on whether its
+    own start_time falls in [start_time, end_time) -- so a map whose
+    observation spans a boundary between two adjacent windows lands in
+    exactly one of them, never both. This is what submit_week_coadds.py
+    relies on to avoid double-coadding maps that straddle a week boundary.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, bucket_by_start_time=True
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "depth_one_maps.start_time >=" in where_clause
+    assert "depth_one_maps.start_time <" in where_clause
+    assert "depth_one_maps.start_time <=" not in where_clause
+    assert "stop_time" not in where_clause
+
+
+def test_build_query_bucket_by_start_time_no_gap_or_overlap_at_shared_boundary():
+    """
+    Two adjacent windows sharing an exact boundary value must partition maps
+    with no gap and no overlap, even for a map whose observation interval
+    spans the boundary (the case that caused real double-coadding).
+    """
+    boundary = 1500.0
+    straddling_map = SimpleNamespace(start_time=1400.0, stop_time=1600.0)
+
+    window_a = IntensityMapReader(
+        start_time=Time(1000, format="unix"),
+        end_time=Time(boundary, format="unix"),
+        bucket_by_start_time=True,
+    )
+    window_b = IntensityMapReader(
+        start_time=Time(boundary, format="unix"),
+        end_time=Time(2000, format="unix"),
+        bucket_by_start_time=True,
+    )
+
+    def _matches(reader, m):
+        return reader.start_time.unix <= m.start_time < reader.end_time.unix
+
+    assert _matches(window_a, straddling_map) != _matches(window_b, straddling_map)
+
+
 # ─── map_list ─────────────────────────────────────────────────────────────────
 
 
@@ -205,13 +272,13 @@ def test_map_list_flux_type(mock_mapcat):
 
 def test_map_list_sets_map_id(mock_mapcat, db_result):
     maps = IntensityMapReader().map_list()
-    assert maps[0].map_id == db_result.map_id
+    assert maps[0].map_id == str(db_result.map_id)
 
 
 def test_map_list_appends_map_id(mock_mapcat, db_result):
     reader = IntensityMapReader()
     reader.map_list()
-    assert db_result.map_id in reader.map_ids
+    assert str(db_result.map_id) in reader.map_ids
 
 
 def test_map_list_skips_processed(mock_session):
@@ -243,6 +310,25 @@ def test_map_list_rerun_ignores_processed(mock_session):
     assert len(maps) == 1
 
 
+def test_map_list_skips_permafailed(mock_session):
+    """
+    permafail is set manually (e.g. mapcatreset --status permafail) for a
+    known-pathological observation, and must never be picked up again --
+    not even with rerun=True.
+    """
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=True),
+        patch("sotrplib.maps.database.check_if_processed", return_value=False),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        settings.session.return_value.__enter__.return_value = mock_session
+        maps = IntensityMapReader(rerun=True).map_list()
+    assert maps == []
+
+
 def test_map_list_caches(mock_mapcat):
     reader = IntensityMapReader()
     assert reader.map_list() is reader.map_list()
@@ -251,7 +337,7 @@ def test_map_list_caches(mock_mapcat):
 def test_map_list_number_to_read_limits(mock_session, db_result):
     """number_to_read=1 stops after the first map even when the DB has more rows."""
     db_result2 = MagicMock()
-    db_result2.map_id = 99
+    db_result2.map_id = "22222222-2222-2222-2222-222222222222"
     db_result2.map_path = db_result.map_path
     db_result2.ivar_path = db_result.ivar_path
     db_result2.mean_time_path = db_result.mean_time_path
@@ -278,3 +364,249 @@ def test_map_list_number_to_read_limits(mock_session, db_result):
 def test_iter_delegates_to_map_list(mock_mapcat):
     reader = IntensityMapReader()
     assert list(reader) == reader.map_list()
+
+
+# ─── processing status lifecycle ───────────────────────────────────────────────
+
+
+def _session_with_status(status: str | None, processing_start: float = 0.0):
+    """A mock session whose TimeDomainProcessingTable row has the given status."""
+    session = MagicMock()
+    if status is None:
+        session.execute.return_value.one_or_none.return_value = []
+    else:
+        row = MagicMock()
+        row.processing_status = status
+        row.processing_start = processing_start
+        session.execute.return_value.one_or_none.return_value = [row]
+    return session
+
+
+def test_check_if_permafailed_true():
+    from sotrplib.maps.database import check_if_permafailed
+
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("permafail"),
+        )
+        is True
+    )
+
+
+def test_check_if_permafailed_false_for_other_statuses():
+    from sotrplib.maps.database import check_if_permafailed
+
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("completed"),
+        )
+        is False
+    )
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("processing"),
+        )
+        is False
+    )
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111", session=_session_with_status(None)
+        )
+        is False
+    )
+
+
+def test_check_if_processed_true_for_completed():
+    from sotrplib.maps.database import check_if_processed
+
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("completed"),
+        )
+        is True
+    )
+
+
+def test_check_if_processed_false_for_permafail():
+    """
+    permafail is deliberately not treated as "processed" by check_if_processed
+    -- it's handled by the separate, unconditional check_if_permafailed check
+    in map_list() instead, so it isn't bypassable by rerun=True.
+    """
+    from sotrplib.maps.database import check_if_processed
+
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("permafail"),
+        )
+        is False
+    )
+
+
+def test_check_if_processed_true_for_recent_processing():
+    from sotrplib.maps.database import check_if_processed
+
+    session = _session_with_status(
+        "processing", processing_start=Time.now().to_datetime()
+    )
+    assert (
+        check_if_processed("11111111-1111-1111-1111-111111111111", session=session)
+        is True
+    )
+
+
+def test_check_if_processed_false_for_stale_processing():
+    from astropy.time import TimeDelta
+
+    from sotrplib.maps.database import check_if_processed
+
+    stale_start = (Time.now() - TimeDelta(3 * 3600, format="sec")).to_datetime()
+    session = _session_with_status("processing", processing_start=stale_start)
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=session,
+            stale_limit=TimeDelta(2 * 3600, format="sec"),
+        )
+        is False
+    )
+
+
+def test_set_processing_end_default_status_is_completed():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end("11111111-1111-1111-1111-111111111111", session=session)
+    assert row.processing_status == "completed"
+    assert session.commit.called
+
+
+def test_set_processing_end_accepts_failed_status():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(
+        "11111111-1111-1111-1111-111111111111", session=session, status="failed"
+    )
+    assert row.processing_status == "failed"
+
+
+# ─── map_id/coadd_id dual-target generalization ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "func_name",
+    [
+        "check_if_permafailed",
+        "check_if_processed",
+        "set_processing_start",
+        "set_processing_end",
+    ],
+)
+def test_status_functions_reject_neither_target(func_name):
+    import sotrplib.maps.database as db_module
+
+    func = getattr(db_module, func_name)
+    with pytest.raises(ValueError, match="Exactly one of map_id or coadd_id"):
+        func(session=MagicMock())
+
+
+@pytest.mark.parametrize(
+    "func_name",
+    [
+        "check_if_permafailed",
+        "check_if_processed",
+        "set_processing_start",
+        "set_processing_end",
+    ],
+)
+def test_status_functions_reject_both_targets(func_name):
+    import sotrplib.maps.database as db_module
+
+    func = getattr(db_module, func_name)
+    with pytest.raises(ValueError, match="Exactly one of map_id or coadd_id"):
+        func(1, coadd_id=2, session=MagicMock())
+
+
+def test_check_if_permafailed_works_with_coadd_id():
+    from sotrplib.maps.database import check_if_permafailed
+
+    session = _session_with_status("permafail")
+    assert (
+        check_if_permafailed(
+            coadd_id="33333333-3333-3333-3333-333333333333", session=session
+        )
+        is True
+    )
+
+
+def test_set_processing_start_creates_row_for_coadd_id():
+    """A coadd-linked TimeDomainProcessingTable row should be created with
+    coadd_id set and map_id left None, not the other way around."""
+    from sotrplib.maps.database import set_processing_start
+
+    session = _session_with_status(None)
+    set_processing_start(
+        coadd_id="44444444-4444-4444-4444-444444444444", session=session
+    )
+    created_row = session.add.call_args.args[0]
+    assert str(created_row.coadd_id) == "44444444-4444-4444-4444-444444444444"
+    assert created_row.map_id is None
+
+
+def test_set_processing_start_does_not_couple_processing_status_id_to_map_id():
+    """
+    Regression test: set_processing_start() used to do
+    TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id),
+    directly reusing map_id's value as a *different* autoincrement PK
+    column. That's a hard type error once map_id is a UUID (can't assign a
+    UUID string into an int PK) -- the fix lets processing_status_id
+    autoincrement instead of being set explicitly.
+    """
+    from sotrplib.maps.database import set_processing_start
+
+    session = _session_with_status(None)
+    set_processing_start("019f6c0c-7a24-7ad7-85a3-68acbc551549", session=session)
+    created_row = session.add.call_args.args[0]
+    assert str(created_row.map_id) == "019f6c0c-7a24-7ad7-85a3-68acbc551549"
+    # processing_status_id must not have been forced to equal map_id
+    assert getattr(created_row, "processing_status_id", None) != (
+        "019f6c0c-7a24-7ad7-85a3-68acbc551549"
+    )
+
+
+def test_set_processing_end_works_with_coadd_id():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(
+        coadd_id="44444444-4444-4444-4444-444444444444",
+        session=session,
+        status="completed",
+    )
+    assert row.processing_status == "completed"
+    assert session.commit.called
+
+
+def test_set_processing_end_raises_with_target_specific_message_for_coadd():
+    from sotrplib.maps.database import set_processing_end
+
+    session = _session_with_status(None)
+    with pytest.raises(ValueError, match="coadd_id 44444444"):
+        set_processing_end(
+            coadd_id="44444444-4444-4444-4444-444444444444", session=session
+        )
