@@ -111,56 +111,6 @@ def test_basic_pipeline_instrument(separate_map_set_1):
     ) == get_fwhm(freq="f090", instrument="SOSAT")
 
 
-# ─── database reader fixtures ─────────────────────────────────────────────────
-
-
-@pytest.fixture
-def db_result(separate_map_set_1):
-    """Mock DepthOneMapTable row pointing at the tmp FITS files from conftest."""
-    paths = separate_map_set_1
-    r = MagicMock()
-    r.map_id = "11111111-1111-1111-1111-111111111111"
-    r.map_path = paths["map"]
-    r.ivar_path = paths["ivar"]
-    r.rho_path = paths["rho"]
-    r.kappa_path = paths["kappa"]
-    # reuse rho/kappa as stand-ins for flux/snr (same shape, valid FITS)
-    r.flux_path = paths["rho"]
-    r.snr_path = paths["kappa"]
-    r.mean_time_path = paths["time"]
-    r.start_time = Time.now().unix - 3600
-    r.stop_time = Time.now().unix
-    r.frequency = "f090"
-    r.tube_slot = "pa5"
-    return r
-
-
-@pytest.fixture
-def mock_session(db_result):
-    """Mock DB session returning one db_result row."""
-    session = MagicMock()
-    session.execute.return_value.scalars.return_value.all.return_value = [db_result]
-    return session
-
-
-@pytest.fixture
-def mock_mapcat(mock_session):
-    """
-    Patches mapcat_settings, check_if_processed, and set_processing_start so
-    that map_list() runs without a real database connection.
-    """
-    with (
-        patch("sotrplib.maps.database.mapcat_settings") as settings,
-        patch("sotrplib.maps.database.check_if_processed", return_value=False),
-        patch("sotrplib.maps.database.set_processing_start"),
-    ):
-        settings.database_name = "test_db"
-        settings.depth_one_parent = Path("/")
-        # session() is used as a context manager; wire __enter__ to our mock
-        settings.session.return_value.__enter__.return_value = mock_session
-        yield settings
-
-
 # ─── abstract base ────────────────────────────────────────────────────────────
 
 
@@ -501,7 +451,9 @@ def test_check_if_processed_false_for_permafail():
 def test_check_if_processed_true_for_recent_processing():
     from sotrplib.maps.database import check_if_processed
 
-    session = _session_with_status("processing", processing_start=Time.now().unix)
+    session = _session_with_status(
+        "processing", processing_start=Time.now().to_datetime()
+    )
     assert (
         check_if_processed("11111111-1111-1111-1111-111111111111", session=session)
         is True
@@ -513,7 +465,7 @@ def test_check_if_processed_false_for_stale_processing():
 
     from sotrplib.maps.database import check_if_processed
 
-    stale_start = Time.now().unix - 3 * 3600
+    stale_start = (Time.now() - TimeDelta(3 * 3600, format="sec")).to_datetime()
     session = _session_with_status("processing", processing_start=stale_start)
     assert (
         check_if_processed(

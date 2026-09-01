@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from astropy import units as u
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from pixell import enmap
 
 
@@ -216,8 +216,8 @@ def db_result(separate_map_set_1):
     r.flux_path = paths["rho"]
     r.snr_path = paths["kappa"]
     r.mean_time_path = paths["time"]
-    r.start_time = Time.now().unix - 3600
-    r.stop_time = Time.now().unix
+    r.start_time = Time.now() - TimeDelta(3600, format="sec")
+    r.stop_time = Time.now()
     r.frequency = "f090"
     r.tube_slot = "pa5"
     return r

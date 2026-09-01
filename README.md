@@ -190,6 +190,13 @@ Essentially this is just dictionaries of lists of MeasuredSource objects (and In
 
 These MeasuredSource objects contain information about their measurement and even cutouts.
 
+A `MeasuredSource`/`RegisteredSource` may carry a list of `CrossMatch` objects (see
+`sotrplib/sources/sources.py`) recording catalog matches. When looking up a source by
+identifier (e.g. joining against socat or lightcurvedb), use `CrossMatch.catalog_idx`,
+not `CrossMatch.source_id` -- `catalog_idx` is the catalog's unique, stable identifier
+(e.g. a socat UUID), while `source_id` is sometimes just a human-readable name (e.g.
+"Ceres" for SSO/monitored sources) and is not guaranteed to be unique.
+
 
 ### Running with prefect
 

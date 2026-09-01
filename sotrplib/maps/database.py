@@ -6,6 +6,7 @@ import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+import uuid7
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
@@ -30,6 +31,7 @@ from sqlalchemy import tuple_
 from sqlmodel import select
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.sources.sources import RegisteredSource
 
@@ -74,7 +76,7 @@ class MapCatDatabaseReader(ABC):
     number_to_read: int | None = 1
     start_time: Time | None = None
     end_time: Time | None = None
-    map_ids: list[str] | None = None
+    map_ids: list[UUID7] | None = None
     sources: list[RegisteredSource] | None = None
     sky_box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
@@ -88,7 +90,7 @@ class MapCatDatabaseReader(ABC):
         number_to_read: int | None = None,
         start_time: Time | None = None,
         end_time: Time | None = None,
-        map_ids: list[str] | None = None,
+        map_ids: list[UUID7] | None = None,
         sources: list[RegisteredSource] | None = None,
         frequency: str | None = None,
         array: str | None = None,
@@ -151,14 +153,22 @@ class MapCatDatabaseReader(ABC):
             # between adjacent windows (e.g. weekly coadd windows); bucketing
             # by start_time alone can't, since every map has exactly one.
             if self.start_time is not None:
-                query = query.where(DepthOneMapTable.start_time >= self.start_time.unix)
+                query = query.where(
+                    DepthOneMapTable.start_time >= self.start_time.to_datetime()
+                )
             if self.end_time is not None:
-                query = query.where(DepthOneMapTable.start_time < self.end_time.unix)
+                query = query.where(
+                    DepthOneMapTable.start_time < self.end_time.to_datetime()
+                )
         else:
             if self.start_time is not None:
-                query = query.where(DepthOneMapTable.stop_time >= self.start_time.unix)
+                query = query.where(
+                    DepthOneMapTable.stop_time >= self.start_time.to_datetime()
+                )
             if self.end_time is not None:
-                query = query.where(DepthOneMapTable.start_time <= self.end_time.unix)
+                query = query.where(
+                    DepthOneMapTable.start_time <= self.end_time.to_datetime()
+                )
 
         if self.map_ids:
             query = query.where(
@@ -255,8 +265,8 @@ class IntensityMapReader(MapCatDatabaseReader):
             inverse_variance_filename=mapcat_settings.depth_one_parent
             / result.ivar_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=Time(result.start_time, format="unix"),
-            end_time=Time(result.stop_time, format="unix"),
+            start_time=Time(result.start_time),
+            end_time=Time(result.stop_time),
             sky_box=self.sky_box,
             intensity_units=self.map_units,
             frequency=result.frequency,
@@ -277,8 +287,8 @@ class RhoKappaMapReader(MapCatDatabaseReader):
             rho_filename=mapcat_settings.depth_one_parent / result.rho_path,
             kappa_filename=mapcat_settings.depth_one_parent / result.kappa_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=Time(result.start_time, format="unix"),
-            end_time=Time(result.stop_time, format="unix"),
+            start_time=Time(result.start_time),
+            end_time=Time(result.stop_time),
             sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
@@ -299,8 +309,8 @@ class FluxMapReader(MapCatDatabaseReader):
             flux_filename=mapcat_settings.depth_one_parent / result.flux_path,
             snr_filename=mapcat_settings.depth_one_parent / result.snr_path,
             time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
-            start_time=Time(result.start_time, format="unix"),
-            end_time=Time(result.stop_time, format="unix"),
+            start_time=Time(result.start_time),
+            end_time=Time(result.stop_time),
             sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
@@ -339,9 +349,9 @@ def _get_processing_row(
 
 
 def check_if_permafailed(
-    map_id: str | uuid.UUID | None = None,
+    map_id: str | UUID7 | None = None,
     *,
-    coadd_id: str | uuid.UUID | None = None,
+    coadd_id: str | UUID7 | None = None,
     session=None,
 ) -> bool:
     """
@@ -359,9 +369,9 @@ def check_if_permafailed(
 
 
 def check_if_processed(
-    map_id: str | uuid.UUID | None = None,
+    map_id: str | UUID7 | None = None,
     *,
-    coadd_id: str | uuid.UUID | None = None,
+    coadd_id: str | UUID7 | None = None,
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
@@ -376,8 +386,8 @@ def check_if_processed(
     if row.processing_status == completed_status:
         return True
     if row.processing_status == processing_status and (
-        Time.now().unix - row.processing_start
-    ) < stale_limit.to_value("s"):
+        Time.now().to_datetime() - row.processing_start
+    ).total_seconds() < stale_limit.to_value("s"):
         return True
     return False
 
@@ -397,10 +407,14 @@ def set_processing_start(
         # construction (unlike plain Pydantic models), so a string map_id
         # would otherwise be stored as-is and break at INSERT time when
         # SQLAlchemy's Uuid bind processor expects a real uuid.UUID.
+        # processing_status_id has no default in mapcat's schema, so it
+        # must be generated explicitly here.
         row = TimeDomainProcessingTable(
-            map_id=_to_uuid(map_id), coadd_id=_to_uuid(coadd_id)
+            processing_status_id=uuid7.create(),
+            map_id=_to_uuid(map_id),
+            coadd_id=_to_uuid(coadd_id),
         )
-    row.processing_start = Time.now().unix
+    row.processing_start = Time.now().to_datetime()
     row.processing_status = "processing"
     session.add(row)
     session.commit()
@@ -504,7 +518,7 @@ def set_processing_end(
         raise ValueError(
             f"No processing_start status found for {target} when trying to set processing_end."
         )
-    row.processing_end = Time.now().unix
+    row.processing_end = Time.now().to_datetime()
     row.processing_status = status
     session.add(row)
     session.commit()
@@ -567,9 +581,12 @@ def register_coadd(
         mean_time_path=_rel("time_mean"),
         end_time_path=_rel("time_last"),
         frequency=coadd.frequency,
-        ctime=0.5 * (coadd.observation_start.unix + coadd.observation_end.unix),
-        start_time=coadd.observation_start.unix,
-        stop_time=coadd.observation_end.unix,
+        ctime=(
+            coadd.observation_start
+            + (coadd.observation_end - coadd.observation_start) / 2
+        ).to_datetime(),
+        start_time=coadd.observation_start.to_datetime(),
+        stop_time=coadd.observation_end.to_datetime(),
     )
 
     if map_ids:

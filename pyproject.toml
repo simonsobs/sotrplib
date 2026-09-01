@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sotrplib"
-version = "0.0.3"
+version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "pixell",
@@ -49,6 +49,9 @@ prefect = [
 [project.scripts]
 "sotrp" = "sotrplib.cli:main"
 "sotrp-coadd" = "sotrplib.coadd_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sotrplib*"]
 
 [tool.ruff.lint]
 extend-select = ["I"]

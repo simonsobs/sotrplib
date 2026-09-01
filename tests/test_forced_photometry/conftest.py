@@ -197,9 +197,15 @@ def create_test_maps(mapset_with_sources):
             mean_time_path=base + "_time.fits",
             tube_slot="pa5",
             frequency=freq,
-            ctime=tstamp,
-            start_time=int(np.min(cur_map.time_mean)),
-            stop_time=int(np.max(cur_map.time_mean)),
+            ctime=Time(
+                np.mean(cur_map.time_mean), format="unix", scale="utc"
+            ).to_datetime(),
+            start_time=Time(
+                np.min(cur_map.time_mean), format="unix", scale="utc"
+            ).to_datetime(),
+            stop_time=Time(
+                np.max(cur_map.time_mean), format="unix", scale="utc"
+            ).to_datetime(),
         )
         d1tables.append(data)
 
