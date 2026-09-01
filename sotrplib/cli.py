@@ -46,6 +46,8 @@ def main():
     )
     log = structlog.get_logger()
 
+    # reader = config.maps.to_generator(log=log)
+    # maps = list(reader)
     maps = None
     if isinstance(config.maps, MapGeneratorConfig):
         maps = config.maps.to_generator(log=log)

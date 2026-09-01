@@ -161,84 +161,90 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         catalogs: list[SourceCatalog],
         pointing_model: PointingModel | None = None,
     ) -> list[MeasuredSource]:
-        fwhm = get_fwhm(
-            freq=input_map.frequency,
-            arr=input_map.array,
-            instrument=input_map.instrument,
-        )
+        try:
+            fwhm = get_fwhm(
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            )
 
-        source_list = list(
-            itertools.chain(
-                *[
-                    c.forced_photometry_sources(
-                        input_map, flux_lower_limit=self.min_flux
-                    )
-                    for c in catalogs
-                ]
-            )
-        )
-        self.log.info(
-            "TwoDGaussianFitter.force",
-            mode=self.mode,
-            n_sources=len(source_list),
-            thumbnail_half_width=self.thumbnail_half_width,
-            fwhm=fwhm,
-            reproject_thumbnails=self.reproject_thumbnails,
-            allowable_center_offset=self.allowable_center_offset,
-            goodness_of_fit_threshold=self.goodness_of_fit_threshold,
-            min_flux=self.min_flux,
-        )
-
-        if len(source_list) == 0:
-            return []
-        ## check if there are any sources within the thumbnail_half_width
-        ## and above near_source_rel_flux_limit * pointing_source.flux
-        has_nearby_sources = [False] * len(source_list)
-        if self.near_source_rel_flux_limit is not None and len(source_list) > 1:
-            all_coords = SkyCoord(
-                ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
-            )
-            valid = (
-                np.isfinite(all_coords.ra.deg)
-                & np.isfinite(all_coords.dec.deg)
-                & np.array([s.flux is not None for s in source_list])
-            )
-            valid_idx = np.where(valid)[0]
-            if len(valid_idx) > 1:
-                coords = all_coords[valid_idx]
-                fluxes = (
-                    np.array([source_list[i].flux.to_value(u.Jy) for i in valid_idx])
-                    * u.Jy
+            source_list = list(
+                itertools.chain(
+                    *[
+                        c.forced_photometry_sources(
+                            input_map, flux_lower_limit=self.min_flux
+                        )
+                        for c in catalogs
+                    ]
                 )
-                nidx, ndist, _ = coords.match_to_catalog_sky(coords, nthneighbor=2)
-                flagged = valid_idx[
-                    (ndist <= self.thumbnail_half_width * (2**-0.5))
-                    & (fluxes[nidx] >= fluxes * self.near_source_rel_flux_limit)
-                ]
-                for i in flagged:
-                    has_nearby_sources[i] = True
+            )
+            self.log.info(
+                "TwoDGaussianFitter.force",
+                mode=self.mode,
+                n_sources=len(source_list),
+                thumbnail_half_width=self.thumbnail_half_width,
+                fwhm=fwhm,
+                reproject_thumbnails=self.reproject_thumbnails,
+                allowable_center_offset=self.allowable_center_offset,
+                goodness_of_fit_threshold=self.goodness_of_fit_threshold,
+                min_flux=self.min_flux,
+            )
 
-        self.log.info(
-            "TwoDGaussianFitter.force",
-            flagged_nearby_sources=sum(has_nearby_sources),
-        )
+            if len(source_list) == 0:
+                return []
+            ## check if there are any sources within the thumbnail_half_width
+            ## and above near_source_rel_flux_limit * pointing_source.flux
+            has_nearby_sources = [False] * len(source_list)
+            if self.near_source_rel_flux_limit is not None and len(source_list) > 1:
+                all_coords = SkyCoord(
+                    ra=[s.ra for s in source_list], dec=[s.dec for s in source_list]
+                )
+                valid = (
+                    np.isfinite(all_coords.ra.deg)
+                    & np.isfinite(all_coords.dec.deg)
+                    & np.array([s.flux is not None for s in source_list])
+                )
+                valid_idx = np.where(valid)[0]
+                if len(valid_idx) > 1:
+                    coords = all_coords[valid_idx]
+                    fluxes = (
+                        np.array(
+                            [source_list[i].flux.to_value(u.Jy) for i in valid_idx]
+                        )
+                        * u.Jy
+                    )
+                    nidx, ndist, _ = coords.match_to_catalog_sky(coords, nthneighbor=2)
+                    flagged = valid_idx[
+                        (ndist <= self.thumbnail_half_width * (2**-0.5))
+                        & (fluxes[nidx] >= fluxes * self.near_source_rel_flux_limit)
+                    ]
+                    for i in flagged:
+                        has_nearby_sources[i] = True
 
-        fit_sources = gaussian_fit(
-            input_map,
-            source_list=source_list,
-            fit_method=self.mode,
-            flux_lim_fit_centroid=self.flux_limit_centroid,
-            thumbnail_half_width=self.thumbnail_half_width,
-            fwhm=fwhm,
-            reproject_thumb=self.reproject_thumbnails,
-            pointing_model=pointing_model,
-            allowable_center_offset=self.allowable_center_offset,
-            flags={"nearby_source": has_nearby_sources},
-            goodness_of_fit_threshold=self.goodness_of_fit_threshold,
-            log=self.log,
-        )
+                self.log.info(
+                    "TwoDGaussianFitter.force",
+                    flagged_nearby_sources=sum(has_nearby_sources),
+                )
 
-        return fit_sources
+                fit_sources = gaussian_fit(
+                    input_map,
+                    source_list=source_list,
+                    fit_method=self.mode,
+                    flux_lim_fit_centroid=self.flux_limit_centroid,
+                    thumbnail_half_width=self.thumbnail_half_width,
+                    fwhm=fwhm,
+                    reproject_thumb=self.reproject_thumbnails,
+                    pointing_model=pointing_model,
+                    allowable_center_offset=self.allowable_center_offset,
+                    flags={"nearby_source": has_nearby_sources},
+                    goodness_of_fit_threshold=self.goodness_of_fit_threshold,
+                    log=self.log,
+                )
+
+                return fit_sources
+        finally:
+            if hasattr(input_map, "_kappa_for_rejection"):
+                del input_map._kappa_for_rejection
 
 
 class TwoDGaussianPointingFitter(ForcedPhotometryProvider):

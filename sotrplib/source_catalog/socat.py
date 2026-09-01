@@ -12,8 +12,8 @@ from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
 from pixell import utils as pixell_utils
 from socat.client.settings import SOCatClientSettings
-from socat.core import SourceGenerator
 from socat.database import SolarSystemObject
+from socat.generator import SourceGenerator
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -77,11 +77,8 @@ class SOCat(SourceCatalog):
                 lower_left=sky_box[0], upper_right=sky_box[1]
             )
         else:
-            source_generators = self.catalog.get_box(
-                lower_left=sky_box[0],
-                upper_right=sky_box[1],
-                t_min=t - _TIME_RANGE_PADDING,
-                t_max=t + _TIME_RANGE_PADDING,
+            source_generators = self.catalog.get_box_fixed(
+                lower_left=sky_box[0], upper_right=sky_box[1]
             )
 
         sources = [
@@ -89,6 +86,24 @@ class SOCat(SourceCatalog):
             for s in (self._sg_to_registered(sg, t) for sg in source_generators)
             if s is not None
         ]
+
+        """    ## TODO: need to update for boxes which need to be broken in two.
+    def get_sources_in_box(self, box: list[SkyCoord] | None = None):
+        self.log = self.log.bind(initial_box=box)
+        if box is None:
+            box = [
+                SkyCoord(ra=0.0 * u.deg, dec=-90.0 * u.deg),
+                SkyCoord(ra=359.999 * u.deg, dec=90.0 * u.deg),
+            ]
+        if box[0].ra > box[1].ra and box[0].dec < box[1].dec:
+            ## 0 is lower left corner and 1 is upper right corner
+            ## ra increases to the left.
+            box = [box[1], box[0]]
+
+        sources_in_map = self.catalog.get_box_fixed(
+            lower_left=box[0],
+            upper_right=box[1],"""
+
         self.log.debug(
             "socat.get_sources_in_box",
             sky_box=sky_box,
@@ -137,14 +152,15 @@ class SOCat(SourceCatalog):
             t_max = None
 
         # Get sources within the map's sky box and a padded time range around the observation.
-        source_generators = self.catalog.get_box(
+        source_generators = self.catalog.get_box_fixed(
             lower_left=input_map.sky_box[0],
             upper_right=input_map.sky_box[1],
-            t_min=t_min,
-            t_max=t_max,
         )
-        if monitored:
-            source_generators = [sg for sg in source_generators if sg.source.monitored]
+        print("NUMBER FROM SOCAT:", len(source_generators))
+        # source_generators = [SourceGenerator(source=x) for x in source_generators]
+        #   if monitored:
+        #   print("Over here", dir(source_generators[0]))
+        #   source_generators = [sg for sg in source_generators if sg.monitored]
 
         all_sources = [
             s
@@ -159,6 +175,7 @@ class SOCat(SourceCatalog):
             )
             if s is not None
         ]
+        print("NUMBER AFTER CONVERSION:", len(all_sources))
 
         if not all_sources:
             self.log.warning(
@@ -173,6 +190,7 @@ class SOCat(SourceCatalog):
         )
 
         inside, _ = input_map.filter_sources(coords)
+        print("NUMBER INSIDE MAP:", np.sum(inside))
         if not np.any(inside):
             self.log.warning(
                 "socat.get_sources_in_map.no_sources_in_map",
@@ -328,31 +346,45 @@ class SOCat(SourceCatalog):
         sets the source type to "sso" if the source is a SolarSystemObject,
         otherwise uses the source_type attribute if it exists, otherwise "unknown".
         """
-        try:
-            is_sso = isinstance(sg.source, SolarSystemObject)
-            position, flux = sg.at_time(t=t)
-        except (AttributeError, ValueError):
-            return None
+        if hasattr(sg, "source"):
+            try:
+                is_sso = isinstance(sg.source, SolarSystemObject)
+                position, flux = sg.at_time(t=t)
+                source_name = sg.source.name
+                source_id = sg.source.sso_id if is_sso else sg.source.source_id
+            except (AttributeError, ValueError):
+                return None
+        # fix ^^ later, sso object not necessary for agn lc here (was not used in previously made lc)
+
+        else:
+            # RegisteredFixedSource behavior
+            is_sso = False
+            position = sg.position
+            flux = sg.flux
+            source_name = sg.name
+            source_id = sg.source_id
+
         ## couple lines to get source type.
         ## not yet included in socat
         if is_sso:
             source_type = "sso"
-        elif hasattr(sg.source, "source_type"):
-            source_type = sg.source.source_type
+        elif hasattr(sg, "source_type"):
+            source_type = sg.source_type
         else:
             source_type = "unknown"
         ## redundant for now.
-        catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
+        #  catalog_idx = sg.source.sso_id if is_sso else sg.source.source_id
+        catalog_idx = source_id
         return RegisteredSource(
             ra=position.ra,
             dec=position.dec,
             flux=flux,
-            source_id=sg.source.name,
+            source_id=source_name,
             source_type=source_type,
             observation_mean_time=t,
             crossmatches=[
                 CrossMatch(
-                    source_id=sg.source.name,
+                    source_id=source_name,
                     source_type=source_type,
                     probability=1.0,
                     angular_separation=0.0 * u.deg,
@@ -387,8 +419,15 @@ class SOCat(SourceCatalog):
         well below position_tolerance.
         """
         current = self._sg_to_registered(sg, t_initial)
-        if current is None or not isinstance(sg.source, SolarSystemObject):
+        if current is None:
             return current
+        if not hasattr(sg, "source"):
+            return current
+        if not isinstance(sg.source, SolarSystemObject):
+            return current
+        #  if current is None or not isinstance(sg.source, SolarSystemObject):
+        # return current
+
         for _ in range(max_iterations):
             t = input_map.get_obs_time(SkyCoord(ra=current.ra, dec=current.dec))
             if t is None:

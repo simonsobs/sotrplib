@@ -400,6 +400,7 @@ def gaussian_fit(
     log = log.bind(func_name="lmfit_2d_gaussian_fit")
     preamble = "sources.fitting.lmfit_2d_gaussian_fit."
     fit_sources = []
+    kappa_thresh, frac10, frac40 = input_map.kappa_thresholds
     for i in tqdm(
         range(len(source_list)),
         desc="Cutting thumbnails and fitting sources w 2D Gaussian (lmfit)",
@@ -562,6 +563,22 @@ def gaussian_fit(
         forced_source.err_fwhm_ra = fit.fwhm_ra_err
         forced_source.err_fwhm_dec = fit.fwhm_dec_err
         forced_source.fit_params = fit.model_dump()
+
+        accepted, reject_reason = input_map.reject_badmaps(
+            source_positions=SkyCoord(
+                ra=source.ra,
+                dec=source.dec,
+            ),
+            time=t_mean,
+            kappa_thresh=kappa_thresh,
+            frac_kappa_thresh10=frac10,
+            frac_kappa_thresh40=frac40,
+        )
+        forced_source.badmap_flag = bool(
+            accepted
+        )  # if true, then reject = 1 and the source was not flagged. If false, then flagged badmap for rejection (see reject_reason)
+        forced_source.badmap_reason = reject_reason
+
         fit_sources.append(forced_source)
 
     n_successful = 0

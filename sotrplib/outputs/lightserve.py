@@ -4,7 +4,7 @@ Output data directly to lightserve.
 
 import httpx
 from lightcurvedb.models.cutout import Cutout
-from lightcurvedb.models.flux import FluxMeasurement
+from lightcurvedb.models.flux import FluxMeasurementCreate
 from soauth.toolkit.client import SOAuth
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -71,7 +71,7 @@ class LightServeOutput(SourceOutput):
                 )
                 continue
 
-            fm = FluxMeasurement(
+            fm = FluxMeasurementCreate(
                 frequency=90,
                 module="i1",
                 source_id=socat_to_internal[int(source.crossmatches[0].source_id)],
