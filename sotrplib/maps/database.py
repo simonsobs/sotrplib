@@ -398,7 +398,7 @@ def set_processing_end(map_id: UUID7, session=None):
     if session is None:
         session = mapcat_settings.session()
     query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.processing_status_id == map_id
+        TimeDomainProcessingTable.map_id == map_id
     )
     session_result = session.execute(query).one_or_none()
     if session_result is None:
