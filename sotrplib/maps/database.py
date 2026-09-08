@@ -212,11 +212,15 @@ class IntensityMapReader(MapCatDatabaseReader):
     _valid_unit_equivalent = u.K
 
     def _build_map(self, result):
+        mean_time_path = result.mean_time_path
+        if mean_time_path is None:
+            mean_time_path = result.map_path.removesuffix("_map.fits") + "_time.fits"
+
         return IntensityAndInverseVarianceMap(
             intensity_filename=mapcat_settings.depth_one_parent / result.map_path,
             inverse_variance_filename=mapcat_settings.depth_one_parent
             / result.ivar_path,
-            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            time_filename=mapcat_settings.depth_one_parent / mean_time_path,
             start_time=Time(result.start_time),
             end_time=Time(result.stop_time),
             sky_box=self.sky_box,
