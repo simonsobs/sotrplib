@@ -296,7 +296,8 @@ def check_if_processed(
         if (r.processing_status == completed_status) | (
             r.processing_status == processing_status
         ) & (
-            (Time.now().to_datetime() - r.processing_start) < stale_limit.to_value("s")
+            (Time.now().to_datetime() - r.processing_start).total_seconds()
+            < stale_limit.to_value("s")
         ):
             return True
     return False
