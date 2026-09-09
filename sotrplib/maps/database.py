@@ -212,11 +212,15 @@ class IntensityMapReader(MapCatDatabaseReader):
     _valid_unit_equivalent = u.K
 
     def _build_map(self, result):
+        mean_time_path = result.mean_time_path
+        if mean_time_path is None:
+            mean_time_path = result.map_path.removesuffix("_map.fits") + "_time.fits"
+
         return IntensityAndInverseVarianceMap(
             intensity_filename=mapcat_settings.depth_one_parent / result.map_path,
             inverse_variance_filename=mapcat_settings.depth_one_parent
             / result.ivar_path,
-            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            time_filename=mapcat_settings.depth_one_parent / mean_time_path,
             start_time=Time(result.start_time),
             end_time=Time(result.stop_time),
             sky_box=self.sky_box,
@@ -292,7 +296,8 @@ def check_if_processed(
         if (r.processing_status == completed_status) | (
             r.processing_status == processing_status
         ) & (
-            (Time.now().to_datetime() - r.processing_start) < stale_limit.to_value("s")
+            (Time.now().to_datetime() - r.processing_start).total_seconds()
+            < stale_limit.to_value("s")
         ):
             return True
     return False
@@ -394,7 +399,7 @@ def set_processing_end(map_id: UUID7, session=None):
     if session is None:
         session = mapcat_settings.session()
     query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.processing_status_id == map_id
+        TimeDomainProcessingTable.map_id == map_id
     )
     session_result = session.execute(query).one_or_none()
     if session_result is None:
