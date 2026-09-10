@@ -450,6 +450,7 @@ def gaussian_fit(
                     source_type=source.source_type,
                     probability=1.0,  ## todo: set properly
                     catalog_name=source.catalog_name,
+                    catalog_idx=source.source_id,
                     flux=source.flux,
                     angular_separation=None,
                 )
