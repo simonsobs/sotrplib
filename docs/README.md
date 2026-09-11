@@ -8,3 +8,4 @@ the individual pages below for more information.
 - [Pipeline Overview](overview.md)
 - [Configuring the Pipeline](configuration.md)
 - [Running on ACT Data](act.md)
+- [Viewing Output with LightServe / LightView](lightcurve_viewer.md)
