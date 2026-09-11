@@ -351,21 +351,31 @@ class ProcessableMap(ABC):
         """
         x, y = int(pix[0]), int(pix[1])
 
+        # A pixel with zero hits was never accumulated into by the mapmaker, so its
+        # time-map entries are left at their fill value of 0 -- a valid-looking unix
+        # timestamp (1970-01-01) rather than a missing one. Treat zero-hit pixels as
+        # having no time data instead of trusting that fill value.
+        has_hits = self.hits is not None and self.hits[x, y] > 0
+
         t_start = (
             Time(float(self.time_first[x, y]), format="unix")
-            if self.time_first is not None
-            else Time(self.observation_start)
+            if self.time_first is not None and has_hits
+            else (Time(self.observation_start) if self.time_first is None else None)
         )
         t_mean = (
             Time(float(self.time_mean[x, y]), format="unix")
-            if self.time_mean is not None
-            else self.observation_start
-            + (self.observation_end - self.observation_start) / 2
+            if self.time_mean is not None and has_hits
+            else (
+                self.observation_start
+                + (self.observation_end - self.observation_start) / 2
+                if self.time_mean is None
+                else None
+            )
         )
         t_end = (
             Time(float(self.time_last[x, y]), format="unix")
-            if self.time_last is not None
-            else self.observation_end
+            if self.time_last is not None and has_hits
+            else (self.observation_end if self.time_last is None else None)
         )
         return t_start, t_mean, t_end
 

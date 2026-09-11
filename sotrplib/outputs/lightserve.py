@@ -76,6 +76,14 @@ class LightServeOutput(SourceOutput):
                 )
                 continue
 
+            if source.observation_mean_time is None:
+                self.log.warning(
+                    "lightserve.output.skipping_source_no_observation_time",
+                    ra=source.ra.to_value("deg"),
+                    dec=source.dec.to_value("deg"),
+                )
+                continue
+
             fm = FluxMeasurement(
                 measurement_id=uuid7.create(),
                 frequency=90,
