@@ -329,6 +329,46 @@ class ProcessableMap(ABC):
         """
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
 
+    def _gap_filled_pixel_value(self, arr: ndmap, x: int, y: int) -> float | None:
+        """
+        Hits-weighted average of `arr` over a 3x3 window around (x, y), expanding to
+        5x5 if the smaller window has no hit pixels. Returns None if neither window
+        has any valid (hits > 0) neighbor -- a genuine coverage boundary, rather than
+        a narrow scan gap that the matched filter already smooths over for flux/SNR
+        but that the (unfiltered) time map still shows as a hard zero.
+        """
+        dim0, dim1 = self.hits.shape[-2:]
+        for radius in (1, 2):
+            x0, x1 = max(0, x - radius), min(dim0, x + radius + 1)
+            y0, y1 = max(0, y - radius), min(dim1, y + radius + 1)
+            hit_window = self.hits[x0:x1, y0:y1]
+            weight_sum = hit_window.sum()
+            if weight_sum > 0:
+                value_window = arr[x0:x1, y0:y1]
+                return float((value_window * hit_window).sum() / weight_sum)
+        return None
+
+    def _resolve_pixel_time(
+        self, arr: ndmap | None, x: int, y: int, fallback: Time
+    ) -> Time | None:
+        """
+        Time for pixel (x, y) in time-map `arr`. A pixel with zero hits was never
+        accumulated into by the mapmaker, so its entry is left at a fill value of 0
+        -- a valid-looking unix timestamp (1970-01-01) rather than a missing one --
+        so this falls back to a local hits-weighted neighbor average (see
+        `_gap_filled_pixel_value`) instead of trusting it directly. Returns
+        `fallback` if there's no time map at all, or None if the pixel has no
+        valid time even after gap-filling.
+        """
+        if arr is None:
+            return fallback
+
+        has_hits = self.hits is not None and self.hits[x, y] > 0
+        value = (
+            float(arr[x, y]) if has_hits else self._gap_filled_pixel_value(arr, x, y)
+        )
+        return Time(value, format="unix") if value is not None else None
+
     def get_pixel_times(
         self, pix: tuple[int, int]
     ) -> tuple[Time | None, Time | None, Time | None]:
@@ -351,31 +391,18 @@ class ProcessableMap(ABC):
         """
         x, y = int(pix[0]), int(pix[1])
 
-        # A pixel with zero hits was never accumulated into by the mapmaker, so its
-        # time-map entries are left at their fill value of 0 -- a valid-looking unix
-        # timestamp (1970-01-01) rather than a missing one. Treat zero-hit pixels as
-        # having no time data instead of trusting that fill value.
-        has_hits = self.hits is not None and self.hits[x, y] > 0
-
-        t_start = (
-            Time(float(self.time_first[x, y]), format="unix")
-            if self.time_first is not None and has_hits
-            else (Time(self.observation_start) if self.time_first is None else None)
+        t_start = self._resolve_pixel_time(
+            self.time_first, x, y, fallback=Time(self.observation_start)
         )
-        t_mean = (
-            Time(float(self.time_mean[x, y]), format="unix")
-            if self.time_mean is not None and has_hits
-            else (
-                self.observation_start
-                + (self.observation_end - self.observation_start) / 2
-                if self.time_mean is None
-                else None
-            )
+        t_mean = self._resolve_pixel_time(
+            self.time_mean,
+            x,
+            y,
+            fallback=self.observation_start
+            + (self.observation_end - self.observation_start) / 2,
         )
-        t_end = (
-            Time(float(self.time_last[x, y]), format="unix")
-            if self.time_last is not None and has_hits
-            else (self.observation_end if self.time_last is None else None)
+        t_end = self._resolve_pixel_time(
+            self.time_last, x, y, fallback=self.observation_end
         )
         return t_start, t_mean, t_end
 
