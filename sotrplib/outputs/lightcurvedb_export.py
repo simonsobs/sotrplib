@@ -1,7 +1,7 @@
 """
 Convert a `pickle_to_parquet`-flattened table into lightcurvedb's ingest
-schema, and (optionally) actually push it through `Backend.sources` /
-`Backend.fluxes.ingest_dataframe` to prove the shape is correct.
+schema, and (optionally) actually push it through a lightcurvedb `Backend`
+to prove the shape is correct.
 
 `forced_photometry` and `transient_candidates` rows are eligible -- both
 resolve to a stable identity to key a lightcurvedb `Source` on:
@@ -15,11 +15,17 @@ resolve to a stable identity to key a lightcurvedb `Source` on:
     own auto-generated transient name (e.g. "SO-T J023444+0757.9").
 `source_candidates`/`noise_candidates` rows have neither and are skipped.
 
-lightcurvedb's `flux_measurements` table wants exactly:
-    measurement_id (uuid, optional -- backends fill it in), frequency (int),
-    module (str), source_id (uuid), time (timestamptz), ra, dec (deg),
-    ra_uncertainty, dec_uncertainty (deg, nullable), flux, flux_err (Jy),
-    extra (nullable json)
+Flux measurements (and, where a thumbnail survived flattening, cutouts) are
+built as client-side objects with a `measurement_id` generated up front via
+`uuid7`, and pushed through `Backend.fluxes.create_batch`/
+`Backend.cutouts.create_batch` rather than `Backend.fluxes.ingest_dataframe`
+-- that bulk path generates and discards its own `measurement_id`s
+server-side, which would make it impossible to link a `Cutout` to the
+measurement it belongs to. This mirrors how
+`sotrplib.outputs.lightcurvedb.LightcurveDBOutput` does it for live runs.
+A row only gets a `Cutout` if `pickle_to_parquet.py` was run with
+`--keep-thumbnails` *and* that particular source had thumbnail data.
+
 `source_id` must be a lightcurvedb `Source.source_id`, not sotrplib's own
 `source_id` string (a catalog name like "ACT-S J0058.5+0620") -- so sources
 have to be registered (or looked up) first and their name mapped to the
@@ -30,11 +36,13 @@ import argparse as ap
 import asyncio
 import json
 import sqlite3
-from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
+import uuid7
 from lightcurvedb.config import Settings as LightcurveDBSettings
+from lightcurvedb.models.cutout import Cutout
+from lightcurvedb.models.flux import FluxMeasurement
 from lightcurvedb.models.source import Source
 from structlog import get_logger
 
@@ -131,48 +139,129 @@ def build_lightcurvedb_sources(
     return sources, name_to_lc_id
 
 
-def build_flux_measurement_frame(
+def build_flux_measurements(
     df: pd.DataFrame, name_to_lc_id: dict[str, str]
-) -> pd.DataFrame:
-    """Reshape an eligible-category slice of a `pickle_to_parquet` table
-    (see `resolve_source_identity`) into lightcurvedb's flux-measurement
-    ingest schema."""
+) -> list[FluxMeasurement]:
+    """One `FluxMeasurement` per eligible row (see `resolve_source_identity`),
+    with a `measurement_id` generated here (rather than left to the backend)
+    so `build_cutouts` can link a matching `Cutout` to it by ID."""
     missing = set(df["_identity_name"]) - set(name_to_lc_id)
     if missing:
         raise ValueError(f"{len(missing)} source_id(s) have no lightcurvedb mapping")
 
-    out = pd.DataFrame(
-        {
-            "source_id": df["_identity_name"].map(name_to_lc_id),
-            "frequency": df["frequency"].round().astype(int),
-            "module": df["array"],
-            "time": pd.to_datetime(
-                df["observation_mean_time_unix"], unit="s", utc=True
-            ),
-            "ra": df["ra"].astype(float),
-            "dec": df["dec"].astype(float),
-            "ra_uncertainty": df.get("err_ra"),
-            "dec_uncertainty": df.get("err_dec"),
-            "flux": df["flux"].astype(float) / 1000.0,  # mJy -> Jy
-            "flux_err": df["err_flux"].astype(float) / 1000.0,  # mJy -> Jy
-            "extra": None,
-        }
+    err_ra_col = df.get("err_ra", pd.Series([None] * len(df), index=df.index))
+    err_dec_col = df.get("err_dec", pd.Series([None] * len(df), index=df.index))
+
+    measurements = []
+    for (
+        identity_name,
+        frequency,
+        module,
+        time_unix,
+        ra,
+        dec,
+        err_ra,
+        err_dec,
+        flux,
+        err_flux,
+    ) in zip(
+        df["_identity_name"],
+        df["frequency"],
+        df["array"],
+        df["observation_mean_time_unix"],
+        df["ra"],
+        df["dec"],
+        err_ra_col,
+        err_dec_col,
+        df["flux"],
+        df["err_flux"],
+    ):
+        measurements.append(
+            FluxMeasurement(
+                measurement_id=uuid7.create(),
+                frequency=round(frequency),
+                module=module,
+                source_id=name_to_lc_id[identity_name],
+                time=pd.Timestamp(time_unix, unit="s", tz="utc").to_pydatetime(),
+                ra=float(ra),
+                dec=float(dec),
+                ra_uncertainty=float(err_ra) if pd.notna(err_ra) else None,
+                dec_uncertainty=float(err_dec) if pd.notna(err_dec) else None,
+                flux=float(flux) / 1000.0,  # mJy -> Jy
+                flux_err=float(err_flux) / 1000.0,  # mJy -> Jy
+                extra=None,
+            )
+        )
+    return measurements
+
+
+def _parse_thumbnail(raw) -> list[list[float]] | None:
+    """`pickle_to_parquet.py --keep-thumbnails` JSON-encodes each source's
+    thumbnail array into this column; rows converted without that flag (or
+    sources that never had a thumbnail) leave it as None/NaN."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    return json.loads(raw)
+
+
+def build_cutouts(
+    df: pd.DataFrame, flux_measurements: list[FluxMeasurement]
+) -> list[Cutout]:
+    """One `Cutout` per eligible row that has thumbnail data (requires
+    `pickle_to_parquet.py --keep-thumbnails`), linked to its matching
+    `FluxMeasurement` by `measurement_id`. `df` and `flux_measurements` must
+    be row-aligned (i.e. `flux_measurements` was built from this exact `df`
+    via `build_flux_measurements`)."""
+    if "thumbnail" not in df.columns:
+        log.warning(
+            "lightcurvedb_export.no_thumbnail_column",
+            reason="discovery parquet was built without --keep-thumbnails",
+        )
+        return []
+
+    unit_col = df.get("thumbnail_unit", pd.Series([None] * len(df), index=df.index))
+
+    cutouts = []
+    for raw_thumbnail, unit, fm in zip(df["thumbnail"], unit_col, flux_measurements):
+        data = _parse_thumbnail(raw_thumbnail)
+        if data is None:
+            continue
+        cutouts.append(
+            Cutout(
+                measurement_id=fm.measurement_id,
+                data=data,
+                time=fm.time,
+                units=unit if isinstance(unit, str) else "mJy",
+                frequency=fm.frequency,
+                module=fm.module,
+                source_id=fm.source_id,
+            )
+        )
+
+    log.info(
+        "lightcurvedb_export.built_cutouts",
+        n=len(cutouts),
+        n_without_thumbnail=len(flux_measurements) - len(cutouts),
     )
-    return out
+    return cutouts
 
 
 async def _ingest(
-    sources: list[Source], flux_frame: pd.DataFrame, settings: LightcurveDBSettings
+    sources: list[Source],
+    flux_measurements: list[FluxMeasurement],
+    cutouts: list[Cutout],
+    settings: LightcurveDBSettings,
 ):
     async with settings.backend as backend:
         await backend.sources.create_batch(sources)
         log.info("lightcurvedb_export.registered_sources", n=len(sources))
 
-        buffer = BytesIO()
-        flux_frame.to_parquet(buffer)
-        buffer.seek(0)
-        await backend.fluxes.ingest_dataframe(buffer)
-        log.info("lightcurvedb_export.ingested_fluxes", n=len(flux_frame))
+        await backend.fluxes.create_batch(flux_measurements)
+        log.info("lightcurvedb_export.ingested_fluxes", n=len(flux_measurements))
+
+        if cutouts:
+            await backend.cutouts.create_batch(cutouts)
+            log.info("lightcurvedb_export.ingested_cutouts", n=len(cutouts))
 
 
 def main():
@@ -196,7 +285,8 @@ def main():
         "--out-flux-parquet",
         type=str,
         default=None,
-        help="Write the reshaped flux-measurement table here instead of ingesting.",
+        help="Write the reshaped flux-measurement table here as well (cutouts, "
+        "if any, are only ever pushed via --ingest, not written standalone).",
     )
     parser.add_argument(
         "--ingest",
@@ -220,14 +310,18 @@ def main():
         load_socat_name_to_id(Path(args.socat_db)) if args.socat_db else {}
     )
     sources, name_to_lc_id = build_lightcurvedb_sources(eligible, socat_name_to_id)
-    flux_frame = build_flux_measurement_frame(eligible, name_to_lc_id)
+    flux_measurements = build_flux_measurements(eligible, name_to_lc_id)
+    cutouts = build_cutouts(eligible, flux_measurements)
 
     if args.out_flux_parquet:
-        flux_frame.to_parquet(args.out_flux_parquet)
+        frame = pd.DataFrame([fm.model_dump(mode="json") for fm in flux_measurements])
+        frame.to_parquet(args.out_flux_parquet)
         log.info("lightcurvedb_export.wrote_flux_parquet", out=args.out_flux_parquet)
 
     if args.ingest:
-        asyncio.run(_ingest(sources, flux_frame, LightcurveDBSettings()))
+        asyncio.run(
+            _ingest(sources, flux_measurements, cutouts, LightcurveDBSettings())
+        )
 
 
 if __name__ == "__main__":

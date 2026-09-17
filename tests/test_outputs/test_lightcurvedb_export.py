@@ -21,7 +21,8 @@ import pytest
 from lightcurvedb.config import Settings
 
 from sotrplib.outputs.lightcurvedb_export import (
-    build_flux_measurement_frame,
+    build_cutouts,
+    build_flux_measurements,
     build_lightcurvedb_sources,
     resolve_source_identity,
 )
@@ -39,6 +40,8 @@ def _row(
     category="forced_photometry",
     crossmatch_source_id=None,
     crossmatch_catalog_idx=None,
+    thumbnail=None,
+    thumbnail_unit=None,
 ):
     crossmatches = None
     n_crossmatches = 0
@@ -61,6 +64,8 @@ def _row(
         "category": category,
         "n_crossmatches": n_crossmatches,
         "crossmatches": crossmatches,
+        "thumbnail": json.dumps(thumbnail) if thumbnail is not None else None,
+        "thumbnail_unit": thumbnail_unit,
     }
 
 
@@ -117,51 +122,89 @@ def test_build_sources_links_known_names_and_leaves_others_unlinked():
     assert linked.ra == pytest.approx((14.640625 + 14.640700) / 2)
 
 
-def test_build_flux_measurement_frame_matches_lightcurvedb_schema():
+def test_build_flux_measurements_matches_lightcurvedb_schema():
     df = resolve_source_identity(make_forced_photometry_frame())
     sources, name_to_lc_id = build_lightcurvedb_sources(df, {})
 
-    frame = build_flux_measurement_frame(df, name_to_lc_id)
+    measurements = build_flux_measurements(df, name_to_lc_id)
 
-    assert list(frame.columns) == [
-        "source_id",
-        "frequency",
-        "module",
-        "time",
-        "ra",
-        "dec",
-        "ra_uncertainty",
-        "dec_uncertainty",
-        "flux",
-        "flux_err",
-        "extra",
-    ]
-    assert len(frame) == 3
-    assert frame["frequency"].dtype.kind == "i"
-    row = frame.iloc[0]
-    assert row["flux"] == pytest.approx(0.341740908)  # mJy -> Jy
-    assert row["source_id"] == name_to_lc_id["ACT-S J0058.5+0620"]
+    assert len(measurements) == 3
+    assert len({fm.measurement_id for fm in measurements}) == 3  # all unique
+    fm = measurements[0]
+    assert fm.flux == pytest.approx(0.341740908)  # mJy -> Jy
+    assert str(fm.source_id) == name_to_lc_id["ACT-S J0058.5+0620"]
+
+
+def test_build_cutouts_skips_rows_without_thumbnail_data():
+    """Rows converted without `pickle_to_parquet.py --keep-thumbnails` (or
+    that never had a thumbnail to begin with) simply get no Cutout."""
+    df = resolve_source_identity(
+        pd.DataFrame(
+            [
+                _row(
+                    source_id="ACT-S J0058.5+0620",
+                    thumbnail=[[1.0, 2.0], [3.0, 4.0]],
+                    thumbnail_unit="mJy",
+                ),
+                _row(source_id="52768", array="i1"),
+            ]
+        )
+    )
+    sources, name_to_lc_id = build_lightcurvedb_sources(df, {})
+    measurements = build_flux_measurements(df, name_to_lc_id)
+
+    cutouts = build_cutouts(df, measurements)
+
+    assert len(cutouts) == 1
+    assert cutouts[0].measurement_id == measurements[0].measurement_id
+    assert cutouts[0].data == [[1.0, 2.0], [3.0, 4.0]]
+    assert cutouts[0].units == "mJy"
+    assert cutouts[0].source_id == measurements[0].source_id
+
+
+def test_build_cutouts_returns_empty_without_thumbnail_column():
+    """A discovery.parquet flattened without --keep-thumbnails has no
+    `thumbnail` column at all -- must not crash, just produce no cutouts."""
+    df = resolve_source_identity(make_forced_photometry_frame())
+    df = df.drop(columns=["thumbnail", "thumbnail_unit"])
+    sources, name_to_lc_id = build_lightcurvedb_sources(df, {})
+    measurements = build_flux_measurements(df, name_to_lc_id)
+
+    assert build_cutouts(df, measurements) == []
 
 
 def test_ingest_round_trips_through_a_real_backend(tmp_path):
-    """Push the reshaped frame through an actual parquet Backend and read
-    it back via lightcurvedb's own lightcurve API -- this is what actually
-    proves the schema is ingestible, not just shaped right."""
-    df = resolve_source_identity(make_forced_photometry_frame())
+    """Push the built objects through an actual parquet Backend and read
+    the flux back via lightcurvedb's own lightcurve API, and the cutout
+    back via its own storage -- this is what actually proves the schema is
+    ingestible and correctly linked, not just shaped right."""
+    df = resolve_source_identity(
+        pd.DataFrame(
+            [
+                _row(
+                    source_id="ACT-S J0058.5+0620",
+                    ra=14.640625,
+                    dec=6.334854,
+                    flux=341.740908,
+                    err_flux=15.440817,
+                    frequency=90.0,
+                    thumbnail=[[1.0, 2.0], [3.0, 4.0]],
+                    thumbnail_unit="mJy",
+                ),
+            ]
+        )
+    )
     sources, name_to_lc_id = build_lightcurvedb_sources(df, {})
-    frame = build_flux_measurement_frame(df, name_to_lc_id)
+    measurements = build_flux_measurements(df, name_to_lc_id)
+    cutouts = build_cutouts(df, measurements)
 
     settings = Settings(backend_type="parquet", parquet_base_path=str(tmp_path))
 
     async def run():
-        from io import BytesIO
-
         async with settings.backend as backend:
             await backend.sources.create_batch(sources)
-            buffer = BytesIO()
-            frame.to_parquet(buffer)
-            buffer.seek(0)
-            await backend.fluxes.ingest_dataframe(buffer)
+            await backend.fluxes.create_batch(measurements)
+            await backend.cutouts.create_batch(cutouts)
 
             source_id = next(
                 s.source_id for s in sources if s.name == "ACT-S J0058.5+0620"
@@ -169,11 +212,17 @@ def test_ingest_round_trips_through_a_real_backend(tmp_path):
             lc = await backend.lightcurves.get_frequency_lightcurve(
                 source_id, frequency=90, limit=10
             )
-            return lc
+            stored_cutouts = await backend.cutouts.retrieve_cutouts_for_source(
+                source_id
+            )
+            return lc, stored_cutouts
 
-    lc = asyncio.run(run())
+    lc, stored_cutouts = asyncio.run(run())
     assert len(lc.time) == 1
     assert lc.flux[0] == pytest.approx(0.341740908)
+    assert len(stored_cutouts) == 1
+    assert stored_cutouts[0].measurement_id == measurements[0].measurement_id
+    assert stored_cutouts[0].data == [[1.0, 2.0], [3.0, 4.0]]
 
 
 def test_transient_candidate_crossmatched_to_known_source_shares_its_source():
@@ -203,9 +252,9 @@ def test_transient_candidate_crossmatched_to_known_source_shares_its_source():
     assert sources[0].name == "ACT-S J0058.5+0620"
     assert str(sources[0].socat_id) == known_socat_id
 
-    frame = build_flux_measurement_frame(df, name_to_lc_id)
-    assert frame["source_id"].nunique() == 1
-    assert sorted(frame["flux"]) == pytest.approx([0.34, 0.9])
+    measurements = build_flux_measurements(df, name_to_lc_id)
+    assert len({fm.source_id for fm in measurements}) == 1
+    assert sorted(fm.flux for fm in measurements) == pytest.approx([0.34, 0.9])
 
 
 def test_uncrossmatched_transient_gets_its_own_source():
