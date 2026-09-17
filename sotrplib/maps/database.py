@@ -402,12 +402,6 @@ def set_processing_start(
         session = mapcat_settings.session()
     row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
     if row is None:
-        # SQLModel table=True classes don't validate/coerce field values on
-        # construction (unlike plain Pydantic models), so a string map_id
-        # would otherwise be stored as-is and break at INSERT time when
-        # SQLAlchemy's Uuid bind processor expects a real UUID7.
-        # processing_status_id has no default in mapcat's schema, so it
-        # must be generated explicitly here.
         row = TimeDomainProcessingTable(
             processing_status_id=uuid7.create(),
             map_id=_to_uuid(map_id),

@@ -106,10 +106,6 @@ def _mask_from_positions(
     both mask_asteroids_socat and mask_asteroids (local ephemeris)."""
     asteroid_locs = []
     for _name, ra, dec in positions:
-        # SkyCoord components from ephemeris interpolation can come back
-        # array-shaped even for a single target -- flatten to a true scalar
-        # before sky2pix, or it returns array-valued pixel coords that
-        # make_src_mask can't round().
         dec_val = np.atleast_1d(dec.to_value(u.rad))[0]
         ra_val = np.atleast_1d(ra.to_value(u.rad))[0]
         asteroid_locs.append(input_map.time_mean.sky2pix([dec_val, ra_val]))
