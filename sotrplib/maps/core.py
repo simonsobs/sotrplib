@@ -1137,13 +1137,6 @@ class CoaddedRhoKappaMap(ProcessableMap):
         mid_time = new_map.observation_start + (time_delta / 2)
         self.input_map_times.append(mid_time)
 
-        ## get map union if adding two maps, use hits-weighted mean.
-        ## Note: this must be the accumulated hit *count* matching self.hits
-        ## after this map is folded in (mirroring the coadd._hits update the
-        ## caller does right after this call) -- self._compute_hits() would
-        ## instead give a 0/1 "is this pixel covered" indicator, which is
-        ## always 1 once any map has touched a pixel, silently turning the
-        ## running weighted mean into an ever-growing (never renormalized) sum.
         total_hits = enmap.map_union(self.hits, new_map.hits)
         hit_mask = total_hits > 0
         if isinstance(new_map.time_mean, ndmap):
