@@ -15,6 +15,7 @@ from mapcat.pointing.const import ConstantPointingModel
 from pixell import enmap
 from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.utils import (
     enmap_box_to_skycoord,
@@ -98,8 +99,8 @@ class ProcessableMap(ABC):
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
-    __map_id: str | None = None
-    "An identifier for the map, e.g. filename or coadd type"
+    __map_id: UUID7 | None = None
+    "The map's mapcat-assigned identifier, if known."
 
     _parent_database: Path | None = None
     "Path to the parent database for this map, if any"
@@ -305,12 +306,12 @@ class ProcessableMap(ABC):
             pass
 
     @property
-    def map_id(self) -> str:
+    def map_id(self) -> UUID7 | None:
         """
-        An identifier for the map, e.g. filename or coadd type
-        Defaults to {frequency}_{array}_{observationstart_timestamp} if not set.
+        The map's mapcat-assigned identifier, or None if the map is not
+        (yet) known to mapcat.
         """
-        return self.__map_id if self.__map_id is not None else self.get_map_str_id()
+        return self.__map_id
 
     @map_id.setter
     def map_id(self, x):
@@ -325,7 +326,9 @@ class ProcessableMap(ABC):
 
     def get_map_str_id(self) -> str:
         """
-        Get a string identifier for the map, useful for logging.
+        Get a human-readable string label for the map, useful for filenames
+        and logging. Independent of map_id -- always derived from the map's
+        own metadata, whether or not it has a mapcat identifier.
         """
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
 
@@ -442,7 +445,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         matched_filtered: bool = False,
         mask: ndmap | None = None,
         intensity_units: Unit = u.K,
-        map_id: str | None = None,
+        map_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
@@ -572,9 +575,6 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             bool_map = bool_map & (self.mask > 0)
         return bool_map
 
-    def get_map_id(self):
-        return self.__map_id or super().get_map_str_id()
-
     def get_snr(self):
         with np.errstate(divide="ignore"):
             snr = self.intensity / np.sqrt(self.inverse_variance)
@@ -660,9 +660,6 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
 
     def build(self):
         return
-
-    def get_map_id(self):
-        return self.__map_id or super().get_map_str_id()
 
     def add_time_offset(self, offset: Time | None):
         """
@@ -756,7 +753,7 @@ class RhoAndKappaMap(ProcessableMap):
         instrument: str | None = None,
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
-        map_id: str | None = None,
+        map_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -866,9 +863,6 @@ class RhoAndKappaMap(ProcessableMap):
     ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
 
-    def get_map_id(self):
-        return self.__map_id or super().get_map_str_id()
-
     def _compute_hits(self):
         return (
             (self.kappa > 0).astype(np.int32)
@@ -926,7 +920,7 @@ class FluxAndSNRMap(ProcessableMap):
         instrument: str | None = None,
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
-        map_id: str | None = None,
+        map_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.flux_filename = flux_filename
@@ -1036,9 +1030,6 @@ class FluxAndSNRMap(ProcessableMap):
         self, pix: tuple[int, int]
     ) -> tuple[Time | None, Time | None, Time | None]:
         return super().get_pixel_times(pix)
-
-    def get_map_id(self):
-        return self.map_id or super().get_map_str_id()
 
     def _compute_hits(self):
         return (abs(self.flux) > 0).astype(np.int32)

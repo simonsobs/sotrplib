@@ -251,7 +251,7 @@ class BaseRunner:
             self.profilable_task(output.output)(
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
-                map_id=input_map.map_id,
+                map_id=input_map.get_map_str_id(),
                 pointing_sources=pointing_sources,
                 injected_sources=injected_sources,
             )
