@@ -99,7 +99,7 @@ class ProcessableMap(ABC):
     __rho: ndmap | None = None
     __kappa: ndmap | None = None
 
-    __map_id: UUID7 | None = None
+    __mapcat_id: UUID7 | None = None
     "The map's mapcat-assigned identifier, if known."
 
     _parent_database: Path | None = None
@@ -306,29 +306,30 @@ class ProcessableMap(ABC):
             pass
 
     @property
-    def map_id(self) -> UUID7 | None:
+    def mapcat_id(self) -> UUID7 | None:
         """
         The map's mapcat-assigned identifier, or None if the map is not
         (yet) known to mapcat.
         """
-        return self.__map_id
+        return self.__mapcat_id
 
-    @map_id.setter
-    def map_id(self, x):
-        self.__map_id = x
+    @mapcat_id.setter
+    def mapcat_id(self, x):
+        self.__mapcat_id = x
 
-    @map_id.deleter
-    def map_id(self):
+    @mapcat_id.deleter
+    def mapcat_id(self):
         try:
-            del self.__map_id
+            del self.__mapcat_id
         except AttributeError:
             pass
 
-    def get_map_str_id(self) -> str:
+    @property
+    def map_name(self) -> str:
         """
-        Get a human-readable string label for the map, useful for filenames
-        and logging. Independent of map_id -- always derived from the map's
-        own metadata, whether or not it has a mapcat identifier.
+        A human-readable string label for the map, useful for filenames
+        and logging. Independent of mapcat_id -- always derived from the
+        map's own metadata, whether or not it has a mapcat identifier.
         """
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
 
@@ -445,7 +446,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         matched_filtered: bool = False,
         mask: ndmap | None = None,
         intensity_units: Unit = u.K,
-        map_id: UUID7 | None = None,
+        mapcat_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.intensity_filename = intensity_filename
@@ -461,8 +462,8 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.instrument = instrument
         self.matched_filtered = matched_filtered
         self.mask = mask
-        if map_id is not None:
-            self.map_id = map_id
+        if mapcat_id is not None:
+            self.mapcat_id = mapcat_id
         self._hits = None
         self.log = log or structlog.get_logger()
 
@@ -641,8 +642,8 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         self.array = self.prefiltered_map.array
         self.mask = self.prefiltered_map.mask
         self.instrument = self.prefiltered_map.instrument
-        if self.prefiltered_map.map_id is not None:
-            self.map_id = self.prefiltered_map.map_id
+        if self.prefiltered_map.mapcat_id is not None:
+            self.mapcat_id = self.prefiltered_map.mapcat_id
         self._parent_database = self.prefiltered_map._parent_database
         self._hits = self.prefiltered_map._hits
         self.map_resolution = u.Quantity(
@@ -753,7 +754,7 @@ class RhoAndKappaMap(ProcessableMap):
         instrument: str | None = None,
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
-        map_id: UUID7 | None = None,
+        mapcat_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho_filename = rho_filename
@@ -768,8 +769,8 @@ class RhoAndKappaMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
-        if map_id is not None:
-            self.map_id = map_id
+        if mapcat_id is not None:
+            self.mapcat_id = mapcat_id
         self._hits = None
         self.log = log or structlog.get_logger()
 
@@ -920,7 +921,7 @@ class FluxAndSNRMap(ProcessableMap):
         instrument: str | None = None,
         flux_units: Unit = u.Jy,
         mask: ndmap | None = None,
-        map_id: UUID7 | None = None,
+        mapcat_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.flux_filename = flux_filename
@@ -935,8 +936,8 @@ class FluxAndSNRMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
-        if map_id is not None:
-            self.map_id = map_id
+        if mapcat_id is not None:
+            self.mapcat_id = mapcat_id
         self._hits = None
         self.log = log or structlog.get_logger()
 

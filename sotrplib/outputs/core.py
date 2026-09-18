@@ -25,7 +25,7 @@ class SourceOutput(ABC):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -97,18 +97,18 @@ class PickleSerializer(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
         filename = (
             self.directory
-            / f"{map_id}_{Time.now().isot[:19].replace('T', '-').replace(':', '-')}.pickle"
+            / f"{map_name}_{Time.now().isot[:19].replace('T', '-').replace(':', '-')}.pickle"
         )
         with filename.open("wb") as handle:
             pickle.dump(
                 obj={
-                    "map_id": map_id,
+                    "map_id": map_name,
                     "forced_photometry": forced_photometry_candidates,
                     "sifted_blind_search": sifter_result,
                     "pointing_sources": pointing_sources,
@@ -134,7 +134,7 @@ class CutoutImageOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -145,7 +145,7 @@ class CutoutImageOutput(SourceOutput):
                 continue
 
             filename = (
-                self.directory / f"forced_photometry_{map_id}_{source.source_id}.png"
+                self.directory / f"forced_photometry_{map_name}_{source.source_id}.png"
             )
             plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 
@@ -159,9 +159,9 @@ class CutoutImageOutput(SourceOutput):
 
             if source.crossmatches:
                 id = source.crossmatches[0].source_id
-                filename = self.directory / f"blind_search_matched_{map_id}_{id}.png"
+                filename = self.directory / f"blind_search_matched_{map_name}_{id}.png"
             else:
-                filename = self.directory / f"blind_search_{map_id}_{ii}.png"
+                filename = self.directory / f"blind_search_{map_name}_{ii}.png"
 
             plt.imsave(fname=filename, arr=cutout, cmap="viridis")
 
@@ -198,22 +198,20 @@ class MapOutputSerializer(MapOutput):
                     log.error(
                         "MapOutputSerializer.field_is_none",
                         field_id=field_id,
-                        map_id=input_map.get_map_str_id(),
+                        map_name=input_map.map_name,
                     )
                     continue
-                filename = (
-                    self.directory / f"{input_map.get_map_str_id()}_{field_id}.fits"
-                )
+                filename = self.directory / f"{input_map.map_name}_{field_id}.fits"
                 enmap.write_map(str(filename), map_to_save)
                 log.info(
                     "MapOutputSerializer.saved_map",
                     field_id=field_id,
-                    map_id=input_map.get_map_str_id(),
+                    map_name=input_map.map_name,
                     filename=str(filename),
                 )
             else:
                 log.error(
                     "MapOutputSerializer.failed_to_load",
                     field_id=field_id,
-                    map_id=input_map.get_map_str_id(),
+                    map_name=input_map.map_name,
                 )

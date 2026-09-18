@@ -111,7 +111,7 @@ class BaseRunner:
         output_map = input_map
         if not np.any(output_map.hits > 0):
             if input_map._parent_database is not None:
-                set_processing_end(input_map.map_id)
+                set_processing_end(input_map.mapcat_id)
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -221,7 +221,7 @@ class BaseRunner:
             )(pointing_sources=pointing_sources)
             if input_map._parent_database is not None:
                 save_pointing_model(
-                    input_map.map_id, pointing_model, pointing_model_stats
+                    input_map.mapcat_id, pointing_model, pointing_model_stats
                 )
 
         forced_photometry_candidates = self.profilable_task(
@@ -251,7 +251,7 @@ class BaseRunner:
             self.profilable_task(output.output)(
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
-                map_id=input_map.get_map_str_id(),
+                map_name=input_map.map_name,
                 pointing_sources=pointing_sources,
                 injected_sources=injected_sources,
             )
@@ -260,7 +260,7 @@ class BaseRunner:
             self.profilable_task(output.output)(input_map=input_map)
 
         if input_map._parent_database is not None:
-            self.profilable_task(set_processing_end)(input_map.map_id)
+            self.profilable_task(set_processing_end)(input_map.mapcat_id)
         return forced_photometry_candidates, sifter_result
 
     def crossmatch_pair(
@@ -305,7 +305,7 @@ class BaseRunner:
 
         cross_matches = self.profilable_task(n_wise_crossmatch)(
             matches,
-            dict(zip([mm[0].map_id for mm in map_sets], all_transient_candidates)),
+            dict(zip([mm[0].mapcat_id for mm in map_sets], all_transient_candidates)),
         )
 
         return results

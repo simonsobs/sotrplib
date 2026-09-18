@@ -203,12 +203,12 @@ def test_map_list_flux_type(mock_mapcat):
     assert isinstance(maps[0], FluxAndSNRMap)
 
 
-def test_map_list_sets_map_id(mock_mapcat, db_result):
+def test_map_list_sets_mapcat_id(mock_mapcat, db_result):
     maps = IntensityMapReader().map_list()
-    assert maps[0].map_id == db_result.map_id
+    assert maps[0].mapcat_id == db_result.map_id
 
 
-def test_map_list_appends_map_id(mock_mapcat, db_result):
+def test_map_list_appends_mapcat_id(mock_mapcat, db_result):
     reader = IntensityMapReader()
     reader.map_list()
     assert db_result.map_id in reader.map_ids
