@@ -69,7 +69,7 @@ def main():
     else:
         maps = [mm.to_map(log=log) for mm in maps]
 
-    with pyinstrument.Profiler() as profiler:
+    with pyinstrument.Profiler(interval=0.01) as profiler:
         results = pipeline.run(maps)
     profiler.write_html("profile.html")
     print(profiler.output_text(unicode=True, color=True))
@@ -136,6 +136,9 @@ def main():
         mean_dec_offset_deg=float(np.mean(dec_offsets)),
         median_dec_offset_deg=float(np.median(dec_offsets)),
         std_dec_offset_deg=float(np.std(dec_offsets)),
+        mean_flux_ratio=float(np.mean(flux_ratios)),
+        median_flux_ratio=float(np.median(flux_ratios)),
+        std_flux_ratio=float(np.std(flux_ratios)),
     )
     with open("summary.json", "w") as handle:
         json.dump(summary, handle, indent=4)
