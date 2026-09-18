@@ -252,6 +252,7 @@ class BaseRunner:
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
                 map_name=input_map.map_name,
+                mapcat_id=input_map.mapcat_id,
                 pointing_sources=pointing_sources,
                 injected_sources=injected_sources,
             )
