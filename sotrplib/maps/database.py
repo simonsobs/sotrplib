@@ -4,6 +4,7 @@ Read maps from the map tracking database.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Literal
 
 import uuid7
 from astropy import units as u
@@ -42,6 +43,18 @@ from .core import (
 )
 from .pointing import PointingModel
 
+# How build_query() compares a map's [start_time, stop_time) observation
+# interval against the reader's own [start_time, end_time) window:
+#   "restrictive"  -- map fully contained in the window (may drop maps that
+#                      straddle a window boundary from every window)
+#   "loose"        -- map overlaps the window at all (may match a
+#                      straddling map in more than one window)
+#   "left-bound"   -- partition solely by the map's own start_time (every
+#                      map has exactly one, so no gaps/overlaps -- what
+#                      submit_week_coadds.py uses)
+#   "right-bound"  -- partition solely by the map's own stop_time
+TimeBinning = Literal["restrictive", "loose", "left-bound", "right-bound"]
+
 
 class MapCatDatabaseReader(ABC):
     """
@@ -63,6 +76,7 @@ class MapCatDatabaseReader(ABC):
     sky_box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
+    time_binning: TimeBinning = "loose"
     log: FilteringBoundLogger
     default_map_units: u.Unit
     _valid_unit_equivalent: u.Unit
@@ -82,13 +96,13 @@ class MapCatDatabaseReader(ABC):
         rerun: bool = False,
         rerun_pointing_model: bool = False,
         stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
-        bucket_by_start_time: bool = False,
+        time_binning: TimeBinning = "loose",
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
         self.start_time = start_time
         self.end_time = end_time
-        self.bucket_by_start_time = bucket_by_start_time
+        self.time_binning = time_binning
         self.map_ids = map_ids or []
         self.sources = sources or []
         self.frequency = frequency
@@ -127,13 +141,39 @@ class MapCatDatabaseReader(ABC):
             else query
         )
 
-        if self.bucket_by_start_time:
-            # Assign each map to exactly one caller-defined window based on its
-            # own start_time (half-open [start_time, end_time)), rather than
-            # any overlap with [start_time, end_time]. The overlap test below
-            # double-counts any map whose observation spans a shared boundary
-            # between adjacent windows (e.g. weekly coadd windows); bucketing
-            # by start_time alone can't, since every map has exactly one.
+        if self.time_binning == "restrictive":
+            # Map fully contained in [start_time, end_time). Guarantees a map
+            # is never assigned to more than one window, at the cost of
+            # silently excluding any map whose observation straddles a
+            # window boundary from every window.
+            if self.start_time is not None:
+                query = query.where(
+                    DepthOneMapTable.start_time >= self.start_time.to_datetime()
+                )
+            if self.end_time is not None:
+                query = query.where(
+                    DepthOneMapTable.stop_time < self.end_time.to_datetime()
+                )
+        elif self.time_binning == "loose":
+            # Map overlaps [start_time, end_time) at all. Half-open on both
+            # sides, so a map that merely touches a shared boundary between
+            # two adjacent windows isn't spuriously double-counted; a map
+            # that genuinely spans the boundary legitimately matches both.
+            if self.start_time is not None:
+                query = query.where(
+                    DepthOneMapTable.stop_time >= self.start_time.to_datetime()
+                )
+            if self.end_time is not None:
+                query = query.where(
+                    DepthOneMapTable.start_time < self.end_time.to_datetime()
+                )
+        elif self.time_binning == "left-bound":
+            # Partition solely by the map's own start_time (half-open
+            # [start_time, end_time)) -- every map has exactly one
+            # start_time, so this splits maps across adjacent windows with
+            # no gaps and no overlap, regardless of how long an individual
+            # observation runs. This is what submit_week_coadds.py relies on
+            # to avoid double-coadding maps that straddle a week boundary.
             if self.start_time is not None:
                 query = query.where(
                     DepthOneMapTable.start_time >= self.start_time.to_datetime()
@@ -142,15 +182,22 @@ class MapCatDatabaseReader(ABC):
                 query = query.where(
                     DepthOneMapTable.start_time < self.end_time.to_datetime()
                 )
-        else:
+        elif self.time_binning == "right-bound":
+            # Symmetric counterpart to "left-bound": partitions maps by
+            # their own stop_time instead of start_time.
             if self.start_time is not None:
                 query = query.where(
                     DepthOneMapTable.stop_time >= self.start_time.to_datetime()
                 )
             if self.end_time is not None:
                 query = query.where(
-                    DepthOneMapTable.start_time <= self.end_time.to_datetime()
+                    DepthOneMapTable.stop_time < self.end_time.to_datetime()
                 )
+        else:
+            raise ValueError(
+                f"Unknown time_binning {self.time_binning!r}; expected one of "
+                "'restrictive', 'loose', 'left-bound', 'right-bound'."
+            )
 
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))

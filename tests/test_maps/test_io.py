@@ -187,24 +187,44 @@ def test_build_map_passes_metadata(db_result):
 # ─── build_query time windowing ────────────────────────────────────────────────
 
 
-def test_build_query_default_is_interval_overlap():
+def test_build_query_default_is_loose():
+    assert IntensityMapReader().time_binning == "loose"
+
+
+def test_build_query_loose_is_half_open_overlap():
     """
-    Default (bucket_by_start_time=False): a map is included if its
-    [start_time, stop_time] interval overlaps [start_time, end_time] at all,
-    inclusive on both ends.
+    time_binning="loose" (the default): a map is included if its
+    [start_time, stop_time) interval overlaps [start_time, end_time) at
+    all. Half-open on both sides, so a map that merely touches a shared
+    boundary between two adjacent windows isn't spuriously double-counted.
     """
     start = Time(1000, format="unix")
     end = Time(2000, format="unix")
     query = IntensityMapReader(start_time=start, end_time=end).build_query()
     compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
     assert "depth_one_maps.stop_time >=" in compiled
-    assert "depth_one_maps.start_time <=" in compiled
-    assert "depth_one_maps.start_time >=" not in compiled
+    assert "depth_one_maps.start_time <" in compiled
+    assert "depth_one_maps.start_time <=" not in compiled
 
 
-def test_build_query_bucket_by_start_time_is_half_open():
+def test_build_query_restrictive_requires_full_containment():
     """
-    bucket_by_start_time=True: a map is included solely based on whether its
+    time_binning="restrictive": a map is included only if its whole
+    [start_time, stop_time) observation falls inside [start_time, end_time).
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="restrictive"
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    assert "depth_one_maps.start_time >=" in compiled
+    assert "depth_one_maps.stop_time <" in compiled
+
+
+def test_build_query_left_bound_is_half_open():
+    """
+    time_binning="left-bound": a map is included solely based on whether its
     own start_time falls in [start_time, end_time) -- so a map whose
     observation spans a boundary between two adjacent windows lands in
     exactly one of them, never both. This is what submit_week_coadds.py
@@ -213,7 +233,7 @@ def test_build_query_bucket_by_start_time_is_half_open():
     start = Time(1000, format="unix")
     end = Time(2000, format="unix")
     query = IntensityMapReader(
-        start_time=start, end_time=end, bucket_by_start_time=True
+        start_time=start, end_time=end, time_binning="left-bound"
     ).build_query()
     compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
     where_clause = compiled.split("WHERE", 1)[1]
@@ -223,7 +243,30 @@ def test_build_query_bucket_by_start_time_is_half_open():
     assert "stop_time" not in where_clause
 
 
-def test_build_query_bucket_by_start_time_no_gap_or_overlap_at_shared_boundary():
+def test_build_query_right_bound_is_half_open():
+    """
+    time_binning="right-bound": symmetric counterpart to "left-bound",
+    partitioning solely by each map's own stop_time.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="right-bound"
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "depth_one_maps.stop_time >=" in where_clause
+    assert "depth_one_maps.stop_time <" in where_clause
+    assert "depth_one_maps.stop_time <=" not in where_clause
+    assert "start_time" not in where_clause
+
+
+def test_build_query_rejects_unknown_time_binning():
+    with pytest.raises(ValueError, match="Unknown time_binning"):
+        IntensityMapReader(time_binning="bogus").build_query()
+
+
+def test_build_query_left_bound_no_gap_or_overlap_at_shared_boundary():
     """
     Two adjacent windows sharing an exact boundary value must partition maps
     with no gap and no overlap, even for a map whose observation interval
@@ -235,12 +278,12 @@ def test_build_query_bucket_by_start_time_no_gap_or_overlap_at_shared_boundary()
     window_a = IntensityMapReader(
         start_time=Time(1000, format="unix"),
         end_time=Time(boundary, format="unix"),
-        bucket_by_start_time=True,
+        time_binning="left-bound",
     )
     window_b = IntensityMapReader(
         start_time=Time(boundary, format="unix"),
         end_time=Time(2000, format="unix"),
-        bucket_by_start_time=True,
+        time_binning="left-bound",
     )
 
     def _matches(reader, m):

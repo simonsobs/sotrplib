@@ -138,7 +138,7 @@ def build_config(
             "start_time": iso(start_time),
             "end_time": iso(end_time),
             "rerun": rerun,
-            "bucket_by_start_time": True,
+            "time_binning": "left-bound",
         },
         "preprocessors": preprocessors,
         "map_coadder": {
