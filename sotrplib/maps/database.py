@@ -38,13 +38,13 @@ from sotrplib.sources.sources import RegisteredSource
 from .core import (
     FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
-    MapCatEntityType,
+    MapCatMapType,
     RhoAndKappaMap,
 )
 from .pointing import PointingModel
 
-# How build_query() compares a map's [start_time, stop_time) observation
-# interval against the reader's own [start_time, end_time) window:
+# How build_query() compares a map's start_time and stop_time
+# interval against the binned time window:
 #   "restrictive"  -- map fully contained in the window (may drop maps that
 #                      straddle a window boundary from every window)
 #   "loose"        -- map overlaps the window at all (may match a
@@ -96,7 +96,7 @@ class MapCatDatabaseReader(ABC):
         rerun: bool = False,
         rerun_pointing_model: bool = False,
         stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
-        time_binning: TimeBinning = "loose",
+        time_binning: TimeBinning = "left-bound",
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
@@ -142,7 +142,7 @@ class MapCatDatabaseReader(ABC):
         )
 
         if self.time_binning == "restrictive":
-            # Map fully contained in [start_time, end_time). Guarantees a map
+            # Map fully contained in (start_time, end_time]. Guarantees a map
             # is never assigned to more than one window, at the cost of
             # silently excluding any map whose observation straddles a
             # window boundary from every window.
@@ -155,10 +155,8 @@ class MapCatDatabaseReader(ABC):
                     DepthOneMapTable.stop_time < self.end_time.to_datetime()
                 )
         elif self.time_binning == "loose":
-            # Map overlaps [start_time, end_time) at all. Half-open on both
-            # sides, so a map that merely touches a shared boundary between
-            # two adjacent windows isn't spuriously double-counted; a map
-            # that genuinely spans the boundary legitimately matches both.
+            # Map overlaps (start_time, end_time) at all. Half-open on both
+            # sides. maps that straddle a window boundary will be double counted.
             if self.start_time is not None:
                 query = query.where(
                     DepthOneMapTable.stop_time >= self.start_time.to_datetime()
@@ -171,9 +169,7 @@ class MapCatDatabaseReader(ABC):
             # Partition solely by the map's own start_time (half-open
             # [start_time, end_time)) -- every map has exactly one
             # start_time, so this splits maps across adjacent windows with
-            # no gaps and no overlap, regardless of how long an individual
-            # observation runs. This is what submit_week_coadds.py relies on
-            # to avoid double-coadding maps that straddle a week boundary.
+            # no gaps and no overlap.
             if self.start_time is not None:
                 query = query.where(
                     DepthOneMapTable.start_time >= self.start_time.to_datetime()
@@ -351,7 +347,7 @@ class FluxMapReader(MapCatDatabaseReader):
         )
 
 
-def _processing_column(map_type: MapCatEntityType):
+def _processing_column(map_type: MapCatMapType):
     """The TimeDomainProcessingTable column a given map_type's ids live in."""
     if map_type == "depth1_map":
         return TimeDomainProcessingTable.map_id
@@ -365,7 +361,7 @@ def _processing_column(map_type: MapCatEntityType):
 def _get_processing_row(
     mapcat_id: UUID7,
     *,
-    map_type: MapCatEntityType = "depth1_map",
+    map_type: MapCatMapType = "depth1_map",
     session,
 ) -> TimeDomainProcessingTable | None:
     column = _processing_column(map_type)
@@ -381,7 +377,7 @@ def _get_processing_row(
 def check_if_permafailed(
     mapcat_id: UUID7,
     *,
-    map_type: MapCatEntityType = "depth1_map",
+    map_type: MapCatMapType = "depth1_map",
     session=None,
 ) -> bool:
     """
@@ -401,7 +397,7 @@ def check_if_permafailed(
 def check_if_processed(
     mapcat_id: UUID7,
     *,
-    map_type: MapCatEntityType = "depth1_map",
+    map_type: MapCatMapType = "depth1_map",
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
@@ -425,7 +421,7 @@ def check_if_processed(
 def set_processing_start(
     mapcat_id: UUID7,
     *,
-    map_type: MapCatEntityType = "depth1_map",
+    map_type: MapCatMapType = "depth1_map",
     session=None,
 ):
     ## session is mapcat_settings.session() whatever that is
@@ -518,7 +514,7 @@ def save_pointing_model(
 def set_processing_end(
     mapcat_id: UUID7,
     *,
-    map_type: MapCatEntityType = "depth1_map",
+    map_type: MapCatMapType = "depth1_map",
     session=None,
     status: str = "completed",
 ):

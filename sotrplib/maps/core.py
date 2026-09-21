@@ -26,10 +26,9 @@ from sotrplib.maps.utils import (
 
 PointingModel = ConstantPointingModel
 
-# Matches mapcat's own map_id/coadd_id distinction on TimeDomainProcessingTable
-# (see sotrplib.maps.database) -- which of a map's two possible mapcat
-# identities (as a depth-1 map, or as a coadd of them) is the real one.
-MapCatEntityType = Literal["depth1_map", "coadd"]
+# mapcat column for depth1 map and coadd in the TimeDomainProcessingTable.
+# This is used to determine which column to use for the mapcat_id.
+MapCatMapType = Literal["depth1_map", "coadd"]
 
 
 class ProcessableMap(ABC):
@@ -340,12 +339,10 @@ class ProcessableMap(ABC):
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
 
     @property
-    def map_type(self) -> MapCatEntityType:
+    def map_type(self) -> MapCatMapType:
         """
         Whether this map is a depth-1 map or a coadd of them, matching
-        mapcat's own map_id/coadd_id distinction on TimeDomainProcessingTable
-        -- lets callers holding a bare ProcessableMap pick the right column
-        for its mapcat_id without having to know the concrete subclass.
+        mapcat's distinction.
         """
         return "depth1_map"
 
@@ -1133,7 +1130,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         pass
 
     @property
-    def map_type(self) -> MapCatEntityType:
+    def map_type(self) -> MapCatMapType:
         return "coadd"
 
     def update_times(self, new_map):
