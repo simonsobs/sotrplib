@@ -378,12 +378,9 @@ class IntensityMapCoadder(MapCoadder):
     def coadd(self, input_maps: list[ProcessableMap]):
         """
         Coadd input_maps given the coadder freqs, arrays.
-
         Make coadd for each arr, freq in self.arrays, self.frequencies
-
-        if self.arrays=None just make one coadded map over all arrays, called "coadd".
-
-        if self.frequencies=None, get unique frequencies from input maps.
+        If self.arrays=None just make one coadded map over all arrays, called "coadd".
+        If self.frequencies=None, get unique frequencies from input maps.
 
         returns a list of Coadded ProcessableMap
         """
