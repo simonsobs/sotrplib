@@ -295,7 +295,7 @@ def inject_sources(
     - observation_time: float or enmap.ndmap, the time of the observation.
     - freq: str, the frequency of the observation.
     - arr: str, the array name (optional).
-    - map_id: str, the map ID (optional).
+    - map_id: UUID7, the mapcat map ID (optional).
     - debug: bool, if True, print debug information including tqdm.
 
     Returns:

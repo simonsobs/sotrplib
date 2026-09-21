@@ -233,16 +233,16 @@ class MapCatDatabaseReader(ABC):
                     continue
 
                 m = self._build_map(result)
-                m.map_id = str(result.map_id)
+                m.mapcat_id = result.map_id
                 m._parent_database = mapcat_settings.database_name
                 m.pointing_model = (
                     None
                     if self.rerun_pointing_model
-                    else load_pointing_model(m.map_id, session=session)
+                    else load_pointing_model(m.mapcat_id, session=session)
                 )
                 maps.append(m)
-                self.map_ids.append(m.map_id)
-                set_processing_start(m.map_id, session=session)
+                self.map_ids.append(m.mapcat_id)
+                set_processing_start(m.mapcat_id, session=session)
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
@@ -259,11 +259,15 @@ class IntensityMapReader(MapCatDatabaseReader):
     _valid_unit_equivalent = u.K
 
     def _build_map(self, result):
+        mean_time_path = result.mean_time_path
+        if mean_time_path is None:
+            mean_time_path = result.map_path.removesuffix("_map.fits") + "_time.fits"
+
         return IntensityAndInverseVarianceMap(
             intensity_filename=mapcat_settings.depth_one_parent / result.map_path,
             inverse_variance_filename=mapcat_settings.depth_one_parent
             / result.ivar_path,
-            time_filename=mapcat_settings.depth_one_parent / result.mean_time_path,
+            time_filename=mapcat_settings.depth_one_parent / mean_time_path,
             start_time=Time(result.start_time),
             end_time=Time(result.stop_time),
             sky_box=self.sky_box,

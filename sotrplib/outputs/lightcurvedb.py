@@ -117,7 +117,8 @@ class LightcurveDBOutput(SourceOutput):
         input_measurement: MeasuredSource,
         socat_to_internal: dict[UUID, UUID],
         map_time: Time | None = None,
-        map_id: str | None = None,
+        map_name: str | None = None,
+        mapcat_id: uuid7.UUID | None = None,
     ) -> tuple[FluxMeasurement, Cutout] | None:
         if not input_measurement.crossmatches:
             self.log.warning(
@@ -178,7 +179,7 @@ class LightcurveDBOutput(SourceOutput):
                 "map_id": (
                     input_measurement.map_id
                     if hasattr(input_measurement, "map_id")
-                    else map_id
+                    else mapcat_id
                 ),
             },
         )
@@ -215,14 +216,19 @@ class LightcurveDBOutput(SourceOutput):
         sources: list[MeasuredSource],
         socat_to_internal: dict[UUID, UUID],
         map_time: Time | None = None,
-        map_id: str | None = None,
+        map_name: str | None = None,
+        mapcat_id: uuid7.UUID | None = None,
     ) -> tuple[list[FluxMeasurement], list[Cutout]]:
         flux_measurements = []
         cutouts = []
 
         for source in sources:
             result = self._convert_internal_to_lightcurvedb_source(
-                source, socat_to_internal, map_time, map_id=map_id
+                source,
+                socat_to_internal,
+                map_time,
+                map_name=map_name,
+                mapcat_id=mapcat_id,
             )
             if result is not None:
                 fm, cutout = result
@@ -259,7 +265,8 @@ class LightcurveDBOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         map_time: Time | None = None,
-        map_id: str | None = None,
+        map_name: str | None = None,
+        mapcat_id: uuid7.UUID | None = None,
     ):
         socat_to_internal = await self._extract_and_upsert_sources(
             forced_photometry_candidates=forced_photometry_candidates
@@ -268,7 +275,8 @@ class LightcurveDBOutput(SourceOutput):
             sources=forced_photometry_candidates,
             socat_to_internal=socat_to_internal,
             map_time=map_time,
-            map_id=map_id,
+            map_name=map_name,
+            mapcat_id=mapcat_id,
         )
         return await self._upload_sources(
             flux_measurements=flux_measurements, cutouts=cutouts
@@ -278,7 +286,8 @@ class LightcurveDBOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
+        mapcat_id: uuid7.UUID | None = None,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -287,7 +296,8 @@ class LightcurveDBOutput(SourceOutput):
         successful_uploads = asyncio.run(
             self._flux_upload_flow(
                 forced_photometry_candidates,
-                map_id=map_id,
+                map_name=map_name,
+                mapcat_id=mapcat_id,
             )
         )
 

@@ -49,7 +49,8 @@ class LightServeOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
+        mapcat_id: uuid7.UUID | None = None,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -71,6 +72,14 @@ class LightServeOutput(SourceOutput):
             if not source.crossmatches:
                 self.log.warning(
                     "lightserve.output.skipping_source_no_crossmatch",
+                    ra=source.ra.to_value("deg"),
+                    dec=source.dec.to_value("deg"),
+                )
+                continue
+
+            if source.observation_mean_time is None:
+                self.log.warning(
+                    "lightserve.output.skipping_source_no_observation_time",
                     ra=source.ra.to_value("deg"),
                     dec=source.dec.to_value("deg"),
                 )
@@ -99,7 +108,7 @@ class LightServeOutput(SourceOutput):
                     else 0.0
                 ),
                 extra={
-                    "map_id": map_id,
+                    "map_id": mapcat_id,
                 },
             ).model_dump_json()
 

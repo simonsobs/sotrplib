@@ -75,7 +75,7 @@ def test_output_uploads_flux_measurement_with_uuid_crossmatch(
         sifter_result=SifterResult(
             source_candidates=[], transient_candidates=[], noise_candidates=[]
         ),
-        map_id="test_map",
+        map_name="test_map",
     )
 
     fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
@@ -100,7 +100,7 @@ def test_output_links_cutout_to_correct_measurement(tmp_path, lightcurvedb_setti
         sifter_result=SifterResult(
             source_candidates=[], transient_candidates=[], noise_candidates=[]
         ),
-        map_id="test_map",
+        map_name="test_map",
     )
 
     fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
@@ -134,7 +134,7 @@ def test_output_creates_unregistered_source_when_upsert_enabled(
         sifter_result=SifterResult(
             source_candidates=[], transient_candidates=[], noise_candidates=[]
         ),
-        map_id="test_map",
+        map_name="test_map",
     )
 
     sources = pd.read_parquet(tmp_path / "sources.parquet")
@@ -162,7 +162,7 @@ def test_output_skips_unregistered_source_when_upsert_disabled(
         sifter_result=SifterResult(
             source_candidates=[], transient_candidates=[], noise_candidates=[]
         ),
-        map_id="test_map",
+        map_name="test_map",
     )
 
     assert not (tmp_path / "sources.parquet").exists()
