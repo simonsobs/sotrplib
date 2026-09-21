@@ -347,7 +347,7 @@ class FluxMapReader(MapCatDatabaseReader):
         )
 
 
-def _processing_column(map_type: MapCatMapType):
+def _get_processing_column(map_type: MapCatMapType):
     """The TimeDomainProcessingTable column a given map_type's ids live in."""
     if map_type == "depth1_map":
         return TimeDomainProcessingTable.map_id
@@ -364,7 +364,7 @@ def _get_processing_row(
     map_type: MapCatMapType = "depth1_map",
     session,
 ) -> TimeDomainProcessingTable | None:
-    column = _processing_column(map_type)
+    column = _get_processing_column(map_type)
     query = select(TimeDomainProcessingTable).where(column == mapcat_id)
     result = session.execute(query).one_or_none()
     if result is None:
