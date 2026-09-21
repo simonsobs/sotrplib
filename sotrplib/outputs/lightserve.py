@@ -49,7 +49,8 @@ class LightServeOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
+        mapcat_id: uuid7.UUID | None = None,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -107,7 +108,7 @@ class LightServeOutput(SourceOutput):
                     else 0.0
                 ),
                 extra={
-                    "map_id": map_id,
+                    "map_id": mapcat_id,
                 },
             ).model_dump_json()
 

@@ -134,7 +134,7 @@ class RegisteredSourceCatalog(SourceCatalog):
         if not np.any(inside):
             log.warning(
                 "get_sources_in_map.no_sources_in_map",
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
                 wcs=input_map.flux.wcs,
             )
             return []

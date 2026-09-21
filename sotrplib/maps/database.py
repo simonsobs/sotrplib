@@ -186,16 +186,16 @@ class MapCatDatabaseReader(ABC):
                     continue
 
                 m = self._build_map(result)
-                m.map_id = result.map_id
+                m.mapcat_id = result.map_id
                 m._parent_database = mapcat_settings.database_name
                 m.pointing_model = (
                     None
                     if self.rerun_pointing_model
-                    else load_pointing_model(m.map_id, session=session)
+                    else load_pointing_model(m.mapcat_id, session=session)
                 )
                 maps.append(m)
-                self.map_ids.append(m.map_id)
-                set_processing_start(m.map_id, session=session)
+                self.map_ids.append(m.mapcat_id)
+                set_processing_start(m.mapcat_id, session=session)
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps

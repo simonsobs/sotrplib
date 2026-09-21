@@ -130,7 +130,7 @@ class SOCat(SourceCatalog):
         else:
             self.log.warning(
                 "socat.get_sources_in_map.no_observation_time",
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
             )
             t_mid = None
             t_min = None
@@ -163,7 +163,7 @@ class SOCat(SourceCatalog):
         if not all_sources:
             self.log.warning(
                 "socat.get_sources_in_map.no_sources_in_box",
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
                 wcs=input_map.flux.wcs,
             )
             return []
@@ -176,7 +176,7 @@ class SOCat(SourceCatalog):
         if not np.any(inside):
             self.log.warning(
                 "socat.get_sources_in_map.no_sources_in_map",
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
                 wcs=input_map.flux.wcs,
                 n_sources_in_bbox=len(all_sources),
             )
@@ -228,7 +228,7 @@ class SOCat(SourceCatalog):
         if t_min is None or t_max is None:
             log.warning(
                 "socat.forced_photometry_sources.invalid_time_range",
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
             )
             sources = [
                 self.sg_to_registered(sg, obs_time)
@@ -255,7 +255,7 @@ class SOCat(SourceCatalog):
             log.warning(
                 "socat.forced_photometry_sources.no_sources_in_map",
                 n_sources=len(sources),
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
                 wcs=input_map.flux.wcs,
             )
         return [sources[i] for i in range(len(sources)) if inside[i]]
