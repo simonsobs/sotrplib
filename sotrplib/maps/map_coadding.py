@@ -1,17 +1,20 @@
 import re
 from abc import ABC, abstractmethod
+from typing import Iterable
 
 import astropy.units as u
 import numpy as np
 import structlog
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import (
     CoaddedIntensityAndInverseVarianceMap,
     CoaddedRhoKappaMap,
     ProcessableMap,
 )
+from sotrplib.maps.preprocessor import MapPreprocessor
 
 _ARRAY_TOKEN_RE = re.compile(r"[a-zA-Z]+\d+")
 
@@ -292,6 +295,84 @@ class RhoKappaMapCoadder(MapCoadder):
             coadd.mask[coadd.mask > 0] = 1
 
         return coadd
+
+
+def stream_coadd(
+    maps: Iterable[ProcessableMap],
+    preprocessors: list[MapPreprocessor],
+    coadder: RhoKappaMapCoadder,
+    log: FilteringBoundLogger | None = None,
+) -> tuple[ProcessableMap | None, list[UUID7]]:
+    """
+    Memory-bounded coadding: build, preprocess (e.g. matched filter), and
+    merge `maps` into a single coadd one at a time, discarding each raw map
+    before moving on to the next, rather than holding every input map in
+    memory at once.
+
+    Unlike RhoKappaMapCoadder.coadd_maps() called on a full list at once
+    (which coadds first and preprocesses the result once), this applies the
+    preprocessor chain to each *individual* depth-1 map before it is folded
+    into the running coadd. That matters for two reasons: moving sources
+    (asteroids, satellites, ...) smear across pixels if many days of raw
+    maps are summed before any per-observation handling, and matched
+    filtering needs each observation's own noise properties rather than
+    those of an already-blurred sum.
+
+    Parameters
+    ----------
+    maps : Iterable[ProcessableMap]
+        Unbuilt input maps (e.g. from a MapCatDatabaseReader). Only one
+        map's pixel data is held in memory at a time.
+    preprocessors : list[MapPreprocessor]
+        Applied, in order, to each individual map before it is merged in
+        (e.g. planet masking, matched filtering, kappa/rho cleaning, edge
+        masking) -- the same objects used by the main pipeline's
+        `preprocessors` config, just run per map instead of once on the
+        final coadd.
+    coadder : RhoKappaMapCoadder
+        Used to merge each preprocessed map into the running coadd via
+        repeated `coadd_maps([running, filtered])` calls, which is a
+        correct incremental merge: it builds a new CoaddedRhoKappaMap each
+        call rather than mutating `running` in place.
+
+    Returns
+    -------
+    (coadd, map_ids) : The final coadd (None if `maps` was empty) and the
+        list of every input map's `mapcat_id`, in the order merged. Tracked
+        here rather than read off `coadd.map_ids` afterwards, because
+        `coadd_maps()` seeds `map_ids` from `base_map.mapcat_id` (singular) --
+        when `base_map` is itself a running coadd from a previous
+        iteration, that drops everything merged before it.
+    """
+    log = log or structlog.get_logger()
+
+    running: ProcessableMap | None = None
+    map_ids: list[UUID7] = []
+
+    for raw_map in maps:
+        raw_map.build()
+        map_id = raw_map.mapcat_id
+
+        filtered = raw_map
+        for preprocessor in preprocessors:
+            filtered = preprocessor.preprocess(input_map=filtered)
+
+        running = (
+            coadder.coadd_maps([filtered])
+            if running is None
+            else coadder.coadd_maps([running, filtered])
+        )
+        map_ids.append(map_id)
+
+        log.info(
+            "stream_coadd.merged_map",
+            mapcat_id=map_id,
+            n_merged=len(map_ids),
+        )
+
+        del raw_map, filtered
+
+    return running, map_ids
 
 
 class IntensityMapCoadder(MapCoadder):

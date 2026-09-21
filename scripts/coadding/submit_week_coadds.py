@@ -9,7 +9,7 @@ one coadd. Per-map preprocessing (rather than coadding raw maps and
 filtering once) matters here because moving sources smear across pixels if
 many days are summed before any per-observation handling, and matched
 filtering needs each observation's own noise properties. See
-sotrplib.maps.streaming_coadd for details.
+sotrplib.maps.map_coadding.stream_coadd for details.
 
 The finished coadd is saved to FITS and, by default, registered (along with
 links to every depth-1 map that went into it) in mapcat's

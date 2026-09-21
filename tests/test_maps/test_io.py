@@ -7,12 +7,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import uuid7
 from astropy import units as u
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.maps.core import (
+    CoaddedRhoKappaMap,
     FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     RhoAndKappaMap,
@@ -22,6 +24,7 @@ from sotrplib.maps.database import (
     IntensityMapReader,
     MapCatDatabaseReader,
     RhoKappaMapReader,
+    register_coadd,
 )
 from sotrplib.utils.utils import get_fwhm
 
@@ -642,3 +645,56 @@ def test_set_processing_end_raises_with_target_specific_message_for_coadd():
         set_processing_end(
             "44444444-4444-4444-4444-444444444444", map_type="coadd", session=session
         )
+
+
+# ─── register_coadd ─────────────────────────────────────────────────────────────
+
+
+def test_register_coadd_writes_row_and_links(separate_map_set_1):
+    start_time = Time("2025-10-10", format="iso")
+    coadd = CoaddedRhoKappaMap(
+        rho=None,
+        kappa=None,
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        observation_length=TimeDelta(3600, format="sec"),
+        frequency="f090",
+    )
+
+    linked_map = MagicMock()
+    linked_map.map_id = 7
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = [linked_map]
+
+    depth_one_parent = Path("/data/depth1")
+    output_paths = {
+        "flux": depth_one_parent / "coadds" / "f090_flux.fits",
+        "rho": depth_one_parent / "coadds" / "f090_rho.fits",
+        "kappa": depth_one_parent / "coadds" / "f090_kappa.fits",
+        "time_mean": depth_one_parent / "coadds" / "f090_time_mean.fits",
+    }
+
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = depth_one_parent
+        register_coadd(
+            coadd=coadd,
+            map_ids=[uuid7.create()],
+            coadd_name="f090_test_coadd",
+            coadd_type="depth1_streaming_coadd",
+            output_paths=output_paths,
+            session=session,
+        )
+
+    assert session.add.called
+    row = session.add.call_args.args[0]
+    assert row.coadd_name == "f090_test_coadd"
+    assert row.coadd_type == "depth1_streaming_coadd"
+    assert row.frequency == "f090"
+    assert row.map_path == "coadds/f090_flux.fits"
+    assert row.rho_path == "coadds/f090_rho.fits"
+    assert row.kappa_path == "coadds/f090_kappa.fits"
+    assert row.mean_time_path == "coadds/f090_time_mean.fits"
+    assert row.start_time_path is None
+    assert row.end_time_path is None
+    assert row.maps == [linked_map]
+    assert session.commit.called

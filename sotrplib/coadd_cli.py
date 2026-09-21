@@ -1,7 +1,7 @@
 """
 Command-line interface for sotrp-coadd: streaming, per-map-preprocessed
-depth-1 map coadding. See sotrplib.maps.streaming_coadd for why this is a
-separate tool from sotrp's own (coadd-then-preprocess) pipeline.
+depth-1 map coadding. See sotrplib.maps.map_coadding.stream_coadd for why
+this is a separate tool from sotrp's own (coadd-then-preprocess) pipeline.
 """
 
 import logging
@@ -13,7 +13,7 @@ from mapcat.helper import settings as mapcat_settings
 
 from sotrplib.config.coadd import CoaddSettings
 from sotrplib.maps.database import register_coadd, set_processing_end
-from sotrplib.maps.streaming_coadd import stream_coadd
+from sotrplib.maps.map_coadding import stream_coadd
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),

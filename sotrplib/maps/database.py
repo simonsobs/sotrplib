@@ -560,7 +560,7 @@ def register_coadd(
         observation_end set).
     map_ids : list[UUID7]
         map_id of every depth-1 map merged into this coadd (e.g. as
-        returned by sotrplib.maps.streaming_coadd.stream_coadd).
+        returned by sotrplib.maps.map_coadding.stream_coadd).
     coadd_name : str
         Human-readable, ideally unique name for this coadd.
     coadd_type : str
