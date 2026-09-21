@@ -502,7 +502,7 @@ def test_set_processing_end_accepts_failed_status():
     assert row.processing_status == "failed"
 
 
-# ─── map_id/coadd_id dual-target generalization ────────────────────────────────
+# ─── map_type-based processing status resolution ───────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -514,29 +514,16 @@ def test_set_processing_end_accepts_failed_status():
         "set_processing_end",
     ],
 )
-def test_status_functions_reject_neither_target(func_name):
+def test_status_functions_reject_unknown_map_type(func_name):
     import sotrplib.maps.database as db_module
 
     func = getattr(db_module, func_name)
-    with pytest.raises(ValueError, match="Exactly one of map_id or coadd_id"):
-        func(session=MagicMock())
-
-
-@pytest.mark.parametrize(
-    "func_name",
-    [
-        "check_if_permafailed",
-        "check_if_processed",
-        "set_processing_start",
-        "set_processing_end",
-    ],
-)
-def test_status_functions_reject_both_targets(func_name):
-    import sotrplib.maps.database as db_module
-
-    func = getattr(db_module, func_name)
-    with pytest.raises(ValueError, match="Exactly one of map_id or coadd_id"):
-        func(1, coadd_id=2, session=MagicMock())
+    with pytest.raises(ValueError, match="Unknown map_type"):
+        func(
+            "11111111-1111-1111-1111-111111111111",
+            map_type="bogus",
+            session=MagicMock(),
+        )
 
 
 def test_check_if_permafailed_works_with_coadd_id():
@@ -545,7 +532,7 @@ def test_check_if_permafailed_works_with_coadd_id():
     session = _session_with_status("permafail")
     assert (
         check_if_permafailed(
-            coadd_id="33333333-3333-3333-3333-333333333333", session=session
+            "33333333-3333-3333-3333-333333333333", map_type="coadd", session=session
         )
         is True
     )
@@ -558,7 +545,7 @@ def test_set_processing_start_creates_row_for_coadd_id():
 
     session = _session_with_status(None)
     set_processing_start(
-        coadd_id="44444444-4444-4444-4444-444444444444", session=session
+        "44444444-4444-4444-4444-444444444444", map_type="coadd", session=session
     )
     created_row = session.add.call_args.args[0]
     assert str(created_row.coadd_id) == "44444444-4444-4444-4444-444444444444"
@@ -594,7 +581,8 @@ def test_set_processing_end_works_with_coadd_id():
     session.execute.return_value.one_or_none.return_value = [row]
 
     set_processing_end(
-        coadd_id="44444444-4444-4444-4444-444444444444",
+        "44444444-4444-4444-4444-444444444444",
+        map_type="coadd",
         session=session,
         status="completed",
     )
@@ -606,7 +594,7 @@ def test_set_processing_end_raises_with_target_specific_message_for_coadd():
     from sotrplib.maps.database import set_processing_end
 
     session = _session_with_status(None)
-    with pytest.raises(ValueError, match="coadd_id 44444444"):
+    with pytest.raises(ValueError, match="coadd 44444444"):
         set_processing_end(
-            coadd_id="44444444-4444-4444-4444-444444444444", session=session
+            "44444444-4444-4444-4444-444444444444", map_type="coadd", session=session
         )

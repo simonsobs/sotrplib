@@ -132,7 +132,7 @@ def main():
             # before we know if they'll succeed), a coadd only ever gets
             # this one terminal status row, written once the outcome is
             # known.
-            set_processing_end(coadd_id=coadd_id, status="completed")
+            set_processing_end(coadd_id, map_type="coadd", status="completed")
     except Exception:
         log.error(
             "sotrp_coadd.failed",

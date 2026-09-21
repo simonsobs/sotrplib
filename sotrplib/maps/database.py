@@ -4,6 +4,7 @@ Read maps from the map tracking database.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Literal
 
 import uuid7
 from astropy import units as u
@@ -36,6 +37,13 @@ from sotrplib.sources.sources import RegisteredSource
 
 from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
 from .pointing import PointingModel
+
+# TimeDomainProcessingTable tracks both depth-1 maps and their coadds in a
+# single table (map_id/coadd_id are two nullable columns on the same row,
+# with a DB CHECK constraint enforcing exactly one is set) -- map_type picks
+# which column a given mapcat_id belongs to, rather than inferring it from
+# which of two id kwargs was passed.
+MapCatEntityType = Literal["depth1_map", "coadd"]
 
 
 class MapCatDatabaseReader(ABC):
@@ -299,24 +307,25 @@ class FluxMapReader(MapCatDatabaseReader):
         )
 
 
-def _resolve_processing_target(map_id: UUID7 | None, coadd_id: UUID7 | None) -> tuple:
-    """Validate exactly one of map_id/coadd_id was given and return the
-    (column, value) pair to filter TimeDomainProcessingTable on."""
-    if (map_id is None) == (coadd_id is None):
-        raise ValueError("Exactly one of map_id or coadd_id must be provided.")
-    if map_id is not None:
-        return TimeDomainProcessingTable.map_id, map_id
-    return TimeDomainProcessingTable.coadd_id, coadd_id
+def _processing_column(map_type: MapCatEntityType):
+    """The TimeDomainProcessingTable column a given map_type's ids live in."""
+    if map_type == "depth1_map":
+        return TimeDomainProcessingTable.map_id
+    if map_type == "coadd":
+        return TimeDomainProcessingTable.coadd_id
+    raise ValueError(
+        f"Unknown map_type {map_type!r}; expected 'depth1_map' or 'coadd'."
+    )
 
 
 def _get_processing_row(
-    map_id: UUID7 | None = None,
+    mapcat_id: UUID7,
     *,
-    coadd_id: UUID7 | None = None,
+    map_type: MapCatEntityType = "depth1_map",
     session,
 ) -> TimeDomainProcessingTable | None:
-    column, value = _resolve_processing_target(map_id, coadd_id)
-    query = select(TimeDomainProcessingTable).where(column == value)
+    column = _processing_column(map_type)
+    query = select(TimeDomainProcessingTable).where(column == mapcat_id)
     result = session.execute(query).one_or_none()
     if result is None:
         return None
@@ -326,9 +335,9 @@ def _get_processing_row(
 
 
 def check_if_permafailed(
-    map_id: UUID7 | None = None,
+    mapcat_id: UUID7,
     *,
-    coadd_id: UUID7 | None = None,
+    map_type: MapCatEntityType = "depth1_map",
     session=None,
 ) -> bool:
     """
@@ -341,14 +350,14 @@ def check_if_permafailed(
     """
     if session is None:
         session = mapcat_settings.session()
-    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
     return row is not None and row.processing_status == "permafail"
 
 
 def check_if_processed(
-    map_id: UUID7 | None = None,
+    mapcat_id: UUID7,
     *,
-    coadd_id: UUID7 | None = None,
+    map_type: MapCatEntityType = "depth1_map",
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
@@ -357,7 +366,7 @@ def check_if_processed(
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
     if row is None:
         return False
     if row.processing_status == completed_status:
@@ -370,20 +379,20 @@ def check_if_processed(
 
 
 def set_processing_start(
-    map_id: UUID7 | None = None,
+    mapcat_id: UUID7,
     *,
-    coadd_id: UUID7 | None = None,
+    map_type: MapCatEntityType = "depth1_map",
     session=None,
 ):
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
     if row is None:
         row = TimeDomainProcessingTable(
             processing_status_id=uuid7.create(),
-            map_id=map_id,
-            coadd_id=coadd_id,
+            map_id=mapcat_id if map_type == "depth1_map" else None,
+            coadd_id=mapcat_id if map_type == "coadd" else None,
         )
     row.processing_start = Time.now().to_datetime()
     row.processing_status = "processing"
@@ -463,9 +472,9 @@ def save_pointing_model(
 
 
 def set_processing_end(
-    map_id: UUID7 | None = None,
+    mapcat_id: UUID7,
     *,
-    coadd_id: UUID7 | None = None,
+    map_type: MapCatEntityType = "depth1_map",
     session=None,
     status: str = "completed",
 ):
@@ -479,11 +488,11 @@ def set_processing_end(
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    row = _get_processing_row(map_id, coadd_id=coadd_id, session=session)
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
     if row is None:
-        target = f"map_id {map_id}" if map_id is not None else f"coadd_id {coadd_id}"
         raise ValueError(
-            f"No processing_start status found for {target} when trying to set processing_end."
+            f"No processing_start status found for {map_type} {mapcat_id} "
+            "when trying to set processing_end."
         )
     row.processing_end = Time.now().to_datetime()
     row.processing_status = status
