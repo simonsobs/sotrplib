@@ -1737,8 +1737,8 @@ wheels = [
 
 [[package]]
 name = "mapcat"
-version = "0.3.1"
-source = { git = "https://github.com/simonsobs/mapcat?rev=fix_polyresidual_return#d0020794da82ddd22671c2ae6d1e6e006349d7d5" }
+version = "0.4.0"
+source = { git = "https://github.com/simonsobs/mapcat#bad5219067b3f252cf07510b21e52f52ab6008a8" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
@@ -1748,6 +1748,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
+    { name = "uuid7-standard" },
 ]
 
 [[package]]
@@ -3734,7 +3735,7 @@ dependencies = [
 
 [[package]]
 name = "sotrplib"
-version = "0.0.3"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -3787,7 +3788,7 @@ requires-dist = [
     { name = "h5py" },
     { name = "lightcurvedb", git = "https://github.com/simonsobs/lightcurvedb" },
     { name = "lmfit" },
-    { name = "mapcat", git = "https://github.com/simonsobs/mapcat?rev=fix_polyresidual_return" },
+    { name = "mapcat", git = "https://github.com/simonsobs/mapcat" },
     { name = "matplotlib" },
     { name = "numpy", specifier = "==1.26.4" },
     { name = "numpydantic" },

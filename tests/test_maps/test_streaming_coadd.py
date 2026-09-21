@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import uuid7
 from astropy.time import Time, TimeDelta
 
 from sotrplib.maps.core import CoaddedRhoKappaMap, RhoAndKappaMap
@@ -19,7 +20,7 @@ def _rho_kappa_map(paths, map_id, start_time):
         start_time=start_time,
         end_time=start_time + TimeDelta(3600, format="sec"),
     )
-    m.map_id = map_id
+    m.mapcat_id = map_id
     return m
 
 
@@ -108,7 +109,7 @@ def test_register_coadd_writes_row_and_links(separate_map_set_1):
         settings.depth_one_parent = depth_one_parent
         register_coadd(
             coadd=coadd,
-            map_ids=["11111111-1111-1111-1111-111111111111"],
+            map_ids=[uuid7.create()],
             coadd_name="f090_test_coadd",
             coadd_type="depth1_streaming_coadd",
             output_paths=output_paths,
