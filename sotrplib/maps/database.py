@@ -4,7 +4,6 @@ Read maps from the map tracking database.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal
 
 import uuid7
 from astropy import units as u
@@ -35,15 +34,13 @@ from uuid7 import UUID as UUID7
 
 from sotrplib.sources.sources import RegisteredSource
 
-from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
+from .core import (
+    FluxAndSNRMap,
+    IntensityAndInverseVarianceMap,
+    MapCatEntityType,
+    RhoAndKappaMap,
+)
 from .pointing import PointingModel
-
-# TimeDomainProcessingTable tracks both depth-1 maps and their coadds in a
-# single table (map_id/coadd_id are two nullable columns on the same row,
-# with a DB CHECK constraint enforcing exactly one is set) -- map_type picks
-# which column a given mapcat_id belongs to, rather than inferring it from
-# which of two id kwargs was passed.
-MapCatEntityType = Literal["depth1_map", "coadd"]
 
 
 class MapCatDatabaseReader(ABC):

@@ -111,7 +111,7 @@ class BaseRunner:
         output_map = input_map
         if not np.any(output_map.hits > 0):
             if input_map._parent_database is not None:
-                set_processing_end(input_map.mapcat_id)
+                set_processing_end(input_map.mapcat_id, map_type=input_map.map_type)
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -264,7 +264,9 @@ class BaseRunner:
                 self.profilable_task(output.output)(input_map=input_map)
 
             if input_map._parent_database is not None:
-                self.profilable_task(set_processing_end)(input_map.mapcat_id)
+                self.profilable_task(set_processing_end)(
+                    input_map.mapcat_id, map_type=input_map.map_type
+                )
             return forced_photometry_candidates, sifter_result
         except Exception:
             # input_map may have been reassigned above (e.g. by
@@ -276,7 +278,9 @@ class BaseRunner:
             # silently skip it on the next attempt) and re-raise so the
             # failure is still visible to the caller/pipeline.
             if getattr(input_map, "_parent_database", None) is not None:
-                set_processing_end(input_map.mapcat_id, status="failed")
+                set_processing_end(
+                    input_map.mapcat_id, map_type=input_map.map_type, status="failed"
+                )
             raise
 
     def crossmatch_pair(

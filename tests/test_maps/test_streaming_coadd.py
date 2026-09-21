@@ -155,3 +155,24 @@ def test_coadded_rho_kappa_map_does_not_share_mutable_defaults():
 
     assert b.input_map_times == []
     assert b.map_ids == []
+
+
+def test_map_type_distinguishes_depth1_maps_from_coadds(separate_map_set_1):
+    """
+    ProcessableMap.map_type lets database.py's processing-status helpers
+    pick the right TimeDomainProcessingTable column (map_id vs coadd_id)
+    for a given map's mapcat_id without knowing its concrete subclass.
+    """
+    start_time = Time("2025-10-10", format="iso")
+    depth1_map = _rho_kappa_map(separate_map_set_1, 0, start_time)
+    assert depth1_map.map_type == "depth1_map"
+
+    coadd = CoaddedRhoKappaMap(
+        rho=None,
+        kappa=None,
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        observation_length=TimeDelta(3600, format="sec"),
+        frequency="f090",
+    )
+    assert coadd.map_type == "coadd"

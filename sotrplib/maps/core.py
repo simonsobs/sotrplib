@@ -4,6 +4,7 @@ Core map objects.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Literal
 
 import astropy.units as u
 import numpy as np
@@ -24,6 +25,11 @@ from sotrplib.maps.utils import (
 )
 
 PointingModel = ConstantPointingModel
+
+# Matches mapcat's own map_id/coadd_id distinction on TimeDomainProcessingTable
+# (see sotrplib.maps.database) -- which of a map's two possible mapcat
+# identities (as a depth-1 map, or as a coadd of them) is the real one.
+MapCatEntityType = Literal["depth1_map", "coadd"]
 
 
 class ProcessableMap(ABC):
@@ -332,6 +338,16 @@ class ProcessableMap(ABC):
         map's own metadata, whether or not it has a mapcat identifier.
         """
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
+
+    @property
+    def map_type(self) -> MapCatEntityType:
+        """
+        Whether this map is a depth-1 map or a coadd of them, matching
+        mapcat's own map_id/coadd_id distinction on TimeDomainProcessingTable
+        -- lets callers holding a bare ProcessableMap pick the right column
+        for its mapcat_id without having to know the concrete subclass.
+        """
+        return "depth1_map"
 
     def get_pixel_times(
         self, pix: tuple[int, int]
@@ -1115,6 +1131,10 @@ class CoaddedRhoKappaMap(ProcessableMap):
 
     def build(self):
         pass
+
+    @property
+    def map_type(self) -> MapCatEntityType:
+        return "coadd"
 
     def update_times(self, new_map):
         """
