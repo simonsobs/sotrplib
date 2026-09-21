@@ -16,6 +16,7 @@ from typing import Iterable
 
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.map_coadding import RhoKappaMapCoadder
@@ -27,7 +28,7 @@ def stream_coadd(
     preprocessors: list[MapPreprocessor],
     coadder: RhoKappaMapCoadder,
     log: FilteringBoundLogger | None = None,
-) -> tuple[ProcessableMap | None, list[str]]:
+) -> tuple[ProcessableMap | None, list[UUID7]]:
     """
     Build, preprocess, and merge `maps` into a single coadd one at a time.
 
@@ -51,20 +52,20 @@ def stream_coadd(
     Returns
     -------
     (coadd, map_ids) : The final coadd (None if `maps` was empty) and the
-        list of every input map's `map_id`, in the order merged. Tracked
+        list of every input map's `mapcat_id`, in the order merged. Tracked
         here rather than read off `coadd.map_ids` afterwards, because
-        `coadd_maps()` seeds `map_ids` from `base_map.map_id` (singular) --
+        `coadd_maps()` seeds `map_ids` from `base_map.mapcat_id` (singular) --
         when `base_map` is itself a running coadd from a previous
         iteration, that drops everything merged before it.
     """
     log = log or get_logger()
 
     running: ProcessableMap | None = None
-    map_ids: list[str] = []
+    map_ids: list[UUID7] = []
 
     for raw_map in maps:
         raw_map.build()
-        map_id = raw_map.map_id
+        map_id = raw_map.mapcat_id
 
         filtered = raw_map
         for preprocessor in preprocessors:
@@ -79,7 +80,7 @@ def stream_coadd(
 
         log.info(
             "stream_coadd.merged_map",
-            map_id=map_id,
+            mapcat_id=map_id,
             n_merged=len(map_ids),
         )
 

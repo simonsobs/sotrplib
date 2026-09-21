@@ -434,7 +434,7 @@ class IntensityMapCoadder(MapCoadder):
             mask=base_map.mask,
             map_resolution=base_map.map_resolution,
             hits=base_map.hits,
-            map_ids=[base_map.map_id],
+            map_ids=[base_map.mapcat_id],
         )
 
         self.log.info(
@@ -484,7 +484,7 @@ class IntensityMapCoadder(MapCoadder):
                     coadd.hits,
                     sourcemap.hits,
                 )
-                coadd.map_ids.append(sourcemap.map_id)
+                coadd.map_ids.append(sourcemap.mapcat_id)
         else:
             self.log.warning(
                 "intensitymapcoadder.coadd.single_map_warning", n_maps_coadded=1
