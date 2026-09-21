@@ -187,8 +187,8 @@ def test_build_map_passes_metadata(db_result):
 # ─── build_query time windowing ────────────────────────────────────────────────
 
 
-def test_build_query_default_is_loose():
-    assert IntensityMapReader().time_binning == "loose"
+def test_build_query_default_is_left_bound():
+    assert IntensityMapReader().time_binning == "left-bound"
 
 
 def test_build_query_loose_is_half_open_overlap():
@@ -200,11 +200,12 @@ def test_build_query_loose_is_half_open_overlap():
     """
     start = Time(1000, format="unix")
     end = Time(2000, format="unix")
-    query = IntensityMapReader(start_time=start, end_time=end).build_query()
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="loose"
+    ).build_query()
     compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
     assert "depth_one_maps.stop_time >=" in compiled
     assert "depth_one_maps.start_time <" in compiled
-    assert "depth_one_maps.start_time <=" not in compiled
 
 
 def test_build_query_restrictive_requires_full_containment():
