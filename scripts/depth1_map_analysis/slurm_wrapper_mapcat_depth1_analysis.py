@@ -71,6 +71,13 @@ P.add_argument(
 )
 
 P.add_argument(
+    "--env-setup-file",
+    action="store",
+    default="env_setup",
+    help="Path to the environment setup file. If default, then will use os.cwd() which assumes this script lives in the same directory.",
+)
+
+P.add_argument(
     "--out-dir",
     action="store",
     default="",
@@ -148,7 +155,14 @@ P.add_argument(
 args = P.parse_args()
 
 
-def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_out_dir):
+def generate_slurm_header(
+    jobname,
+    groupname,
+    cpu_per_task,
+    script_dir,
+    slurm_out_dir,
+    env_setup_file="env_setup",
+):
     slurm_header = f"""#!/bin/bash
 #SBATCH --job-name={jobname}            # create a short name for your job
 #SBATCH -A {groupname}                    # group name, by default simonsobs
@@ -159,22 +173,13 @@ def generate_slurm_header(jobname, groupname, cpu_per_task, script_dir, slurm_ou
 #SBATCH --time=04:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --output={slurm_out_dir}%x.out
 
-module load soconda/3.11/v0.6.3
 
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
 cd {script_dir}
 
 source .venv/bin/activate
 
-export socat_client_client_type=pickle
-export socat_client_pickle_path=catmaker_090_3pass_socat.pickle
-
-export MAPCAT_DEPTH_ONE_PARENT=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/
-export MAPCAT_DATABASE_NAME=/scratch/gpfs/SIMONSOBS/users/amfoster/so/lat_early_maps/out_deep56/mapcat.sqlite
-
-if [ ! -e "socat.pickle" ]; then
-    socat-act-fits -f /scratch/gpfs/SIMONSOBS/users/amfoster/depth1_act_maps/inputs/catmaker_090_3pass_clean.fits  -o catmaker_090_3pass_socat.pickle
-fi
+source {env_setup_file}  # setup the environment for running sotrp
 
 """
     return slurm_header
@@ -203,12 +208,6 @@ def generate_config_json(
         {{
             "catalog_type": "socat",
             "flux_lower_limit": "{flux_low_limit}"
-        }}
-    ],
-    "sso_catalogs": [
-        {{
-            "catalog_type": "sso",
-            "db_path": "./sotrplib/solar_system/mpc_orbital_params_bright_asteroids.csv"
         }}
     ],
     "pointing_provider": {{
@@ -271,7 +270,7 @@ def generate_config_json(
         "sifter_type": "default",
         "min_match_radius": "5.0 arcmin"
     }},
-    "outputs": [
+    "source_outputs": [
         {{
             "output_type": "pickle",
             "directory": "{output_dir}"
