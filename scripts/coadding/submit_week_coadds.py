@@ -43,7 +43,13 @@ def get_time_range(database_name: Path) -> tuple[float, float]:
         con.close()
     if start is None or stop is None:
         raise ValueError(f"No depth_one_maps rows found in {database_name}")
-    return start, stop
+    # sqlite stores these as DateTime strings (e.g. "2025-09-04 02:12:31.797713"),
+    # not unix-epoch floats -- convert so downstream arithmetic (window_bounds,
+    # iso()) can treat them uniformly with the --start-time/--end-time path.
+    return (
+        datetime.fromisoformat(start).replace(tzinfo=timezone.utc).timestamp(),
+        datetime.fromisoformat(stop).replace(tzinfo=timezone.utc).timestamp(),
+    )
 
 
 def iso(unix_time: float) -> str:
