@@ -65,6 +65,8 @@ class ProcessableMap(ABC):
     "Can be used for source subtraction."
     flatfield_map: ndmap | None = None
     "A flatfield map containing the local 2D background RMS used for flatfielding the map, if applicable."
+    weights: ndmap | None = None
+    "The kappa (inverse variance) map, kept through finalize for data-quality checks, if one was loaded."
 
     finalized: bool = False
     "Whether finalize has been called and ancillary maps can no longer be updated"
@@ -412,8 +414,11 @@ class ProcessableMap(ABC):
 
         clear the cached valid pixel mask because the apply mask may change that.
 
+        keep a reference to kappa as `weights` (not a copy) for data-quality checks.
+
         apply mask if present.
         """
+        self.weights = self.__kappa
         del self.rho
         del self.kappa
         self._valid_pixel_mask_cache = None
