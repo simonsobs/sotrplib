@@ -3,6 +3,7 @@ Read maps from the map tracking database.
 """
 
 from abc import ABC, abstractmethod
+from datetime import timezone
 from pathlib import Path
 from typing import Literal
 
@@ -71,32 +72,48 @@ def _apply_time_binning(
         # silently excluding any map whose observation straddles a
         # window boundary from every window.
         if start_time is not None:
-            query = query.where(table.start_time >= start_time.to_datetime())
+            query = query.where(
+                table.start_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
         if end_time is not None:
-            query = query.where(table.stop_time < end_time.to_datetime())
+            query = query.where(
+                table.stop_time < end_time.to_datetime(timezone=timezone.utc)
+            )
     elif time_binning == "loose":
         # Map overlaps (start_time, end_time) at all. Half-open on both
         # sides. maps that straddle a window boundary will be double counted.
         if start_time is not None:
-            query = query.where(table.stop_time >= start_time.to_datetime())
+            query = query.where(
+                table.stop_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
         if end_time is not None:
-            query = query.where(table.start_time < end_time.to_datetime())
+            query = query.where(
+                table.start_time < end_time.to_datetime(timezone=timezone.utc)
+            )
     elif time_binning == "left-bound":
         # Partition solely by the map's own start_time (half-open
         # [start_time, end_time)) -- every map has exactly one
         # start_time, so this splits maps across adjacent windows with
         # no gaps and no overlap.
         if start_time is not None:
-            query = query.where(table.start_time >= start_time.to_datetime())
+            query = query.where(
+                table.start_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
         if end_time is not None:
-            query = query.where(table.start_time < end_time.to_datetime())
+            query = query.where(
+                table.start_time < end_time.to_datetime(timezone=timezone.utc)
+            )
     elif time_binning == "right-bound":
         # Symmetric counterpart to "left-bound": partitions maps by
         # their own stop_time instead of start_time.
         if start_time is not None:
-            query = query.where(table.stop_time >= start_time.to_datetime())
+            query = query.where(
+                table.stop_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
         if end_time is not None:
-            query = query.where(table.stop_time < end_time.to_datetime())
+            query = query.where(
+                table.stop_time < end_time.to_datetime(timezone=timezone.utc)
+            )
     else:
         raise ValueError(
             f"Unknown time_binning {time_binning!r}; expected one of "
@@ -531,9 +548,14 @@ def check_if_processed(
         return False
     if row.processing_status == completed_status:
         return True
+    # Compare as astropy Times: row.processing_start comes back naive from
+    # older sqlmodel and UTC-aware from newer (>=0.0.43) sqlmodel, and
+    # subtracting it from an aware/naive datetime would fail on one of them.
+    # Time() treats a naive datetime as UTC, which is how it was stored.
     if row.processing_status == processing_status and (
-        Time.now().to_datetime() - row.processing_start
-    ).total_seconds() < stale_limit.to_value("s"):
+        (Time.now() - Time(row.processing_start)).to_value("s")
+        < stale_limit.to_value("s")
+    ):
         return True
     return False
 
@@ -554,7 +576,7 @@ def set_processing_start(
             map_id=mapcat_id if map_type == "depth1_map" else None,
             coadd_id=mapcat_id if map_type == "coadd" else None,
         )
-    row.processing_start = Time.now().to_datetime()
+    row.processing_start = Time.now().to_datetime(timezone=timezone.utc)
     row.processing_status = "processing"
     session.add(row)
     session.commit()
@@ -654,7 +676,7 @@ def set_processing_end(
             f"No processing_start status found for {map_type} {mapcat_id} "
             "when trying to set processing_end."
         )
-    row.processing_end = Time.now().to_datetime()
+    row.processing_end = Time.now().to_datetime(timezone=timezone.utc)
     row.processing_status = status
     session.add(row)
     session.commit()
@@ -722,9 +744,9 @@ def register_coadd(
         ctime=(
             coadd.observation_start
             + (coadd.observation_end - coadd.observation_start) / 2
-        ).to_datetime(),
-        start_time=coadd.observation_start.to_datetime(),
-        stop_time=coadd.observation_end.to_datetime(),
+        ).to_datetime(timezone=timezone.utc),
+        start_time=coadd.observation_start.to_datetime(timezone=timezone.utc),
+        stop_time=coadd.observation_end.to_datetime(timezone=timezone.utc),
     )
 
     if map_ids:
