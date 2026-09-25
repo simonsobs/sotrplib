@@ -60,6 +60,11 @@ def iso(unix_time: float) -> str:
     )
 
 
+def window_dirname(unix_time: float) -> str:
+    """Per-window output subdirectory: the window's UTC start date, e.g. 20250904."""
+    return datetime.fromtimestamp(unix_time, tz=timezone.utc).strftime("%Y%m%d")
+
+
 def window_bounds(
     start: float, stop: float, window_days: float
 ) -> list[tuple[float, float]]:
@@ -211,8 +216,8 @@ def parse_args():
         "--output-dir",
         type=Path,
         required=True,
-        help="Directory to write coadded map FITS outputs to (one subdir per window is not "
-        "created automatically; include it in this path if desired).",
+        help="Directory to write coadded map FITS outputs to. Each window's coadds go in "
+        "a YYYYMMDD subdirectory named for the window's UTC start date.",
     )
     p.add_argument(
         "--coadd-parent",
@@ -384,6 +389,8 @@ def main():
     for w, (w_start, w_stop) in enumerate(windows):
         for frequency in args.frequencies:
             tag = f"week{w:02d}_{frequency}"
+            window_output_dir = output_dir / window_dirname(w_start)
+            window_output_dir.mkdir(exist_ok=True)
 
             beam1d = None
             if args.beam1d_template:
@@ -399,7 +406,7 @@ def main():
                 frequency=frequency,
                 array=args.array,
                 instrument=args.instrument,
-                output_dir=output_dir,
+                output_dir=window_output_dir,
                 beam1d=beam1d,
                 fields=args.fields,
                 rerun=args.rerun,
