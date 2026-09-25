@@ -743,6 +743,31 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         super().finalize()
 
 
+def _flux_units_from_bunit(
+    filename: Path, power: int, default: Unit, log: FilteringBoundLogger
+) -> Unit:
+    """
+    The map's flux unit, from the FITS BUNIT of a field that carries
+    flux_units**power (flux: 1, rho: -1), as written by MapOutputSerializer.
+    Files without BUNIT (e.g. externally produced maps) keep `default`, the
+    configured unit.
+    """
+    from astropy.io import fits
+
+    bunit = fits.getheader(str(filename)).get("BUNIT")
+    if not bunit:
+        return default
+    flux_units = u.Unit(bunit, format="fits") ** (1 / power)
+    if flux_units != default:
+        log.info(
+            "map.flux_units_from_bunit",
+            bunit=bunit,
+            flux_units=str(flux_units),
+            configured=str(default),
+        )
+    return flux_units
+
+
 class RhoAndKappaMap(ProcessableMap):
     """
     A set of FITS maps read from disk. Could be Depth 1, could
@@ -807,6 +832,9 @@ class RhoAndKappaMap(ProcessableMap):
         except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=enmap_box)
+        self.flux_units = _flux_units_from_bunit(
+            self.rho_filename, power=-1, default=self.flux_units, log=log
+        )
 
         log = log.new(kappa_filename=self.kappa_filename)
         try:
@@ -995,6 +1023,9 @@ class FluxAndSNRMap(ProcessableMap):
         except (IndexError, AttributeError, AssertionError):
             # Flux map does not have Q, U
             self.flux = enmap.read_map(str(self.flux_filename), box=enmap_box)
+        self.flux_units = _flux_units_from_bunit(
+            self.flux_filename, power=1, default=self.flux_units, log=log
+        )
 
         log = log.new(snr_filename=self.snr_filename)
         try:
