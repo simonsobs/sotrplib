@@ -137,3 +137,38 @@ def test_check_registration_paths_rejects_outside_coadd_parent(tmp_path):
         settings.depth_one_coadd_parent = tmp_path / "my_coadds"
         with pytest.raises(ValueError, match="MAPCAT_DEPTH_ONE_COADD_PARENT"):
             _check_registration_paths(config)
+
+
+def test_main_registers_coadd_and_records_its_status():
+    """
+    With registration enabled, the new coadd needs a status row before
+    set_processing_end() can mark it completed (the real function raises if
+    none exists). Previously this raised, which marked every input map
+    "failed" even though the coadd had been written and registered.
+    """
+    config, reader = _mock_config(map_ids=[1, 2, 3])
+    config.mapcat_registration.enabled = True
+    coadd = MagicMock()
+    rows: dict = {}
+
+    def fake_start(mapcat_id, *, map_type="depth1_map", **_):
+        rows[(map_type, mapcat_id)] = "processing"
+
+    def fake_end(mapcat_id, *, map_type="depth1_map", status="completed", **_):
+        if map_type == "coadd" and (map_type, mapcat_id) not in rows:
+            raise ValueError("No processing_start status found")
+        rows[(map_type, mapcat_id)] = status
+
+    with (
+        patch("sotrplib.coadd_cli.parse_args"),
+        patch("sotrplib.coadd_cli.CoaddSettings.from_file", return_value=config),
+        patch("sotrplib.coadd_cli._check_registration_paths"),
+        patch("sotrplib.coadd_cli.stream_coadd", return_value=(coadd, [1, 2, 3])),
+        patch("sotrplib.coadd_cli.register_coadd", return_value="coadd-id"),
+        patch("sotrplib.coadd_cli.set_processing_start", side_effect=fake_start),
+        patch("sotrplib.coadd_cli.set_processing_end", side_effect=fake_end),
+    ):
+        main()
+
+    assert rows[("coadd", "coadd-id")] == "completed"
+    assert all(rows[("depth1_map", i)] == "completed" for i in (1, 2, 3))

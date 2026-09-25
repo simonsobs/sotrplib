@@ -12,7 +12,11 @@ import structlog
 from mapcat.helper import settings as mapcat_settings
 
 from sotrplib.config.coadd import CoaddSettings
-from sotrplib.maps.database import register_coadd, set_processing_end
+from sotrplib.maps.database import (
+    register_coadd,
+    set_processing_end,
+    set_processing_start,
+)
 from sotrplib.maps.map_coadding import stream_coadd
 
 structlog.configure(
@@ -131,9 +135,10 @@ def main():
             )
             # A coadd's id doesn't exist until register_coadd() has already
             # finished, so unlike maps (which get set_processing_start()
-            # before we know if they'll succeed), a coadd only ever gets
-            # this one terminal status row, written once the outcome is
-            # known.
+            # before we know if they'll succeed), a coadd's status row is
+            # only created once the outcome is known. set_processing_end()
+            # requires an existing row, so create it first.
+            set_processing_start(coadd_id, map_type="coadd")
             set_processing_end(coadd_id, map_type="coadd", status="completed")
     except Exception:
         log.error(
