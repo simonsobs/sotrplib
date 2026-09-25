@@ -17,6 +17,11 @@ from structlog.types import FilteringBoundLogger
 from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.weights import (
+    PoorWeightsCriteria,
+    get_weight_thresholds,
+    poor_weights_flag,
+)
 from sotrplib.sources.sources import (
     CrossMatch,
     MeasuredSource,
@@ -337,6 +342,7 @@ def gaussian_fit(
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     goodness_of_fit_threshold: float | None = None,
     flags: dict = {},
+    poor_weights: PoorWeightsCriteria | None = None,
     log: FilteringBoundLogger | None = None,
     debug: bool = False,
 ) -> list[MeasuredSource]:
@@ -382,6 +388,10 @@ def gaussian_fit(
         Dictionary mapping flag names (str) to boolean lists of length
         ``len(source_list)``. For each source, all flag names whose list entry
         is True are attached to the corresponding measured source.
+    poor_weights : PoorWeightsCriteria or None, optional
+        If given, and the map kept its weights (kappa) map, sources on
+        poorly-weighted regions get a ``poor_weights_*`` flag. The fit is
+        still attempted. If None, no check is done. The default is None.
     log : structlog.types.FilteringBoundLogger or None, optional
         Logger instance used for structured logging. If None, a default logger
         from :func:`structlog.get_logger` is created and used.
@@ -400,6 +410,15 @@ def gaussian_fit(
     log = log.bind(func_name="lmfit_2d_gaussian_fit")
     preamble = "sources.fitting.lmfit_2d_gaussian_fit."
     fit_sources = []
+
+    weights = getattr(input_map, "weights", None) if poor_weights else None
+    weight_thresholds = None
+    if weights is not None:
+        weight_thresholds = get_weight_thresholds(weights, poor_weights)
+        log.info(f"{preamble}poor_weights_thresholds", thresholds=weight_thresholds)
+    elif poor_weights is not None:
+        log.warning(f"{preamble}poor_weights_no_weight_map")
+
     for i in tqdm(
         range(len(source_list)),
         desc="Cutting thumbnails and fitting sources w 2D Gaussian (lmfit)",
@@ -500,6 +519,14 @@ def gaussian_fit(
             forced_source.fit_params = fit.model_dump()
             fit_sources.append(forced_source)
             continue
+
+        if weight_thresholds is not None:
+            weights_flag = poor_weights_flag(
+                weights, source_pos, poor_weights, weight_thresholds
+            )
+            if weights_flag is not None:
+                log.info(f"{preamble}{weights_flag}", source=source_name)
+                forced_source.flags.append(weights_flag)
 
         t_start, t_mean, t_end = input_map.get_pixel_times(pix)
 

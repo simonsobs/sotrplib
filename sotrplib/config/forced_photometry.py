@@ -6,6 +6,7 @@ from astropydantic import AstroPydanticQuantity
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.maps.weights import PoorWeightsCriteria
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
     ForcedPhotometryProvider,
@@ -51,6 +52,7 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
     near_source_rel_flux_limit: float = 1.0
     min_flux: AstroPydanticQuantity[u.Jy] | None = None
     goodness_of_fit_threshold: float | None = None
+    poor_weights: PoorWeightsCriteria | None = None
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
@@ -64,6 +66,7 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
             near_source_rel_flux_limit=self.near_source_rel_flux_limit,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             min_flux=self.min_flux,
+            poor_weights=self.poor_weights,
             log=log,
         )
 
