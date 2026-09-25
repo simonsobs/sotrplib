@@ -912,6 +912,27 @@ class RhoAndKappaMap(ProcessableMap):
         super().finalize()
 
 
+class CoaddRhoAndKappaMap(RhoAndKappaMap):
+    """
+    A registered coadd's rho/kappa maps read back from disk (e.g. as written
+    by sotrp-coadd). Differs from a depth-1 RhoAndKappaMap in two ways:
+
+    - it's a coadd as far as mapcat is concerned (map_type "coadd"), so its
+      processing status lives under coadd_id, not map_id;
+    - its time map already holds absolute unix times (the hit-weighted mean
+      of its input maps' absolute times), unlike depth-1 time maps, which
+      are seconds since the observation start -- so no offset is added.
+    """
+
+    @property
+    def map_type(self) -> MapCatMapType:
+        return "coadd"
+
+    def add_time_offset(self, offset: Time | None = None):
+        if self.observation_end is None and self.time_last is not None:
+            self.observation_end = Time(float(np.amax(self.time_last)), format="unix")
+
+
 class FluxAndSNRMap(ProcessableMap):
     """
     A set of FITS maps read from disk. Could be Depth 1, could

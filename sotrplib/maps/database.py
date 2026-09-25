@@ -36,6 +36,7 @@ from uuid7 import UUID as UUID7
 from sotrplib.sources.sources import RegisteredSource
 
 from .core import (
+    CoaddRhoAndKappaMap,
     FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     MapCatMapType,
@@ -54,6 +55,54 @@ from .pointing import PointingModel
 #                      submit_week_coadds.py uses)
 #   "right-bound"  -- partition solely by the map's own stop_time
 TimeBinning = Literal["restrictive", "loose", "left-bound", "right-bound"]
+
+
+def _apply_time_binning(
+    query, table, start_time: Time | None, end_time: Time | None, time_binning
+):
+    """
+    Restrict `query` on `table` (DepthOneMapTable or DepthOneCoaddTable --
+    both have start_time/stop_time columns) to [start_time, end_time)
+    according to `time_binning`.
+    """
+    if time_binning == "restrictive":
+        # Map fully contained in (start_time, end_time]. Guarantees a map
+        # is never assigned to more than one window, at the cost of
+        # silently excluding any map whose observation straddles a
+        # window boundary from every window.
+        if start_time is not None:
+            query = query.where(table.start_time >= start_time.to_datetime())
+        if end_time is not None:
+            query = query.where(table.stop_time < end_time.to_datetime())
+    elif time_binning == "loose":
+        # Map overlaps (start_time, end_time) at all. Half-open on both
+        # sides. maps that straddle a window boundary will be double counted.
+        if start_time is not None:
+            query = query.where(table.stop_time >= start_time.to_datetime())
+        if end_time is not None:
+            query = query.where(table.start_time < end_time.to_datetime())
+    elif time_binning == "left-bound":
+        # Partition solely by the map's own start_time (half-open
+        # [start_time, end_time)) -- every map has exactly one
+        # start_time, so this splits maps across adjacent windows with
+        # no gaps and no overlap.
+        if start_time is not None:
+            query = query.where(table.start_time >= start_time.to_datetime())
+        if end_time is not None:
+            query = query.where(table.start_time < end_time.to_datetime())
+    elif time_binning == "right-bound":
+        # Symmetric counterpart to "left-bound": partitions maps by
+        # their own stop_time instead of start_time.
+        if start_time is not None:
+            query = query.where(table.stop_time >= start_time.to_datetime())
+        if end_time is not None:
+            query = query.where(table.stop_time < end_time.to_datetime())
+    else:
+        raise ValueError(
+            f"Unknown time_binning {time_binning!r}; expected one of "
+            "'restrictive', 'loose', 'left-bound', 'right-bound'."
+        )
+    return query
 
 
 class MapCatDatabaseReader(ABC):
@@ -141,59 +190,9 @@ class MapCatDatabaseReader(ABC):
             else query
         )
 
-        if self.time_binning == "restrictive":
-            # Map fully contained in (start_time, end_time]. Guarantees a map
-            # is never assigned to more than one window, at the cost of
-            # silently excluding any map whose observation straddles a
-            # window boundary from every window.
-            if self.start_time is not None:
-                query = query.where(
-                    DepthOneMapTable.start_time >= self.start_time.to_datetime()
-                )
-            if self.end_time is not None:
-                query = query.where(
-                    DepthOneMapTable.stop_time < self.end_time.to_datetime()
-                )
-        elif self.time_binning == "loose":
-            # Map overlaps (start_time, end_time) at all. Half-open on both
-            # sides. maps that straddle a window boundary will be double counted.
-            if self.start_time is not None:
-                query = query.where(
-                    DepthOneMapTable.stop_time >= self.start_time.to_datetime()
-                )
-            if self.end_time is not None:
-                query = query.where(
-                    DepthOneMapTable.start_time < self.end_time.to_datetime()
-                )
-        elif self.time_binning == "left-bound":
-            # Partition solely by the map's own start_time (half-open
-            # [start_time, end_time)) -- every map has exactly one
-            # start_time, so this splits maps across adjacent windows with
-            # no gaps and no overlap.
-            if self.start_time is not None:
-                query = query.where(
-                    DepthOneMapTable.start_time >= self.start_time.to_datetime()
-                )
-            if self.end_time is not None:
-                query = query.where(
-                    DepthOneMapTable.start_time < self.end_time.to_datetime()
-                )
-        elif self.time_binning == "right-bound":
-            # Symmetric counterpart to "left-bound": partitions maps by
-            # their own stop_time instead of start_time.
-            if self.start_time is not None:
-                query = query.where(
-                    DepthOneMapTable.stop_time >= self.start_time.to_datetime()
-                )
-            if self.end_time is not None:
-                query = query.where(
-                    DepthOneMapTable.stop_time < self.end_time.to_datetime()
-                )
-        else:
-            raise ValueError(
-                f"Unknown time_binning {self.time_binning!r}; expected one of "
-                "'restrictive', 'loose', 'left-bound', 'right-bound'."
-            )
+        query = _apply_time_binning(
+            query, DepthOneMapTable, self.start_time, self.end_time, self.time_binning
+        )
 
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
@@ -345,6 +344,127 @@ class FluxMapReader(MapCatDatabaseReader):
             instrument=self.instrument,
             log=self.log,
         )
+
+
+class CoaddRhoKappaMapReader(MapCatDatabaseReader):
+    """
+    Reader for registered coadds (mapcat's depth_one_coadds table, e.g. as
+    written by sotrp-coadd), yielding CoaddRhoAndKappaMap objects.
+
+    Coadd paths are resolved against MAPCAT_DEPTH_ONE_COADD_PARENT, and
+    processing status is tracked under coadd_id (map_type "coadd"). Filters
+    on frequency, time window (same time_binning modes as depth-1 maps,
+    applied to the coadd's own start/stop times), `map_ids` (coadd_ids), and
+    optionally `coadd_type`. Coadds have no tube_slot or sky-coverage rows,
+    so `array` is labelled from the linked depth-1 maps (matching the
+    coadder's label, e.g. "i1i3i4i6") and `sources` filtering is not
+    supported. Depth-1 pointing models don't apply to a coadd and are never
+    loaded.
+    """
+
+    default_map_units = u.Unit("Jy")
+    _valid_unit_equivalent = u.Jy
+
+    def __init__(self, *args, coadd_type: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coadd_type = coadd_type
+        if self.array is not None:
+            raise ValueError(
+                "CoaddRhoKappaMapReader can't filter by array: coadds have no "
+                "tube_slot. Filter by frequency, time, coadd_type or map_ids."
+            )
+        if self.sources:
+            raise ValueError(
+                "CoaddRhoKappaMapReader can't filter by sources: coadds have no "
+                "sky-coverage rows."
+            )
+
+    def build_query(self):
+        query = select(DepthOneCoaddTable)
+        if self.frequency:
+            query = query.where(DepthOneCoaddTable.frequency == self.frequency)
+        if self.coadd_type:
+            query = query.where(DepthOneCoaddTable.coadd_type == self.coadd_type)
+        query = _apply_time_binning(
+            query,
+            DepthOneCoaddTable,
+            self.start_time,
+            self.end_time,
+            self.time_binning,
+        )
+        if self.map_ids:
+            query = query.where(DepthOneCoaddTable.coadd_id.in_(self.map_ids))
+        return query.order_by(DepthOneCoaddTable.start_time)
+
+    def _build_map(self, result):
+        tube_slots = {m.tube_slot for m in result.maps if m.tube_slot}
+        coadd_parent = mapcat_settings.depth_one_coadd_parent
+        return CoaddRhoAndKappaMap(
+            rho_filename=coadd_parent / result.rho_path,
+            kappa_filename=coadd_parent / result.kappa_path,
+            time_filename=(
+                coadd_parent / result.mean_time_path if result.mean_time_path else None
+            ),
+            start_time=Time(result.start_time),
+            end_time=Time(result.stop_time),
+            sky_box=self.sky_box,
+            flux_units=self.map_units,
+            frequency=result.frequency,
+            array="".join(sorted(tube_slots)) or None,
+            instrument=self.instrument,
+            log=self.log,
+        )
+
+    def map_list(self):
+        if self._map_list is not None:
+            return self._map_list
+
+        self.log.info(
+            "CoaddRhoKappaMapReader.connecting_to_db",
+            db_url=mapcat_settings.database_name,
+        )
+
+        maps = []
+        with mapcat_settings.session() as session:
+            results = session.execute(self.build_query()).scalars().all()
+            self.log.info(
+                "CoaddRhoKappaMapReader.found_coadds", number_found=len(results)
+            )
+            if self.number_to_read is None:
+                self.number_to_read = len(results)
+            for result in results:
+                if check_if_permafailed(
+                    result.coadd_id, map_type="coadd", session=session
+                ):
+                    self.log.info(
+                        "CoaddRhoKappaMapReader.skipping_permafailed_coadd",
+                        coadd_id=result.coadd_id,
+                    )
+                    continue
+
+                if not self.rerun and check_if_processed(
+                    result.coadd_id,
+                    map_type="coadd",
+                    session=session,
+                    stale_limit=self.stale_processing_time,
+                ):
+                    self.log.info(
+                        "CoaddRhoKappaMapReader.skipping_processed_coadd",
+                        coadd_id=result.coadd_id,
+                    )
+                    continue
+
+                m = self._build_map(result)
+                m.mapcat_id = result.coadd_id
+                m._parent_database = mapcat_settings.database_name
+                m.pointing_model = None
+                maps.append(m)
+                self.map_ids.append(m.mapcat_id)
+                set_processing_start(m.mapcat_id, map_type="coadd", session=session)
+                if len(maps) >= self.number_to_read:
+                    break
+        self._map_list = maps
+        return maps
 
 
 def _get_processing_column(map_type: MapCatMapType):

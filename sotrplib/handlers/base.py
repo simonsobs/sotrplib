@@ -222,7 +222,13 @@ class BaseRunner:
                 pointing_model, pointing_model_stats = self.profilable_task(
                     self.pointing_residual_model.build_model
                 )(pointing_sources=pointing_sources)
-                if input_map._parent_database is not None:
+                # mapcat's pointing-residual table is keyed by depth-1 map_id
+                # (sqlite doesn't enforce the FK), so a coadd's model is used
+                # for this run but never saved there.
+                if (
+                    input_map._parent_database is not None
+                    and input_map.map_type == "depth1_map"
+                ):
                     save_pointing_model(
                         input_map.mapcat_id, pointing_model, pointing_model_stats
                     )

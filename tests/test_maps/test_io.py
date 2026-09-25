@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 import uuid7
 from astropy import units as u
@@ -15,11 +16,13 @@ from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.maps.core import (
     CoaddedRhoKappaMap,
+    CoaddRhoAndKappaMap,
     FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     RhoAndKappaMap,
 )
 from sotrplib.maps.database import (
+    CoaddRhoKappaMapReader,
     FluxMapReader,
     IntensityMapReader,
     MapCatDatabaseReader,
@@ -701,3 +704,156 @@ def test_register_coadd_writes_row_and_links(separate_map_set_1):
     assert row.end_time_path is None
     assert row.maps == [linked_map]
     assert session.commit.called
+
+
+# ─── registered coadds (CoaddRhoKappaMapReader) ─────────────────────────────
+
+
+@pytest.fixture
+def coadd_result():
+    """Mock DepthOneCoaddTable row, linked to depth-1 maps from two arrays."""
+    r = MagicMock()
+    r.coadd_id = "22222222-2222-2222-2222-222222222222"
+    r.rho_path = "20250918/f090_i1i3_1_rho.fits"
+    r.kappa_path = "20250918/f090_i1i3_1_kappa.fits"
+    r.mean_time_path = "20250918/f090_i1i3_1_time_mean.fits"
+    r.start_time = Time("2025-09-18T04:53:34")
+    r.stop_time = Time("2025-09-25T04:02:01")
+    r.frequency = "f090"
+    r.maps = [SimpleNamespace(tube_slot=s) for s in ("i3", "i1", "i3")]
+    return r
+
+
+def _mock_coadd_session(settings, rows):
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = rows
+    settings.depth_one_coadd_parent = Path("/home/user/coadds")
+    settings.session.return_value.__enter__.return_value = session
+
+
+def test_coadd_reader_default_units():
+    assert CoaddRhoKappaMapReader().map_units.is_equivalent(u.Jy)
+
+
+def test_coadd_reader_rejects_array_filter():
+    with pytest.raises(ValueError, match="tube_slot"):
+        CoaddRhoKappaMapReader(array="i1")
+
+
+def test_coadd_build_query_filters_coadd_table():
+    query = CoaddRhoKappaMapReader(
+        frequency="f090",
+        coadd_type="depth1_streaming_coadd",
+        start_time=Time(1000, format="unix"),
+        end_time=Time(2000, format="unix"),
+        time_binning="left-bound",
+        map_ids=[uuid7.create()],
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "FROM depth_one_coadds" in compiled
+    assert "depth_one_maps" not in compiled
+    assert "depth_one_coadds.frequency = 'f090'" in where_clause
+    assert "depth_one_coadds.coadd_type = 'depth1_streaming_coadd'" in where_clause
+    assert "depth_one_coadds.start_time >=" in where_clause
+    assert "depth_one_coadds.start_time <" in where_clause
+    assert "stop_time" not in where_clause
+    assert "depth_one_coadds.coadd_id IN" in where_clause
+
+
+def test_coadd_build_map_uses_coadd_parent(coadd_result):
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/data/depth1")
+        settings.depth_one_coadd_parent = Path("/home/user/coadds")
+        result = CoaddRhoKappaMapReader()._build_map(coadd_result)
+    assert isinstance(result, CoaddRhoAndKappaMap)
+    assert result.map_type == "coadd"
+    assert result.rho_filename == Path(
+        "/home/user/coadds/20250918/f090_i1i3_1_rho.fits"
+    )
+    assert result.time_filename == Path(
+        "/home/user/coadds/20250918/f090_i1i3_1_time_mean.fits"
+    )
+    # Unique, sorted tube_slots of the linked maps -- the coadder's label.
+    assert result.array == "i1i3"
+    assert result.frequency == "f090"
+
+
+def test_coadd_map_list_tracks_status_as_coadd(coadd_result):
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch(
+            "sotrplib.maps.database.check_if_permafailed", return_value=False
+        ) as permafailed,
+        patch(
+            "sotrplib.maps.database.check_if_processed", return_value=False
+        ) as processed,
+        patch("sotrplib.maps.database.set_processing_start") as start,
+        patch("sotrplib.maps.database.load_pointing_model") as load_pointing,
+    ):
+        _mock_coadd_session(settings, [coadd_result])
+        maps = CoaddRhoKappaMapReader().map_list()
+
+    assert len(maps) == 1
+    assert maps[0].mapcat_id == coadd_result.coadd_id
+    assert maps[0].pointing_model is None
+    assert permafailed.call_args.kwargs["map_type"] == "coadd"
+    assert processed.call_args.kwargs["map_type"] == "coadd"
+    assert start.call_args.args[0] == coadd_result.coadd_id
+    assert start.call_args.kwargs["map_type"] == "coadd"
+    load_pointing.assert_not_called()
+
+
+def test_coadd_map_list_skips_processed_unless_rerun(coadd_result):
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=False),
+        patch("sotrplib.maps.database.check_if_processed", return_value=True),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        _mock_coadd_session(settings, [coadd_result])
+        assert CoaddRhoKappaMapReader().map_list() == []
+        assert len(CoaddRhoKappaMapReader(rerun=True).map_list()) == 1
+
+
+def test_coadd_map_time_is_already_absolute():
+    """
+    A coadd's time map holds absolute unix times, unlike a depth-1 map's
+    seconds-since-start, so adding the observation start would double it.
+    """
+    m = CoaddRhoAndKappaMap(
+        rho_filename=Path("rho.fits"),
+        kappa_filename=Path("kappa.fits"),
+        start_time=Time(1_758_171_214, format="unix"),
+        end_time=None,
+    )
+    times = np.array([0.0, 1_758_200_000.0, 1_758_700_000.0])
+    m.time_first = m.time_last = m.time_mean = times.copy()
+    m.add_time_offset(m.observation_start)
+    np.testing.assert_array_equal(m.time_mean, times)
+    assert m.observation_end == Time(1_758_700_000.0, format="unix")
+
+
+def test_mapcat_config_units_default_to_reader():
+    from sotrplib.config.maps import MapCatDatabaseConfig
+
+    assert MapCatDatabaseConfig().to_generator().map_units.is_equivalent(u.K)
+    assert (
+        MapCatDatabaseConfig(map_type="coadd_rhokappa")
+        .to_generator()
+        .map_units.is_equivalent(u.Jy)
+    )
+
+
+def test_mapcat_config_coadd_type_only_for_coadds():
+    from pydantic import ValidationError
+
+    from sotrplib.config.maps import MapCatDatabaseConfig
+
+    with pytest.raises(ValidationError, match="coadd_type"):
+        MapCatDatabaseConfig(map_type="rhokappa", coadd_type="x")
+    reader = MapCatDatabaseConfig(
+        map_type="coadd_rhokappa", coadd_type="x"
+    ).to_generator()
+    assert isinstance(reader, CoaddRhoKappaMapReader)
+    assert reader.coadd_type == "x"
