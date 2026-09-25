@@ -134,6 +134,12 @@ requested. Files are named `{frequency}_{array}_{start}_{field}.fits`, where
 window start or the mean time), e.g.
 `f090_i1i3i4i6_1758171214_flux.fits`.
 
+Each flux-carrying file records its unit in the FITS `BUNIT` header: the
+matched filter works in mJy, so `flux` is `mJy`, `rho` is `mJy-1` and `kappa`
+is `mJy-2` (`snr`, `hits` and `time_mean` carry no flux unit). Maps read back
+from disk take their flux unit from `BUNIT`, falling back to the configured
+`map_units` for files without one.
+
 `submit_week_coadds.py` puts each window in a subdirectory named for the
 window's UTC start date:
 
