@@ -15,6 +15,7 @@ from astropydantic import (
 )
 from pydantic import BaseModel, Field, model_validator
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import (
     FluxAndSNRMap,
@@ -22,7 +23,13 @@ from sotrplib.maps.core import (
     ProcessableMap,
     RhoAndKappaMap,
 )
-from sotrplib.maps.database import FluxMapReader, IntensityMapReader, RhoKappaMapReader
+from sotrplib.maps.database import (
+    CoaddRhoKappaMapReader,
+    FluxMapReader,
+    IntensityMapReader,
+    RhoKappaMapReader,
+    TimeBinning,
+)
 from sotrplib.sims.maps import (
     SimulatedMap,
     SimulatedMapFromGeometry,
@@ -210,11 +217,22 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     number_to_read: int | None = None  ## if None, all in database will be read
     start_time: AstroPydanticTime | None = None
     end_time: AstroPydanticTime | None = None
-    map_ids: list[int] | None = None
+    map_ids: list[UUID7] | None = None
     sky_box: list[AstroPydanticICRS] | None = None
-    map_units: AstroPydanticUnit = u.Unit("K")
-    map_type: Literal["intensity", "flux", "rhokappa"] = "intensity"
+    ## None -> the reader's own default (K for intensity, Jy for flux-type maps)
+    map_units: AstroPydanticUnit | None = None
+    # "coadd_rhokappa" reads registered coadds (depth_one_coadds) instead of
+    # depth-1 maps; map_ids are then coadd_ids, and array can't be set.
+    map_type: Literal["intensity", "flux", "rhokappa", "coadd_rhokappa"] = "intensity"
+    coadd_type: str | None = None  ## only for map_type "coadd_rhokappa"
     rerun: bool = False
+    time_binning: TimeBinning = "loose"
+
+    @model_validator(mode="after")
+    def _coadd_type_only_for_coadds(self):
+        if self.coadd_type is not None and self.map_type != "coadd_rhokappa":
+            raise ValueError('coadd_type is only valid with map_type "coadd_rhokappa"')
+        return self
 
     def to_generator(
         self, log: FilteringBoundLogger | None = None
@@ -223,8 +241,13 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             "intensity": IntensityMapReader,
             "rhokappa": RhoKappaMapReader,
             "flux": FluxMapReader,
+            "coadd_rhokappa": CoaddRhoKappaMapReader,
         }[self.map_type]
+        extra = (
+            {"coadd_type": self.coadd_type} if self.map_type == "coadd_rhokappa" else {}
+        )
         return _reader_cls(
+            **extra,
             number_to_read=self.number_to_read,
             start_time=self.start_time,
             end_time=self.end_time,
@@ -235,6 +258,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             map_ids=self.map_ids,
             map_units=self.map_units,
             rerun=self.rerun,
+            time_binning=self.time_binning,
             log=log,
         )
 

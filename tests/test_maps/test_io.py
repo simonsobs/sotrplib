@@ -3,23 +3,31 @@ Tests the map I/O
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
+import uuid7
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 
 from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
 from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.maps.core import (
+    CoaddedRhoKappaMap,
+    CoaddRhoAndKappaMap,
     FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     RhoAndKappaMap,
 )
 from sotrplib.maps.database import (
+    CoaddRhoKappaMapReader,
     FluxMapReader,
     IntensityMapReader,
     MapCatDatabaseReader,
     RhoKappaMapReader,
+    register_coadd,
 )
 from sotrplib.utils.utils import get_fwhm
 
@@ -182,6 +190,115 @@ def test_build_map_passes_metadata(db_result):
     assert result.array == db_result.tube_slot
 
 
+# ─── build_query time windowing ────────────────────────────────────────────────
+
+
+def test_build_query_default_is_left_bound():
+    assert IntensityMapReader().time_binning == "left-bound"
+
+
+def test_build_query_loose_is_half_open_overlap():
+    """
+    time_binning="loose" (the default): a map is included if its
+    [start_time, stop_time) interval overlaps [start_time, end_time) at
+    all. Half-open on both sides, so a map that merely touches a shared
+    boundary between two adjacent windows isn't spuriously double-counted.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="loose"
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    assert "depth_one_maps.stop_time >=" in compiled
+    assert "depth_one_maps.start_time <" in compiled
+
+
+def test_build_query_restrictive_requires_full_containment():
+    """
+    time_binning="restrictive": a map is included only if its whole
+    [start_time, stop_time) observation falls inside [start_time, end_time).
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="restrictive"
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    assert "depth_one_maps.start_time >=" in compiled
+    assert "depth_one_maps.stop_time <" in compiled
+
+
+def test_build_query_left_bound_is_half_open():
+    """
+    time_binning="left-bound": a map is included solely based on whether its
+    own start_time falls in [start_time, end_time) -- so a map whose
+    observation spans a boundary between two adjacent windows lands in
+    exactly one of them, never both. This is what submit_week_coadds.py
+    relies on to avoid double-coadding maps that straddle a week boundary.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="left-bound"
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "depth_one_maps.start_time >=" in where_clause
+    assert "depth_one_maps.start_time <" in where_clause
+    assert "depth_one_maps.start_time <=" not in where_clause
+    assert "stop_time" not in where_clause
+
+
+def test_build_query_right_bound_is_half_open():
+    """
+    time_binning="right-bound": symmetric counterpart to "left-bound",
+    partitioning solely by each map's own stop_time.
+    """
+    start = Time(1000, format="unix")
+    end = Time(2000, format="unix")
+    query = IntensityMapReader(
+        start_time=start, end_time=end, time_binning="right-bound"
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "depth_one_maps.stop_time >=" in where_clause
+    assert "depth_one_maps.stop_time <" in where_clause
+    assert "depth_one_maps.stop_time <=" not in where_clause
+    assert "start_time" not in where_clause
+
+
+def test_build_query_rejects_unknown_time_binning():
+    with pytest.raises(ValueError, match="Unknown time_binning"):
+        IntensityMapReader(time_binning="bogus").build_query()
+
+
+def test_build_query_left_bound_no_gap_or_overlap_at_shared_boundary():
+    """
+    Two adjacent windows sharing an exact boundary value must partition maps
+    with no gap and no overlap, even for a map whose observation interval
+    spans the boundary (the case that caused real double-coadding).
+    """
+    boundary = 1500.0
+    straddling_map = SimpleNamespace(start_time=1400.0, stop_time=1600.0)
+
+    window_a = IntensityMapReader(
+        start_time=Time(1000, format="unix"),
+        end_time=Time(boundary, format="unix"),
+        time_binning="left-bound",
+    )
+    window_b = IntensityMapReader(
+        start_time=Time(boundary, format="unix"),
+        end_time=Time(2000, format="unix"),
+        time_binning="left-bound",
+    )
+
+    def _matches(reader, m):
+        return reader.start_time.unix <= m.start_time < reader.end_time.unix
+
+    assert _matches(window_a, straddling_map) != _matches(window_b, straddling_map)
+
+
 # ─── map_list ─────────────────────────────────────────────────────────────────
 
 
@@ -211,7 +328,7 @@ def test_map_list_sets_mapcat_id(mock_mapcat, db_result):
 def test_map_list_appends_mapcat_id(mock_mapcat, db_result):
     reader = IntensityMapReader()
     reader.map_list()
-    assert db_result.map_id in reader.map_ids
+    assert str(db_result.map_id) in reader.map_ids
 
 
 def test_map_list_skips_processed(mock_session):
@@ -243,6 +360,25 @@ def test_map_list_rerun_ignores_processed(mock_session):
     assert len(maps) == 1
 
 
+def test_map_list_skips_permafailed(mock_session):
+    """
+    permafail is set manually (e.g. mapcatreset --status permafail) for a
+    known-pathological observation, and must never be picked up again --
+    not even with rerun=True.
+    """
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=True),
+        patch("sotrplib.maps.database.check_if_processed", return_value=False),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        settings.session.return_value.__enter__.return_value = mock_session
+        maps = IntensityMapReader(rerun=True).map_list()
+    assert maps == []
+
+
 def test_map_list_caches(mock_mapcat):
     reader = IntensityMapReader()
     assert reader.map_list() is reader.map_list()
@@ -251,7 +387,7 @@ def test_map_list_caches(mock_mapcat):
 def test_map_list_number_to_read_limits(mock_session, db_result):
     """number_to_read=1 stops after the first map even when the DB has more rows."""
     db_result2 = MagicMock()
-    db_result2.map_id = 99
+    db_result2.map_id = "22222222-2222-2222-2222-222222222222"
     db_result2.map_path = db_result.map_path
     db_result2.ivar_path = db_result.ivar_path
     db_result2.mean_time_path = db_result.mean_time_path
@@ -278,3 +414,446 @@ def test_map_list_number_to_read_limits(mock_session, db_result):
 def test_iter_delegates_to_map_list(mock_mapcat):
     reader = IntensityMapReader()
     assert list(reader) == reader.map_list()
+
+
+# ─── processing status lifecycle ───────────────────────────────────────────────
+
+
+def _session_with_status(status: str | None, processing_start: float = 0.0):
+    """A mock session whose TimeDomainProcessingTable row has the given status."""
+    session = MagicMock()
+    if status is None:
+        session.execute.return_value.one_or_none.return_value = []
+    else:
+        row = MagicMock()
+        row.processing_status = status
+        row.processing_start = processing_start
+        session.execute.return_value.one_or_none.return_value = [row]
+    return session
+
+
+def test_check_if_permafailed_true():
+    from sotrplib.maps.database import check_if_permafailed
+
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("permafail"),
+        )
+        is True
+    )
+
+
+def test_check_if_permafailed_false_for_other_statuses():
+    from sotrplib.maps.database import check_if_permafailed
+
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("completed"),
+        )
+        is False
+    )
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("processing"),
+        )
+        is False
+    )
+    assert (
+        check_if_permafailed(
+            "11111111-1111-1111-1111-111111111111", session=_session_with_status(None)
+        )
+        is False
+    )
+
+
+def test_check_if_processed_true_for_completed():
+    from sotrplib.maps.database import check_if_processed
+
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("completed"),
+        )
+        is True
+    )
+
+
+def test_check_if_processed_false_for_permafail():
+    """
+    permafail is deliberately not treated as "processed" by check_if_processed
+    -- it's handled by the separate, unconditional check_if_permafailed check
+    in map_list() instead, so it isn't bypassable by rerun=True.
+    """
+    from sotrplib.maps.database import check_if_processed
+
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=_session_with_status("permafail"),
+        )
+        is False
+    )
+
+
+def test_check_if_processed_true_for_recent_processing():
+    from sotrplib.maps.database import check_if_processed
+
+    session = _session_with_status(
+        "processing", processing_start=Time.now().to_datetime()
+    )
+    assert (
+        check_if_processed("11111111-1111-1111-1111-111111111111", session=session)
+        is True
+    )
+
+
+def test_check_if_processed_false_for_stale_processing():
+    from astropy.time import TimeDelta
+
+    from sotrplib.maps.database import check_if_processed
+
+    stale_start = (Time.now() - TimeDelta(3 * 3600, format="sec")).to_datetime()
+    session = _session_with_status("processing", processing_start=stale_start)
+    assert (
+        check_if_processed(
+            "11111111-1111-1111-1111-111111111111",
+            session=session,
+            stale_limit=TimeDelta(2 * 3600, format="sec"),
+        )
+        is False
+    )
+
+
+def test_set_processing_end_default_status_is_completed():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end("11111111-1111-1111-1111-111111111111", session=session)
+    assert row.processing_status == "completed"
+    assert session.commit.called
+
+
+def test_set_processing_end_accepts_failed_status():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(
+        "11111111-1111-1111-1111-111111111111", session=session, status="failed"
+    )
+    assert row.processing_status == "failed"
+
+
+# ─── map_type-based processing status resolution ───────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "func_name",
+    [
+        "check_if_permafailed",
+        "check_if_processed",
+        "set_processing_start",
+        "set_processing_end",
+    ],
+)
+def test_status_functions_reject_unknown_map_type(func_name):
+    import sotrplib.maps.database as db_module
+
+    func = getattr(db_module, func_name)
+    with pytest.raises(ValueError, match="Unknown map_type"):
+        func(
+            "11111111-1111-1111-1111-111111111111",
+            map_type="bogus",
+            session=MagicMock(),
+        )
+
+
+def test_check_if_permafailed_works_with_coadd_id():
+    from sotrplib.maps.database import check_if_permafailed
+
+    session = _session_with_status("permafail")
+    assert (
+        check_if_permafailed(
+            "33333333-3333-3333-3333-333333333333", map_type="coadd", session=session
+        )
+        is True
+    )
+
+
+def test_set_processing_start_creates_row_for_coadd_id():
+    """A coadd-linked TimeDomainProcessingTable row should be created with
+    coadd_id set and map_id left None, not the other way around."""
+    from sotrplib.maps.database import set_processing_start
+
+    session = _session_with_status(None)
+    set_processing_start(
+        "44444444-4444-4444-4444-444444444444", map_type="coadd", session=session
+    )
+    created_row = session.add.call_args.args[0]
+    assert str(created_row.coadd_id) == "44444444-4444-4444-4444-444444444444"
+    assert created_row.map_id is None
+
+
+def test_set_processing_start_does_not_couple_processing_status_id_to_map_id():
+    """
+    Regression test: set_processing_start() used to do
+    TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id),
+    directly reusing map_id's value as a *different* autoincrement PK
+    column. That's a hard type error once map_id is a UUID (can't assign a
+    UUID string into an int PK) -- the fix lets processing_status_id
+    autoincrement instead of being set explicitly.
+    """
+    from sotrplib.maps.database import set_processing_start
+
+    session = _session_with_status(None)
+    set_processing_start("019f6c0c-7a24-7ad7-85a3-68acbc551549", session=session)
+    created_row = session.add.call_args.args[0]
+    assert str(created_row.map_id) == "019f6c0c-7a24-7ad7-85a3-68acbc551549"
+    # processing_status_id must not have been forced to equal map_id
+    assert getattr(created_row, "processing_status_id", None) != (
+        "019f6c0c-7a24-7ad7-85a3-68acbc551549"
+    )
+
+
+def test_set_processing_end_works_with_coadd_id():
+    from sotrplib.maps.database import set_processing_end
+
+    row = MagicMock()
+    session = MagicMock()
+    session.execute.return_value.one_or_none.return_value = [row]
+
+    set_processing_end(
+        "44444444-4444-4444-4444-444444444444",
+        map_type="coadd",
+        session=session,
+        status="completed",
+    )
+    assert row.processing_status == "completed"
+    assert session.commit.called
+
+
+def test_set_processing_end_raises_with_target_specific_message_for_coadd():
+    from sotrplib.maps.database import set_processing_end
+
+    session = _session_with_status(None)
+    with pytest.raises(ValueError, match="coadd 44444444"):
+        set_processing_end(
+            "44444444-4444-4444-4444-444444444444", map_type="coadd", session=session
+        )
+
+
+# ─── register_coadd ─────────────────────────────────────────────────────────────
+
+
+def test_register_coadd_writes_row_and_links(separate_map_set_1):
+    start_time = Time("2025-10-10", format="iso")
+    coadd = CoaddedRhoKappaMap(
+        rho=None,
+        kappa=None,
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        observation_length=TimeDelta(3600, format="sec"),
+        frequency="f090",
+    )
+
+    linked_map = MagicMock()
+    linked_map.map_id = 7
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = [linked_map]
+
+    # Coadds live somewhere other than the depth-1 maps: paths must be stored
+    # relative to depth_one_coadd_parent, not depth_one_parent.
+    coadd_parent = Path("/home/user/my_coadds")
+    output_paths = {
+        "flux": coadd_parent / "coadds" / "f090_flux.fits",
+        "rho": coadd_parent / "coadds" / "f090_rho.fits",
+        "kappa": coadd_parent / "coadds" / "f090_kappa.fits",
+        "time_mean": coadd_parent / "coadds" / "f090_time_mean.fits",
+    }
+
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/data/depth1")
+        settings.depth_one_coadd_parent = coadd_parent
+        register_coadd(
+            coadd=coadd,
+            map_ids=[uuid7.create()],
+            coadd_name="f090_test_coadd",
+            coadd_type="depth1_streaming_coadd",
+            output_paths=output_paths,
+            session=session,
+        )
+
+    assert session.add.called
+    row = session.add.call_args.args[0]
+    assert row.coadd_name == "f090_test_coadd"
+    assert row.coadd_type == "depth1_streaming_coadd"
+    assert row.frequency == "f090"
+    assert row.map_path == "coadds/f090_flux.fits"
+    assert row.rho_path == "coadds/f090_rho.fits"
+    assert row.kappa_path == "coadds/f090_kappa.fits"
+    assert row.mean_time_path == "coadds/f090_time_mean.fits"
+    assert row.start_time_path is None
+    assert row.end_time_path is None
+    assert row.maps == [linked_map]
+    assert session.commit.called
+
+
+# ─── registered coadds (CoaddRhoKappaMapReader) ─────────────────────────────
+
+
+@pytest.fixture
+def coadd_result():
+    """Mock DepthOneCoaddTable row, linked to depth-1 maps from two arrays."""
+    r = MagicMock()
+    r.coadd_id = "22222222-2222-2222-2222-222222222222"
+    r.rho_path = "20250918/f090_i1i3_1_rho.fits"
+    r.kappa_path = "20250918/f090_i1i3_1_kappa.fits"
+    r.mean_time_path = "20250918/f090_i1i3_1_time_mean.fits"
+    r.start_time = Time("2025-09-18T04:53:34")
+    r.stop_time = Time("2025-09-25T04:02:01")
+    r.frequency = "f090"
+    r.maps = [SimpleNamespace(tube_slot=s) for s in ("i3", "i1", "i3")]
+    return r
+
+
+def _mock_coadd_session(settings, rows):
+    session = MagicMock()
+    session.execute.return_value.scalars.return_value.all.return_value = rows
+    settings.depth_one_coadd_parent = Path("/home/user/coadds")
+    settings.session.return_value.__enter__.return_value = session
+
+
+def test_coadd_reader_default_units():
+    assert CoaddRhoKappaMapReader().map_units.is_equivalent(u.Jy)
+
+
+def test_coadd_reader_rejects_array_filter():
+    with pytest.raises(ValueError, match="tube_slot"):
+        CoaddRhoKappaMapReader(array="i1")
+
+
+def test_coadd_build_query_filters_coadd_table():
+    query = CoaddRhoKappaMapReader(
+        frequency="f090",
+        coadd_type="depth1_streaming_coadd",
+        start_time=Time(1000, format="unix"),
+        end_time=Time(2000, format="unix"),
+        time_binning="left-bound",
+        map_ids=[uuid7.create()],
+    ).build_query()
+    compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+    where_clause = compiled.split("WHERE", 1)[1]
+    assert "FROM depth_one_coadds" in compiled
+    assert "depth_one_maps" not in compiled
+    assert "depth_one_coadds.frequency = 'f090'" in where_clause
+    assert "depth_one_coadds.coadd_type = 'depth1_streaming_coadd'" in where_clause
+    assert "depth_one_coadds.start_time >=" in where_clause
+    assert "depth_one_coadds.start_time <" in where_clause
+    assert "stop_time" not in where_clause
+    assert "depth_one_coadds.coadd_id IN" in where_clause
+
+
+def test_coadd_build_map_uses_coadd_parent(coadd_result):
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/data/depth1")
+        settings.depth_one_coadd_parent = Path("/home/user/coadds")
+        result = CoaddRhoKappaMapReader()._build_map(coadd_result)
+    assert isinstance(result, CoaddRhoAndKappaMap)
+    assert result.map_type == "coadd"
+    assert result.rho_filename == Path(
+        "/home/user/coadds/20250918/f090_i1i3_1_rho.fits"
+    )
+    assert result.time_filename == Path(
+        "/home/user/coadds/20250918/f090_i1i3_1_time_mean.fits"
+    )
+    # Unique, sorted tube_slots of the linked maps -- the coadder's label.
+    assert result.array == "i1i3"
+    assert result.frequency == "f090"
+
+
+def test_coadd_map_list_tracks_status_as_coadd(coadd_result):
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch(
+            "sotrplib.maps.database.check_if_permafailed", return_value=False
+        ) as permafailed,
+        patch(
+            "sotrplib.maps.database.check_if_processed", return_value=False
+        ) as processed,
+        patch("sotrplib.maps.database.set_processing_start") as start,
+        patch("sotrplib.maps.database.load_pointing_model") as load_pointing,
+    ):
+        _mock_coadd_session(settings, [coadd_result])
+        maps = CoaddRhoKappaMapReader().map_list()
+
+    assert len(maps) == 1
+    assert maps[0].mapcat_id == coadd_result.coadd_id
+    assert maps[0].pointing_model is None
+    assert permafailed.call_args.kwargs["map_type"] == "coadd"
+    assert processed.call_args.kwargs["map_type"] == "coadd"
+    assert start.call_args.args[0] == coadd_result.coadd_id
+    assert start.call_args.kwargs["map_type"] == "coadd"
+    load_pointing.assert_not_called()
+
+
+def test_coadd_map_list_skips_processed_unless_rerun(coadd_result):
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=False),
+        patch("sotrplib.maps.database.check_if_processed", return_value=True),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        _mock_coadd_session(settings, [coadd_result])
+        assert CoaddRhoKappaMapReader().map_list() == []
+        assert len(CoaddRhoKappaMapReader(rerun=True).map_list()) == 1
+
+
+def test_coadd_map_time_is_already_absolute():
+    """
+    A coadd's time map holds absolute unix times, unlike a depth-1 map's
+    seconds-since-start, so adding the observation start would double it.
+    """
+    m = CoaddRhoAndKappaMap(
+        rho_filename=Path("rho.fits"),
+        kappa_filename=Path("kappa.fits"),
+        start_time=Time(1_758_171_214, format="unix"),
+        end_time=None,
+    )
+    times = np.array([0.0, 1_758_200_000.0, 1_758_700_000.0])
+    m.time_first = m.time_last = m.time_mean = times.copy()
+    m.add_time_offset(m.observation_start)
+    np.testing.assert_array_equal(m.time_mean, times)
+    assert m.observation_end == Time(1_758_700_000.0, format="unix")
+
+
+def test_mapcat_config_units_default_to_reader():
+    from sotrplib.config.maps import MapCatDatabaseConfig
+
+    assert MapCatDatabaseConfig().to_generator().map_units.is_equivalent(u.K)
+    assert (
+        MapCatDatabaseConfig(map_type="coadd_rhokappa")
+        .to_generator()
+        .map_units.is_equivalent(u.Jy)
+    )
+
+
+def test_mapcat_config_coadd_type_only_for_coadds():
+    from pydantic import ValidationError
+
+    from sotrplib.config.maps import MapCatDatabaseConfig
+
+    with pytest.raises(ValidationError, match="coadd_type"):
+        MapCatDatabaseConfig(map_type="rhokappa", coadd_type="x")
+    reader = MapCatDatabaseConfig(
+        map_type="coadd_rhokappa", coadd_type="x"
+    ).to_generator()
+    assert isinstance(reader, CoaddRhoKappaMapReader)
+    assert reader.coadd_type == "x"

@@ -8,3 +8,4 @@ the individual pages below for more information.
 - [Pipeline Overview](overview.md)
 - [Configuring the Pipeline](configuration.md)
 - [Running on ACT Data](act.md)
+- [Coadding Depth-1 Maps and Analyzing Coadds](coadding.md)

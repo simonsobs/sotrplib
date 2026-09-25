@@ -3,6 +3,9 @@ Read maps from the map tracking database.
 """
 
 from abc import ABC, abstractmethod
+from datetime import timezone
+from pathlib import Path
+from typing import Literal
 
 import uuid7
 from astropy import units as u
@@ -14,6 +17,7 @@ from astropy.time import Time, TimeDelta
 # affect the import time of this module (or need a database to
 # be available just to import sotrplib).
 from mapcat.database import (
+    DepthOneCoaddTable,
     DepthOneMapTable,
     PointingResidualTable,
     SkyCoverageTable,
@@ -32,8 +36,90 @@ from uuid7 import UUID as UUID7
 
 from sotrplib.sources.sources import RegisteredSource
 
-from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
+from .core import (
+    CoaddRhoAndKappaMap,
+    FluxAndSNRMap,
+    IntensityAndInverseVarianceMap,
+    MapCatMapType,
+    RhoAndKappaMap,
+)
 from .pointing import PointingModel
+
+# How build_query() compares a map's start_time and stop_time
+# interval against the binned time window:
+#   "restrictive"  -- map fully contained in the window (may drop maps that
+#                      straddle a window boundary from every window)
+#   "loose"        -- map overlaps the window at all (may match a
+#                      straddling map in more than one window)
+#   "left-bound"   -- partition solely by the map's own start_time (every
+#                      map has exactly one, so no gaps/overlaps -- what
+#                      submit_week_coadds.py uses)
+#   "right-bound"  -- partition solely by the map's own stop_time
+TimeBinning = Literal["restrictive", "loose", "left-bound", "right-bound"]
+
+
+def _apply_time_binning(
+    query, table, start_time: Time | None, end_time: Time | None, time_binning
+):
+    """
+    Restrict `query` on `table` (DepthOneMapTable or DepthOneCoaddTable --
+    both have start_time/stop_time columns) to [start_time, end_time)
+    according to `time_binning`.
+    """
+    if time_binning == "restrictive":
+        # Map fully contained in (start_time, end_time]. Guarantees a map
+        # is never assigned to more than one window, at the cost of
+        # silently excluding any map whose observation straddles a
+        # window boundary from every window.
+        if start_time is not None:
+            query = query.where(
+                table.start_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
+        if end_time is not None:
+            query = query.where(
+                table.stop_time < end_time.to_datetime(timezone=timezone.utc)
+            )
+    elif time_binning == "loose":
+        # Map overlaps (start_time, end_time) at all. Half-open on both
+        # sides. maps that straddle a window boundary will be double counted.
+        if start_time is not None:
+            query = query.where(
+                table.stop_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
+        if end_time is not None:
+            query = query.where(
+                table.start_time < end_time.to_datetime(timezone=timezone.utc)
+            )
+    elif time_binning == "left-bound":
+        # Partition solely by the map's own start_time (half-open
+        # [start_time, end_time)) -- every map has exactly one
+        # start_time, so this splits maps across adjacent windows with
+        # no gaps and no overlap.
+        if start_time is not None:
+            query = query.where(
+                table.start_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
+        if end_time is not None:
+            query = query.where(
+                table.start_time < end_time.to_datetime(timezone=timezone.utc)
+            )
+    elif time_binning == "right-bound":
+        # Symmetric counterpart to "left-bound": partitions maps by
+        # their own stop_time instead of start_time.
+        if start_time is not None:
+            query = query.where(
+                table.stop_time >= start_time.to_datetime(timezone=timezone.utc)
+            )
+        if end_time is not None:
+            query = query.where(
+                table.stop_time < end_time.to_datetime(timezone=timezone.utc)
+            )
+    else:
+        raise ValueError(
+            f"Unknown time_binning {time_binning!r}; expected one of "
+            "'restrictive', 'loose', 'left-bound', 'right-bound'."
+        )
+    return query
 
 
 class MapCatDatabaseReader(ABC):
@@ -56,6 +142,7 @@ class MapCatDatabaseReader(ABC):
     sky_box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
+    time_binning: TimeBinning = "loose"
     log: FilteringBoundLogger
     default_map_units: u.Unit
     _valid_unit_equivalent: u.Unit
@@ -75,15 +162,13 @@ class MapCatDatabaseReader(ABC):
         rerun: bool = False,
         rerun_pointing_model: bool = False,
         stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
+        time_binning: TimeBinning = "left-bound",
         log: FilteringBoundLogger | None = None,
     ):
         self.number_to_read = number_to_read
-        self.start_time = (
-            start_time
-            if start_time is not None
-            else Time.now() - TimeDelta(1, format="jd")
-        )
-        self.end_time = end_time if end_time is not None else Time.now()
+        self.start_time = start_time
+        self.end_time = end_time
+        self.time_binning = time_binning
         self.map_ids = map_ids or []
         self.sources = sources or []
         self.frequency = frequency
@@ -122,14 +207,9 @@ class MapCatDatabaseReader(ABC):
             else query
         )
 
-        if self.start_time is not None:
-            query = query.where(
-                DepthOneMapTable.stop_time >= self.start_time.to_datetime()
-            )
-        if self.end_time is not None:
-            query = query.where(
-                DepthOneMapTable.start_time <= self.end_time.to_datetime()
-            )
+        query = _apply_time_binning(
+            query, DepthOneMapTable, self.start_time, self.end_time, self.time_binning
+        )
 
         if self.map_ids:
             query = query.where(DepthOneMapTable.map_id.in_(self.map_ids))
@@ -174,6 +254,13 @@ class MapCatDatabaseReader(ABC):
             if self.number_to_read is None:
                 self.number_to_read = len(results)
             for result in results:
+                if check_if_permafailed(result.map_id, session=session):
+                    self.log.info(
+                        "MapCatDatabaseReader.skipping_permafailed_map",
+                        map_id=result.map_id,
+                    )
+                    continue
+
                 if not self.rerun and check_if_processed(
                     result.map_id,
                     session=session,
@@ -276,8 +363,178 @@ class FluxMapReader(MapCatDatabaseReader):
         )
 
 
+class CoaddRhoKappaMapReader(MapCatDatabaseReader):
+    """
+    Reader for registered coadds (mapcat's depth_one_coadds table, e.g. as
+    written by sotrp-coadd), yielding CoaddRhoAndKappaMap objects.
+
+    Coadd paths are resolved against MAPCAT_DEPTH_ONE_COADD_PARENT, and
+    processing status is tracked under coadd_id (map_type "coadd"). Filters
+    on frequency, time window (same time_binning modes as depth-1 maps,
+    applied to the coadd's own start/stop times), `map_ids` (coadd_ids), and
+    optionally `coadd_type`. Coadds have no tube_slot or sky-coverage rows,
+    so `array` is labelled from the linked depth-1 maps (matching the
+    coadder's label, e.g. "i1i3i4i6") and `sources` filtering is not
+    supported. Depth-1 pointing models don't apply to a coadd and are never
+    loaded.
+    """
+
+    default_map_units = u.Unit("Jy")
+    _valid_unit_equivalent = u.Jy
+
+    def __init__(self, *args, coadd_type: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coadd_type = coadd_type
+        if self.array is not None:
+            raise ValueError(
+                "CoaddRhoKappaMapReader can't filter by array: coadds have no "
+                "tube_slot. Filter by frequency, time, coadd_type or map_ids."
+            )
+        if self.sources:
+            raise ValueError(
+                "CoaddRhoKappaMapReader can't filter by sources: coadds have no "
+                "sky-coverage rows."
+            )
+
+    def build_query(self):
+        query = select(DepthOneCoaddTable)
+        if self.frequency:
+            query = query.where(DepthOneCoaddTable.frequency == self.frequency)
+        if self.coadd_type:
+            query = query.where(DepthOneCoaddTable.coadd_type == self.coadd_type)
+        query = _apply_time_binning(
+            query,
+            DepthOneCoaddTable,
+            self.start_time,
+            self.end_time,
+            self.time_binning,
+        )
+        if self.map_ids:
+            query = query.where(DepthOneCoaddTable.coadd_id.in_(self.map_ids))
+        return query.order_by(DepthOneCoaddTable.start_time)
+
+    def _build_map(self, result):
+        tube_slots = {m.tube_slot for m in result.maps if m.tube_slot}
+        coadd_parent = mapcat_settings.depth_one_coadd_parent
+        return CoaddRhoAndKappaMap(
+            rho_filename=coadd_parent / result.rho_path,
+            kappa_filename=coadd_parent / result.kappa_path,
+            time_filename=(
+                coadd_parent / result.mean_time_path if result.mean_time_path else None
+            ),
+            start_time=Time(result.start_time),
+            end_time=Time(result.stop_time),
+            sky_box=self.sky_box,
+            flux_units=self.map_units,
+            frequency=result.frequency,
+            array="".join(sorted(tube_slots)) or None,
+            instrument=self.instrument,
+            log=self.log,
+        )
+
+    def map_list(self):
+        if self._map_list is not None:
+            return self._map_list
+
+        self.log.info(
+            "CoaddRhoKappaMapReader.connecting_to_db",
+            db_url=mapcat_settings.database_name,
+        )
+
+        maps = []
+        with mapcat_settings.session() as session:
+            results = session.execute(self.build_query()).scalars().all()
+            self.log.info(
+                "CoaddRhoKappaMapReader.found_coadds", number_found=len(results)
+            )
+            if self.number_to_read is None:
+                self.number_to_read = len(results)
+            for result in results:
+                if check_if_permafailed(
+                    result.coadd_id, map_type="coadd", session=session
+                ):
+                    self.log.info(
+                        "CoaddRhoKappaMapReader.skipping_permafailed_coadd",
+                        coadd_id=result.coadd_id,
+                    )
+                    continue
+
+                if not self.rerun and check_if_processed(
+                    result.coadd_id,
+                    map_type="coadd",
+                    session=session,
+                    stale_limit=self.stale_processing_time,
+                ):
+                    self.log.info(
+                        "CoaddRhoKappaMapReader.skipping_processed_coadd",
+                        coadd_id=result.coadd_id,
+                    )
+                    continue
+
+                m = self._build_map(result)
+                m.mapcat_id = result.coadd_id
+                m._parent_database = mapcat_settings.database_name
+                m.pointing_model = None
+                maps.append(m)
+                self.map_ids.append(m.mapcat_id)
+                set_processing_start(m.mapcat_id, map_type="coadd", session=session)
+                if len(maps) >= self.number_to_read:
+                    break
+        self._map_list = maps
+        return maps
+
+
+def _get_processing_column(map_type: MapCatMapType):
+    """The TimeDomainProcessingTable column a given map_type's ids live in."""
+    if map_type == "depth1_map":
+        return TimeDomainProcessingTable.map_id
+    if map_type == "coadd":
+        return TimeDomainProcessingTable.coadd_id
+    raise ValueError(
+        f"Unknown map_type {map_type!r}; expected 'depth1_map' or 'coadd'."
+    )
+
+
+def _get_processing_row(
+    mapcat_id: UUID7,
+    *,
+    map_type: MapCatMapType = "depth1_map",
+    session,
+) -> TimeDomainProcessingTable | None:
+    column = _get_processing_column(map_type)
+    query = select(TimeDomainProcessingTable).where(column == mapcat_id)
+    result = session.execute(query).one_or_none()
+    if result is None:
+        return None
+    for r in result:
+        return r
+    return None
+
+
+def check_if_permafailed(
+    mapcat_id: UUID7,
+    *,
+    map_type: MapCatMapType = "depth1_map",
+    session=None,
+) -> bool:
+    """
+    True if a map or coadd has been manually marked "permafail" (e.g. via
+    mapcat's `mapcatreset --status permafail`) -- a known-pathological
+    observation that should never be picked up again by the pipeline, even
+    with rerun=True. This is the only status the pipeline itself never
+    sets; it's set by a human once something is known to be permanently
+    unusable.
+    """
+    if session is None:
+        session = mapcat_settings.session()
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
+    return row is not None and row.processing_status == "permafail"
+
+
 def check_if_processed(
-    map_id: UUID7,
+    mapcat_id: UUID7,
+    *,
+    map_type: MapCatMapType = "depth1_map",
     session=None,
     completed_status: str = "completed",
     processing_status: str = "processing",
@@ -286,43 +543,43 @@ def check_if_processed(
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.map_id == map_id
-    )
-    session_results = session.execute(query).one_or_none()
-    if session_results is None:
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
+    if row is None:
         return False
-    for r in session_results:
-        if (r.processing_status == completed_status) | (
-            r.processing_status == processing_status
-        ) & (
-            (Time.now().to_datetime() - r.processing_start).total_seconds()
-            < stale_limit.to_value("s")
-        ):
-            return True
+    if row.processing_status == completed_status:
+        return True
+    # Compare as astropy Times: row.processing_start comes back naive from
+    # older sqlmodel and UTC-aware from newer (>=0.0.43) sqlmodel, and
+    # subtracting it from an aware/naive datetime would fail on one of them.
+    # Time() treats a naive datetime as UTC, which is how it was stored.
+    if row.processing_status == processing_status and (
+        (Time.now() - Time(row.processing_start)).to_value("s")
+        < stale_limit.to_value("s")
+    ):
+        return True
     return False
 
 
-def set_processing_start(map_id: UUID7, session=None):
+def set_processing_start(
+    mapcat_id: UUID7,
+    *,
+    map_type: MapCatMapType = "depth1_map",
+    session=None,
+):
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.map_id == map_id
-    )
-    session_results = session.execute(query).one_or_none()
-    if session_results is None:
-        session_results = [
-            TimeDomainProcessingTable(
-                processing_status_id=uuid7.create(), map_id=map_id
-            )
-        ]
-    for r in session_results:
-        r.processing_start = Time.now().to_datetime()
-        r.processing_status = "processing"
-
-        session.add(r)
-        session.commit()
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
+    if row is None:
+        row = TimeDomainProcessingTable(
+            processing_status_id=uuid7.create(),
+            map_id=mapcat_id if map_type == "depth1_map" else None,
+            coadd_id=mapcat_id if map_type == "coadd" else None,
+        )
+    row.processing_start = Time.now().to_datetime(timezone=timezone.utc)
+    row.processing_status = "processing"
+    session.add(row)
+    session.commit()
     return
 
 
@@ -384,7 +641,9 @@ def save_pointing_model(
     if result is None:
         result = [
             PointingResidualTable(
-                map_id=map_id, residual_model=model, residual_stats=pointing_model_stats
+                map_id=map_id,
+                residual_model=model,
+                residual_stats=pointing_model_stats,
             )
         ]
     for row in result:
@@ -394,21 +653,107 @@ def save_pointing_model(
         session.commit()
 
 
-def set_processing_end(map_id: UUID7, session=None):
+def set_processing_end(
+    mapcat_id: UUID7,
+    *,
+    map_type: MapCatMapType = "depth1_map",
+    session=None,
+    status: str = "completed",
+):
+    """
+    Mark a map's or coadd's processing as finished, with the given terminal
+    status (default "completed"; pass status="failed" when the caller is
+    handling an exception). "permafail" is intentionally not set here --
+    it's a manual-only status for known-pathological observations (see
+    check_if_permafailed), never set automatically by the pipeline.
+    """
     ## session is mapcat_settings.session() whatever that is
     if session is None:
         session = mapcat_settings.session()
-    query = select(TimeDomainProcessingTable).where(
-        TimeDomainProcessingTable.map_id == map_id
-    )
-    session_result = session.execute(query).one_or_none()
-    if session_result is None:
+    row = _get_processing_row(mapcat_id, map_type=map_type, session=session)
+    if row is None:
         raise ValueError(
-            f"No processing_start status found for map_id {map_id} when trying to set processing_end."
+            f"No processing_start status found for {map_type} {mapcat_id} "
+            "when trying to set processing_end."
         )
-    for r in session_result:
-        r.processing_end = Time.now().to_datetime()
-        r.processing_status = "completed"
-        session.add(r)
-        session.commit()
+    row.processing_end = Time.now().to_datetime(timezone=timezone.utc)
+    row.processing_status = status
+    session.add(row)
+    session.commit()
     return
+
+
+def register_coadd(
+    coadd,
+    map_ids: list[UUID7],
+    coadd_name: str,
+    coadd_type: str,
+    output_paths: dict[str, Path],
+    session=None,
+) -> UUID7:
+    """
+    Register a finished coadd, and link it to the depth-1 maps that went
+    into it, in the mapcat database.
+
+    Parameters
+    ----------
+    coadd : CoaddedRhoKappaMap
+        The finished coadd (must have frequency/observation_start/
+        observation_end set).
+    map_ids : list[UUID7]
+        map_id of every depth-1 map merged into this coadd (e.g. as
+        returned by sotrplib.maps.map_coadding.stream_coadd).
+    coadd_name : str
+        Human-readable, ideally unique name for this coadd.
+    coadd_type : str
+        Free-form tag describing how this coadd was produced.
+    output_paths : dict[str, Path]
+        FITS paths already written to disk, keyed by field name: "flux"
+        (used as the required map_path, matching DepthOneMapTable's
+        "first available of intensity, rho, flux" coverage-map
+        convention), and optionally "rho", "kappa", "time_first",
+        "time_mean", "time_last". Stored relative to
+        MAPCAT_DEPTH_ONE_COADD_PARENT (mapcat's depth_one_coadd_parent),
+        which is independent of MAPCAT_DEPTH_ONE_PARENT so coadds can live
+        somewhere other than the depth-1 maps they were built from.
+
+    Returns
+    -------
+    coadd_id of the new row.
+    """
+    if session is None:
+        session = mapcat_settings.session()
+
+    coadd_parent = mapcat_settings.depth_one_coadd_parent
+
+    def _rel(key: str) -> str | None:
+        path = output_paths.get(key)
+        return str(Path(path).relative_to(coadd_parent)) if path else None
+
+    row = DepthOneCoaddTable(
+        coadd_name=coadd_name,
+        coadd_type=coadd_type,
+        map_path=_rel("flux"),
+        ivar_path=_rel("kappa"),
+        rho_path=_rel("rho"),
+        kappa_path=_rel("kappa"),
+        start_time_path=_rel("time_first"),
+        mean_time_path=_rel("time_mean"),
+        end_time_path=_rel("time_last"),
+        frequency=coadd.frequency,
+        ctime=(
+            coadd.observation_start
+            + (coadd.observation_end - coadd.observation_start) / 2
+        ).to_datetime(timezone=timezone.utc),
+        start_time=coadd.observation_start.to_datetime(timezone=timezone.utc),
+        stop_time=coadd.observation_end.to_datetime(timezone=timezone.utc),
+    )
+
+    if map_ids:
+        query = select(DepthOneMapTable).where(DepthOneMapTable.map_id.in_(map_ids))
+        row.maps = list(session.execute(query).scalars().all())
+
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row.coadd_id

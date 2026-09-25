@@ -3,9 +3,18 @@ import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
+from pixell import enmap
 
-from sotrplib.maps.core import RhoAndKappaMap
-from sotrplib.maps.map_coadding import RhoKappaMapCoadder
+from sotrplib.maps.core import (
+    CoaddedRhoKappaMap,
+    IntensityAndInverseVarianceMap,
+    RhoAndKappaMap,
+)
+from sotrplib.maps.map_coadding import (
+    IntensityMapCoadder,
+    RhoKappaMapCoadder,
+    stream_coadd,
+)
 from sotrplib.sims import (
     source_injector,
 )
@@ -278,3 +287,397 @@ def test_coadding_with_sources_in_overlapping_maps(
     )
     assert coadd.hits[pix1] == 2
     assert coadd.hits[pix2] == 1
+
+
+def test_intensity_coadder_separate(separate_map_set_1, separate_map_set_2):
+    """Test the IntensityMapCoadder on non-overlapping raw intensity/ivar maps."""
+    map_path_1 = separate_map_set_1
+    map_path_2 = separate_map_set_2
+
+    start_time = Time("2025-10-10", format="iso")
+    input_maps = [
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_1["map"],
+            inverse_variance_filename=map_path_1["ivar"],
+            time_filename=map_path_1["time"],
+            frequency="f090",
+            start_time=start_time,
+            end_time=start_time + TimeDelta(3600, format="sec"),
+        ),
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_2["map"],
+            inverse_variance_filename=map_path_2["ivar"],
+            time_filename=map_path_2["time"],
+            frequency="f090",
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
+        ),
+    ]
+    for m in input_maps:
+        m.build()
+
+    coadder = IntensityMapCoadder(frequencies=["f090"])
+    coadded_maps = coadder.coadd(input_maps=input_maps)
+    assert isinstance(coadded_maps, list)
+
+    coadd = coadded_maps[0]
+    assert coadd.intensity is not None
+    assert coadd.inverse_variance is not None
+    assert np.all(np.isfinite(coadd.intensity))
+    assert np.all(coadd.hits <= 1)
+    corners = coadd.bbox
+    b0, b1 = input_maps[0].bbox, input_maps[1].bbox
+    assert corners[0][0] == pytest.approx(min(b0[0][0], b1[0][0]))
+    assert corners[0][1] == pytest.approx(max(b0[0][1], b1[0][1]))
+    assert corners[1][0] == pytest.approx(max(b0[1][0], b1[1][0]))
+    assert corners[1][1] == pytest.approx(min(b0[1][1], b1[1][1]))
+
+
+def test_intensity_coadder_overlapping(overlapping_map_set_1, overlapping_map_set_2):
+    """Test the IntensityMapCoadder does an ivar-weighted mean on overlapping maps."""
+    map_path_1 = overlapping_map_set_1
+    map_path_2 = overlapping_map_set_2
+
+    start_time = Time("2025-10-10", format="iso")
+    input_maps = [
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_1["map"],
+            inverse_variance_filename=map_path_1["ivar"],
+            time_filename=map_path_1["time"],
+            frequency="f090",
+            start_time=start_time,
+            end_time=start_time + TimeDelta(3600, format="sec"),
+        ),
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_2["map"],
+            inverse_variance_filename=map_path_2["ivar"],
+            time_filename=map_path_2["time"],
+            frequency="f090",
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
+        ),
+    ]
+    for m in input_maps:
+        m.build()
+
+    coadder = IntensityMapCoadder(frequencies=["f090"])
+    coadded_maps = coadder.coadd(input_maps=input_maps)
+    coadd = coadded_maps[0]
+
+    assert np.all(coadd.inverse_variance >= 0)
+    assert ~np.all(coadd.hits <= 1)
+
+    # Where both maps overlap, the coadd should equal the exact
+    # inverse-variance-weighted mean of the two input pixel values.
+    overlap = coadd.hits == 2
+    assert np.any(overlap)
+    intensity_1 = enmap.project(
+        input_maps[0].intensity, coadd.intensity.shape, coadd.intensity.wcs
+    )
+    ivar_1 = enmap.project(
+        input_maps[0].inverse_variance, coadd.intensity.shape, coadd.intensity.wcs
+    )
+    intensity_2 = enmap.project(
+        input_maps[1].intensity, coadd.intensity.shape, coadd.intensity.wcs
+    )
+    ivar_2 = enmap.project(
+        input_maps[1].inverse_variance, coadd.intensity.shape, coadd.intensity.wcs
+    )
+    expected = (intensity_1 * ivar_1 + intensity_2 * ivar_2) / (ivar_1 + ivar_2)
+    np.testing.assert_allclose(coadd.intensity[overlap], expected[overlap], rtol=1e-6)
+    np.testing.assert_allclose(
+        coadd.inverse_variance[overlap], (ivar_1 + ivar_2)[overlap], rtol=1e-6
+    )
+
+
+def test_intensity_coadder_single_map(separate_map_set_1):
+    """Coadding a single map should return the map unchanged (mod the wrapper class)."""
+    map_path_1 = separate_map_set_1
+    start_time = Time("2025-10-10", format="iso")
+    input_map = IntensityAndInverseVarianceMap(
+        intensity_filename=map_path_1["map"],
+        inverse_variance_filename=map_path_1["ivar"],
+        time_filename=map_path_1["time"],
+        frequency="f090",
+        start_time=start_time,
+        end_time=start_time + TimeDelta(3600, format="sec"),
+    )
+    input_map.build()
+
+    coadder = IntensityMapCoadder(frequencies=["f090"])
+    coadd = coadder.coadd(input_maps=[input_map])[0]
+
+    np.testing.assert_allclose(coadd.intensity, input_map.intensity)
+    np.testing.assert_allclose(coadd.inverse_variance, input_map.inverse_variance)
+
+
+def test_intensity_coadder_labels_combined_arrays(
+    overlapping_map_set_1, overlapping_map_set_2
+):
+    """
+    Coadding maps from different arrays into one "coadd" group should label
+    the result with the arrays actually combined (e.g. "i1i6"), not just
+    whichever input map happened to be first.
+    """
+    map_path_1 = overlapping_map_set_1
+    map_path_2 = overlapping_map_set_2
+
+    start_time = Time("2025-10-10", format="iso")
+    input_maps = [
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_1["map"],
+            inverse_variance_filename=map_path_1["ivar"],
+            time_filename=map_path_1["time"],
+            frequency="f090",
+            array="i6",
+            start_time=start_time,
+            end_time=start_time + TimeDelta(3600, format="sec"),
+        ),
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_2["map"],
+            inverse_variance_filename=map_path_2["ivar"],
+            time_filename=map_path_2["time"],
+            frequency="f090",
+            array="i1",
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
+        ),
+    ]
+
+    coadder = IntensityMapCoadder(frequencies=["f090"])
+    coadd = coadder.coadd(input_maps=input_maps)[0]
+    assert coadd.array == "i1i6"
+
+
+def test_intensity_coadder_labels_single_array(
+    overlapping_map_set_1, overlapping_map_set_2
+):
+    """Coadding maps that all share one array should keep that array's plain name."""
+    map_path_1 = overlapping_map_set_1
+    map_path_2 = overlapping_map_set_2
+
+    start_time = Time("2025-10-10", format="iso")
+    input_maps = [
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_1["map"],
+            inverse_variance_filename=map_path_1["ivar"],
+            time_filename=map_path_1["time"],
+            frequency="f090",
+            array="i6",
+            start_time=start_time,
+            end_time=start_time + TimeDelta(3600, format="sec"),
+        ),
+        IntensityAndInverseVarianceMap(
+            intensity_filename=map_path_2["map"],
+            inverse_variance_filename=map_path_2["ivar"],
+            time_filename=map_path_2["time"],
+            frequency="f090",
+            array="i6",
+            start_time=start_time + TimeDelta(3600, format="sec"),
+            end_time=start_time + TimeDelta(7200, format="sec"),
+        ),
+    ]
+
+    coadder = IntensityMapCoadder(frequencies=["f090"])
+    coadd = coadder.coadd(input_maps=input_maps)[0]
+    assert coadd.array == "i6"
+
+
+def test_rhokappa_coadder_streaming_merge_does_not_repeat_array_tokens(
+    overlapping_map_set_1, overlapping_map_set_2
+):
+    """
+    Regression test: streaming/incremental coadding calls coadd_maps()
+    repeatedly as [running_coadd, new_map]. running_coadd.array is itself
+    already a combined label from the previous merge (e.g. "i1i3"); treating
+    that whole string as one opaque token instead of re-parsing it into its
+    atomic arrays made the label grow (and repeat tokens) with every merge
+    instead of staying deduplicated to the unique arrays actually involved.
+    """
+    start_time = Time("2025-10-10", format="iso")
+    paths = [overlapping_map_set_1, overlapping_map_set_2, overlapping_map_set_1]
+    arrays = ["i1", "i3", "i6"]
+
+    coadder = RhoKappaMapCoadder(frequencies=["f090"])
+    running = None
+    for path, array in zip(paths, arrays):
+        m = RhoAndKappaMap(
+            rho_filename=path["rho"],
+            kappa_filename=path["kappa"],
+            time_filename=path["time"],
+            frequency="f090",
+            array=array,
+            start_time=start_time,
+            end_time=start_time + TimeDelta(3600, format="sec"),
+        )
+        running = coadder.coadd_maps([m] if running is None else [running, m])
+
+    assert running.array == "i1i3i6"
+
+
+def test_intensity_coadder_time_mean_is_averaged_not_summed(tmp_path):
+    """
+    Regression test: coadding several fully-overlapping maps must produce a
+    hits-weighted *average* time_mean, not an ever-growing running sum (see
+    update_times() in core.py -- total_hits used to come from a 0/1
+    "is this pixel covered" indicator instead of the real accumulated hit
+    count, so each additional map multiplied the running sum instead of
+    renormalizing it).
+    """
+    shape, wcs = enmap.geometry(
+        np.deg2rad([[-0.5, 0.5], [0.5, -0.5]]), res=np.deg2rad(0.05), proj="car"
+    )
+    start_time = Time("2025-10-10", format="iso")
+
+    times = [100.0, 200.0, 300.0, 400.0, 500.0]
+    input_maps = []
+    for i, t in enumerate(times):
+        intensity_path = tmp_path / f"map{i}_map.fits"
+        ivar_path = tmp_path / f"map{i}_ivar.fits"
+        time_path = tmp_path / f"map{i}_time.fits"
+        enmap.ones(shape, wcs=wcs).write(intensity_path, fmt="fits")
+        enmap.ones(shape, wcs=wcs).write(ivar_path, fmt="fits")
+        (enmap.zeros(shape, wcs=wcs) + t).write(time_path, fmt="fits")
+
+        input_maps.append(
+            IntensityAndInverseVarianceMap(
+                intensity_filename=intensity_path,
+                inverse_variance_filename=ivar_path,
+                time_filename=time_path,
+                frequency="f090",
+                start_time=start_time,
+                end_time=start_time + TimeDelta(3600, format="sec"),
+            )
+        )
+
+    coadder = IntensityMapCoadder(frequencies=["f090"])
+    coadd = coadder.coadd(input_maps=input_maps)[0]
+
+    # build() converts the raw (seconds-since-start) time map to absolute
+    # unix time by adding observation_start; read back what each input map
+    # actually ended up with rather than re-deriving that offset here.
+    expected_mean = np.mean([float(m.time_mean[0, 0]) for m in input_maps])
+
+    np.testing.assert_allclose(coadd.hits, len(times))
+    np.testing.assert_allclose(coadd.time_mean, expected_mean)
+
+
+# ─── stream_coadd ─────────────────────────────────────────────────────────────
+
+
+def _rho_kappa_map(paths, map_id, start_time):
+    m = RhoAndKappaMap(
+        rho_filename=paths["rho"],
+        kappa_filename=paths["kappa"],
+        time_filename=paths["time"],
+        frequency="f090",
+        start_time=start_time,
+        end_time=start_time + TimeDelta(3600, format="sec"),
+    )
+    m.mapcat_id = map_id
+    return m
+
+
+def test_stream_coadd_matches_batch_coadd(overlapping_map_set_1, overlapping_map_set_2):
+    """stream_coadd() (one map at a time) must match RhoKappaMapCoadder.coadd()
+    (all maps at once) exactly, for the same inputs and no preprocessing."""
+    start_time = Time("2025-10-10", format="iso")
+    paths = [overlapping_map_set_1, overlapping_map_set_2]
+
+    batch_maps = [_rho_kappa_map(p, i, start_time) for i, p in enumerate(paths)]
+    [m.build() for m in batch_maps]
+    batch = RhoKappaMapCoadder(frequencies=["f090"]).coadd(batch_maps)[0]
+
+    stream_maps = [_rho_kappa_map(p, i, start_time) for i, p in enumerate(paths)]
+    streamed, map_ids = stream_coadd(
+        maps=stream_maps,
+        preprocessors=[],
+        coadder=RhoKappaMapCoadder(frequencies=["f090"]),
+    )
+
+    assert map_ids == [0, 1]
+    np.testing.assert_allclose(streamed.rho, batch.rho)
+    np.testing.assert_allclose(streamed.kappa, batch.kappa)
+    np.testing.assert_allclose(streamed.hits, batch.hits)
+    np.testing.assert_allclose(streamed.time_mean, batch.time_mean)
+
+
+def test_stream_coadd_tracks_all_map_ids(separate_map_set_1):
+    """
+    Regression test: RhoKappaMapCoadder.coadd_maps() seeds map_ids from
+    base_map.mapcat_id (singular), which is wrong once base_map is itself a
+    running coadd from a previous streaming iteration -- it would silently
+    drop everything merged before it. stream_coadd() must track map_ids
+    itself instead, so all N maps show up regardless of coadder internals.
+    """
+    start_time = Time("2025-10-10", format="iso")
+    maps = [
+        _rho_kappa_map(separate_map_set_1, map_id, start_time)
+        for map_id in [10, 20, 30, 40, 50]
+    ]
+
+    _, map_ids = stream_coadd(
+        maps=maps,
+        preprocessors=[],
+        coadder=RhoKappaMapCoadder(frequencies=["f090"]),
+    )
+
+    assert map_ids == [10, 20, 30, 40, 50]
+
+
+def test_stream_coadd_empty_input_returns_none():
+    coadd, map_ids = stream_coadd(
+        maps=[], preprocessors=[], coadder=RhoKappaMapCoadder(frequencies=["f090"])
+    )
+    assert coadd is None
+    assert map_ids == []
+
+
+# ─── CoaddedRhoKappaMap ─────────────────────────────────────────────────────────
+
+
+def test_coadded_rho_kappa_map_does_not_share_mutable_defaults():
+    """
+    Regression test: map_ids/input_map_times used to default to a single
+    shared [] object, so every CoaddedRhoKappaMap built without passing
+    them explicitly (which coadd_maps() never does for input_map_times)
+    silently accumulated state across unrelated coadds in the same process.
+    """
+    start_time = Time("2025-10-10", format="iso")
+    kwargs = dict(
+        rho=None,
+        kappa=None,
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        observation_length=TimeDelta(3600, format="sec"),
+        frequency="f090",
+    )
+    a = CoaddedRhoKappaMap(**kwargs)
+    b = CoaddedRhoKappaMap(**kwargs)
+
+    a.input_map_times.append("only-in-a")
+    a.map_ids.append("only-in-a")
+
+    assert b.input_map_times == []
+    assert b.map_ids == []
+
+
+def test_map_type_distinguishes_depth1_maps_from_coadds(separate_map_set_1):
+    """
+    ProcessableMap.map_type lets database.py's processing-status helpers
+    pick the right TimeDomainProcessingTable column (map_id vs coadd_id)
+    for a given map's mapcat_id without knowing its concrete subclass.
+    """
+    start_time = Time("2025-10-10", format="iso")
+    depth1_map = _rho_kappa_map(separate_map_set_1, 0, start_time)
+    assert depth1_map.map_type == "depth1_map"
+
+    coadd = CoaddedRhoKappaMap(
+        rho=None,
+        kappa=None,
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        observation_length=TimeDelta(3600, format="sec"),
+        frequency="f090",
+    )
+    assert coadd.map_type == "coadd"

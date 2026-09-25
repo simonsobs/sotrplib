@@ -4,6 +4,7 @@ Core map objects.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Literal
 
 import astropy.units as u
 import numpy as np
@@ -24,6 +25,10 @@ from sotrplib.maps.utils import (
 )
 
 PointingModel = ConstantPointingModel
+
+# mapcat column for depth1 map and coadd in the TimeDomainProcessingTable.
+# This is used to determine which column to use for the mapcat_id.
+MapCatMapType = Literal["depth1_map", "coadd"]
 
 
 class ProcessableMap(ABC):
@@ -332,6 +337,14 @@ class ProcessableMap(ABC):
         map's own metadata, whether or not it has a mapcat identifier.
         """
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
+
+    @property
+    def map_type(self) -> MapCatMapType:
+        """
+        Whether this map is a depth-1 map or a coadd of them, matching
+        mapcat's distinction.
+        """
+        return "depth1_map"
 
     def get_pixel_times(
         self, pix: tuple[int, int]
@@ -730,6 +743,31 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         super().finalize()
 
 
+def _flux_units_from_bunit(
+    filename: Path, power: int, default: Unit, log: FilteringBoundLogger
+) -> Unit:
+    """
+    The map's flux unit, from the FITS BUNIT of a field that carries
+    flux_units**power (flux: 1, rho: -1), as written by MapOutputSerializer.
+    Files without BUNIT (e.g. externally produced maps) keep `default`, the
+    configured unit.
+    """
+    from astropy.io import fits
+
+    bunit = fits.getheader(str(filename)).get("BUNIT")
+    if not bunit:
+        return default
+    flux_units = u.Unit(bunit, format="fits") ** (1 / power)
+    if flux_units != default:
+        log.info(
+            "map.flux_units_from_bunit",
+            bunit=bunit,
+            flux_units=str(flux_units),
+            configured=str(default),
+        )
+    return flux_units
+
+
 class RhoAndKappaMap(ProcessableMap):
     """
     A set of FITS maps read from disk. Could be Depth 1, could
@@ -794,6 +832,9 @@ class RhoAndKappaMap(ProcessableMap):
         except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=enmap_box)
+        self.flux_units = _flux_units_from_bunit(
+            self.rho_filename, power=-1, default=self.flux_units, log=log
+        )
 
         log = log.new(kappa_filename=self.kappa_filename)
         try:
@@ -899,6 +940,27 @@ class RhoAndKappaMap(ProcessableMap):
         super().finalize()
 
 
+class CoaddRhoAndKappaMap(RhoAndKappaMap):
+    """
+    A registered coadd's rho/kappa maps read back from disk (e.g. as written
+    by sotrp-coadd). Differs from a depth-1 RhoAndKappaMap in two ways:
+
+    - it's a coadd as far as mapcat is concerned (map_type "coadd"), so its
+      processing status lives under coadd_id, not map_id;
+    - its time map already holds absolute unix times (the hit-weighted mean
+      of its input maps' absolute times), unlike depth-1 time maps, which
+      are seconds since the observation start -- so no offset is added.
+    """
+
+    @property
+    def map_type(self) -> MapCatMapType:
+        return "coadd"
+
+    def add_time_offset(self, offset: Time | None = None):
+        if self.observation_end is None and self.time_last is not None:
+            self.observation_end = Time(float(np.amax(self.time_last)), format="unix")
+
+
 class FluxAndSNRMap(ProcessableMap):
     """
     A set of FITS maps read from disk. Could be Depth 1, could
@@ -961,6 +1023,9 @@ class FluxAndSNRMap(ProcessableMap):
         except (IndexError, AttributeError, AssertionError):
             # Flux map does not have Q, U
             self.flux = enmap.read_map(str(self.flux_filename), box=enmap_box)
+        self.flux_units = _flux_units_from_bunit(
+            self.flux_filename, power=1, default=self.flux_units, log=log
+        )
 
         log = log.new(snr_filename=self.snr_filename)
         try:
@@ -1086,8 +1151,8 @@ class CoaddedRhoKappaMap(ProcessableMap):
         mask: ndmap | None = None,
         map_resolution: u.Quantity | None = None,
         hits: ndmap | None = None,
-        map_ids: list = [],
-        input_map_times: list = [],
+        map_ids: list | None = None,
+        input_map_times: list | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.rho = rho
@@ -1107,12 +1172,18 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.mask = mask
         self._hits = hits
         self.map_resolution = map_resolution
-        self.map_ids = map_ids
-        self.input_map_times = input_map_times
+        self.map_ids = list(map_ids) if map_ids is not None else []
+        self.input_map_times = (
+            list(input_map_times) if input_map_times is not None else []
+        )
         self.log = log or structlog.get_logger()
 
     def build(self):
         pass
+
+    @property
+    def map_type(self) -> MapCatMapType:
+        return "coadd"
 
     def update_times(self, new_map):
         """
@@ -1137,8 +1208,7 @@ class CoaddedRhoKappaMap(ProcessableMap):
         mid_time = new_map.observation_start + (time_delta / 2)
         self.input_map_times.append(mid_time)
 
-        ## get map union if adding two maps, use hits-weighted mean.
-        total_hits = self._compute_hits()
+        total_hits = enmap.map_union(self.hits, new_map.hits)
         hit_mask = total_hits > 0
         if isinstance(new_map.time_mean, ndmap):
             if self.time_mean is None:
@@ -1214,3 +1284,85 @@ class CoaddedRhoKappaMap(ProcessableMap):
         self.snr = self.get_snr()
         self.flux = self.get_flux()
         super().finalize()
+
+
+class CoaddedIntensityAndInverseVarianceMap(CoaddedRhoKappaMap):
+    """
+    A coadded intensity/inverse-variance map, built from multiple raw
+    (unfiltered) depth-1 observations via an inverse-variance-weighted mean.
+
+    Unlike CoaddedRhoKappaMap, the inputs here have not been matched
+    filtered, so `intensity` is directly the ivar-weighted mean map rather
+    than a rho/kappa ratio. Filtering should be applied as a preprocessor on
+    the resulting coadd, not on the individual input maps.
+    """
+
+    _available_maps: tuple[str, ...] = ("intensity", "flux", "snr")
+
+    def __init__(
+        self,
+        intensity: ndmap,
+        inverse_variance: ndmap,
+        observation_start: Time,
+        observation_end: Time,
+        time_first: ndmap | None = None,
+        time_mean: ndmap | None = None,
+        time_last: ndmap | None = None,
+        observation_length: TimeDelta | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
+        instrument: str | None = None,
+        intensity_units: Unit = u.K,
+        mask: ndmap | None = None,
+        map_resolution: u.Quantity | None = None,
+        hits: ndmap | None = None,
+        map_ids: list | None = None,
+        input_map_times: list | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.intensity = intensity
+        self.inverse_variance = inverse_variance
+        self.matched_filtered = False
+        self.time_first = time_first
+        self.time_mean = time_mean
+        self.time_last = time_last
+        self.observation_start = observation_start
+        self.observation_end = observation_end
+        self.observation_length = observation_length
+        self.observation_time = observation_end - 0.5 * observation_length
+        self.sky_box = sky_box
+        self.frequency = frequency
+        self.array = array
+        self.instrument = instrument
+        self.intensity_units = intensity_units
+        self.mask = mask
+        self._hits = hits
+        self.map_resolution = map_resolution
+        self.map_ids = list(map_ids) if map_ids is not None else []
+        self.input_map_times = (
+            list(input_map_times) if input_map_times is not None else []
+        )
+        self.log = log or structlog.get_logger()
+
+    def build(self):
+        pass
+
+    def _compute_hits(self):
+        return (self.inverse_variance > 0).astype(np.int32)
+
+    def _compute_valid_pixel_mask(self):
+        bool_map = (self.inverse_variance > 0).astype(np.int32) & (
+            np.isfinite(self.inverse_variance)
+        )
+        if self.mask is not None:
+            bool_map = bool_map & (self.mask > 0)
+        return bool_map
+
+    def get_snr(self):
+        with np.errstate(divide="ignore"):
+            snr = self.intensity / np.sqrt(self.inverse_variance)
+        return snr
+
+    def get_flux(self):
+        return self.intensity

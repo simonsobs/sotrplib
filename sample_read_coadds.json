@@ -1,0 +1,61 @@
+{
+    "maps": {
+        "map_generator_type": "mapcat_database",
+        "map_type": "coadd_rhokappa",
+        "instrument": "SOLAT",
+        "frequency": "f090",
+        "start_time": "2025-08-01T00:00:00",
+        "end_time": "2026-01-01T00:59:59",
+        "rerun": "True"
+    },
+    "source_catalogs": [
+        {
+            "catalog_type": "socat",
+            "flux_lower_limit": "10 mJy"
+        }
+    ],
+    "pointing_provider": {
+        "photometry_type": "lmfit_pointing",
+        "thumbnail_half_width": "0.1 deg",
+        "min_flux": "0.3 Jy",
+        "reproject_thumbnails": "True",
+        "allowable_centroid_offset": "3.0 arcmin"
+    },
+    "pointing_residual": {
+        "pointing_residual_type": "median",
+        "min_snr": 5.0,
+        "min_sources": 10
+    },
+    "preprocessors": [],
+    "postprocessors": [
+        {
+            "postprocessor_type": "flatfield",
+            "sigma_val": 5.0,
+            "tile_size": "0.5 deg"
+        }
+    ],
+    "source_subtractor": {
+        "subtractor_type": "photutils"
+    },
+    "blind_search": {
+        "search_type": "photutils"
+    },
+    "forced_photometry": {
+        "photometry_type": "lmfit",
+        "reproject_thumbnails": "True",
+        "flux_limit_centroid": "0.1 Jy",
+        "thumbnail_half_width": "4 arcmin",
+        "allowable_center_offset": "1.0 arcmin",
+        "near_source_rel_flux_limit": 1.0
+    },
+    "sifter": {
+        "sifter_type": "default",
+        "min_match_radius": "5.0 arcmin"
+    },
+    "source_outputs": [
+        {
+            "output_type": "pickle",
+            "directory": "."
+        }
+    ]
+}
