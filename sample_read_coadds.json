@@ -4,6 +4,8 @@
         "map_type": "coadd_rhokappa",
         "instrument": "SOLAT",
         "frequency": "f090",
+        "start_time": "2025-08-01T00:00:00",
+        "end_time": "2026-01-01T00:59:59",
         "rerun": "True"
     },
     "source_catalogs": [
