@@ -13,7 +13,9 @@ sotrplib.maps.map_coadding.stream_coadd for details.
 
 The finished coadd is saved to FITS and, by default, registered (along with
 links to every depth-1 map that went into it) in mapcat's
-depth_one_coadds / link_depth_one_map_to_coadd tables.
+depth_one_coadds / link_depth_one_map_to_coadd tables. Coadd paths are
+stored relative to MAPCAT_DEPTH_ONE_COADD_PARENT (--coadd-parent, default
+--output-dir), independent of where the depth-1 maps live.
 
 Generates a sotrp-coadd config JSON + a SLURM script per (window,
 frequency), and by default only writes them; pass --submit to actually
@@ -182,6 +184,7 @@ cd {repo_dir}
 source .venv/bin/activate
 
 export MAPCAT_DEPTH_ONE_PARENT={depth_one_parent}
+export MAPCAT_DEPTH_ONE_COADD_PARENT={coadd_parent}
 export MAPCAT_DATABASE_NAME={database_name}
 {socat_env}
 srun --overlap sotrp-coadd -c {config_file} > {log_file} 2>&1
@@ -210,6 +213,13 @@ def parse_args():
         required=True,
         help="Directory to write coadded map FITS outputs to (one subdir per window is not "
         "created automatically; include it in this path if desired).",
+    )
+    p.add_argument(
+        "--coadd-parent",
+        type=Path,
+        default=None,
+        help="Parent directory that registered coadd paths are stored relative to "
+        "(MAPCAT_DEPTH_ONE_COADD_PARENT). Must contain --output-dir. Default: --output-dir.",
     )
     p.add_argument(
         "--window-days",
@@ -421,6 +431,7 @@ def main():
                 slurm_out_dir=slurm_dir,
                 repo_dir=args.repo_dir,
                 depth_one_parent=args.depth_one_parent,
+                coadd_parent=args.coadd_parent or output_dir,
                 database_name=args.database_name,
                 socat_env=socat_env,
                 config_file=config_file,

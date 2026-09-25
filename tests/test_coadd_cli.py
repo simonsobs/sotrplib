@@ -101,3 +101,39 @@ def test_main_no_maps_found_marks_nothing():
         main()
 
     mock_end.assert_not_called()
+
+
+def _registration_config(directory):
+    config = MagicMock()
+    config.mapcat_registration.enabled = True
+    output = MagicMock()
+    output.directory = directory
+    config.map_outputs = [output]
+    return config
+
+
+def test_check_registration_paths_uses_coadd_parent(tmp_path):
+    from sotrplib.coadd_cli import _check_registration_paths
+
+    depth_one_parent = tmp_path / "depth1"
+    coadd_parent = tmp_path / "my_coadds"
+    config = _registration_config(coadd_parent / "weekly")
+
+    with patch("sotrplib.coadd_cli.mapcat_settings") as settings:
+        settings.depth_one_parent = depth_one_parent
+        settings.depth_one_coadd_parent = coadd_parent
+        # Outside depth_one_parent but under depth_one_coadd_parent: allowed.
+        _check_registration_paths(config)
+
+
+def test_check_registration_paths_rejects_outside_coadd_parent(tmp_path):
+    from sotrplib.coadd_cli import _check_registration_paths
+
+    config = _registration_config(tmp_path / "elsewhere")
+
+    with patch("sotrplib.coadd_cli.mapcat_settings") as settings:
+        # Under depth_one_parent doesn't count -- only the coadd parent does.
+        settings.depth_one_parent = tmp_path
+        settings.depth_one_coadd_parent = tmp_path / "my_coadds"
+        with pytest.raises(ValueError, match="MAPCAT_DEPTH_ONE_COADD_PARENT"):
+            _check_registration_paths(config)

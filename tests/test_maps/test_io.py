@@ -666,16 +666,19 @@ def test_register_coadd_writes_row_and_links(separate_map_set_1):
     session = MagicMock()
     session.execute.return_value.scalars.return_value.all.return_value = [linked_map]
 
-    depth_one_parent = Path("/data/depth1")
+    # Coadds live somewhere other than the depth-1 maps: paths must be stored
+    # relative to depth_one_coadd_parent, not depth_one_parent.
+    coadd_parent = Path("/home/user/my_coadds")
     output_paths = {
-        "flux": depth_one_parent / "coadds" / "f090_flux.fits",
-        "rho": depth_one_parent / "coadds" / "f090_rho.fits",
-        "kappa": depth_one_parent / "coadds" / "f090_kappa.fits",
-        "time_mean": depth_one_parent / "coadds" / "f090_time_mean.fits",
+        "flux": coadd_parent / "coadds" / "f090_flux.fits",
+        "rho": coadd_parent / "coadds" / "f090_rho.fits",
+        "kappa": coadd_parent / "coadds" / "f090_kappa.fits",
+        "time_mean": coadd_parent / "coadds" / "f090_time_mean.fits",
     }
 
     with patch("sotrplib.maps.database.mapcat_settings") as settings:
-        settings.depth_one_parent = depth_one_parent
+        settings.depth_one_parent = Path("/data/depth1")
+        settings.depth_one_coadd_parent = coadd_parent
         register_coadd(
             coadd=coadd,
             map_ids=[uuid7.create()],

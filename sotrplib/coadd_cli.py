@@ -22,26 +22,28 @@ structlog.configure(
 
 def _check_registration_paths(config: CoaddSettings) -> None:
     """
-    mapcat stores every path (depth-1 maps and coadds alike) relative to
-    MAPCAT_DEPTH_ONE_PARENT. Check that up front, before doing any of the
+    mapcat stores coadd paths relative to MAPCAT_DEPTH_ONE_COADD_PARENT
+    (separate from MAPCAT_DEPTH_ONE_PARENT, which only the depth-1 maps
+    are relative to). Check that up front, before doing any of the
     (expensive, per-map-preprocessed) coadding work, rather than failing
     only once register_coadd() tries to make paths relative at the very end.
     """
     if config.mapcat_registration is None or not config.mapcat_registration.enabled:
         return
 
-    depth_one_parent = Path(mapcat_settings.depth_one_parent).resolve()
+    coadd_parent = Path(mapcat_settings.depth_one_coadd_parent).resolve()
     for output in config.map_outputs:
         directory = output.directory.resolve()
         try:
-            directory.relative_to(depth_one_parent)
+            directory.relative_to(coadd_parent)
         except ValueError:
             raise ValueError(
                 f"map_outputs directory {directory} is not under "
-                f"MAPCAT_DEPTH_ONE_PARENT ({depth_one_parent}). mapcat stores all "
-                "paths relative to it, so mapcat_registration requires output "
-                "directories to live underneath it -- either move the output "
-                "directory there or set mapcat_registration.enabled to false."
+                f"MAPCAT_DEPTH_ONE_COADD_PARENT ({coadd_parent}). mapcat stores "
+                "coadd paths relative to it, so mapcat_registration requires "
+                "output directories to live underneath it -- set "
+                "MAPCAT_DEPTH_ONE_COADD_PARENT to (a parent of) the output "
+                "directory, or set mapcat_registration.enabled to false."
             ) from None
 
 

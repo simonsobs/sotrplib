@@ -571,7 +571,9 @@ def register_coadd(
         "first available of intensity, rho, flux" coverage-map
         convention), and optionally "rho", "kappa", "time_first",
         "time_mean", "time_last". Stored relative to
-        MAPCAT_DEPTH_ONE_PARENT, matching how depth-1 maps are recorded.
+        MAPCAT_DEPTH_ONE_COADD_PARENT (mapcat's depth_one_coadd_parent),
+        which is independent of MAPCAT_DEPTH_ONE_PARENT so coadds can live
+        somewhere other than the depth-1 maps they were built from.
 
     Returns
     -------
@@ -580,11 +582,11 @@ def register_coadd(
     if session is None:
         session = mapcat_settings.session()
 
-    depth_one_parent = mapcat_settings.depth_one_parent
+    coadd_parent = mapcat_settings.depth_one_coadd_parent
 
     def _rel(key: str) -> str | None:
         path = output_paths.get(key)
-        return str(Path(path).relative_to(depth_one_parent)) if path else None
+        return str(Path(path).relative_to(coadd_parent)) if path else None
 
     row = DepthOneCoaddTable(
         coadd_name=coadd_name,

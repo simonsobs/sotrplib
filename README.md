@@ -89,6 +89,13 @@ export MAPCAT_DATABASE_NAME=/path/to/mapcat.sqlite
 ```
 This tells the map catalog where to look for the maps and where the database lives. 
 
+Coadds registered by `sotrp-coadd` are stored relative to a separate root, so they can live somewhere other than the depth1 maps (e.g. your own data directory):
+
+```
+export MAPCAT_DEPTH_ONE_COADD_PARENT=/path/to/coadds
+```
+
+
 With the existance of a mapcat database, the pipeline can be configured to read from there via :
 
 ```json
