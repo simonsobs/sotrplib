@@ -228,7 +228,8 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     rerun: bool = False
     track_processing: bool = True
     "Skip already-processed maps and mark read maps as processing in "
-    "mapcat's time_domain_processing table. sotrp-coadd defaults this to False."
+    "mapcat's time_domain_processing table. False by default for sotrp-coadd "
+    "(see CoaddMapCatDatabaseConfig)."
     time_binning: TimeBinning = "loose"
 
     @model_validator(mode="after")

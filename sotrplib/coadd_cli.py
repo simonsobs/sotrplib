@@ -82,9 +82,9 @@ def main():
 
     dependencies = config.to_dependencies()
     reader = dependencies["maps"]
-    # Off by default (see CoaddSettings): per-map status belongs to sotrp's
-    # own run on each depth-1 map, and which maps went into a coadd is
-    # recorded by register_coadd()'s coadd <-> map links instead.
+    # Off by default (see CoaddMapCatDatabaseConfig): per-map status belongs
+    # to sotrp's own run on each depth-1 map, and which maps went into a
+    # coadd is recorded by register_coadd()'s coadd <-> map links instead.
     track_maps = reader.track_processing
 
     try:
