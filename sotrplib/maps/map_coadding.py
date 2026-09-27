@@ -15,7 +15,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
 )
 from sotrplib.maps.preprocessor import MapPreprocessor
-
+# look for patterns of letter+number ; i.e. how SO LAT names optics tubes -- i1, o6, etc. 
 _ARRAY_TOKEN_RE = re.compile(r"[a-zA-Z]+\d+")
 
 

@@ -83,13 +83,6 @@ def main():
     dependencies = config.to_dependencies()
     reader = dependencies["maps"]
 
-    # reader.map_ids accumulates every map_id read (and marked "processing")
-    # as soon as the reader is first iterated, regardless of where in the
-    # run below we might fail -- so on any exception it names exactly the
-    # maps this run touched but never got into a successfully registered
-    # coadd, and they're marked "failed" rather than left dangling as
-    # "processing" (which would otherwise make the reader silently skip
-    # them on the next attempt, within stale_processing_time).
     try:
         coadd, map_ids = stream_coadd(
             maps=reader,
@@ -103,11 +96,7 @@ def main():
             return
 
         # rho/kappa only exist before finalize() (which deletes them once
-        # flux/snr are derived), so write outputs in two passes -- matching
-        # the pattern the old standalone coadd_maps.py script already used.
-        # Fields not yet available on a given pass (e.g. flux/snr on the
-        # first pass) are skipped with a harmless log line by
-        # MapOutputSerializer.
+        # flux/snr are derived), so write outputs before finalizing
         output_paths: dict[str, Path] = {}
         for output in dependencies["map_outputs"]:
             output_paths.update(output.output(input_map=coadd))

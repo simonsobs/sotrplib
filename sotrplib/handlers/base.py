@@ -275,11 +275,7 @@ class BaseRunner:
                 )
             return forced_photometry_candidates, sifter_result
         except Exception:
-            # input_map may have been reassigned above (e.g. by
-            # source_injector.inject); mapcat_id/_parent_database are set by
-            # the reader at construction time, well before build(), so
-            # they're present on whichever object we're holding at the
-            # point of failure. Mark the map "failed" (instead of leaving
+           # Mark the map "failed" (instead of leaving
             # it dangling as "processing", which would make the reader
             # silently skip it on the next attempt) and re-raise so the
             # failure is still visible to the caller/pipeline.
