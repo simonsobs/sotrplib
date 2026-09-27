@@ -349,7 +349,11 @@ def parse_args():
     p.add_argument("--mem-per-cpu", type=str, default="16G", help="Memory per CPU.")
     p.add_argument("--time", type=str, default="04:00:00", help="SLURM time limit.")
     p.add_argument(
-        "--rerun", action="store_true", help="Re-process already-completed maps."
+        "--rerun",
+        action="store_true",
+        help="Re-process already-completed maps. Only has an effect if the "
+        "config opts in to maps.track_processing; by default sotrp-coadd "
+        "doesn't skip completed depth-1 maps.",
     )
     p.add_argument(
         "--submit",

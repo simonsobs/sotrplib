@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 from astropy import units as u
@@ -589,13 +591,14 @@ def test_stream_coadd_matches_batch_coadd(overlapping_map_set_1, overlapping_map
     batch = RhoKappaMapCoadder(frequencies=["f090"]).coadd(batch_maps)[0]
 
     stream_maps = [_rho_kappa_map(p, i, start_time) for i, p in enumerate(paths)]
-    streamed, map_ids = stream_coadd(
+    streamed, map_ids, failed_map_ids = stream_coadd(
         maps=stream_maps,
         preprocessors=[],
         coadder=RhoKappaMapCoadder(frequencies=["f090"]),
     )
 
     assert map_ids == [0, 1]
+    assert failed_map_ids == []
     np.testing.assert_allclose(streamed.rho, batch.rho)
     np.testing.assert_allclose(streamed.kappa, batch.kappa)
     np.testing.assert_allclose(streamed.hits, batch.hits)
@@ -616,7 +619,7 @@ def test_stream_coadd_tracks_all_map_ids(separate_map_set_1):
         for map_id in [10, 20, 30, 40, 50]
     ]
 
-    _, map_ids = stream_coadd(
+    _, map_ids, _ = stream_coadd(
         maps=maps,
         preprocessors=[],
         coadder=RhoKappaMapCoadder(frequencies=["f090"]),
@@ -625,12 +628,59 @@ def test_stream_coadd_tracks_all_map_ids(separate_map_set_1):
     assert map_ids == [10, 20, 30, 40, 50]
 
 
+def test_stream_coadd_skips_failing_map(overlapping_map_set_1, overlapping_map_set_2):
+    """A map that errors is logged and left out; the rest still coadd, to the
+    same result as if the failing map had never been read."""
+    start_time = Time("2025-10-10", format="iso")
+    paths = [overlapping_map_set_1, overlapping_map_set_2]
+
+    broken = MagicMock()
+    broken.mapcat_id = 99
+    broken.build.side_effect = OSError("unreadable FITS")
+
+    streamed, map_ids, failed_map_ids = stream_coadd(
+        maps=[
+            _rho_kappa_map(paths[0], 0, start_time),
+            broken,
+            _rho_kappa_map(paths[1], 1, start_time),
+        ],
+        preprocessors=[],
+        coadder=RhoKappaMapCoadder(frequencies=["f090"]),
+    )
+    expected, _, _ = stream_coadd(
+        maps=[_rho_kappa_map(p, i, start_time) for i, p in enumerate(paths)],
+        preprocessors=[],
+        coadder=RhoKappaMapCoadder(frequencies=["f090"]),
+    )
+
+    assert map_ids == [0, 1]
+    assert failed_map_ids == [99]
+    np.testing.assert_allclose(streamed.rho, expected.rho)
+    np.testing.assert_allclose(streamed.kappa, expected.kappa)
+
+
+def test_stream_coadd_all_maps_failing_returns_none():
+    broken = MagicMock()
+    broken.mapcat_id = 7
+    broken.build.side_effect = OSError("unreadable FITS")
+
+    coadd, map_ids, failed_map_ids = stream_coadd(
+        maps=[broken],
+        preprocessors=[],
+        coadder=RhoKappaMapCoadder(frequencies=["f090"]),
+    )
+    assert coadd is None
+    assert map_ids == []
+    assert failed_map_ids == [7]
+
+
 def test_stream_coadd_empty_input_returns_none():
-    coadd, map_ids = stream_coadd(
+    coadd, map_ids, failed_map_ids = stream_coadd(
         maps=[], preprocessors=[], coadder=RhoKappaMapCoadder(frequencies=["f090"])
     )
     assert coadd is None
     assert map_ids == []
+    assert failed_map_ids == []
 
 
 # ─── CoaddedRhoKappaMap ─────────────────────────────────────────────────────────

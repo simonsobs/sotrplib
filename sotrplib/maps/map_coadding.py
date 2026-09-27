@@ -303,7 +303,7 @@ def stream_coadd(
     preprocessors: list[MapPreprocessor],
     coadder: RhoKappaMapCoadder,
     log: FilteringBoundLogger | None = None,
-) -> tuple[ProcessableMap | None, list[UUID7]]:
+) -> tuple[ProcessableMap | None, list[UUID7], list[UUID7]]:
     """
     Memory-bounded coadding: build, preprocess (e.g. matched filter), and
     merge `maps` into a single coadd one at a time, discarding each raw map
@@ -336,10 +336,16 @@ def stream_coadd(
         correct incremental merge: it builds a new CoaddedRhoKappaMap each
         call rather than mutating `running` in place.
 
+    A map that raises while being built, preprocessed or merged is logged
+    and left out, and coadding carries on with the rest: `coadd_maps()`
+    returns a new map rather than mutating `running`, so a failed merge
+    leaves the running coadd intact.
+
     Returns
     -------
-    (coadd, map_ids) : The final coadd (None if `maps` was empty) and the
-        list of every input map's `mapcat_id`, in the order merged. Tracked
+    (coadd, map_ids, failed_map_ids) : The final coadd (None if no map was
+        merged), the `mapcat_id` of every merged map in the order merged,
+        and the `mapcat_id` of every map left out because it errored. Tracked
         here rather than read off `coadd.map_ids` afterwards, because
         `coadd_maps()` seeds `map_ids` from `base_map.mapcat_id` (singular) --
         when `base_map` is itself a running coadd from a previous
@@ -349,20 +355,30 @@ def stream_coadd(
 
     running: ProcessableMap | None = None
     map_ids: list[UUID7] = []
+    failed_map_ids: list[UUID7] = []
 
     for raw_map in maps:
-        raw_map.build()
         map_id = raw_map.mapcat_id
-
         filtered = raw_map
-        for preprocessor in preprocessors:
-            filtered = preprocessor.preprocess(input_map=filtered)
+        try:
+            raw_map.build()
+            for preprocessor in preprocessors:
+                filtered = preprocessor.preprocess(input_map=filtered)
 
-        running = (
-            coadder.coadd_maps([filtered])
-            if running is None
-            else coadder.coadd_maps([running, filtered])
-        )
+            running = (
+                coadder.coadd_maps([filtered])
+                if running is None
+                else coadder.coadd_maps([running, filtered])
+            )
+        except Exception:
+            failed_map_ids.append(map_id)
+            log.exception(
+                "stream_coadd.map_failed",
+                mapcat_id=map_id,
+                n_failed=len(failed_map_ids),
+            )
+            continue
+
         map_ids.append(map_id)
 
         log.info(
@@ -373,7 +389,7 @@ def stream_coadd(
 
         del raw_map, filtered
 
-    return running, map_ids
+    return running, map_ids, failed_map_ids
 
 
 class IntensityMapCoadder(MapCoadder):

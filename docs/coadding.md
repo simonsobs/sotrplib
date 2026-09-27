@@ -173,12 +173,25 @@ seconds rather than after hours of coadding.
 
 ### Status handling
 
-The reader marks each depth-1 map `processing` as soon as it's read. On
-success every merged map is marked `completed`; on any exception every map
-the run read is marked `failed` (none of them made it into a registered
-coadd) and the error is re-raised. Maps already `completed` are skipped
-unless `rerun` is set, and maps manually marked `permafail` are always
-skipped.
+By default `sotrp-coadd` leaves the input depth-1 maps'
+`time_domain_processing` status alone: that status belongs to `sotrp`'s own
+run on each map, and one map can feed several coadds (weekly, monthly, ...),
+which a single per-map status can't describe. So maps `sotrp` has already
+`completed` are still coadded, and nothing is written for them. Maps manually
+marked `permafail` are always skipped.
+
+Which maps went into a coadd is recorded by its links to its depth-1 maps
+(`register_coadd`). A map that errors while being built, preprocessed or
+merged is logged (`stream_coadd.map_failed`, with traceback) and left out,
+and coadding carries on; the run ends with a `sotrp_coadd.maps_excluded`
+warning listing their `map_id`s. The maps the window selects minus the
+coadd's linked maps are the ones to go back for. If every map fails, the run
+exits with an error and no coadd.
+
+Setting `"track_processing": true` in the `maps` config opts back in to the
+per-map status: read maps are marked `processing`, already-`completed` maps
+are skipped unless `rerun` is set, merged maps end `completed`, excluded ones
+`failed`, and on a crash every map read is marked `failed`.
 
 ### Running weekly coadds on SLURM
 
@@ -204,9 +217,8 @@ else; add `--submit` to `sbatch` them. Useful flags:
   point this at a persistent checkout;
 - `--ephem-file-path ''`: disables the JPL-ephemeris fallback so asteroid
   masking uses SOCat only and fails loudly if SOCat isn't configured;
-- `--rerun`: needed if the depth-1 maps are already `completed` (e.g. from a
-  previous `sotrp` run on them) -- otherwise every map is skipped and the job
-  finishes "successfully" with no coadd;
+- `--rerun`: no longer needed -- `sotrp-coadd` doesn't skip depth-1 maps
+  that are already `completed` (only matters with `track_processing` on);
 - `--no-register-coadds`: write FITS only.
 
 Runtime is roughly 5-6 minutes per input map, so a busy week (~50 maps at
@@ -285,8 +297,8 @@ between "was this built/merged" and "has sotrp processed this":
 
 - `sotrp-coadd` marks each coadd `completed` when it registers it, so a
   `sotrp` run over coadds needs `rerun: true` or every coadd is skipped;
-- likewise `sotrp-coadd` marks its input depth-1 maps `completed`, which
-  overwrites whatever status a previous `sotrp` run on those maps left.
+- `sotrp-coadd` leaves its input depth-1 maps' status alone by default (see
+  "Status handling" above), so it doesn't overwrite what `sotrp` left there.
 
 ### Running on SLURM
 

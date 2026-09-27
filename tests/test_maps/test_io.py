@@ -360,6 +360,56 @@ def test_map_list_rerun_ignores_processed(mock_session):
     assert len(maps) == 1
 
 
+def test_map_list_without_tracking_neither_skips_nor_marks(mock_session):
+    """track_processing=False (sotrp-coadd's default) reads maps sotrp has
+    already completed and leaves their status row alone."""
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=False),
+        patch(
+            "sotrplib.maps.database.check_if_processed", return_value=True
+        ) as mock_check,
+        patch("sotrplib.maps.database.set_processing_start") as mock_start,
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        settings.session.return_value.__enter__.return_value = mock_session
+        maps = IntensityMapReader(track_processing=False).map_list()
+    mock_check.assert_not_called()
+    mock_start.assert_not_called()
+    assert len(maps) == 1
+
+
+def test_map_list_without_tracking_still_skips_permafailed(mock_session):
+    with (
+        patch("sotrplib.maps.database.mapcat_settings") as settings,
+        patch("sotrplib.maps.database.check_if_permafailed", return_value=True),
+        patch("sotrplib.maps.database.set_processing_start"),
+    ):
+        settings.database_name = "test_db"
+        settings.depth_one_parent = Path("/")
+        settings.session.return_value.__enter__.return_value = mock_session
+        maps = IntensityMapReader(track_processing=False).map_list()
+    assert maps == []
+
+
+def test_coadd_settings_disables_processing_tracking_by_default():
+    from sotrplib.config.coadd import CoaddSettings
+
+    default = CoaddSettings.model_validate({"maps": {}})
+    assert default.maps.track_processing is False
+    assert default.maps.to_generator().track_processing is False
+
+    opted_in = CoaddSettings.model_validate({"maps": {"track_processing": True}})
+    assert opted_in.maps.track_processing is True
+
+
+def test_mapcat_config_tracks_processing_by_default():
+    from sotrplib.config.maps import MapCatDatabaseConfig
+
+    assert MapCatDatabaseConfig().to_generator().track_processing is True
+
+
 def test_map_list_skips_permafailed(mock_session):
     """
     permafail is set manually (e.g. mapcatreset --status permafail) for a

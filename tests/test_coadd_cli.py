@@ -1,7 +1,10 @@
 """
-Tests for sotrp-coadd's exit-status handling: maps a run touches should end
-up "completed" on success or "failed" on any exception, never left dangling
-as "processing" (which would make the reader silently skip them next time).
+Tests for sotrp-coadd's exit-status handling. By default the input depth-1
+maps' time_domain_processing status is left alone (it belongs to sotrp's own
+run on each map, and one map can feed several coadds); only the registered
+coadd gets a status row. With maps.track_processing opted in, maps a run
+touches should end up "completed"/"failed", never left dangling as
+"processing" (which would make the reader silently skip them next time).
 """
 
 import logging
@@ -12,12 +15,13 @@ import pytest
 from sotrplib.coadd_cli import main
 
 
-def _mock_config(map_ids):
+def _mock_config(map_ids, track_processing=False):
     config = MagicMock()
     config.log_level = logging.INFO
     config.mapcat_registration.enabled = False  # keep register_coadd() out of scope
     reader = MagicMock()
     reader.map_ids = map_ids
+    reader.track_processing = track_processing
     config.to_dependencies.return_value = {
         "maps": reader,
         "preprocessors": [],
@@ -27,80 +31,86 @@ def _mock_config(map_ids):
     return config, reader
 
 
-def test_main_marks_maps_completed_on_success():
-    config, reader = _mock_config(map_ids=[1, 2, 3])
-    coadd = MagicMock()
-
+def _run(config, **stream_coadd_kwargs):
     with (
         patch("sotrplib.coadd_cli.parse_args"),
         patch("sotrplib.coadd_cli.CoaddSettings.from_file", return_value=config),
         patch("sotrplib.coadd_cli._check_registration_paths"),
-        patch("sotrplib.coadd_cli.stream_coadd", return_value=(coadd, [1, 2, 3])),
+        patch("sotrplib.coadd_cli.stream_coadd", **stream_coadd_kwargs),
         patch("sotrplib.coadd_cli.set_processing_end") as mock_end,
     ):
         main()
-
-    assert {c.args[0] for c in mock_end.call_args_list} == {1, 2, 3}
-    for c in mock_end.call_args_list:
-        assert c.kwargs["status"] == "completed"
+    return mock_end
 
 
-def test_main_marks_maps_failed_on_exception_and_reraises():
-    config, reader = _mock_config(map_ids=[10, 20])
+# ─── default: no per-map status ──────────────────────────────────────────────
+
+
+def test_main_leaves_map_status_alone_on_success():
+    config, _ = _mock_config(map_ids=[1, 2, 3])
+    mock_end = _run(config, return_value=(MagicMock(), [1, 2, 3], []))
+    mock_end.assert_not_called()
+
+
+def test_main_leaves_map_status_alone_on_exception_and_reraises():
+    config, _ = _mock_config(map_ids=[10, 20])
+    with pytest.raises(RuntimeError, match="boom"):
+        _run(config, side_effect=RuntimeError("boom"))
+
+
+def test_main_leaves_map_status_alone_when_maps_excluded():
+    config, _ = _mock_config(map_ids=[1, 2, 3])
+    mock_end = _run(config, return_value=(MagicMock(), [1, 3], [2]))
+    mock_end.assert_not_called()
+
+
+def test_main_raises_when_every_map_failed():
+    config, _ = _mock_config(map_ids=[1, 2])
+    with pytest.raises(RuntimeError, match="All 2 input maps failed"):
+        _run(config, return_value=(None, [], [1, 2]))
+
+
+def test_main_no_maps_found_marks_nothing():
+    config, _ = _mock_config(map_ids=[])
+    mock_end = _run(config, return_value=(None, [], []))
+    mock_end.assert_not_called()
+
+
+# ─── track_processing opted in ───────────────────────────────────────────────
+
+
+def test_tracked_main_marks_merged_completed_and_excluded_failed():
+    config, _ = _mock_config(map_ids=[1, 2, 3], track_processing=True)
+    mock_end = _run(config, return_value=(MagicMock(), [1, 3], [2]))
+
+    statuses = {c.args[0]: c.kwargs["status"] for c in mock_end.call_args_list}
+    assert statuses == {1: "completed", 2: "failed", 3: "completed"}
+
+
+def test_tracked_main_marks_all_read_maps_failed_on_exception():
+    """
+    If the run crashes outright (e.g. writing outputs), none of the maps
+    ended up in a registered coadd -- so all maps the reader read for this
+    run (reader.map_ids, populated eagerly up front) should be marked failed.
+    """
+    config, _ = _mock_config(map_ids=[1, 2, 3, 4, 5], track_processing=True)
 
     with (
         patch("sotrplib.coadd_cli.parse_args"),
         patch("sotrplib.coadd_cli.CoaddSettings.from_file", return_value=config),
         patch("sotrplib.coadd_cli._check_registration_paths"),
-        patch("sotrplib.coadd_cli.stream_coadd", side_effect=RuntimeError("boom")),
+        patch("sotrplib.coadd_cli.stream_coadd", side_effect=RuntimeError("crashed")),
         patch("sotrplib.coadd_cli.set_processing_end") as mock_end,
+        pytest.raises(RuntimeError),
     ):
-        with pytest.raises(RuntimeError, match="boom"):
-            main()
+        main()
 
-    assert {c.args[0] for c in mock_end.call_args_list} == {10, 20}
+    assert {c.args[0] for c in mock_end.call_args_list} == {1, 2, 3, 4, 5}
     for c in mock_end.call_args_list:
         assert c.kwargs["status"] == "failed"
 
 
-def test_main_partial_failure_marks_all_read_maps_failed():
-    """
-    If stream_coadd merges some maps before crashing on a later one, none of
-    them ended up in a registered coadd -- so all maps the reader read for
-    this run (reader.map_ids, populated eagerly up front) should be marked
-    failed, not just the ones that got merged before the crash.
-    """
-    config, reader = _mock_config(map_ids=[1, 2, 3, 4, 5])
-
-    with (
-        patch("sotrplib.coadd_cli.parse_args"),
-        patch("sotrplib.coadd_cli.CoaddSettings.from_file", return_value=config),
-        patch("sotrplib.coadd_cli._check_registration_paths"),
-        patch(
-            "sotrplib.coadd_cli.stream_coadd",
-            side_effect=RuntimeError("crashed on map 3"),
-        ),
-        patch("sotrplib.coadd_cli.set_processing_end") as mock_end,
-    ):
-        with pytest.raises(RuntimeError):
-            main()
-
-    assert {c.args[0] for c in mock_end.call_args_list} == {1, 2, 3, 4, 5}
-
-
-def test_main_no_maps_found_marks_nothing():
-    config, reader = _mock_config(map_ids=[])
-
-    with (
-        patch("sotrplib.coadd_cli.parse_args"),
-        patch("sotrplib.coadd_cli.CoaddSettings.from_file", return_value=config),
-        patch("sotrplib.coadd_cli._check_registration_paths"),
-        patch("sotrplib.coadd_cli.stream_coadd", return_value=(None, [])),
-        patch("sotrplib.coadd_cli.set_processing_end") as mock_end,
-    ):
-        main()
-
-    mock_end.assert_not_called()
+# ─── registration paths ──────────────────────────────────────────────────────
 
 
 def _registration_config(directory):
@@ -139,16 +149,19 @@ def test_check_registration_paths_rejects_outside_coadd_parent(tmp_path):
             _check_registration_paths(config)
 
 
-def test_main_registers_coadd_and_records_its_status():
+# ─── coadd status ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("track_processing", [False, True])
+def test_main_registers_coadd_and_records_its_status(track_processing):
     """
     With registration enabled, the new coadd needs a status row before
     set_processing_end() can mark it completed (the real function raises if
-    none exists). Previously this raised, which marked every input map
-    "failed" even though the coadd had been written and registered.
+    none exists). The coadd's own status is always recorded; the input
+    maps' only when track_processing is on.
     """
-    config, reader = _mock_config(map_ids=[1, 2, 3])
+    config, _ = _mock_config(map_ids=[1, 2, 3], track_processing=track_processing)
     config.mapcat_registration.enabled = True
-    coadd = MagicMock()
     rows: dict = {}
 
     def fake_start(mapcat_id, *, map_type="depth1_map", **_):
@@ -163,7 +176,10 @@ def test_main_registers_coadd_and_records_its_status():
         patch("sotrplib.coadd_cli.parse_args"),
         patch("sotrplib.coadd_cli.CoaddSettings.from_file", return_value=config),
         patch("sotrplib.coadd_cli._check_registration_paths"),
-        patch("sotrplib.coadd_cli.stream_coadd", return_value=(coadd, [1, 2, 3])),
+        patch(
+            "sotrplib.coadd_cli.stream_coadd",
+            return_value=(MagicMock(), [1, 2, 3], []),
+        ),
         patch("sotrplib.coadd_cli.register_coadd", return_value="coadd-id"),
         patch("sotrplib.coadd_cli.set_processing_start", side_effect=fake_start),
         patch("sotrplib.coadd_cli.set_processing_end", side_effect=fake_end),
@@ -171,4 +187,8 @@ def test_main_registers_coadd_and_records_its_status():
         main()
 
     assert rows[("coadd", "coadd-id")] == "completed"
-    assert all(rows[("depth1_map", i)] == "completed" for i in (1, 2, 3))
+    depth1_rows = {k: v for k, v in rows.items() if k[0] == "depth1_map"}
+    if track_processing:
+        assert depth1_rows == {("depth1_map", i): "completed" for i in (1, 2, 3)}
+    else:
+        assert depth1_rows == {}

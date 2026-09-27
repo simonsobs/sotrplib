@@ -226,6 +226,9 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     map_type: Literal["intensity", "flux", "rhokappa", "coadd_rhokappa"] = "intensity"
     coadd_type: str | None = None  ## only for map_type "coadd_rhokappa"
     rerun: bool = False
+    track_processing: bool = True
+    "Skip already-processed maps and mark read maps as processing in "
+    "mapcat's time_domain_processing table. sotrp-coadd defaults this to False."
     time_binning: TimeBinning = "loose"
 
     @model_validator(mode="after")
@@ -258,6 +261,7 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
             map_ids=self.map_ids,
             map_units=self.map_units,
             rerun=self.rerun,
+            track_processing=self.track_processing,
             time_binning=self.time_binning,
             log=log,
         )

@@ -142,6 +142,7 @@ class MapCatDatabaseReader(ABC):
     sky_box: tuple[SkyCoord, SkyCoord] | None = None
     intensity_units: u.Unit = u.Unit("K")
     rerun: bool = False
+    track_processing: bool = True
     time_binning: TimeBinning = "loose"
     log: FilteringBoundLogger
     default_map_units: u.Unit
@@ -161,6 +162,7 @@ class MapCatDatabaseReader(ABC):
         map_units: u.Unit | None = None,
         rerun: bool = False,
         rerun_pointing_model: bool = False,
+        track_processing: bool = True,
         stale_processing_time: TimeDelta = TimeDelta(2 * 3600, format="sec"),
         time_binning: TimeBinning = "left-bound",
         log: FilteringBoundLogger | None = None,
@@ -178,6 +180,11 @@ class MapCatDatabaseReader(ABC):
         self.sky_box = sky_box
         self.rerun = rerun
         self.rerun_pointing_model = rerun_pointing_model
+        # False: don't consult or write time_domain_processing status (only
+        # permafail is still honoured). For consumers other than sotrp's own
+        # per-map processing, e.g. sotrp-coadd, where one depth-1 map can
+        # feed several coadds and a single per-map status can't describe that.
+        self.track_processing = track_processing
         self._map_list = None
         self.stale_processing_time = stale_processing_time
         self.log = log or get_logger()
@@ -261,10 +268,14 @@ class MapCatDatabaseReader(ABC):
                     )
                     continue
 
-                if not self.rerun and check_if_processed(
-                    result.map_id,
-                    session=session,
-                    stale_limit=self.stale_processing_time,
+                if (
+                    self.track_processing
+                    and not self.rerun
+                    and check_if_processed(
+                        result.map_id,
+                        session=session,
+                        stale_limit=self.stale_processing_time,
+                    )
                 ):
                     self.log.info(
                         "MapCatDatabaseReader.skipping_processed_map",
@@ -282,7 +293,8 @@ class MapCatDatabaseReader(ABC):
                 )
                 maps.append(m)
                 self.map_ids.append(m.mapcat_id)
-                set_processing_start(m.mapcat_id, session=session)
+                if self.track_processing:
+                    set_processing_start(m.mapcat_id, session=session)
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
@@ -459,11 +471,15 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
                     )
                     continue
 
-                if not self.rerun and check_if_processed(
-                    result.coadd_id,
-                    map_type="coadd",
-                    session=session,
-                    stale_limit=self.stale_processing_time,
+                if (
+                    self.track_processing
+                    and not self.rerun
+                    and check_if_processed(
+                        result.coadd_id,
+                        map_type="coadd",
+                        session=session,
+                        stale_limit=self.stale_processing_time,
+                    )
                 ):
                     self.log.info(
                         "CoaddRhoKappaMapReader.skipping_processed_coadd",
@@ -477,7 +493,8 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
                 m.pointing_model = None
                 maps.append(m)
                 self.map_ids.append(m.mapcat_id)
-                set_processing_start(m.mapcat_id, map_type="coadd", session=session)
+                if self.track_processing:
+                    set_processing_start(m.mapcat_id, map_type="coadd", session=session)
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps

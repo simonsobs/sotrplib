@@ -82,16 +82,32 @@ def main():
 
     dependencies = config.to_dependencies()
     reader = dependencies["maps"]
+    # Off by default (see CoaddSettings): per-map status belongs to sotrp's
+    # own run on each depth-1 map, and which maps went into a coadd is
+    # recorded by register_coadd()'s coadd <-> map links instead.
+    track_maps = reader.track_processing
 
     try:
-        coadd, map_ids = stream_coadd(
+        coadd, map_ids, failed_map_ids = stream_coadd(
             maps=reader,
             preprocessors=dependencies["preprocessors"],
             coadder=dependencies["coadder"],
             log=log,
         )
 
+        if failed_map_ids:
+            log.warning(
+                "sotrp_coadd.maps_excluded",
+                n_excluded=len(failed_map_ids),
+                n_merged=len(map_ids),
+                excluded_map_ids=failed_map_ids,
+            )
+
         if coadd is None:
+            if failed_map_ids:
+                raise RuntimeError(
+                    f"All {len(failed_map_ids)} input maps failed; no coadd built."
+                )
             log.warning("sotrp_coadd.no_maps_found")
             return
 
@@ -135,12 +151,16 @@ def main():
             n_maps_read=len(reader.map_ids),
             map_ids=reader.map_ids,
         )
-        for map_id in reader.map_ids:
-            set_processing_end(map_id, status="failed")
+        if track_maps:
+            for map_id in reader.map_ids:
+                set_processing_end(map_id, status="failed")
         raise
     else:
-        for map_id in map_ids:
-            set_processing_end(map_id, status="completed")
+        if track_maps:
+            for map_id in map_ids:
+                set_processing_end(map_id, status="completed")
+            for map_id in failed_map_ids:
+                set_processing_end(map_id, status="failed")
 
 
 if __name__ == "__main__":

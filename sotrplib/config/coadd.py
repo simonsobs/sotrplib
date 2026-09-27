@@ -56,6 +56,17 @@ class CoaddSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="sotrp_coadd_", extra="ignore")
 
     @model_validator(mode="after")
+    def _default_no_processing_tracking(self) -> "CoaddSettings":
+        # A depth-1 map can feed several coadds (weekly, monthly, ...), and its
+        # single time_domain_processing status belongs to sotrp's own per-map
+        # run, so by default sotrp-coadd neither skips maps sotrp already
+        # completed nor writes per-map status. Setting maps.track_processing
+        # explicitly opts back in.
+        if "track_processing" not in self.maps.model_fields_set:
+            self.maps.track_processing = False
+        return self
+
+    @model_validator(mode="after")
     def _check_map_type(self) -> "CoaddSettings":
         if self.maps.map_type != "intensity":
             raise ValueError(
