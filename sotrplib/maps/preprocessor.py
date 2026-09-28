@@ -98,7 +98,7 @@ class MatchedFilter(MapPreprocessor):
         self,
         infofile: Path | None = None,
         maskfile: Path | None = None,
-        beam1d: Path | None = None,
+        beam1d: Path | dict[str, Path] | None = None,
         shrink_holes: AstroPydanticQuantity = 20 * u.arcmin,
         apod_edge: AstroPydanticQuantity = 10 * u.arcmin,
         apod_holes: AstroPydanticQuantity = 5 * u.arcmin,
@@ -132,6 +132,17 @@ class MatchedFilter(MapPreprocessor):
         self.pixwin = pixwin
         self.log = log
 
+    def _beam1d_for(self, input_map: ProcessableMap) -> Path | None:
+        if not isinstance(self.beam1d, dict):
+            return self.beam1d
+        try:
+            return self.beam1d[input_map.frequency]
+        except KeyError:
+            raise ValueError(
+                f"No beam1d profile for band '{input_map.frequency}' of map "
+                f"{input_map.map_name}; beam1d has bands {sorted(self.beam1d)}."
+            ) from None
+
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         rho, kappa = matched_filter_depth1_map(
             imap=input_map.intensity * input_map.intensity_units.to(u.K),
@@ -149,7 +160,7 @@ class MatchedFilter(MapPreprocessor):
                 arr=input_map.array,
                 instrument=input_map.instrument,
             ),
-            beam1d=self.beam1d,
+            beam1d=self._beam1d_for(input_map),
             shrink_holes=self.shrink_holes,
             apod_edge=self.apod_edge,
             apod_holes=self.apod_holes,

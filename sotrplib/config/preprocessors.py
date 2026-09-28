@@ -50,7 +50,9 @@ class MatchedFilterConfig(PreprocessorConfig):
     preprocessor_type: Literal["matched_filter"] = "matched_filter"
     infofile: Path | None = None
     maskfile: Path | None = None
-    beam1d: Path | None = None
+    beam1d: Path | dict[str, Path] | None = None
+    "1D beam profile file, or a mapping of band (e.g. 'f090') to profile file "
+    "so one config can filter maps of several bands."
     shrink_holes: AstroPydanticQuantity = 20 * u.arcmin
     apod_edge: AstroPydanticQuantity = 10 * u.arcmin
     apod_holes: AstroPydanticQuantity = 5 * u.arcmin
