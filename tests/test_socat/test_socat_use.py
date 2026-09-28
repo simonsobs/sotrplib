@@ -24,6 +24,28 @@ def test_socat_read(socat_pickle):
     assert len(sources) == 128
 
 
+def test_socat_pickle_roundtrip(socat_pickle):
+    """
+    Test that SOCat can be pickled (e.g. sent to prefect's process-pool
+    workers) without its unpicklable client, and reconnects on unpickling.
+    """
+
+    os.environ["socat_client_client_type"] = "pickle"
+    os.environ["socat_client_pickle_path"] = str(socat_pickle)
+
+    import cloudpickle
+
+    from sotrplib.source_catalog.socat import SOCat
+
+    cat = SOCat()
+    assert "catalog" not in cat.__getstate__()
+
+    restored = cloudpickle.loads(cloudpickle.dumps(cat))
+
+    assert restored.catalog is not cat.catalog
+    assert len(restored.get_all_sources(t=Time.now())) == 128
+
+
 def test_socat_source_generator(socat_pickle):
     """
     Test that the socat source generator works.
