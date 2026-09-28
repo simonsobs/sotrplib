@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
@@ -35,12 +36,17 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
     min_arrays: int = 2
     "Distinct arrays (optics tubes) an event must be detected in to stay a "
     "transient candidate."
+    summary_directory: Path | None = None
+    "If set, write each run's ranked event groups here as JSON."
 
     def to_matcher(
         self, log: FilteringBoundLogger | None = None
     ) -> MultiArrayMapMatcher:
         return MultiArrayMapMatcher(
-            radius=self.radius, min_arrays=self.min_arrays, log=log
+            radius=self.radius,
+            min_arrays=self.min_arrays,
+            summary_directory=self.summary_directory,
+            log=log,
         )
 
 

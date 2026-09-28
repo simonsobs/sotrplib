@@ -77,7 +77,7 @@ def test_pipeline_map_matching_before_outputs(
     With no catalog every injected source is a transient candidate; the two
     copies of the map are one observation, so the map matcher groups each
     source's two detections, and the source outputs (written only after
-    matching) carry the shared map_match_id.
+    matching) carry the shared, ranked map_match.
     """
     new_map, sources = map_with_sources
     maps = [new_map, new_map]
@@ -105,10 +105,13 @@ def test_pipeline_map_matching_before_outputs(
 
     transients = [res[1].transient_candidates for res in results]
     assert [len(t) for t in transients] == [len(sources), len(sources)]
-    assert {c.map_match_id for c in transients[0]} == {
-        c.map_match_id for c in transients[1]
+    assert all(c.map_match is not None for t in transients for c in t)
+    assert {c.map_match.match_id for c in transients[0]} == {
+        c.map_match.match_id for c in transients[1]
     }
-    assert None not in {c.map_match_id for c in transients[0]}
+    assert sorted(c.map_match.rank for c in transients[0]) == list(
+        range(1, len(sources) + 1)
+    )
 
     # both copies share a map name, so their pickles may land in one file
     pickled = [pickle.load(p.open("rb")) for p in tmp_path.glob("*.pickle")]
@@ -116,7 +119,7 @@ def test_pipeline_map_matching_before_outputs(
     for output in pickled:
         candidates = output["sifted_blind_search"].transient_candidates
         assert len(candidates) == len(sources)
-        assert all(c.map_match_id is not None for c in candidates)
+        assert all(c.map_match.n_maps == 2 for c in candidates)
 
     # the same maps with the default min_arrays=2 are all unconfirmed
     runner.map_matcher = MultiArrayMapMatcher()

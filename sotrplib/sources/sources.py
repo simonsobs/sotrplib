@@ -102,6 +102,29 @@ class RegisteredSource(BaseSource):
         raise NotImplementedError("Haven't figured out what updating means")
 
 
+class MapMatch(BaseModel):
+    """
+    Summary of a group of transient candidates that the map matcher judged
+    to be the same event, seen in one or more maps of one observation.
+    """
+
+    match_id: str
+    confirmed: bool
+    "Detected by at least the matcher's min_arrays distinct arrays."
+    n_maps: int
+    n_arrays: int
+    n_bands: int
+    combined_snr: float
+    "sqrt of the sum of squared per-map SNRs."
+    significance: float
+    "Gaussian-equivalent significance of combined_snr**2 under the chi-squared "
+    "distribution with n_maps degrees of freedom (i.e. of independent noise "
+    "in every map reaching these SNRs)."
+    rank: int
+    "1 = most significant group of the run; confirmed groups rank above all "
+    "unconfirmed ones."
+
+
 class MeasuredSource(RegisteredSource):
     """
     A source object specifically for a measurement in a given map.
@@ -128,9 +151,9 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
-    map_match_id: str | None = None
-    "Shared by detections of the same event in other maps of the same "
-    "observation (other arrays/bands), assigned by the map matcher."
+    map_match: MapMatch | None = None
+    "The map matcher's group for this detection: shared by detections of the "
+    "same event in other maps (arrays/bands) of the same observation."
 
     fit_method: Literal[
         "lmfit_2d_gaussian",
