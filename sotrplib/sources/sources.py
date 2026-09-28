@@ -128,6 +128,10 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
+    map_match_id: str | None = None
+    "Shared by detections of the same event in other maps of the same "
+    "observation (other arrays/bands), assigned by the map matcher."
+
     fit_method: Literal[
         "lmfit_2d_gaussian",
         "nearest_neighbor",

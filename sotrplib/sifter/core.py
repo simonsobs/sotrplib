@@ -4,7 +4,7 @@ The core dependency for the sifter
 
 import itertools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import astropy.units as u
@@ -23,6 +23,8 @@ class SifterResult:
     source_candidates: list[MeasuredSource]
     transient_candidates: list[MeasuredSource]
     noise_candidates: list[MeasuredSource]
+    unconfirmed_transient_candidates: list[MeasuredSource] = field(default_factory=list)
+    "Transient candidates the map matcher couldn't confirm in enough other maps."
 
 
 class SiftingProvider(ABC):
