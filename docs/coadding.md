@@ -1,16 +1,18 @@
-Coadding
-========
+Coadds
+======
 
-sotrplib can build coadds (e.g. weekly, per-band) of depth-1 maps and then
-run the time-resolved pipeline (`sotrp`) on those coadds. This happens in two
-separate steps:
+sotrplib can make coadds of depth-1 maps, for example one coadd for each week
+and each band. Then it can run the time-resolved pipeline (`sotrp`) on these
+coadds. There are two separate steps:
 
-1. **Building coadds** with `sotrp-coadd` (`sotrplib/coadd_cli.py`), usually
-   driven by `scripts/coadding/submit_week_coadds.py`, which writes one
-   config and SLURM job per (time window, frequency). Finished coadds are
-   written to FITS and registered in mapcat.
-2. **Analyzing coadds** with `sotrp`, reading the registered coadds back out
-   of mapcat (`"map_type": "coadd_rhokappa"`, see `sample_read_coadds.json`).
+1. **Make the coadds** with `sotrp-coadd` (`sotrplib/coadd_cli.py`).
+   Typically, you use `scripts/coadding/submit_week_coadds.py` for this step.
+   The script writes one config and one SLURM job for each time window and
+   each frequency. `sotrp-coadd` writes each coadd to FITS files and registers
+   it in mapcat.
+2. **Analyze the coadds** with `sotrp`. `sotrp` reads the registered coadds
+   from mapcat (`"map_type": "coadd_rhokappa"`, see
+   `sample_read_coadds.json`).
 
 ```mermaid
 flowchart TD
@@ -36,7 +38,7 @@ trp --> out
 Environment
 -----------
 
-Both steps talk to mapcat through its environment variables:
+The two steps use these mapcat environment variables:
 
 ```
 export MAPCAT_DATABASE_NAME=/path/to/mapcat.sqlite
@@ -44,104 +46,139 @@ export MAPCAT_DEPTH_ONE_PARENT=/path/to/depth1/maps       # depth-1 paths are re
 export MAPCAT_DEPTH_ONE_COADD_PARENT=/path/to/coadds      # coadd paths are relative to this
 ```
 
-Depth-1 maps and coadds have **separate** roots, so coadds can live somewhere
-other than the depth-1 maps they were built from (e.g. your own data
-directory while the depth-1 maps live in a shared tree). There is no fallback
-from one to the other: if `MAPCAT_DEPTH_ONE_COADD_PARENT` is unset it resolves
-to the current directory, and registering a coadd outside it fails up front
-with an error naming the variable.
+Depth-1 maps and coadds have **different** root directories. Thus, you can
+keep the coadds in a different directory from the depth-1 maps. For example,
+the coadds can be in your own data directory, and the depth-1 maps can be in
+a shared directory.
 
-Asteroid masking during coadding uses SOCat (`socat_client_client_type=db`,
-`socat_model_database_name=/path/to/socat.db`).
+The two variables are independent:
+
+- If `MAPCAT_DEPTH_ONE_COADD_PARENT` is not set, its value is the current
+  directory. `sotrp-coadd` does not use `MAPCAT_DEPTH_ONE_PARENT` in its
+  place.
+- If a coadd is not in `MAPCAT_DEPTH_ONE_COADD_PARENT`, the registration
+  fails before coadd work starts. The error message gives the name of the
+  variable.
+
+The asteroid mask uses SOCat. Set `socat_client_client_type=db` and
+`socat_model_database_name=/path/to/socat.db`.
 
 
-Building coadds: `sotrp-coadd`
-------------------------------
+Make coadds: `sotrp-coadd`
+--------------------------
 
-### Why a separate tool
+### Why sotrplib has a separate tool
 
-`sotrp` can coadd maps itself (its `map_coadder`), but it coadds first and
-preprocesses afterwards. That is wrong for science coadds of raw depth-1 maps:
+`sotrp` can make a coadd with its `map_coadder`. But `sotrp` makes the coadd
+first and applies the preprocessors after. This order is not correct for a
+science coadd of raw depth-1 maps, for two reasons:
 
-- moving sources (asteroids, planets) smear across many pixels once several
-  days are summed, so they must be masked in each observation *before*
-  merging;
-- matched filtering needs each observation's own noise properties.
+- A source that moves (an asteroid or a planet) crosses many pixels in a
+  sum of several days. Thus, you must mask it in each observation before the
+  merge.
+- The matched filter must use the noise properties of each observation.
 
-`sotrp-coadd` instead streams: it builds one depth-1 map, runs the
-preprocessors on it, merges it into a running coadd, discards it, then loads
-the next. Only one input map is in memory at a time, so memory use doesn't
-grow with the number of maps in a coadd (a week of deep56 f090, 56 maps,
-peaked at ~7 GB).
+`sotrp-coadd` does these steps for one depth-1 map at a time:
+
+1. It builds the map.
+2. It applies the preprocessors to the map.
+3. It merges the map into the coadd.
+4. It removes the map from memory.
+
+Thus, there is only one input map in memory at a time. Memory use does not
+increase with the number of maps in the coadd. For example, one week of
+deep56 f090 data (56 maps) used a maximum of approximately 7 GB.
 
 ### Config
 
-`sotrp-coadd -c config.json` reads a `CoaddSettings` JSON
+`sotrp-coadd -c config.json` reads a `CoaddSettings` JSON file
 (`sotrplib/config/coadd.py`):
 
 | Field | Meaning |
 |---|---|
-| `maps` | A `mapcat_database` map generator with `map_type: "intensity"` (raw depth-1 maps; required, since this tool does its own filtering). Selects maps by `frequency`, `start_time`/`end_time`, optional `array`, and `time_binning`. |
-| `preprocessors` | Applied in order to **each** depth-1 map before merging. |
-| `map_coadder` | How maps are merged (`RhoKappaMapCoadder`). |
-| `map_outputs` | Where/which coadd fields to write to FITS. |
-| `mapcat_registration` | `coadd_name`, `coadd_type`, `enabled`. If enabled, the finished coadd is registered in mapcat. |
+| `maps` | A `mapcat_database` map generator with `map_type: "intensity"` (raw depth-1 maps). This field is necessary, because this tool applies its own filter. The generator selects maps by `frequency`, `start_time`/`end_time`, `array` (optional) and `time_binning`. |
+| `preprocessors` | The preprocessors to apply, in sequence, to **each** depth-1 map before the merge. |
+| `map_coadder` | The method that merges the maps (`RhoKappaMapCoadder`). |
+| `map_outputs` | The coadd fields to write to FITS, and the location of the files. |
+| `mapcat_registration` | `coadd_name`, `coadd_type` and `enabled`. If `enabled` is true, `sotrp-coadd` registers the coadd in mapcat. |
 
-`submit_week_coadds.py` generates configs with these preprocessors, in order:
-`planet_mask` (15 arcmin), `asteroid_mask` (SOCat, `--asteroid-mask-radius`),
-`matched_filter` (1D beam profile per band if `--beam1d-template` resolves),
-`kappa_rho`, and `edge_mask` (on kappa, 10 arcmin).
+The configs from `submit_week_coadds.py` apply these preprocessors, in this
+sequence:
 
-### Choosing which maps go into a window: `time_binning`
+1. `planet_mask` (15 arcmin).
+2. `asteroid_mask` (SOCat, `--asteroid-mask-radius`).
+3. `matched_filter` (the 1D beam profile of the band, if
+   `--beam1d-template` finds a file).
+4. `kappa_rho`.
+5. `edge_mask` (on kappa, 10 arcmin).
 
-A depth-1 map's observation can straddle the boundary between two windows.
-`time_binning` decides where it goes:
+### Select the maps for a window: `time_binning`
 
-| Mode | A map is included if... | Boundary-straddling maps |
+The observation of a depth-1 map can start in one window and stop in the
+next window. The `time_binning` field sets the window that gets this map:
+
+| Mode | The window includes a map if... | A map that crosses a window boundary... |
 |---|---|---|
-| `left-bound` | its `start_time` is in `[start, end)` | land in exactly one window |
-| `right-bound` | its `stop_time` is in `[start, end)` | land in exactly one window |
-| `restrictive` | it lies entirely inside the window | excluded from every window |
-| `loose` | it overlaps the window at all | counted in both windows |
+| `left-bound` | its `start_time` is in `[start, end)` | goes into one window only |
+| `right-bound` | its `stop_time` is in `[start, end)` | goes into one window only |
+| `restrictive` | all of the map is in the window | goes into no window |
+| `loose` | a part of the map is in the window | goes into the two windows |
 
-`submit_week_coadds.py` uses `left-bound`, so consecutive windows partition
-the maps with no gaps and no double counting (for the deep56 run, the 24
-weekly coadds contain all 674 depth-1 maps, each exactly once).
+`submit_week_coadds.py` uses `left-bound`. Thus, the windows include each map
+one time only, and there are no gaps. For example, the 24 weekly coadds of
+the deep56 run contain all 674 depth-1 maps, and each map is in one coadd
+only.
 
-### How maps are merged
+### How the tool merges the maps
 
-For rho/kappa maps, `RhoKappaMapCoadder` sums `rho` and `kappa` over the union
-of the input footprints (`enmap.map_union`), so the coadd's
-`flux = rho / kappa` is the inverse-variance-weighted mean flux and
-`snr = rho / sqrt(kappa)`. Hits are summed. Times are merged as:
+For rho/kappa maps, `RhoKappaMapCoadder` adds `rho` and `kappa` over the
+union of the input footprints (`enmap.map_union`). Thus, in the coadd:
 
-- `observation_start` / `observation_end`: earliest start / latest end of the
-  input maps;
-- `time_mean`: per-pixel hit-weighted mean of the inputs' **absolute** unix
-  times;
-- `array`: the unique input arrays, sorted and concatenated (e.g. `i1i3i4i6`).
+- `flux = rho / kappa` is the mean flux, with inverse-variance weights.
+- `snr = rho / sqrt(kappa)`.
+- `hits` is the sum of the input hits.
 
-Maps from all arrays of a band are combined into one coadd unless `--array`
-restricts it (mapcat's `depth_one_coadds` has no array column, so a
-registered coadd is frequency-only).
+The tool merges the times and the arrays as follows:
+
+- `observation_start` is the earliest start of the input maps.
+  `observation_end` is the latest end.
+- `time_mean` is the mean, with hit weights, of the **absolute** unix times
+  of the inputs. The tool calculates it for each pixel.
+- `array` is the list of the different input arrays, in sequence and
+  without spaces (for example, `i1i3i4i6`).
+
+A coadd contains the maps from all arrays of a band. Use `--array` to select
+fewer arrays. The `depth_one_coadds` table in mapcat has no array column.
+Thus, a registered coadd has a frequency but no array.
 
 ### Outputs
 
-Fields are written in two passes (`rho`, `kappa` before `finalize()`, then
-`flux`, `snr` after), so any of `rho kappa flux snr hits time_mean` can be
-requested. Files are named `{frequency}_{array}_{start}_{field}.fits`, where
-`{start}` is the unix time of the **earliest input map's start** (not the
-window start or the mean time), e.g.
-`f090_i1i3i4i6_1758171214_flux.fits`.
+The tool writes the fields in two passes:
 
-Each flux-carrying file records its unit in the FITS `BUNIT` header: the
-matched filter works in mJy, so `flux` is `mJy`, `rho` is `mJy-1` and `kappa`
-is `mJy-2` (`snr`, `hits` and `time_mean` carry no flux unit). Maps read back
-from disk take their flux unit from `BUNIT`, falling back to the configured
-`map_units` for files without one.
+1. It writes `rho` and `kappa` before `finalize()`.
+2. It writes `flux` and `snr` after `finalize()`.
 
-`submit_week_coadds.py` puts each window in a subdirectory named for the
-window's UTC start date:
+Thus, you can request each of these fields: `rho`, `kappa`, `flux`, `snr`,
+`hits` and `time_mean`.
+
+The file names have the format `{frequency}_{array}_{start}_{field}.fits`,
+for example `f090_i1i3i4i6_1758171214_flux.fits`. `{start}` is the unix time
+of the **start of the earliest input map**. It is not the start of the window
+or the mean time.
+
+Each file with flux units records its unit in the FITS `BUNIT` header. The
+matched filter uses mJy. Thus:
+
+- `flux` has the unit `mJy`.
+- `rho` has the unit `mJy-1`.
+- `kappa` has the unit `mJy-2`.
+- `snr`, `hits` and `time_mean` have no flux unit.
+
+When sotrplib reads a map from disk, it gets the flux unit from `BUNIT`. If
+the file has no `BUNIT`, sotrplib uses the `map_units` value from the config.
+
+`submit_week_coadds.py` puts each window in a subdirectory. The name of the
+subdirectory is the UTC start date of the window:
 
 ```
 <output-dir>/
@@ -152,48 +189,69 @@ window's UTC start date:
   slurm/     week00_f090.slurm, week00_f090.log ...
 ```
 
-Windows are rolling `--window-days` windows anchored at the first
-observation, not calendar weeks.
+Each window has a length of `--window-days` days. The first window starts at
+the first observation. The windows are not calendar weeks.
 
 ### Registration in mapcat
 
-With `mapcat_registration.enabled`, `register_coadd()` writes:
+If `mapcat_registration.enabled` is true, `register_coadd()` writes these
+rows:
 
-- `depth_one_coadds`: one row per coadd, with `coadd_name`, `coadd_type`,
-  `frequency`, `start_time`/`stop_time`/`ctime`, and paths relative to
-  `MAPCAT_DEPTH_ONE_COADD_PARENT`: `map_path` (flux), `rho_path`,
-  `kappa_path` (also `ivar_path`), `mean_time_path`;
-- `link_depth_one_map_to_coadd`: one `(map_id, coadd_id)` row per input map;
-- `time_domain_processing`: a `completed` status row for the coadd, and a
-  `completed`/`failed` status for each input depth-1 map.
+- `depth_one_coadds`: one row for each coadd. The row contains `coadd_name`,
+  `coadd_type`, `frequency`, `start_time`, `stop_time`, `ctime` and the file
+  paths. The paths are relative to `MAPCAT_DEPTH_ONE_COADD_PARENT`:
+  `map_path` (flux), `rho_path`, `kappa_path` (also `ivar_path`) and
+  `mean_time_path`.
+- `link_depth_one_map_to_coadd`: one `(map_id, coadd_id)` row for each input
+  map.
+- `time_domain_processing`: a `completed` status row for the coadd.
 
-Before any coadding starts, `sotrp-coadd` checks that every output directory
-is under `MAPCAT_DEPTH_ONE_COADD_PARENT`, so a misconfigured run fails in
-seconds rather than after hours of coadding.
+`sotrp-coadd` writes a status row for each input depth-1 map only if
+`track_processing` is true. See "Status of the input maps" below.
 
-### Status handling
+Before coadd work starts, `sotrp-coadd` makes sure that each output directory
+is in `MAPCAT_DEPTH_ONE_COADD_PARENT`. Thus, an incorrect configuration
+fails in seconds, not after many hours of work.
 
-By default `sotrp-coadd` leaves the input depth-1 maps'
-`time_domain_processing` status alone: that status belongs to `sotrp`'s own
-run on each map, and one map can feed several coadds (weekly, monthly, ...),
-which a single per-map status can't describe. So maps `sotrp` has already
-`completed` are still coadded, and nothing is written for them. Maps manually
-marked `permafail` are always skipped.
+### Status of the input maps
 
-Which maps went into a coadd is recorded by its links to its depth-1 maps
-(`register_coadd`). A map that errors while being built, preprocessed or
-merged is logged (`stream_coadd.map_failed`, with traceback) and left out,
-and coadding carries on; the run ends with a `sotrp_coadd.maps_excluded`
-warning listing their `map_id`s. The maps the window selects minus the
-coadd's linked maps are the ones to go back for. If every map fails, the run
-exits with an error and no coadd.
+By default, `sotrp-coadd` does not change the `time_domain_processing` status
+of the input depth-1 maps. There are two reasons:
 
-Setting `"track_processing": true` in the `maps` config opts back in to the
-per-map status: read maps are marked `processing`, already-`completed` maps
-are skipped unless `rerun` is set, merged maps end `completed`, excluded ones
-`failed`, and on a crash every map read is marked `failed`.
+- This status records the result of the `sotrp` run on the map.
+- One map can be in many coadds (weekly, monthly). One status for each map
+  cannot show this.
 
-### Running weekly coadds on SLURM
+Thus, `sotrp-coadd` also uses the maps that have the status `completed`, and
+it writes no status for them. It always skips a map that has the status
+`permafail`.
+
+The links from a coadd to its depth-1 maps (`register_coadd()`) record the
+maps that are in the coadd.
+
+If a map causes an error in the build, the preprocessors or the merge:
+
+1. `sotrp-coadd` records the error and the traceback in the log
+   (`stream_coadd.map_failed`).
+2. It does not put the map in the coadd.
+3. It continues with the next map.
+
+At the end of the run, the `sotrp_coadd.maps_excluded` warning gives the
+`map_id`s of these maps. To find the maps to process again, compare the maps
+in the window with the linked maps of the coadd. If all maps fail, the run
+stops with an error, and there is no coadd.
+
+To record a status for each input map, set `"track_processing": true` in the
+`maps` config. Then `sotrp-coadd` does these steps:
+
+- It sets the status of each map that it reads to `processing`.
+- It skips the maps that have the status `completed`, if `rerun` is not set.
+- It sets the status of each merged map to `completed`.
+- It sets the status of each map that it did not merge to `failed`.
+- If the run stops because of an error, it sets the status of each map that
+  it read to `failed`.
+
+### Run weekly coadds on SLURM
 
 ```
 python scripts/coadding/submit_week_coadds.py \
@@ -206,32 +264,36 @@ python scripts/coadding/submit_week_coadds.py \
   --time 08:00:00
 ```
 
-This writes one config + SLURM script per (window, band) and does nothing
-else; add `--submit` to `sbatch` them. Useful flags:
+This command writes one config and one SLURM script for each window and each
+band. It does not submit the jobs. Add `--submit` to submit them with
+`sbatch`. These options are also useful:
 
-- `--window-days` (default 7), `--start-time`/`--end-time` (default: the
-  database's full time range), `--frequencies`;
-- `--coadd-parent` (default `--output-dir`): exported as
-  `MAPCAT_DEPTH_ONE_COADD_PARENT`;
-- `--repo-dir`: the checkout each job `cd`s into and activates `.venv` in --
-  point this at a persistent checkout;
-- `--ephem-file-path ''`: disables the JPL-ephemeris fallback so asteroid
-  masking uses SOCat only and fails loudly if SOCat isn't configured;
-- `--rerun`: no longer needed -- `sotrp-coadd` doesn't skip depth-1 maps
-  that are already `completed` (only matters with `track_processing` on);
-- `--no-register-coadds`: write FITS only.
+- `--window-days` (default 7), `--start-time` and `--end-time` (default: all
+  of the time range in the database), and `--frequencies`.
+- `--coadd-parent` (default: `--output-dir`). The script exports this value
+  as `MAPCAT_DEPTH_ONE_COADD_PARENT`.
+- `--repo-dir`: each job goes to this checkout and activates its `.venv`.
+  Use a checkout that you do not delete.
+- `--ephem-file-path ''`: the asteroid mask does not use the JPL ephemeris.
+  It uses SOCat only. If SOCat is not configured, the job fails with an
+  error.
+- `--rerun`: this option has an effect only if `track_processing` is true.
+  By default, `sotrp-coadd` does not skip `completed` depth-1 maps.
+- `--no-register-coadds`: write the FITS files, but do not register the
+  coadds in mapcat.
 
-Runtime is roughly 5-6 minutes per input map, so a busy week (~50 maps at
-f090/f150) takes ~5 hours: set `--time` accordingly (the 4 h default is too
-short for those). Memory stays around 7 GB per job.
+Set `--time` for the number of maps in a window. Each input map takes
+approximately 5 to 6 minutes. A busy week (approximately 50 maps at f090 or
+f150) takes approximately 5 hours. The default time limit of 4 hours is too
+short for these weeks. Each job uses approximately 7 GB of memory.
 
 
-Analyzing coadds with `sotrp`
------------------------------
+Analyze coadds with `sotrp`
+---------------------------
 
 ### Config
 
-Read registered coadds with the `mapcat_database` generator and
+To read registered coadds, use the `mapcat_database` generator with
 `map_type: "coadd_rhokappa"` (see `sample_read_coadds.json`):
 
 ```json
@@ -247,63 +309,79 @@ Read registered coadds with the `mapcat_database` generator and
 "preprocessors": [],
 ```
 
-- Coadds are selected by `frequency`, `start_time`/`end_time` (compared with
-  each coadd's own start/stop times), optionally `coadd_type`, and
-  `map_ids` (which are `coadd_id`s here). `array` and source-position
-  filters are rejected, because coadds have no tube_slot or sky-coverage
-  rows in mapcat.
-- `time_binning` can be left at its default: each coadd is already a whole
+- The generator selects coadds by `frequency` and `start_time`/`end_time`.
+  It compares these times with the start and stop times of each coadd.
+- You can also select coadds by `coadd_type` and `map_ids`. For coadds, the
+  `map_ids` are `coadd_id`s.
+- The generator does not accept `array` or source-position filters. Mapcat
+  has no tube_slot rows or sky-coverage rows for coadds.
+- You can use the default `time_binning`, because each coadd is one full
   window.
-- **No preprocessors.** Planet/asteroid masking, matched filtering,
-  kappa/rho and edge masking were all applied to every input map during
-  coadding. Postprocessors (e.g. `flatfield`) still apply.
-- `map_units` defaults to Jy.
+- **Do not add preprocessors.** `sotrp-coadd` applied the planet mask, the
+  asteroid mask, the matched filter, kappa/rho and the edge mask to each
+  input map. You can use postprocessors (for example, `flatfield`).
+- The default of `map_units` is Jy.
 
 ### What the reader does
 
-`CoaddRhoKappaMapReader` (`sotrplib/maps/database.py`) queries
-`depth_one_coadds` and yields a `CoaddRhoAndKappaMap` per coadd:
+`CoaddRhoKappaMapReader` (`sotrplib/maps/database.py`) reads the
+`depth_one_coadds` table. It gives one `CoaddRhoAndKappaMap` for each coadd:
 
-- `rho`, `kappa` and `time_mean` paths are resolved against
-  `MAPCAT_DEPTH_ONE_COADD_PARENT`;
-- `map_type` is `"coadd"`, so processing status is tracked under the
-  `coadd_id` (not a depth-1 `map_id`);
-- `array` is rebuilt from the linked depth-1 maps' `tube_slot`s, giving the
-  same label as the coadd's file names (e.g. `i1i3i4i6`); the beam FWHM used
-  downstream depends only on frequency;
-- the time map is used as-is: a coadd's `time_mean` already holds absolute
-  unix times, whereas depth-1 time maps are seconds since the observation
-  start and get the start time added.
+- It finds the `rho`, `kappa` and `time_mean` files in
+  `MAPCAT_DEPTH_ONE_COADD_PARENT`.
+- `map_type` is `"coadd"`. Thus, sotrplib records the processing status for
+  the `coadd_id`, not for a depth-1 `map_id`.
+- It makes `array` from the `tube_slot`s of the linked depth-1 maps. This
+  label is the same as the label in the file names of the coadd (for
+  example, `i1i3i4i6`). The beam FWHM that the pipeline uses depends only on
+  the frequency.
+- It uses the time map without change. The `time_mean` map of a coadd
+  contains absolute unix times. The time map of a depth-1 map contains
+  seconds from the start of the observation. Thus, the reader adds the start
+  time to a depth-1 time map only.
 
 ### What the pipeline does with a coadd
 
-The same stages as for a depth-1 map: build, `finalize()` (flux/SNR from
-rho/kappa), postprocessors, pointing sources, forced photometry, source
-subtraction, blind search, sifter, and outputs. Differences:
+The pipeline does the same steps as for a depth-1 map:
 
-- **Pointing:** a pointing model is still fitted on the coadd and used for
-  that run, but it is **not saved** to mapcat -- the pointing-residual table
-  is keyed by depth-1 `map_id` (and SQLite doesn't enforce the foreign key,
-  so it would otherwise be written as an orphan row). Depth-1 pointing
-  models are never loaded for a coadd. Note the input maps were coadded
-  without per-map pointing corrections.
-- **Times:** each measurement's time comes from the coadd's per-pixel
-  hit-weighted mean time, spanning up to the full window.
+1. Build.
+2. `finalize()` (flux and SNR from rho and kappa).
+3. Postprocessors.
+4. Pointing sources.
+5. Forced photometry.
+6. Source subtraction.
+7. Blind search.
+8. Sifter.
+9. Outputs.
+
+There are two differences:
+
+- **Pointing:** the pipeline fits a pointing model on the coadd and uses it
+  for that run. It does **not save** the model to mapcat. The key of the
+  pointing-residual table is the depth-1 `map_id`. SQLite does not enforce
+  the foreign key, so the table would get a row with no related map.
+  The pipeline does not load depth-1 pointing models for a coadd.
+- **Times:** the time of each measurement is the mean time, with hit weights,
+  of the pixel in the coadd. This time can be anywhere in the window.
+
+Note that `sotrp-coadd` did not apply a pointing correction to the input maps
+before the merge.
 
 ### `rerun` and processing status
 
-`time_domain_processing` holds one status per map or coadd, and it's shared
-between "was this built/merged" and "has sotrp processed this":
+`time_domain_processing` has one status for each map or coadd:
 
-- `sotrp-coadd` marks each coadd `completed` when it registers it, so a
-  `sotrp` run over coadds needs `rerun: true` or every coadd is skipped;
-- `sotrp-coadd` leaves its input depth-1 maps' status alone by default (see
-  "Status handling" above), so it doesn't overwrite what `sotrp` left there.
+- `sotrp-coadd` sets the status of each coadd to `completed` when it registers
+  the coadd. Thus, a `sotrp` run on coadds must set `rerun: true`. If not,
+  `sotrp` skips all coadds.
+- By default, `sotrp-coadd` does not change the status of its input depth-1
+  maps (see "Status of the input maps"). Thus, it does not overwrite the
+  status that `sotrp` recorded.
 
-### Running on SLURM
+### Run on SLURM
 
-One job per band is a natural split (each processes that band's coadds in
-sequence). A job script is the same as for depth-1 maps:
+Use one job for each band. Each job analyzes the coadds of its band, one
+after the other. The job script is the same as for depth-1 maps:
 
 ```
 cd /path/to/sotrplib
@@ -316,8 +394,12 @@ srun --overlap sotrp -c /path/to/f090_config.json > f090_sotrp.log 2>&1
 Datetimes and sqlmodel versions
 -------------------------------
 
-sqlmodel >= 0.0.43 stores datetime fields as UTC-aware and rejects naive
-datetimes. sotrplib passes UTC-aware datetimes to mapcat everywhere and
-compares stored times via astropy `Time` (which treats a naive value as UTC),
-so it works with both older and newer sqlmodel. SQLite files written by
-either are interchangeable.
+sqlmodel 0.0.43 and later versions store datetime fields as UTC-aware values.
+These versions do not accept naive datetimes. sotrplib is compatible with the
+older and the newer versions:
+
+- It gives UTC-aware datetimes to mapcat.
+- It compares stored times with astropy `Time`. `Time` uses UTC for a naive
+  value.
+
+The two versions write SQLite files that you can use with each version.
