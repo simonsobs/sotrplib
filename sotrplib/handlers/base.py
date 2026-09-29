@@ -112,7 +112,7 @@ class BaseRunner:
         output_map = input_map
         if not np.any(output_map.hits > 0):
             if input_map._parent_database is not None:
-                set_processing_end(input_map.mapcat_id)
+                set_processing_end(input_map.mapcat_id, map_type=input_map.map_type)
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -198,95 +198,120 @@ class BaseRunner:
         written here: they wait for map matching, which needs every map's
         results (see output_map_result). Returns None for an empty map.
         """
-        input_map = self.profilable_task(self.build_map)(input_map)
+        # If an exception occurs, set the processing status to failed.
+        try:
+            input_map = self.profilable_task(self.build_map)(input_map)
 
-        if input_map is not None:
-            self.profilable_task(input_map.finalize)()
-        else:
-            return None
+            if input_map is not None:
+                self.profilable_task(input_map.finalize)()
+            else:
+                return None
 
-        injected_sources, input_map = self.profilable_task(self.source_injector.inject)(
-            input_map=input_map, simulated_sources=simulated_sources
-        )
+            injected_sources, input_map = self.profilable_task(
+                self.source_injector.inject
+            )(input_map=input_map, simulated_sources=simulated_sources)
 
-        for postprocessor in self.postprocessors:
-            input_map = self.profilable_task(postprocessor.postprocess)(
-                input_map=input_map
-            )
-
-        pointing_sources = self.profilable_task(self.pointing_provider.force)(
-            input_map=input_map, catalogs=self.source_catalogs
-        )
-
-        cached = getattr(input_map, "pointing_model", None)
-        if isinstance(cached, (ConstantPointingModel | PolynomialPointingModel)):
-            pointing_model = cached
-        else:
-            pointing_model, pointing_model_stats = self.profilable_task(
-                self.pointing_residual_model.build_model
-            )(pointing_sources=pointing_sources)
-            if input_map._parent_database is not None:
-                save_pointing_model(
-                    input_map.mapcat_id, pointing_model, pointing_model_stats
+            for postprocessor in self.postprocessors:
+                input_map = self.profilable_task(postprocessor.postprocess)(
+                    input_map=input_map
                 )
 
-        forced_photometry_candidates = self.profilable_task(
-            self.forced_photometry.force
-        )(
-            input_map=input_map,
-            catalogs=self.source_catalogs,
-            pointing_model=pointing_model,
-        )
+            pointing_sources = self.profilable_task(self.pointing_provider.force)(
+                input_map=input_map, catalogs=self.source_catalogs
+            )
 
-        source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
-            sources=forced_photometry_candidates, input_map=input_map
-        )
+            cached = getattr(input_map, "pointing_model", None)
+            if isinstance(cached, (ConstantPointingModel | PolynomialPointingModel)):
+                pointing_model = cached
+            else:
+                pointing_model, pointing_model_stats = self.profilable_task(
+                    self.pointing_residual_model.build_model
+                )(pointing_sources=pointing_sources)
+                # The key of the pointing-residual table is the depth-1
+                # map_id. Thus, do not save the model of a coadd.
+                if (
+                    input_map._parent_database is not None
+                    and input_map.map_type == "depth1_map"
+                ):
+                    save_pointing_model(
+                        input_map.mapcat_id, pointing_model, pointing_model_stats
+                    )
 
-        blind_sources, _ = self.profilable_task(self.blind_search.search)(
-            input_map=source_subtracted_map,
-            pointing_model=pointing_model,
-        )
+            forced_photometry_candidates = self.profilable_task(
+                self.forced_photometry.force
+            )(
+                input_map=input_map,
+                catalogs=self.source_catalogs,
+                pointing_model=pointing_model,
+            )
 
-        sifter_result = self.profilable_task(self.sifter.sift)(
-            sources=blind_sources,
-            catalogs=self.source_catalogs,
-            input_map=source_subtracted_map,
-        )
+            source_subtracted_map = self.profilable_task(
+                self.source_subtractor.subtract
+            )(sources=forced_photometry_candidates, input_map=input_map)
 
-        for output in self.map_outputs:
-            self.profilable_task(output.output)(input_map=input_map)
+            blind_sources, _ = self.profilable_task(self.blind_search.search)(
+                input_map=source_subtracted_map,
+                pointing_model=pointing_model,
+            )
 
-        return MapResult(
-            map_name=input_map.map_name,
-            mapcat_id=input_map.mapcat_id,
-            array=input_map.array,
-            frequency=input_map.frequency,
-            observation_start=input_map.observation_start,
-            observation_end=input_map.observation_end,
-            forced_photometry_candidates=forced_photometry_candidates,
-            sifter_result=sifter_result,
-            pointing_sources=pointing_sources,
-            injected_sources=injected_sources,
-            from_database=input_map._parent_database is not None,
-        )
+            sifter_result = self.profilable_task(self.sifter.sift)(
+                sources=blind_sources,
+                catalogs=self.source_catalogs,
+                input_map=source_subtracted_map,
+            )
+
+            for output in self.map_outputs:
+                self.profilable_task(output.output)(input_map=input_map)
+
+            return MapResult(
+                map_name=input_map.map_name,
+                mapcat_id=input_map.mapcat_id,
+                map_type=input_map.map_type,
+                array=input_map.array,
+                frequency=input_map.frequency,
+                observation_start=input_map.observation_start,
+                observation_end=input_map.observation_end,
+                forced_photometry_candidates=forced_photometry_candidates,
+                sifter_result=sifter_result,
+                pointing_sources=pointing_sources,
+                injected_sources=injected_sources,
+                from_database=input_map._parent_database is not None,
+            )
+        except Exception:
+            # Set the status to "failed". If the status stays "processing",
+            # the reader skips the map on the next run.
+            if getattr(input_map, "_parent_database", None) is not None:
+                set_processing_end(
+                    input_map.mapcat_id, map_type=input_map.map_type, status="failed"
+                )
+            raise
 
     def output_map_result(self, result: MapResult) -> None:
         """
         Write one map's source outputs, after map matching, and only then
         mark the map completed.
         """
-        for output in self.source_outputs:
-            self.profilable_task(output.output)(
-                forced_photometry_candidates=result.forced_photometry_candidates,
-                sifter_result=result.sifter_result,
-                map_name=result.map_name,
-                mapcat_id=result.mapcat_id,
-                pointing_sources=result.pointing_sources,
-                injected_sources=result.injected_sources,
-            )
+        try:
+            for output in self.source_outputs:
+                self.profilable_task(output.output)(
+                    forced_photometry_candidates=result.forced_photometry_candidates,
+                    sifter_result=result.sifter_result,
+                    map_name=result.map_name,
+                    mapcat_id=result.mapcat_id,
+                    pointing_sources=result.pointing_sources,
+                    injected_sources=result.injected_sources,
+                )
+        except Exception:
+            if result.from_database:
+                set_processing_end(
+                    result.mapcat_id, map_type=result.map_type, status="failed"
+                )
+            raise
 
         if result.from_database:
-            self.profilable_task(set_processing_end)(result.mapcat_id)
+            self.profilable_task(set_processing_end)(
+                result.mapcat_id, map_type=result.map_type
+            )
 
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
@@ -296,6 +321,7 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
         """
+        maps = list(maps)
         sky_box = self.extract_bounding_box(maps)
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(

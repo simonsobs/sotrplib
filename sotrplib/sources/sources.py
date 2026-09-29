@@ -2,13 +2,13 @@ from typing import Literal, Optional
 
 import numpy as np
 import structlog
-import uuid7 as uuid
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
 from pixell import reproject
 from pydantic import BaseModel, PrivateAttr
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 
@@ -35,7 +35,7 @@ class CrossMatch(BaseModel):
     ra: AstroPydanticQuantity[u.deg] | None = None
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
-    source_id: str | uuid.UUID
+    source_id: str | UUID7
     source_type: str | None = None
     probability: float | None = None
     angular_separation: AstroPydanticQuantity[u.deg] | None = None
@@ -43,7 +43,7 @@ class CrossMatch(BaseModel):
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     catalog_name: str | None = None
-    catalog_idx: int | str | uuid.UUID | None = None
+    catalog_idx: int | str | UUID7 | None = None
     alternate_names: list[str] | None = None
 
 
@@ -57,7 +57,7 @@ class RegisteredSource(BaseSource):
     Extendedness and positional uncertainty is stored if available.
     """
 
-    source_id: str | uuid.UUID | None = None
+    source_id: str | UUID7 | None = None
     source_type: (
         Literal["extragalactic", "star", "sso", "simulated", "unknown"] | None
     ) = None

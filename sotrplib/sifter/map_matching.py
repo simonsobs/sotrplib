@@ -50,6 +50,8 @@ class MapResult:
     injected_sources: list = field(default_factory=list)
     from_database: bool = False
     "True if the map came from mapcat, i.e. has a processing status to close."
+    map_type: str = "depth1_map"
+    "The map's mapcat map_type, for its processing status (depth-1 map or coadd)."
 
 
 @dataclass
