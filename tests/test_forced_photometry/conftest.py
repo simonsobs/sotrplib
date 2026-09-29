@@ -3,6 +3,7 @@ Fixtures for the dependency-injected completely simulated pipeline.
 """
 
 import os
+from datetime import timezone
 from pathlib import Path
 
 import numpy as np
@@ -199,13 +200,13 @@ def create_test_maps(mapset_with_sources):
             frequency=freq,
             ctime=Time(
                 np.mean(cur_map.time_mean), format="unix", scale="utc"
-            ).to_datetime(),
+            ).to_datetime(timezone=timezone.utc),
             start_time=Time(
                 np.min(cur_map.time_mean), format="unix", scale="utc"
-            ).to_datetime(),
+            ).to_datetime(timezone=timezone.utc),
             stop_time=Time(
                 np.max(cur_map.time_mean), format="unix", scale="utc"
-            ).to_datetime(),
+            ).to_datetime(timezone=timezone.utc),
         )
         d1tables.append(data)
 
