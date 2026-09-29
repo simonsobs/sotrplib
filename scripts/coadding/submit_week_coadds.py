@@ -5,7 +5,7 @@ Write one sotrp-coadd config and one SLURM script for each time window
 
 Each job makes a coadd of the depth-1 maps in its window. The job writes
 the coadd to FITS and registers it in mapcat (default). See
-sotrplib.maps.map_coadding.stream_coadd and docs/coadding.md.
+sotrplib.maps.map_coadding.stream_coadd and docs/coadding/scripts.md.
 """
 
 import argparse

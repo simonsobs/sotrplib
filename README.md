@@ -49,7 +49,7 @@ After you install the package, run the pipeline with the `sotrp` command:
 
 `sotrp -c [path to config file]`
 
-To make coadds, use the `sotrp-coadd` command (see [docs/coadding.md](docs/coadding.md)).
+To make coadds, use the `sotrp-coadd` command (see [docs/coadding/](docs/coadding/overview.md)).
 To use the library in your own Python code, see [docs/act.md](docs/act.md).
 
 The config file is a .json which contains a dictionary of all the pipeline segments and inputs. 

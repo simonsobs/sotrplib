@@ -72,7 +72,7 @@ The commands
 | Command | Code | Config | What it does |
 |---|---|---|---|
 | `sotrp` | `sotrplib/cli.py` | `Settings` (`sotrplib/config/config.py`) | Runs the time-resolved pipeline on maps. See [Configuring the Pipeline](configuration.md). |
-| `sotrp-coadd` | `sotrplib/coadd_cli.py` | `CoaddSettings` (`sotrplib/config/coadd.py`) | Makes coadds of depth-1 maps and registers them in mapcat. See [Coadds](coadding.md). |
+| `sotrp-coadd` | `sotrplib/coadd_cli.py` | `CoaddSettings` (`sotrplib/config/coadd.py`) | Makes coadds of depth-1 maps and registers them in mapcat. See [Coadds](coadding/overview.md). |
 
 Each command has the same form:
 

@@ -50,7 +50,7 @@ from .pointing import PointingModel
 #   "loose":       a part of the map is in the window.
 #   "left-bound":  the start_time of the map is in the window.
 #   "right-bound": the stop_time of the map is in the window.
-# See docs/coadding.md.
+# See docs/coadding/make_coadds.md.
 TimeBinning = Literal["restrictive", "loose", "left-bound", "right-bound"]
 
 
@@ -370,7 +370,7 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
       `coadd_type`. The `array` and `sources` filters are not available.
     - `array` comes from the tube_slots of the linked depth-1 maps.
 
-    See docs/coadding.md.
+    See docs/coadding/analyze_coadds.md.
     """
 
     default_map_units = u.Unit("Jy")

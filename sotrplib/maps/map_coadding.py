@@ -303,7 +303,7 @@ def stream_coadd(
     For each map, the function builds the map, applies the preprocessors and
     merges the map into the coadd. Then it removes the map from memory.
     Thus, memory use does not increase with the number of maps. The
-    preprocessors see each map separately. See docs/coadding.md for why.
+    preprocessors see each map separately. See docs/coadding/overview.md for why.
 
     Parameters
     ----------

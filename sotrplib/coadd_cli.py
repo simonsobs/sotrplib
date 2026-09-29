@@ -1,5 +1,5 @@
 """
-Command-line interface for sotrp-coadd. See docs/coadding.md.
+Command-line interface for sotrp-coadd. See docs/coadding/make_coadds.md.
 """
 
 import logging
