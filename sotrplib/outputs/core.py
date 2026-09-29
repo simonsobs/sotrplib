@@ -29,18 +29,13 @@ def _filename_label(map_name: str | None, mapcat_id: UUID7 | None) -> str:
     return map_name if map_name is not None else str(mapcat_id)
 
 
-# Power of the map's flux unit each flux-carrying field is in: flux = rho /
-# kappa and snr = rho / sqrt(kappa) is dimensionless, so rho ~ 1/flux and
-# kappa ~ 1/flux**2. Other fields (snr, hits, times) carry no flux unit.
+# The power of the flux unit for each field. snr, hits and times have no
+# flux unit.
 _FLUX_UNIT_POWERS = {"flux": 1, "rho": -1, "kappa": -2}
 
 
 def _field_unit(input_map: ProcessableMap, field_id: str) -> u.UnitBase | None:
-    """
-    FITS BUNIT to record for `field_id` of `input_map`, so maps read back
-    from disk know their flux scale (e.g. mJy from the matched filter)
-    instead of assuming the reader's default.
-    """
+    """Return the FITS BUNIT for `field_id` of `input_map`."""
     power = _FLUX_UNIT_POWERS.get(field_id)
     flux_units = getattr(input_map, "flux_units", None)
     if power is None or flux_units is None:

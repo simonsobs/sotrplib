@@ -26,8 +26,7 @@ from sotrplib.maps.utils import (
 
 PointingModel = ConstantPointingModel
 
-# mapcat column for depth1 map and coadd in the TimeDomainProcessingTable.
-# This is used to determine which column to use for the mapcat_id.
+# Selects the TimeDomainProcessingTable column for the mapcat_id.
 MapCatMapType = Literal["depth1_map", "coadd"]
 
 
@@ -340,10 +339,7 @@ class ProcessableMap(ABC):
 
     @property
     def map_type(self) -> MapCatMapType:
-        """
-        Whether this map is a depth-1 map or a coadd of them, matching
-        mapcat's distinction.
-        """
+        """Return "depth1_map" or "coadd", as in mapcat."""
         return "depth1_map"
 
     def get_pixel_times(
@@ -747,10 +743,9 @@ def _flux_units_from_bunit(
     filename: Path, power: int, default: Unit, log: FilteringBoundLogger
 ) -> Unit:
     """
-    The map's flux unit, from the FITS BUNIT of a field that carries
-    flux_units**power (flux: 1, rho: -1), as written by MapOutputSerializer.
-    Files without BUNIT (e.g. externally produced maps) keep `default`, the
-    configured unit.
+    Return the flux unit from the FITS BUNIT of a field with the unit
+    flux_units**power (flux: 1, rho: -1). If there is no BUNIT, return
+    `default`.
     """
     from astropy.io import fits
 
@@ -942,14 +937,12 @@ class RhoAndKappaMap(ProcessableMap):
 
 class CoaddRhoAndKappaMap(RhoAndKappaMap):
     """
-    A registered coadd's rho/kappa maps read back from disk (e.g. as written
-    by sotrp-coadd). Differs from a depth-1 RhoAndKappaMap in two ways:
+    The rho/kappa maps of a registered coadd. There are two differences from
+    a depth-1 RhoAndKappaMap:
 
-    - it's a coadd as far as mapcat is concerned (map_type "coadd"), so its
-      processing status lives under coadd_id, not map_id;
-    - its time map already holds absolute unix times (the hit-weighted mean
-      of its input maps' absolute times), unlike depth-1 time maps, which
-      are seconds since the observation start -- so no offset is added.
+    - map_type is "coadd". Thus, the processing status uses the coadd_id.
+    - The time map contains absolute unix times. Thus, add_time_offset()
+      does not add the start time.
     """
 
     @property
@@ -1288,13 +1281,9 @@ class CoaddedRhoKappaMap(ProcessableMap):
 
 class CoaddedIntensityAndInverseVarianceMap(CoaddedRhoKappaMap):
     """
-    A coadded intensity/inverse-variance map, built from multiple raw
-    (unfiltered) depth-1 observations via an inverse-variance-weighted mean.
-
-    Unlike CoaddedRhoKappaMap, the inputs here have not been matched
-    filtered, so `intensity` is directly the ivar-weighted mean map rather
-    than a rho/kappa ratio. Filtering should be applied as a preprocessor on
-    the resulting coadd, not on the individual input maps.
+    A coadd of raw depth-1 intensity maps, with inverse-variance weights.
+    The inputs have no matched filter. Apply the filter to the coadd as a
+    preprocessor.
     """
 
     _available_maps: tuple[str, ...] = ("intensity", "flux", "snr")

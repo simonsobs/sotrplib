@@ -1,7 +1,5 @@
 """
-Command-line interface for sotrp-coadd: streaming, per-map-preprocessed
-depth-1 map coadding. See sotrplib.maps.map_coadding.stream_coadd for why
-this is a separate tool from sotrp's own (coadd-then-preprocess) pipeline.
+Command-line interface for sotrp-coadd. See docs/coadding.md.
 """
 
 import logging
@@ -26,11 +24,8 @@ structlog.configure(
 
 def _check_registration_paths(config: CoaddSettings) -> None:
     """
-    mapcat stores coadd paths relative to MAPCAT_DEPTH_ONE_COADD_PARENT
-    (separate from MAPCAT_DEPTH_ONE_PARENT, which only the depth-1 maps
-    are relative to). Check that up front, before doing any of the
-    (expensive, per-map-preprocessed) coadding work, rather than failing
-    only once register_coadd() tries to make paths relative at the very end.
+    Make sure that each output directory is in MAPCAT_DEPTH_ONE_COADD_PARENT.
+    Do this check before the coadd work starts, not at registration.
     """
     if config.mapcat_registration is None or not config.mapcat_registration.enabled:
         return
@@ -82,9 +77,8 @@ def main():
 
     dependencies = config.to_dependencies()
     reader = dependencies["maps"]
-    # Off by default (see CoaddMapCatDatabaseConfig): per-map status belongs
-    # to sotrp's own run on each depth-1 map, and which maps went into a
-    # coadd is recorded by register_coadd()'s coadd <-> map links instead.
+    # Off by default (see CoaddMapCatDatabaseConfig). The coadd links from
+    # register_coadd() record the maps in the coadd.
     track_maps = reader.track_processing
 
     try:
@@ -111,8 +105,7 @@ def main():
             log.warning("sotrp_coadd.no_maps_found")
             return
 
-        # rho/kappa only exist before finalize() (which deletes them once
-        # flux/snr are derived), so write outputs before finalizing
+        # finalize() removes rho and kappa. Write them before finalize().
         output_paths: dict[str, Path] = {}
         for output in dependencies["map_outputs"]:
             output_paths.update(output.output(input_map=coadd))
@@ -138,11 +131,8 @@ def main():
                 coadd_id=coadd_id,
                 n_maps=len(map_ids),
             )
-            # A coadd's id doesn't exist until register_coadd() has already
-            # finished, so unlike maps (which get set_processing_start()
-            # before we know if they'll succeed), a coadd's status row is
-            # only created once the outcome is known. set_processing_end()
-            # requires an existing row, so create it first.
+            # The coadd gets its coadd_id only from register_coadd().
+            # set_processing_end() needs a row, so create the row first.
             set_processing_start(coadd_id, map_type="coadd")
             set_processing_end(coadd_id, map_type="coadd", status="completed")
     except Exception:

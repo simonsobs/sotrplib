@@ -219,17 +219,14 @@ class MapCatDatabaseConfig(MapGeneratorConfig):
     end_time: AstroPydanticTime | None = None
     map_ids: list[UUID7] | None = None
     sky_box: list[AstroPydanticICRS] | None = None
-    ## None -> the reader's own default (K for intensity, Jy for flux-type maps)
+    ## None: the reader default (K for intensity, Jy for flux maps)
     map_units: AstroPydanticUnit | None = None
-    # "coadd_rhokappa" reads registered coadds (depth_one_coadds) instead of
-    # depth-1 maps; map_ids are then coadd_ids, and array can't be set.
+    # "coadd_rhokappa" reads registered coadds. map_ids are then coadd_ids.
     map_type: Literal["intensity", "flux", "rhokappa", "coadd_rhokappa"] = "intensity"
     coadd_type: str | None = None  ## only for map_type "coadd_rhokappa"
     rerun: bool = False
     track_processing: bool = True
-    "Skip already-processed maps and mark read maps as processing in "
-    "mapcat's time_domain_processing table. False by default for sotrp-coadd "
-    "(see CoaddMapCatDatabaseConfig)."
+    "Skip processed maps and write a status for each map."
     time_binning: TimeBinning = "loose"
 
     @model_validator(mode="after")

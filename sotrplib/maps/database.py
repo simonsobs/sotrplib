@@ -45,16 +45,12 @@ from .core import (
 )
 from .pointing import PointingModel
 
-# How build_query() compares a map's start_time and stop_time
-# interval against the binned time window:
-#   "restrictive"  -- map fully contained in the window (may drop maps that
-#                      straddle a window boundary from every window)
-#   "loose"        -- map overlaps the window at all (may match a
-#                      straddling map in more than one window)
-#   "left-bound"   -- partition solely by the map's own start_time (every
-#                      map has exactly one, so no gaps/overlaps -- what
-#                      submit_week_coadds.py uses)
-#   "right-bound"  -- partition solely by the map's own stop_time
+# How build_query() selects the maps for a time window:
+#   "restrictive": all of the map is in the window.
+#   "loose":       a part of the map is in the window.
+#   "left-bound":  the start_time of the map is in the window.
+#   "right-bound": the stop_time of the map is in the window.
+# See docs/coadding.md.
 TimeBinning = Literal["restrictive", "loose", "left-bound", "right-bound"]
 
 
@@ -62,15 +58,11 @@ def _apply_time_binning(
     query, table, start_time: Time | None, end_time: Time | None, time_binning
 ):
     """
-    Restrict `query` on `table` (DepthOneMapTable or DepthOneCoaddTable --
-    both have start_time/stop_time columns) to [start_time, end_time)
-    according to `time_binning`.
+    Limit `query` to the rows of `table` in [start_time, end_time), as
+    `time_binning` sets. `table` is DepthOneMapTable or DepthOneCoaddTable.
     """
     if time_binning == "restrictive":
-        # Map fully contained in (start_time, end_time]. Guarantees a map
-        # is never assigned to more than one window, at the cost of
-        # silently excluding any map whose observation straddles a
-        # window boundary from every window.
+        # A map that crosses a window boundary goes into no window.
         if start_time is not None:
             query = query.where(
                 table.start_time >= start_time.to_datetime(timezone=timezone.utc)
@@ -80,8 +72,7 @@ def _apply_time_binning(
                 table.stop_time < end_time.to_datetime(timezone=timezone.utc)
             )
     elif time_binning == "loose":
-        # Map overlaps (start_time, end_time) at all. Half-open on both
-        # sides. maps that straddle a window boundary will be double counted.
+        # A map that crosses a window boundary goes into the two windows.
         if start_time is not None:
             query = query.where(
                 table.stop_time >= start_time.to_datetime(timezone=timezone.utc)
@@ -91,10 +82,7 @@ def _apply_time_binning(
                 table.start_time < end_time.to_datetime(timezone=timezone.utc)
             )
     elif time_binning == "left-bound":
-        # Partition solely by the map's own start_time (half-open
-        # [start_time, end_time)) -- every map has exactly one
-        # start_time, so this splits maps across adjacent windows with
-        # no gaps and no overlap.
+        # Each map goes into one window only, with no gaps.
         if start_time is not None:
             query = query.where(
                 table.start_time >= start_time.to_datetime(timezone=timezone.utc)
@@ -104,8 +92,7 @@ def _apply_time_binning(
                 table.start_time < end_time.to_datetime(timezone=timezone.utc)
             )
     elif time_binning == "right-bound":
-        # Symmetric counterpart to "left-bound": partitions maps by
-        # their own stop_time instead of start_time.
+        # Same as "left-bound", but with stop_time.
         if start_time is not None:
             query = query.where(
                 table.stop_time >= start_time.to_datetime(timezone=timezone.utc)
@@ -180,10 +167,8 @@ class MapCatDatabaseReader(ABC):
         self.sky_box = sky_box
         self.rerun = rerun
         self.rerun_pointing_model = rerun_pointing_model
-        # False: don't consult or write time_domain_processing status (only
-        # permafail is still honoured). For consumers other than sotrp's own
-        # per-map processing, e.g. sotrp-coadd, where one depth-1 map can
-        # feed several coadds and a single per-map status can't describe that.
+        # If False, do not read or write the processing status. The reader
+        # still skips permafail maps. sotrp-coadd uses False.
         self.track_processing = track_processing
         self._map_list = None
         self.stale_processing_time = stale_processing_time
@@ -377,18 +362,15 @@ class FluxMapReader(MapCatDatabaseReader):
 
 class CoaddRhoKappaMapReader(MapCatDatabaseReader):
     """
-    Reader for registered coadds (mapcat's depth_one_coadds table, e.g. as
-    written by sotrp-coadd), yielding CoaddRhoAndKappaMap objects.
+    Read registered coadds from the depth_one_coadds table in mapcat. Give a
+    CoaddRhoAndKappaMap for each coadd.
 
-    Coadd paths are resolved against MAPCAT_DEPTH_ONE_COADD_PARENT, and
-    processing status is tracked under coadd_id (map_type "coadd"). Filters
-    on frequency, time window (same time_binning modes as depth-1 maps,
-    applied to the coadd's own start/stop times), `map_ids` (coadd_ids), and
-    optionally `coadd_type`. Coadds have no tube_slot or sky-coverage rows,
-    so `array` is labelled from the linked depth-1 maps (matching the
-    coadder's label, e.g. "i1i3i4i6") and `sources` filtering is not
-    supported. Depth-1 pointing models don't apply to a coadd and are never
-    loaded.
+    - Paths are relative to MAPCAT_DEPTH_ONE_COADD_PARENT.
+    - The filters are frequency, time window, `map_ids` (coadd_ids) and
+      `coadd_type`. The `array` and `sources` filters are not available.
+    - `array` comes from the tube_slots of the linked depth-1 maps.
+
+    See docs/coadding.md.
     """
 
     default_map_units = u.Unit("Jy")
@@ -502,7 +484,7 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
 
 
 def _get_processing_column(map_type: MapCatMapType):
-    """The TimeDomainProcessingTable column a given map_type's ids live in."""
+    """Return the TimeDomainProcessingTable column for `map_type`."""
     if map_type == "depth1_map":
         return TimeDomainProcessingTable.map_id
     if map_type == "coadd":
@@ -535,12 +517,9 @@ def check_if_permafailed(
     session=None,
 ) -> bool:
     """
-    True if a map or coadd has been manually marked "permafail" (e.g. via
-    mapcat's `mapcatreset --status permafail`) -- a known-pathological
-    observation that should never be picked up again by the pipeline, even
-    with rerun=True. This is the only status the pipeline itself never
-    sets; it's set by a human once something is known to be permanently
-    unusable.
+    Return True if the status of the map or coadd is "permafail". The
+    pipeline skips these maps, also with rerun=True. Only a person sets this
+    status (`mapcatreset --status permafail`).
     """
     if session is None:
         session = mapcat_settings.session()
@@ -565,10 +544,8 @@ def check_if_processed(
         return False
     if row.processing_status == completed_status:
         return True
-    # Compare as astropy Times: row.processing_start comes back naive from
-    # older sqlmodel and UTC-aware from newer (>=0.0.43) sqlmodel, and
-    # subtracting it from an aware/naive datetime would fail on one of them.
-    # Time() treats a naive datetime as UTC, which is how it was stored.
+    # Use astropy Time, because sqlmodel >= 0.0.43 gives UTC-aware datetimes
+    # and older versions give naive datetimes. Time() uses UTC for both.
     if row.processing_status == processing_status and (
         (Time.now() - Time(row.processing_start)).to_value("s")
         < stale_limit.to_value("s")
@@ -678,11 +655,8 @@ def set_processing_end(
     status: str = "completed",
 ):
     """
-    Mark a map's or coadd's processing as finished, with the given terminal
-    status (default "completed"; pass status="failed" when the caller is
-    handling an exception). "permafail" is intentionally not set here --
-    it's a manual-only status for known-pathological observations (see
-    check_if_permafailed), never set automatically by the pipeline.
+    Set the processing end time and `status` ("completed" or "failed") of a
+    map or coadd. Do not use this function to set "permafail".
     """
     ## session is mapcat_settings.session() whatever that is
     if session is None:
@@ -709,34 +683,28 @@ def register_coadd(
     session=None,
 ) -> UUID7:
     """
-    Register a finished coadd, and link it to the depth-1 maps that went
-    into it, in the mapcat database.
+    Register a coadd in mapcat, and link it to its depth-1 maps.
 
     Parameters
     ----------
     coadd : CoaddedRhoKappaMap
-        The finished coadd (must have frequency/observation_start/
-        observation_end set).
+        The coadd. It must have frequency, observation_start and
+        observation_end.
     map_ids : list[UUID7]
-        map_id of every depth-1 map merged into this coadd (e.g. as
-        returned by sotrplib.maps.map_coadding.stream_coadd).
+        The map_id of each depth-1 map in the coadd.
     coadd_name : str
-        Human-readable, ideally unique name for this coadd.
+        A unique name for the coadd.
     coadd_type : str
-        Free-form tag describing how this coadd was produced.
+        A tag for the type of coadd.
     output_paths : dict[str, Path]
-        FITS paths already written to disk, keyed by field name: "flux"
-        (used as the required map_path, matching DepthOneMapTable's
-        "first available of intensity, rho, flux" coverage-map
-        convention), and optionally "rho", "kappa", "time_first",
-        "time_mean", "time_last". Stored relative to
-        MAPCAT_DEPTH_ONE_COADD_PARENT (mapcat's depth_one_coadd_parent),
-        which is independent of MAPCAT_DEPTH_ONE_PARENT so coadds can live
-        somewhere other than the depth-1 maps they were built from.
+        The FITS paths of the coadd, by field name. "flux" is necessary
+        (it is the map_path). "rho", "kappa", "time_first", "time_mean" and
+        "time_last" are optional. Paths are stored relative to
+        MAPCAT_DEPTH_ONE_COADD_PARENT.
 
     Returns
     -------
-    coadd_id of the new row.
+    The coadd_id of the new row.
     """
     if session is None:
         session = mapcat_settings.session()

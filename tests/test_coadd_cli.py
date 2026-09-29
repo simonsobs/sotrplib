@@ -1,10 +1,7 @@
 """
-Tests for sotrp-coadd's exit-status handling. By default the input depth-1
-maps' time_domain_processing status is left alone (it belongs to sotrp's own
-run on each map, and one map can feed several coadds); only the registered
-coadd gets a status row. With maps.track_processing opted in, maps a run
-touches should end up "completed"/"failed", never left dangling as
-"processing" (which would make the reader silently skip them next time).
+Tests for the status handling of sotrp-coadd. By default, only the
+registered coadd gets a status row. With maps.track_processing, each map
+ends as "completed" or "failed", not "processing".
 """
 
 import logging
@@ -89,9 +86,8 @@ def test_tracked_main_marks_merged_completed_and_excluded_failed():
 
 def test_tracked_main_marks_all_read_maps_failed_on_exception():
     """
-    If the run crashes outright (e.g. writing outputs), none of the maps
-    ended up in a registered coadd -- so all maps the reader read for this
-    run (reader.map_ids, populated eagerly up front) should be marked failed.
+    If the run stops with an error, no map is in a registered coadd. Thus,
+    each map that the reader read is marked failed.
     """
     config, _ = _mock_config(map_ids=[1, 2, 3, 4, 5], track_processing=True)
 
@@ -155,10 +151,9 @@ def test_check_registration_paths_rejects_outside_coadd_parent(tmp_path):
 @pytest.mark.parametrize("track_processing", [False, True])
 def test_main_registers_coadd_and_records_its_status(track_processing):
     """
-    With registration enabled, the new coadd needs a status row before
-    set_processing_end() can mark it completed (the real function raises if
-    none exists). The coadd's own status is always recorded; the input
-    maps' only when track_processing is on.
+    With registration, the coadd gets a status row before
+    set_processing_end() marks it completed. The input maps get a status
+    only with track_processing.
     """
     config, _ = _mock_config(map_ids=[1, 2, 3], track_processing=track_processing)
     config.mapcat_registration.enabled = True

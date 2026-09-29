@@ -102,8 +102,7 @@ def _mask_from_positions(
     log: FilteringBoundLogger,
     func_name: str,
 ) -> enmap.ndmap:
-    """Shared "positions -> hole mask, grown to mask_radius" logic used by
-    both mask_asteroids_socat and mask_asteroids (local ephemeris)."""
+    """Return a mask with a hole of `mask_radius` at each position."""
     asteroid_locs = []
     for _name, ra, dec in positions:
         dec_val = np.atleast_1d(dec.to_value(u.rad))[0]
@@ -121,8 +120,7 @@ def _mask_from_positions(
         )
         mask *= asteroid_mask
 
-    ## same convert-grow-reconvert dance as mask_planets: grow_mask grows
-    ## True regions, but we want to grow the masked (False) region.
+    ## grow_mask grows the True regions. Invert to grow the False holes.
     mask = enmap.enmap(mask, mask.wcs, dtype=bool)
     mask = ~enmap.grow_mask(~mask, mask_radius.to_value(u.rad))
     log.info(
@@ -141,16 +139,13 @@ def mask_asteroids_socat(
     log: FilteringBoundLogger | None = None,
 ) -> enmap.ndmap:
     """
-    Mask solar-system objects that SOCat reports within this map's
-    footprint and observation window. Preferred over mask_asteroids
-    (below) because SOCat iteratively refines each SSO's position using
-    the map's own per-pixel observation time (see
-    SOCat._sg_to_registered_with_refinement), rather than a single
-    mean-crossing-time position.
+    Mask the solar-system objects that SOCat finds in the map footprint and
+    observation window. Use this function before mask_asteroids(), because
+    SOCat uses the per-pixel time of the map to refine each position.
 
     Args:
         input_map: map to create the asteroid mask for.
-        socat: a constructed sotrplib.source_catalog.socat.SOCat instance.
+        socat: a sotrplib.source_catalog.socat.SOCat instance.
         mask_radius: radius to mask around each detected asteroid position.
     """
     log = log or structlog.get_logger()
@@ -174,29 +169,23 @@ def mask_asteroids(
     log: FilteringBoundLogger | None = None,
 ) -> enmap.ndmap:
     """
-    Find asteroids that actually cross this map's footprint during its
-    observation window (via get_sso_ephem_in_map, which accounts for their
-    motion rather than treating them as fixed points like mask_planets
-    does), and creates a mask around each one's interpolated position at
-    its crossing time.
+    Mask the asteroids that cross the map footprint in the observation
+    window. Each mask is at the position of the asteroid at its crossing
+    time. The positions come from a local ephemeris file.
 
-    Fallback for mask_asteroids_socat, used when SOCat is unavailable --
-    uses a static, precomputed ephemeris file instead of a live catalog
-    query, so positions are only as good as a single mean-crossing-time
-    interpolation (no per-pixel-time refinement).
+    Use this function only if SOCat is not available. It uses one time for
+    each asteroid, not the per-pixel time.
 
     Args:
-        input_map: map to create the asteroid mask for. Needs time_mean,
-            observation_start/end, and filter_sources -- i.e. a full
-            ProcessableMap, not just a bare enmap.
+        input_map: map to create the asteroid mask for. It must be a
+            ProcessableMap with time_mean, observation_start/end and
+            filter_sources.
         ephem_df: asteroid ephemeris database, as loaded by
             sotrplib.solar_system.solar_system.load_jpl_ephem_database or
             load_mpc_orbital_database.
         mask_radius: radius to mask around each detected asteroid position.
-        interp_time_range: window (see interpolate_ephem) used both to find
-            crossings and to interpolate position at the crossing time.
-        interp_to: sample rate used to check whether an asteroid crosses the
-            map footprint at all -- see get_sso_ephem_in_map.
+        interp_time_range: time range for interpolate_ephem.
+        interp_to: sample interval for get_sso_ephem_in_map.
     """
     log = log or structlog.get_logger()
     log = log.bind(func="mask_asteroids")

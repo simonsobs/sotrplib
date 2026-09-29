@@ -1,25 +1,11 @@
 #!/usr/bin/env python3
 """
-Submit one SLURM job per time window (default: 7 days) that streams depth-1
-intensity/inverse-variance maps for that window from a mapcat database
-through sotrp-coadd: each map is built, preprocessed (matched filter etc.)
-and merged into a running coadd one at a time, discarded, then the next map
-is loaded -- so RAM usage stays bounded regardless of how many maps go into
-one coadd. Per-map preprocessing (rather than coadding raw maps and
-filtering once) matters here because moving sources smear across pixels if
-many days are summed before any per-observation handling, and matched
-filtering needs each observation's own noise properties. See
-sotrplib.maps.map_coadding.stream_coadd for details.
+Write one sotrp-coadd config and one SLURM script for each time window
+(default: 7 days) and each frequency. Add --submit to submit the jobs.
 
-The finished coadd is saved to FITS and, by default, registered (along with
-links to every depth-1 map that went into it) in mapcat's
-depth_one_coadds / link_depth_one_map_to_coadd tables. Coadd paths are
-stored relative to MAPCAT_DEPTH_ONE_COADD_PARENT (--coadd-parent, default
---output-dir), independent of where the depth-1 maps live.
-
-Generates a sotrp-coadd config JSON + a SLURM script per (window,
-frequency), and by default only writes them; pass --submit to actually
-sbatch them.
+Each job makes a coadd of the depth-1 maps in its window. The job writes
+the coadd to FITS and registers it in mapcat (default). See
+sotrplib.maps.map_coadding.stream_coadd and docs/coadding.md.
 """
 
 import argparse
@@ -35,7 +21,7 @@ REPO_DIR = Path(__file__).resolve().parents[2]
 
 
 def get_time_range(database_name: Path) -> tuple[float, float]:
-    """Min start_time / max stop_time over all depth-1 maps in the database."""
+    """Return the first start_time and the last stop_time of the depth-1 maps."""
     con = sqlite3.connect(str(database_name))
     try:
         cur = con.cursor()
@@ -45,9 +31,7 @@ def get_time_range(database_name: Path) -> tuple[float, float]:
         con.close()
     if start is None or stop is None:
         raise ValueError(f"No depth_one_maps rows found in {database_name}")
-    # sqlite stores these as DateTime strings (e.g. "2025-09-04 02:12:31.797713"),
-    # not unix-epoch floats -- convert so downstream arithmetic (window_bounds,
-    # iso()) can treat them uniformly with the --start-time/--end-time path.
+    # SQLite gives DateTime strings. Change them to unix times.
     return (
         datetime.fromisoformat(start).replace(tzinfo=timezone.utc).timestamp(),
         datetime.fromisoformat(stop).replace(tzinfo=timezone.utc).timestamp(),
@@ -61,14 +45,14 @@ def iso(unix_time: float) -> str:
 
 
 def window_dirname(unix_time: float) -> str:
-    """Per-window output subdirectory: the window's UTC start date, e.g. 20250904."""
+    """Return the subdirectory name for a window: its UTC start date (YYYYMMDD)."""
     return datetime.fromtimestamp(unix_time, tz=timezone.utc).strftime("%Y%m%d")
 
 
 def window_bounds(
     start: float, stop: float, window_days: float
 ) -> list[tuple[float, float]]:
-    """Rolling windows of `window_days`, anchored to `start`, covering [start, stop)."""
+    """Return windows of `window_days` days from `start` to `stop`."""
     window = window_days * 86400.0
     windows = []
     t = start
@@ -116,13 +100,8 @@ def build_config(
             "mask_radius": asteroid_mask_radius,
         }
         if ephem_file_path is not None:
-            # Pad the loaded ephemeris slice beyond the map window: asteroid
-            # position interpolation (interpolate_ephem) needs several
-            # sample points within +-0.5 day of each target time, so an
-            # asteroid crossing right at the window edge needs ephemeris
-            # rows just outside [start_time, end_time] to interpolate
-            # correctly. Only loaded as SOCat's fallback -- see
-            # AsteroidMasker.
+            # interpolate_ephem needs ephemeris rows up to 0.5 day before
+            # and after each time. Thus, load 1 day more at each end.
             pad = 1.0 * 86400.0
             asteroid_mask["ephem_file_path"] = str(ephem_file_path)
             asteroid_mask["start_time"] = iso(start_time - pad)
@@ -254,9 +233,8 @@ def parse_args():
         "--array",
         type=str,
         default=None,
-        help="Restrict to a single array/tube_slot when reading maps. Default: all arrays, "
-        "summed together into one coadd per frequency (depth_one_coadds has no array "
-        "column, so a registered coadd is always frequency-only).",
+        help="Use the maps of this array only. Default: all arrays, "
+        "in one coadd for each frequency. Mapcat stores no array for a coadd.",
     )
     p.add_argument(
         "--instrument",
@@ -268,9 +246,8 @@ def parse_args():
         "--fields",
         nargs="+",
         default=["rho", "kappa", "flux", "snr", "hits", "time_mean"],
-        help="Coadded map fields to save to FITS via the 'maps' output. sotrp-coadd writes "
-        "these in two passes (rho/kappa before finalize, flux/snr after), so both kinds "
-        "can be requested together.",
+        help="Coadd fields to write to FITS. You can request rho/kappa "
+        "and flux/snr together.",
     )
     p.add_argument(
         "--beam1d-template",
@@ -283,28 +260,23 @@ def parse_args():
         "--socat-db-path",
         type=Path,
         default=None,
-        help="Path to a socat sqlite database. Used (via --use-socat, on by default) as the "
-        "primary source of asteroid/SSO positions for masking. If not given, SOCat is only "
-        "used if socat_model_database_name/socat_client_pickle_path are already set in your "
-        "environment; otherwise asteroid masking falls straight to --ephem-file-path.",
+        help="Path to a SOCat sqlite database for the asteroid mask. "
+        "If not given, the job uses the SOCat settings in your environment, if they exist.",
     )
     p.add_argument(
         "--use-socat",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Use SOCat as the primary source of asteroid/SSO positions for masking "
-        "(falls back to --ephem-file-path if SOCat is unconfigured or a query fails).",
+        help="Use SOCat for asteroid positions. If SOCat is not "
+        "configured or a query fails, use --ephem-file-path.",
     )
     p.add_argument(
         "--ephem-file-path",
         type=str,
         default="sotrplib/solar_system/JPL_batched_ephemerides_2023-01-01_2033-01-01.parquet",
-        help="Path (relative to --repo-dir, or absolute) to a JPL Horizons asteroid "
-        "ephemeris parquet file (see sotrplib.solar_system.download_ephem_from_horizons), "
-        "used as a fallback asteroid mask source if SOCat is unavailable. Masks asteroids "
-        "in each individual depth-1 map before it's merged into the coadd, so they don't "
-        "smear across many days of summed pixels. Set to '' to disable the fallback "
-        "entirely (asteroid masking then depends solely on SOCat).",
+        help="JPL Horizons ephemeris parquet file (absolute, or relative to "
+        "--repo-dir). The asteroid mask uses it if SOCat is not available. "
+        "Set to '' to use SOCat only.",
     )
     p.add_argument(
         "--asteroid-mask-radius",
@@ -351,14 +323,14 @@ def parse_args():
     p.add_argument(
         "--rerun",
         action="store_true",
-        help="Re-process already-completed maps. Only has an effect if the "
-        "config opts in to maps.track_processing; by default sotrp-coadd "
-        "doesn't skip completed depth-1 maps.",
+        help="Process maps that have the status completed again. This "
+        "option has an effect only if maps.track_processing is true.",
     )
     p.add_argument(
         "--submit",
         action="store_true",
-        help="Actually sbatch the generated scripts. Without this, only writes files.",
+        help="Submit the SLURM scripts with sbatch. Without this option, "
+        "the script only writes the files.",
     )
     return p.parse_args()
 

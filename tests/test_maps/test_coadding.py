@@ -417,9 +417,8 @@ def test_intensity_coadder_labels_combined_arrays(
     overlapping_map_set_1, overlapping_map_set_2
 ):
     """
-    Coadding maps from different arrays into one "coadd" group should label
-    the result with the arrays actually combined (e.g. "i1i6"), not just
-    whichever input map happened to be first.
+    The array label of a coadd of different arrays contains each array
+    (for example, "i1i6"), not only the first array.
     """
     map_path_1 = overlapping_map_set_1
     map_path_2 = overlapping_map_set_2
@@ -489,12 +488,8 @@ def test_rhokappa_coadder_streaming_merge_does_not_repeat_array_tokens(
     overlapping_map_set_1, overlapping_map_set_2
 ):
     """
-    Regression test: streaming/incremental coadding calls coadd_maps()
-    repeatedly as [running_coadd, new_map]. running_coadd.array is itself
-    already a combined label from the previous merge (e.g. "i1i3"); treating
-    that whole string as one opaque token instead of re-parsing it into its
-    atomic arrays made the label grow (and repeat tokens) with every merge
-    instead of staying deduplicated to the unique arrays actually involved.
+    A merge into a running coadd with a joined label (for example, "i1i3")
+    gives each array only one time in the label.
     """
     start_time = Time("2025-10-10", format="iso")
     paths = [overlapping_map_set_1, overlapping_map_set_2, overlapping_map_set_1]
@@ -519,12 +514,8 @@ def test_rhokappa_coadder_streaming_merge_does_not_repeat_array_tokens(
 
 def test_intensity_coadder_time_mean_is_averaged_not_summed(tmp_path):
     """
-    Regression test: coadding several fully-overlapping maps must produce a
-    hits-weighted *average* time_mean, not an ever-growing running sum (see
-    update_times() in core.py -- total_hits used to come from a 0/1
-    "is this pixel covered" indicator instead of the real accumulated hit
-    count, so each additional map multiplied the running sum instead of
-    renormalizing it).
+    The time_mean of a coadd of overlapping maps is the mean with hit
+    weights, not a sum.
     """
     shape, wcs = enmap.geometry(
         np.deg2rad([[-0.5, 0.5], [0.5, -0.5]]), res=np.deg2rad(0.05), proj="car"
@@ -607,11 +598,8 @@ def test_stream_coadd_matches_batch_coadd(overlapping_map_set_1, overlapping_map
 
 def test_stream_coadd_tracks_all_map_ids(separate_map_set_1):
     """
-    Regression test: RhoKappaMapCoadder.coadd_maps() seeds map_ids from
-    base_map.mapcat_id (singular), which is wrong once base_map is itself a
-    running coadd from a previous streaming iteration -- it would silently
-    drop everything merged before it. stream_coadd() must track map_ids
-    itself instead, so all N maps show up regardless of coadder internals.
+    stream_coadd() returns the map_ids of all N maps. coadd_maps() keeps
+    only the mapcat_id of its base map, so stream_coadd() records them.
     """
     start_time = Time("2025-10-10", format="iso")
     maps = [
@@ -688,10 +676,8 @@ def test_stream_coadd_empty_input_returns_none():
 
 def test_coadded_rho_kappa_map_does_not_share_mutable_defaults():
     """
-    Regression test: map_ids/input_map_times used to default to a single
-    shared [] object, so every CoaddedRhoKappaMap built without passing
-    them explicitly (which coadd_maps() never does for input_map_times)
-    silently accumulated state across unrelated coadds in the same process.
+    Two CoaddedRhoKappaMap objects do not share the map_ids or
+    input_map_times lists.
     """
     start_time = Time("2025-10-10", format="iso")
     kwargs = dict(
@@ -714,9 +700,8 @@ def test_coadded_rho_kappa_map_does_not_share_mutable_defaults():
 
 def test_map_type_distinguishes_depth1_maps_from_coadds(separate_map_set_1):
     """
-    ProcessableMap.map_type lets database.py's processing-status helpers
-    pick the right TimeDomainProcessingTable column (map_id vs coadd_id)
-    for a given map's mapcat_id without knowing its concrete subclass.
+    map_type selects the TimeDomainProcessingTable column (map_id or
+    coadd_id) for the processing status functions.
     """
     start_time = Time("2025-10-10", format="iso")
     depth1_map = _rho_kappa_map(separate_map_set_1, 0, start_time)

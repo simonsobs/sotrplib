@@ -192,8 +192,7 @@ class BaseRunner:
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
     ) -> tuple[list[MeasuredSource], SifterResult]:
-        # Try,Except here to set the TimeDomainProcessingStatus as failed
-        # if any exception occurs during the processing of the map.
+        # If an exception occurs, set the processing status to failed.
         try:
             input_map = self.profilable_task(self.build_map)(input_map)
 
@@ -222,9 +221,8 @@ class BaseRunner:
                 pointing_model, pointing_model_stats = self.profilable_task(
                     self.pointing_residual_model.build_model
                 )(pointing_sources=pointing_sources)
-                # mapcat's pointing-residual table is keyed by depth-1 map_id
-                # (sqlite doesn't enforce the FK), so a coadd's model is used
-                # for this run but never saved there.
+                # The key of the pointing-residual table is the depth-1
+                # map_id. Thus, do not save the model of a coadd.
                 if (
                     input_map._parent_database is not None
                     and input_map.map_type == "depth1_map"
@@ -275,10 +273,8 @@ class BaseRunner:
                 )
             return forced_photometry_candidates, sifter_result
         except Exception:
-           # Mark the map "failed" (instead of leaving
-            # it dangling as "processing", which would make the reader
-            # silently skip it on the next attempt) and re-raise so the
-            # failure is still visible to the caller/pipeline.
+            # Set the status to "failed". If the status stays "processing",
+            # the reader skips the map on the next run.
             if getattr(input_map, "_parent_database", None) is not None:
                 set_processing_end(
                     input_map.mapcat_id, map_type=input_map.map_type, status="failed"

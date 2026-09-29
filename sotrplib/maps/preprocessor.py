@@ -76,23 +76,17 @@ class PlanetMasker(MapPreprocessor):
 
 class AsteroidMasker(MapPreprocessor):
     """
-    Masks solar-system objects crossing each map's footprint during its
-    observation window.
+    Mask the solar-system objects that cross each map in its observation
+    window.
 
-    Primary method: query SOCat (get_sources_in_map, filtered to
-    source_type == "sso"), which iteratively refines each object's position
-    using the map's own per-pixel observation time -- more accurate than a
-    single mean-crossing-time estimate. Requires SOCat to be configured
-    (socat_client_client_type / socat_model_database_name env vars) and
-    reachable.
+    - First method: SOCat (source_type "sso"). SOCat uses the per-pixel time
+      of the map to refine each position.
+    - Second method: a local ephemeris file (see
+      sotrplib.solar_system.download_ephem_from_horizons). The masker uses
+      it only if SOCat is not configured or a query fails. If SOCat finds
+      no objects, the masker does not use the file.
 
-    Fallback method: a precomputed local ephemeris file (see
-    sotrplib.solar_system.download_ephem_from_horizons for how to build
-    one), used only if SOCat is unconfigured or a query raises -- not if
-    SOCat successfully reports zero SSOs in the map, which is a legitimate
-    result. The ephemeris database (if given) is loaded once at
-    construction, not per-map, since one preprocessor instance is reused
-    across every map in a coadd window.
+    The masker loads the ephemeris file one time, not for each map.
     """
 
     mask_radius: AstroPydanticQuantity = 10 * u.arcmin

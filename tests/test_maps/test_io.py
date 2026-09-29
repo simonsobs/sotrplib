@@ -199,10 +199,9 @@ def test_build_query_default_is_left_bound():
 
 def test_build_query_loose_is_half_open_overlap():
     """
-    time_binning="loose" (the default): a map is included if its
-    [start_time, stop_time) interval overlaps [start_time, end_time) at
-    all. Half-open on both sides, so a map that merely touches a shared
-    boundary between two adjacent windows isn't spuriously double-counted.
+    time_binning="loose" (default): the window includes a map if a part of
+    the map is in [start_time, end_time). A map that only touches the
+    boundary is in one window.
     """
     start = Time(1000, format="unix")
     end = Time(2000, format="unix")
@@ -231,11 +230,9 @@ def test_build_query_restrictive_requires_full_containment():
 
 def test_build_query_left_bound_is_half_open():
     """
-    time_binning="left-bound": a map is included solely based on whether its
-    own start_time falls in [start_time, end_time) -- so a map whose
-    observation spans a boundary between two adjacent windows lands in
-    exactly one of them, never both. This is what submit_week_coadds.py
-    relies on to avoid double-coadding maps that straddle a week boundary.
+    time_binning="left-bound": the window includes a map if its start_time
+    is in [start_time, end_time). A map that crosses a boundary is in one
+    window only.
     """
     start = Time(1000, format="unix")
     end = Time(2000, format="unix")
@@ -275,9 +272,8 @@ def test_build_query_rejects_unknown_time_binning():
 
 def test_build_query_left_bound_no_gap_or_overlap_at_shared_boundary():
     """
-    Two adjacent windows sharing an exact boundary value must partition maps
-    with no gap and no overlap, even for a map whose observation interval
-    spans the boundary (the case that caused real double-coadding).
+    Two adjacent windows include each map one time, with no gaps. This is
+    also true for a map that crosses the boundary.
     """
     boundary = 1500.0
     straddling_map = SimpleNamespace(start_time=1400.0, stop_time=1600.0)
@@ -412,9 +408,7 @@ def test_mapcat_config_tracks_processing_by_default():
 
 def test_map_list_skips_permafailed(mock_session):
     """
-    permafail is set manually (e.g. mapcatreset --status permafail) for a
-    known-pathological observation, and must never be picked up again --
-    not even with rerun=True.
+    The reader always skips a permafail map, also with rerun=True.
     """
     with (
         patch("sotrplib.maps.database.mapcat_settings") as settings,
@@ -533,9 +527,8 @@ def test_check_if_processed_true_for_completed():
 
 def test_check_if_processed_false_for_permafail():
     """
-    permafail is deliberately not treated as "processed" by check_if_processed
-    -- it's handled by the separate, unconditional check_if_permafailed check
-    in map_list() instead, so it isn't bypassable by rerun=True.
+    check_if_processed() does not treat permafail as "processed". map_list()
+    checks permafail separately, so rerun=True cannot skip the check.
     """
     from sotrplib.maps.database import check_if_processed
 
@@ -654,12 +647,8 @@ def test_set_processing_start_creates_row_for_coadd_id():
 
 def test_set_processing_start_does_not_couple_processing_status_id_to_map_id():
     """
-    Regression test: set_processing_start() used to do
-    TimeDomainProcessingTable(processing_status_id=map_id, map_id=map_id),
-    directly reusing map_id's value as a *different* autoincrement PK
-    column. That's a hard type error once map_id is a UUID (can't assign a
-    UUID string into an int PK) -- the fix lets processing_status_id
-    autoincrement instead of being set explicitly.
+    set_processing_start() does not set processing_status_id to the
+    map_id. The database gives processing_status_id automatically.
     """
     from sotrplib.maps.database import set_processing_start
 

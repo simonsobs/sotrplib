@@ -1,9 +1,6 @@
 """
-Configuration for the streaming, per-map-preprocessed coadding tool
-(sotrp-coadd). Deliberately separate from the main pipeline's Settings
-(sotrplib.config.config): this pipeline shape has no forced photometry,
-blind search, source catalogs, or sifter, so reusing Settings would just
-mean a lot of unused fields.
+Configuration for sotrp-coadd. This tool does not use the pipeline Settings,
+because it has no forced photometry, blind search, catalogs or sifter.
 """
 
 import logging
@@ -22,32 +19,25 @@ from .preprocessors import AllPreprocessorConfigTypes
 
 class CoaddRegistrationConfig(BaseModel):
     coadd_name: str
-    "Human-readable, ideally unique name for this coadd."
+    "A unique name for the coadd."
     coadd_type: str = "depth1_streaming_coadd"
     enabled: bool = True
-    "If False, build and save the coadd but skip writing to mapcat."
+    "If False, write the coadd to FITS but do not register it in mapcat."
 
 
 class CoaddMapCatDatabaseConfig(MapCatDatabaseConfig):
     track_processing: bool = False
-    "A depth-1 map can feed several coadds (weekly, monthly, ...), and its "
-    "single time_domain_processing status belongs to sotrp's own per-map run, "
-    "so by default sotrp-coadd neither skips maps sotrp already completed nor "
-    "writes per-map status. Set true to opt back in."
+    "If True, skip completed maps and write a status for each map."
 
 
 class CoaddSettings(BaseSettings):
     instrument: str = "LAT"
 
     maps: CoaddMapCatDatabaseConfig
-    "Depth-1 maps to read and stream-coadd. map_type must be 'intensity' -- "
-    "this tool does its own per-map matched filtering, so it needs raw "
-    "intensity/inverse-variance maps as input, not already-filtered ones."
+    "The raw depth-1 maps for the coadd (map_type 'intensity')."
 
     preprocessors: list[AllPreprocessorConfigTypes] = []
-    "Applied, in order, to each individual depth-1 map before it is merged "
-    "into the running coadd (e.g. planet_mask, matched_filter, kappa_rho, "
-    "edge_mask)."
+    "The preprocessors to apply to each depth-1 map before the merge."
 
     map_coadder: RhoKappaMapCoadderConfig = Field(
         default_factory=RhoKappaMapCoadderConfig
@@ -56,8 +46,7 @@ class CoaddSettings(BaseSettings):
     map_outputs: list[MapOutputConfig] = []
 
     mapcat_registration: CoaddRegistrationConfig | None = None
-    "If set, register the finished coadd (and links to its constituent "
-    "depth-1 maps) in mapcat's depth_one_coadds table."
+    "If set, register the coadd and its depth-1 map links in mapcat."
 
     log_level: int | str = logging.INFO
 
@@ -67,10 +56,9 @@ class CoaddSettings(BaseSettings):
     def _check_map_type(self) -> "CoaddSettings":
         if self.maps.map_type != "intensity":
             raise ValueError(
-                "CoaddSettings.maps.map_type must be 'intensity' (raw "
-                f"depth-1 maps to preprocess per-map), got '{self.maps.map_type}'. "
-                "Already-filtered rho/kappa maps don't need this tool -- use "
-                "sotrp's own preprocessors/map_coadder config instead."
+                "CoaddSettings.maps.map_type must be 'intensity', not "
+                f"'{self.maps.map_type}'. For rho/kappa maps, use the "
+                "map_coadder config of sotrp."
             )
         return self
 

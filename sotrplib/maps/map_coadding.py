@@ -16,24 +16,17 @@ from sotrplib.maps.core import (
 )
 from sotrplib.maps.preprocessor import MapPreprocessor
 
-# look for patterns of letter+number ; i.e. how SO LAT names optics tubes -- i1, o6, etc.
+# An SO LAT optics tube name: letters and then digits, for example i1 or o6.
 _ARRAY_TOKEN_RE = re.compile(r"[a-zA-Z]+\d+")
 
 
 def _combined_array_label(input_maps: list[ProcessableMap]) -> str | None:
     """
-    Label for a coadd's `array` attribute, reflecting which array(s) actually
-    went into it. A single array's maps keep that array's name (e.g. "i6");
-    maps from several arrays combined together (e.g. via arrays=["coadd"])
-    get a concatenated label of each *unique* array (e.g. "i1i3i6").
+    Return the `array` label of a coadd: the unique input arrays, sorted and
+    joined (for example, "i1i3i6"). One array gives its own name ("i6").
 
-    Re-parses each input map's `.array` string into its atomic tokens (e.g.
-    "i1", "c1") rather than treating the whole string as one opaque unit.
-    This matters for streaming/incremental coadding, where coadd_maps() is
-    called repeatedly as [running_coadd, new_map]: running_coadd.array is
-    itself already a combined multi-array label from the previous merge, so
-    treating it as a single token would keep re-concatenating the same
-    tokens on every merge instead of deduplicating against them.
+    The function splits each `.array` into tube names, because the running
+    coadd in stream_coadd() already has a joined label.
     """
     tokens: set[str] = set()
     for m in input_maps:
@@ -305,52 +298,34 @@ def stream_coadd(
     log: FilteringBoundLogger | None = None,
 ) -> tuple[ProcessableMap | None, list[UUID7], list[UUID7]]:
     """
-    Memory-bounded coadding: build, preprocess (e.g. matched filter), and
-    merge `maps` into a single coadd one at a time, discarding each raw map
-    before moving on to the next, rather than holding every input map in
-    memory at once.
+    Build a coadd from `maps`, one map at a time.
 
-    Unlike RhoKappaMapCoadder.coadd_maps() called on a full list at once
-    (which coadds first and preprocesses the result once), this applies the
-    preprocessor chain to each *individual* depth-1 map before it is folded
-    into the running coadd. That matters for two reasons: moving sources
-    (asteroids, satellites, ...) smear across pixels if many days of raw
-    maps are summed before any per-observation handling, and matched
-    filtering needs each observation's own noise properties rather than
-    those of an already-blurred sum.
+    For each map, the function builds the map, applies the preprocessors and
+    merges the map into the coadd. Then it removes the map from memory.
+    Thus, memory use does not increase with the number of maps. The
+    preprocessors see each map separately. See docs/coadding.md for why.
 
     Parameters
     ----------
     maps : Iterable[ProcessableMap]
-        Unbuilt input maps (e.g. from a MapCatDatabaseReader). Only one
-        map's pixel data is held in memory at a time.
+        The input maps, not built (for example, a MapCatDatabaseReader).
     preprocessors : list[MapPreprocessor]
-        Applied, in order, to each individual map before it is merged in
-        (e.g. planet masking, matched filtering, kappa/rho cleaning, edge
-        masking) -- the same objects used by the main pipeline's
-        `preprocessors` config, just run per map instead of once on the
-        final coadd.
+        The preprocessors to apply, in sequence, to each map.
     coadder : RhoKappaMapCoadder
-        Used to merge each preprocessed map into the running coadd via
-        repeated `coadd_maps([running, filtered])` calls, which is a
-        correct incremental merge: it builds a new CoaddedRhoKappaMap each
-        call rather than mutating `running` in place.
+        Merges each map into the coadd. coadd_maps() returns a new map, so
+        an error in a merge does not change the coadd.
 
-    A map that raises while being built, preprocessed or merged is logged
-    and left out, and coadding carries on with the rest: `coadd_maps()`
-    returns a new map rather than mutating `running`, so a failed merge
-    leaves the running coadd intact.
+    If a map causes an error, the function records it in the log and
+    continues with the next map.
 
     Returns
     -------
-    (coadd, map_ids, failed_map_ids) : The final coadd (None if no map was
-        merged), the `mapcat_id` of every merged map in the order merged,
-        and the `mapcat_id` of every map left out because it errored. Tracked
-        here rather than read off `coadd.map_ids` afterwards, because
-        `coadd_maps()` seeds `map_ids` from `base_map.mapcat_id` (singular) --
-        when `base_map` is itself a running coadd from a previous
-        iteration, that drops everything merged before it.
+    (coadd, map_ids, failed_map_ids) : The coadd (None if no map was
+        merged), the `mapcat_id` of each merged map, and the `mapcat_id` of
+        each map that failed. Do not use `coadd.map_ids` for this, because
+        coadd_maps() keeps only the `mapcat_id` of its base map.
     """
+
     log = log or structlog.get_logger()
 
     running: ProcessableMap | None = None
@@ -394,14 +369,11 @@ def stream_coadd(
 
 class IntensityMapCoadder(MapCoadder):
     """
-    Coadd raw (unfiltered) intensity/inverse-variance depth-1 maps into an
-    inverse-variance-weighted mean map, per frequency/array.
+    Make a coadd of raw depth-1 intensity maps for each frequency and array,
+    with inverse-variance weights.
 
-    Unlike RhoKappaMapCoadder, the inputs are not required to have been
-    matched filtered already; matched filtering (or other preprocessing)
-    should instead be applied to the resulting coadd, e.g. via the pipeline's
-    `preprocessors` config, matching the "coadd then preprocess" workflow in
-    docs/flowchart.md.
+    The inputs have no matched filter. Apply the filter to the coadd with
+    the `preprocessors` config (see docs/flowchart.md).
 
     Parameters
     ----------

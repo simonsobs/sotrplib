@@ -1,7 +1,7 @@
 """
-Maps written to FITS record their flux unit in BUNIT, and maps read back
-from disk take their flux unit from it -- so e.g. a matched-filtered coadd
-in mJy isn't read back as Jy (a silent 1000x error in every flux).
+Maps written to FITS record their flux unit in BUNIT. Maps read from
+disk get their flux unit from BUNIT. Thus, a coadd in mJy is not read
+as Jy.
 """
 
 import numpy as np
