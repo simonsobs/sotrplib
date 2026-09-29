@@ -19,20 +19,24 @@ lightcurvedb.
 See [docs/overview.md](docs/overview.md) for the library modules, the
 commands and the scripts, and [docs/](docs/README.md) for all documentation.
 
-## Install for development
+## Install
 
-sotrplib needs Python 3.12 or later. Make a virtual environment and install
+We like the package `uv` for managing packages and installing repos.
+If you don't have it you can `pip install uv` or just pull it from their site 
+`curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+sotrplib requires Python 3.12 or later. Make a virtual environment and install
 the package:
 
 ```
 uv venv --python=3.12
 source .venv/bin/activate
-uv pip install -e ".[dev]"
-pre-commit install
+uv pip install sotrplib
 ```
 
-If you do not have uv, install it with `pip install uv`. You can also use
-`pip install -e ".[dev]"` without uv.
+if you plan to develop, you should install the dev requirements:
+
+`uv pip install -e ".[dev]"`
 
 The pre-commit hook formats your code with `ruff` when you commit. The tests
 use `pytest`.
@@ -50,6 +54,8 @@ After you install the package, run the pipeline with the `sotrp` command:
 ```
 sotrp -c [path to config file]
 ```
+but the default config expects environment variables for  the
+source catalog (`socat`) and the map catalog (`mapcat`).
 
 - To make coadds, use the `sotrp-coadd` command (see
   [docs/coadding/](docs/coadding/overview.md)).
