@@ -5,7 +5,7 @@ This is the core documentation for the Simons Observatory Time Resolved Pipeline
 the individual pages below for more information.
 
 - [Installation and Development Requirements](installing.md)
-- [Pipeline Overview](overview.md)
+- [Overview: the Library, the Commands and the Scripts](overview.md)
 - [Configuring the Pipeline](configuration.md)
 - [Running on ACT Data](act.md)
 - [Make Coadds of Depth-1 Maps and Analyze Them](coadding.md)

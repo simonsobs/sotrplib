@@ -1,11 +1,23 @@
 # sotrplib
 Simons Observatory Time Resolved Pipeline Library
 
-A pipeline to ingest fits maps, perform pre- and post-processing, forced photometry and blind searching for point sources.
+sotrplib is a Python library for time-domain analysis of SO maps. It has
+classes and functions to read FITS maps, apply pre- and post-processing, do
+forced photometry, do a blind search for point sources, and write the results.
 
-Currently, the sample config output use a pandas database in pickle format.
+The package also installs two commands that use the library to run pipelines
+from a JSON config:
 
-See `scripts/end-to-end/` for an example of a full pipeline run including socat and lightcurvedb
+- `sotrp`: runs the time-resolved pipeline on maps.
+- `sotrp-coadd`: makes coadds of depth-1 maps and registers them in mapcat.
+
+The `scripts/` directory has scripts that are not installed. Some scripts
+write configs and SLURM jobs for the commands. Other scripts use the library
+directly. See `scripts/end_to_end/` for a full pipeline run with socat and
+lightcurvedb.
+
+See [docs/overview.md](docs/overview.md) for the library modules, the
+commands and the scripts, and [docs/](docs/README.md) for all documentation.
 
 ## Development requirements
 
@@ -33,9 +45,12 @@ If a package is missing, you can manually install it with `uv install [package]`
 
 ## Setting up and Running the Pipeline
 
-After following the development instructions above, you will be able to run the pipeline by running the following:
+After you install the package, run the pipeline with the `sotrp` command:
 
 `sotrp -c [path to config file]`
+
+To make coadds, use the `sotrp-coadd` command (see [docs/coadding.md](docs/coadding.md)).
+To use the library in your own Python code, see [docs/act.md](docs/act.md).
 
 The config file is a .json which contains a dictionary of all the pipeline segments and inputs. 
 You can see several examples in the top level directory: `sample_*.json` 
@@ -219,17 +234,17 @@ sotrp -c [path to config file]
 
 This will start a temporary prefect server, if you want a persistent server you can start one as described in the [prefect docs](https://docs.prefect.io/v3/get-started/quickstart#open-source).
 
-The runner can also be specified via the configuration file or as a command-line argument.
+You can also set the runner with the `runner` field of the config file.
 
 ```console
 prefect server start --host [HOSTNAME, e.g., localhost] --port [PORT, e.g., 8899] --background
 ```
 
 This will start a prefect server and provide a URL to the dashboard, in this case http://localhost:8484.
-`sotrp-prefect` can then be invoked either by manually specifying the `PREFECT_API_URL` as an environment variable, e.g.,
+Then run `sotrp` with the prefect runner. Set `PREFECT_API_URL` as an environment variable:
 
 ```console
-PREFECT_API_URL=http://localhost:8484/api sotrp-prefect -c [path to config file]
+PREFECT_API_URL=http://localhost:8484/api sotrp_runner=prefect sotrp -c [path to config file]
 ```
 
 or by using the prefect tool

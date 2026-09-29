@@ -1,18 +1,23 @@
 Coadds
 ======
 
-sotrplib can make coadds of depth-1 maps, for example one coadd for each week
-and each band. Then it can run the time-resolved pipeline (`sotrp`) on these
-coadds. There are two separate steps:
+This page tells how to make coadds of depth-1 maps (for example, one coadd
+for each week and each band) and how to analyze them. There are two steps.
+Each step uses a command that the package installs (see
+[Overview](overview.md)):
 
-1. **Make the coadds** with `sotrp-coadd` (`sotrplib/coadd_cli.py`).
-   Typically, you use `scripts/coadding/submit_week_coadds.py` for this step.
-   The script writes one config and one SLURM job for each time window and
-   each frequency. `sotrp-coadd` writes each coadd to FITS files and registers
-   it in mapcat.
-2. **Analyze the coadds** with `sotrp`. `sotrp` reads the registered coadds
-   from mapcat (`"map_type": "coadd_rhokappa"`, see
+1. **Make the coadds** with the `sotrp-coadd` command
+   (`sotrplib/coadd_cli.py`). The command writes each coadd to FITS files and
+   registers it in mapcat. For many windows, use the
+   `scripts/coadding/submit_week_coadds.py` script. The script writes one
+   `sotrp-coadd` config and one SLURM job for each time window and each
+   frequency.
+2. **Analyze the coadds** with the `sotrp` command. `sotrp` reads the
+   registered coadds from mapcat (`"map_type": "coadd_rhokappa"`, see
    `sample_read_coadds.json`).
+
+The two commands use functions and classes in the `sotrplib` library. You can
+also use them directly in Python. See "Library functions for coadds" below.
 
 ```mermaid
 flowchart TD
@@ -67,9 +72,9 @@ The asteroid mask uses SOCat. Set `socat_client_client_type=db` and
 Make coadds: `sotrp-coadd`
 --------------------------
 
-### Why sotrplib has a separate tool
+### Why there is a separate command
 
-`sotrp` can make a coadd with its `map_coadder`. But `sotrp` makes the coadd
+The `sotrp` command can make a coadd with its `map_coadder`. But `sotrp` makes the coadd
 first and applies the preprocessors after. This order is not correct for a
 science coadd of raw depth-1 maps, for two reasons:
 
@@ -389,6 +394,26 @@ source .venv/bin/activate
 source env_setup   # MAPCAT_* (incl. MAPCAT_DEPTH_ONE_COADD_PARENT), socat, lightcurvedb
 srun --overlap sotrp -c /path/to/f090_config.json > f090_sotrp.log 2>&1
 ```
+
+
+Library functions for coadds
+----------------------------
+
+The commands use these parts of the library. Use them directly to make
+coadds in your own code:
+
+| Function or class | Module | What it does |
+|---|---|---|
+| `stream_coadd()` | `sotrplib.maps.map_coadding` | Builds, preprocesses and merges maps one at a time. |
+| `RhoKappaMapCoadder` | `sotrplib.maps.map_coadding` | Merges rho/kappa maps. |
+| `MapCatDatabaseReader` subclasses | `sotrplib.maps.database` | Select depth-1 maps from mapcat (`time_binning`, `track_processing`). |
+| `register_coadd()` | `sotrplib.maps.database` | Registers a coadd and its map links in mapcat. |
+| `CoaddRhoKappaMapReader` | `sotrplib.maps.database` | Reads registered coadds from mapcat. |
+| `CoaddRhoAndKappaMap` | `sotrplib.maps.core` | A registered coadd, read from disk. |
+| `MapOutputSerializer` | `sotrplib.outputs.core` | Writes map fields to FITS, with `BUNIT`. |
+
+`scripts/coadding/coadd_maps.py` is an example that uses the library
+directly, without a command.
 
 
 Datetimes and sqlmodel versions
