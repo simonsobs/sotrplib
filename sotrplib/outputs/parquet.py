@@ -102,7 +102,9 @@ class ParquetOutput(SourceOutput):
                     if data.observation_mean_time is not None
                     else None,
                     "measurement_id": data.measurement_id,
-                    "frequency": data.frequency,
+                    "frequency": int(data.frequency.to_value("GHz"))
+                    if data.frequency is not None
+                    else None,
                     "module": data.array,
                     "map_id": map_id,
                 }
@@ -126,7 +128,7 @@ class ParquetOutput(SourceOutput):
         if self.output_noise_candidates:
             to_chain.append(sifter_result.noise_candidates)
 
-        for data in itertools.chain(to_chain):
+        for data in itertools.chain(*to_chain):
             output_data.append(
                 {
                     "ra": data.ra.to_value("deg"),
@@ -147,7 +149,9 @@ class ParquetOutput(SourceOutput):
                     if data.observation_mean_time is not None
                     else None,
                     "measurement_id": data.measurement_id,
-                    "frequency": data.frequency,
+                    "frequency": int(data.frequency.to_value("GHz"))
+                    if data.frequency is not None
+                    else None,
                     "module": data.array,
                     "map_id": map_id,
                 }
@@ -175,9 +179,13 @@ class ParquetOutput(SourceOutput):
                     "time": data.observation_mean_time.to_datetime(timezone=UTC)
                     if data.observation_mean_time is not None
                     else None,
-                    "data": data.thumbnail,
-                    "units": str(data.thumbnail_units),
-                    "frequency": data.frequency,
+                    "data": data.thumbnail.tolist()
+                    if data.thumbnail is not None
+                    else None,
+                    "units": str(data.thumbnail_unit),
+                    "frequency": int(data.frequency.to_value("GHz"))
+                    if data.frequency is not None
+                    else None,
                     "module": data.array,
                     "map_id": map_id,
                 }
