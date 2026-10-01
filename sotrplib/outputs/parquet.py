@@ -33,7 +33,7 @@ class ParquetOutput(SourceOutput):
     ):
         self.directory = directory
         self.output_source_candidates = output_source_candidates
-        self.output_transient_candidiates = output_transient_candidates
+        self.output_transient_candidates = output_transient_candidates
         self.output_noise_candidates = output_noise_candidates
         self.log = log or get_logger()
 
@@ -153,7 +153,7 @@ class ParquetOutput(SourceOutput):
         if self.output_source_candidates:
             to_chain.append(sifter_result.source_candidates)
 
-        if self.output_transient_candidiates:
+        if self.output_transient_candidates:
             to_chain.append(sifter_result.transient_candidates)
 
         if self.output_noise_candidates:
