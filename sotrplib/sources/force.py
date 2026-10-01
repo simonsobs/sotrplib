@@ -9,6 +9,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.maps.pointing import PointingModel
+from sotrplib.maps.weights import PoorWeightsCriteria
 from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import gaussian_fit
@@ -101,6 +102,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
     goodness_of_fit_threshold: float | None
     near_source_rel_flux_limit: float | None
     min_flux: u.Quantity | None = None
+    poor_weights: PoorWeightsCriteria | None = None
     log: FilteringBoundLogger
 
     def __init__(
@@ -113,6 +115,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         near_source_rel_flux_limit: float | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
         goodness_of_fit_threshold: float | None = None,
+        poor_weights: PoorWeightsCriteria | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         """
@@ -141,6 +144,9 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         min_flux : astropy.units.Quantity, optional
             Minimum flux required for a source to be considered (default: None).
             If None, no minimum flux is required, and all sources will be considered.
+        poor_weights : PoorWeightsCriteria | None, optional
+            Criteria for flagging sources on poorly-weighted regions of the map
+            (default: None, no check).
         log : FilteringBoundLogger or None, optional
             Logger instance to use (default: None).
         """
@@ -153,6 +159,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.goodness_of_fit_threshold = goodness_of_fit_threshold
         self.min_flux = min_flux
+        self.poor_weights = poor_weights
         self.log = log or get_logger()
 
     def force(
@@ -235,6 +242,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             allowable_center_offset=self.allowable_center_offset,
             flags={"nearby_source": has_nearby_sources},
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
+            poor_weights=self.poor_weights,
             log=self.log,
         )
 
