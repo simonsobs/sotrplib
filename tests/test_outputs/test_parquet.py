@@ -2,8 +2,6 @@
 Tests the parquet output backend.
 """
 
-import uuid
-
 import pandas as pd
 import pytest
 import uuid7
@@ -19,7 +17,7 @@ UTC = TimezoneInfo(tzname="utc")
 
 @pytest.fixture
 def candidate():
-    return make_candidate(uuid.uuid4(), flux_mjy=42.0, with_thumbnail=True)
+    return make_candidate(uuid7.create(), flux_mjy=42.0, with_thumbnail=True)
 
 
 @pytest.fixture
