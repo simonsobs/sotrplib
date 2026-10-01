@@ -2,13 +2,13 @@ from typing import Literal, Optional
 
 import numpy as np
 import structlog
+import uuid7 as uuid
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
 from pixell import reproject
 from pydantic import UUID7, BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
-from uuid7 import uuid7 as uuid
 
 from sotrplib.maps.core import ProcessableMap
 
