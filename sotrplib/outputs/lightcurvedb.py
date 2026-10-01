@@ -142,7 +142,7 @@ class LightcurveDBOutput(SourceOutput):
             return None
 
         fm = FluxMeasurement(
-            measurement_id=uuid7.create(),
+            measurement_id=input_measurement.measurement_id,
             frequency=90,
             module="i1",
             source_id=source_id,

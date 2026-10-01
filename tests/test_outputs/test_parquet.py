@@ -63,16 +63,16 @@ def test_create_lightcurve(output, candidate, with_optional_fields):
 
 @pytest.mark.parametrize("include_noise", [False, True])
 def test_create_sifter_lightcurve_filters_noise(output, candidate, include_noise):
-    transient = candidate.model_copy(update={"measurement_id": "transient"})
-    noise = candidate.model_copy(update={"measurement_id": "noise"})
+    transient = candidate.model_copy(update={"measurement_id": uuid7.create()})
+    noise = candidate.model_copy(update={"measurement_id": uuid7.create()})
     sifter_result = SifterResult([candidate], [transient], [noise])
     output.output_noise_candidates = include_noise
 
     lightcurve = output.create_sifter_lightcurve(sifter_result, map_id=None)
 
-    expected_ids = [candidate.measurement_id, "transient"]
+    expected_ids = [candidate.measurement_id, transient.measurement_id]
     if include_noise:
-        expected_ids.append("noise")
+        expected_ids.append(noise.measurement_id)
     assert lightcurve["measurement_id"].tolist() == expected_ids
 
 

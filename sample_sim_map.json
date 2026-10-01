@@ -34,11 +34,9 @@
     },
     "source_outputs": [
         {
-            "output_type": "cutout",
-            "directory": "."
-        },
-        {
-            "output_type": "pickle",
+            "output_type": "parquet",
+            "output_source_candidates": false,
+            "output_transient_candidates": false,
             "directory": "."
         }
     ]

@@ -25,10 +25,14 @@ class ParquetOutput(SourceOutput):
     def __init__(
         self,
         directory: Path,
+        output_source_candidates: bool = True,
+        output_transient_candidates: bool = True,
         output_noise_candidates: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.directory = directory
+        self.output_source_candidates = output_source_candidates
+        self.output_transient_candidiates = output_transient_candidates
         self.output_noise_candidates = output_noise_candidates
         self.log = log or get_logger()
 
@@ -123,7 +127,13 @@ class ParquetOutput(SourceOutput):
 
         output_data = []
 
-        to_chain = [sifter_result.source_candidates, sifter_result.transient_candidates]
+        to_chain = []
+
+        if self.output_source_candidates:
+            to_chain.append(sifter_result.source_candidates)
+
+        if self.output_transient_candidiates:
+            to_chain.append(sifter_result.transient_candidates)
 
         if self.output_noise_candidates:
             to_chain.append(sifter_result.noise_candidates)

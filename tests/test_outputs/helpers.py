@@ -15,7 +15,6 @@ def make_candidate(
     return MeasuredSource(
         source_id="TestSource",
         catalog_name="socat",
-        measurement_id=str(uuid.uuid4()),
         ra=10.0 * u.deg,
         dec=5.0 * u.deg,
         err_ra=3.6 * u.arcsec,
