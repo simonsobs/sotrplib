@@ -3,6 +3,7 @@ Write direct outputs to parquet files so that they can be easily
 ingested into lightcurvedb by an external process.
 """
 
+import datetime
 import itertools
 from pathlib import Path
 
@@ -36,17 +37,34 @@ class ParquetOutput(SourceOutput):
         self.output_noise_candidates = output_noise_candidates
         self.log = log or get_logger()
 
-    def _sources_filename(self, map_id: UUID7 | None) -> Path:
-        return self.directory / f"{map_id}_sources.parquet"
+    def _get_map_stub_for_filename(self, map_name: str, mapcat_id: UUID7 | None) -> str:
+        """
+        Get a stub for the filename based on the map name and mapcat_id.
+        Prefer the human-readable map_name for filenames; fall back to the
+        real mapcat_id (stringified) if a name isn't available.
+        """
+        if mapcat_id is not None:
+            return str(mapcat_id)
+        if map_name:
+            return map_name
 
-    def _lightcurve_filename(self, map_id: UUID7 | None) -> Path:
-        return self.directory / f"{map_id}_lightcurve.parquet"
+        return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
-    def _cutout_filename(self, map_id: UUID7 | None) -> Path:
-        return self.directory / f"{map_id}_cutouts.parquet"
+    def _sources_filename(self, map_id: UUID7 | None, map_name: str) -> Path:
+        name = self._get_map_stub_for_filename(map_name=map_name, mapcat_id=map_id)
+        return self.directory / f"{name}_sources.parquet"
 
-    def _ancillary_sources_filename(self, map_id: UUID7 | None) -> Path:
-        return self.directory / f"{map_id}_ancillary_sources.parquet"
+    def _lightcurve_filename(self, map_id: UUID7 | None, map_name: str) -> Path:
+        name = self._get_map_stub_for_filename(map_name=map_name, mapcat_id=map_id)
+        return self.directory / f"{name}_lightcurve.parquet"
+
+    def _cutout_filename(self, map_id: UUID7 | None, map_name: str) -> Path:
+        name = self._get_map_stub_for_filename(map_name=map_name, mapcat_id=map_id)
+        return self.directory / f"{name}_cutouts.parquet"
+
+    def _ancillary_sources_filename(self, map_id: UUID7 | None, map_name: str) -> Path:
+        name = self._get_map_stub_for_filename(map_name=map_name, mapcat_id=map_id)
+        return self.directory / f"{name}_ancillary_sources.parquet"
 
     def create_sources(self, measured: list[MeasuredSource]) -> pd.DataFrame:
         """
@@ -86,6 +104,9 @@ class ParquetOutput(SourceOutput):
         output_data = []
 
         for data in measured:
+            if data.flux is None:
+                continue
+
             output_data.append(
                 {
                     "ra": data.ra.to_value("deg"),
@@ -139,6 +160,9 @@ class ParquetOutput(SourceOutput):
             to_chain.append(sifter_result.noise_candidates)
 
         for data in itertools.chain(*to_chain):
+            if data.flux is None:
+                continue
+
             output_data.append(
                 {
                     "ra": data.ra.to_value("deg"),
