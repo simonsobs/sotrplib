@@ -7,12 +7,12 @@ from typing import Literal
 
 import numpy as np
 import structlog
-import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from astropy.time import Time
 from pixell import utils as pixell_utils
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
@@ -62,7 +62,7 @@ class SourceCatalog(ABC):
         return
 
     @abstractmethod
-    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
+    def source_by_id(self, id: str | UUID7) -> RegisteredSource:
         """
         Get the information about a source by its internal ID.
         """
@@ -200,7 +200,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             sources = [s for s in sources if s.flux >= flux_lower_limit]
         return sources
 
-    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
+    def source_by_id(self, id: str | UUID7) -> RegisteredSource:
         source_ids = [s.source_id for s in self.sources]
         if id not in source_ids:
             return None

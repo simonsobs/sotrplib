@@ -1,165 +1,137 @@
 # sotrplib
 Simons Observatory Time Resolved Pipeline Library
 
-A pipeline to ingest fits maps, perform pre- and post-processing, forced photometry and blind searching for point sources.
+sotrplib is a Python library for time-domain analysis of SO maps. Its classes
+and functions read FITS maps and apply pre- and post-processing. They also do
+forced photometry and a blind search for point sources, and write the results.
 
-Currently, the sample config output use a pandas database in pickle format.
+The package also installs two commands that use the library to run pipelines
+from a JSON config:
 
-See `scripts/end-to-end/` for an example of a full pipeline run including socat and lightcurvedb
+- `sotrp`: runs the time-resolved pipeline on maps.
+- `sotrp-coadd`: makes coadds of depth-1 maps and registers them in mapcat.
 
-## Development requirements
+The `scripts/` directory has scripts that are not installed. Some scripts
+write configs and SLURM jobs for the commands. Other scripts use the library
+directly. See `scripts/end_to_end/` for a full pipeline run with socat and
+lightcurvedb.
 
-To get ready for development, create a virtual enviroment and install the package:
+See [docs/overview.md](docs/overview.md) for the library modules, the
+commands and the scripts, and [docs/](docs/README.md) for all documentation.
+
+## Install
+
+We like the package `uv` for managing packages and installing repos.
+If you don't have it you can `pip install uv` or just pull it from their site 
+`curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+sotrplib requires Python 3.12 or later. Make a virtual environment and install
+the package:
+
 ```
 uv venv --python=3.12
 source .venv/bin/activate
-uv pip install -e ".[dev]"
-pre-commit install
+uv pip install sotrplib
 ```
-If you don't have uv installed, you can install it with `pip install uv`, or
-just go ahead and use `pip install -e ".[dev]"`. 
 
-We use `ruff` for formatting. When you go to commit your code, it will automatically be 
-formatted thanks to the pre-commit hook.
+if you plan to develop, you should install the dev requirements:
 
-Tests are performed using `pytest`.
+`uv pip install -e ".[dev]"`
 
-## extra required packages
-Any required packages should be listed in `pyproject.toml`
+The pre-commit hook formats your code with `ruff` when you commit. The tests
+use `pytest`.
 
-If a package is missing, you can manually install it with `uv install [package]`. Please then report this on the GitHub
-[issue tracker](https://github.com/simonsobs/sotrplib/issues).
+## Missing packages
+
+`pyproject.toml` lists all the necessary packages. If a package is missing,
+install it with `uv pip install [package]`. Then report the problem on the
+GitHub [issue tracker](https://github.com/simonsobs/sotrplib/issues).
+
+## Running the pipeline
+
+The pipeline can be run with the `sotrp` command:
+
+```
+sotrp -c [path to config file]
+```
+
+The default config expects environment variables to point
+to the source catalog (`socat`) and the map catalog (`mapcat`).
+
+The config file is a JSON file with the settings for each part of the
+pipeline. The top directory has example configs (`sample_*.json`).
+`sotrplib/cli.py` reads the file into the `Settings` model
+(`sotrplib/config/config.py`). The model makes the library objects and gives
+them to a runner (`sotrplib/handlers/`). See
+[docs/configuration.md](docs/configuration.md) for the config fields and the
+examples.
+
+- To make coadds, use the `sotrp-coadd` command (see
+  [docs/coadding/](docs/coadding/overview.md)).
+- To use the library in your own Python code, see [docs/act.md](docs/act.md).
 
 
-## Setting up and Running the Pipeline
+### Setting up your source catalog (socat)
 
-After following the development instructions above, you will be able to run the pipeline by running the following:
+sotrplib uses [socat](https://github.com/simonsobs/socat/) for the source
+catalog. socat installs commands that add catalogs to its database. For
+example, `socat-act-fits` adds an ACT FITS catalog. socat can also add
+solar-system object ephemerides from JPL Horizons in parquet format. See the
+socat README for more info.
 
-`sotrp -c [path to config file]`
+Set the socat environment variables:
 
-The config file is a .json which contains a dictionary of all the pipeline segments and inputs. 
-You can see several examples in the top level directory: `sample_*.json` 
-
-A config file is read in by a basic handler (see `sotrplib/handlers/basic.py`), which de-serializes to Python objects using the
-code in `sotrplib/config/config.py` and the relevant config files.
-
-### Source Catalog (socat)
-
-We have implemented the source catalog using `socat` (https://github.com/simonsobs/socat/).
-To make things work with an ACT type catalog, socat includes a runnable script `socat-act-fits` which ingests the .fits file into the socat database.
-One can also ingest solar system object ephemerides using a parquet file containing JPL horizons output. See `socat` documentation for this info.
-
-You could also ingest files directly into a `RegisteredSourceCatalog`, though it is preferred to load them directly into an socat db.
-One would need to create a custom `SourceCatalog` object and wire it through the configuration path to load on-the-fly.
-See `source_catalog/source_catalog.py` for some examples of loading custom files.
-
-To use socat as a proper database and ingest solar system objects, follow the instructions in the socat README.
-You'll want to set up the environment variables appropriately -- something like:
 ```
 export socat_client_client_type=db
 export socat_model_database_name=socat.db
 ```
 
-Then in the config JSON file, the source catalogs list is just a single socat db:
+Then use one socat catalog in the config:
 
 ```
-    "source_catalogs": [
-        {
-            "catalog_type": "socat"
-        }
-    ],
+"source_catalogs": [
+    {
+        "catalog_type": "socat"
+    }
+],
 ```
 
-This example shows that the source catalog is of type "socat" which means the system will 
-look for the environment variables to define the type and name of the catalog.
+The `socat` catalog type gets the type and the name of the database from the
+environment variables.
 
-### Map Catalog (mapcat)
+You can also load a catalog file directly into a `RegisteredSourceCatalog`
+(`sotrplib/source_catalog/core.py`). To do this, make a custom
+`SourceCatalog` and add a config model for it. See
+`sotrplib/source_catalog/source_catalog.py` for examples. We recommend the
+socat database.
 
-One way to ingest maps into the pipeline is to manually add them into the config, like the example `sample_read_unfiltered_map.json` . 
-This is convenient for testing a specific map, or a one-off, etc. 
+### Setting up your map catalog (mapcat)
 
-However, running on a full set of maps and keeping track of map metadata, etc. requires a map database.
-We call this `mapcat` (https://github.com/simonsobs/mapcat) and again have an ingestion script for ACT-like map sets.
+You can give maps directly in the config, as in
+`sample_read_unfiltered_map.json`. This is useful to test one map.
 
-To ingest ACT depth1 maps into a mapcat sqlite db, you would run the script `actingest` after setting the relevant mapcat environment variables; 
+For a full set of maps, use the [mapcat](https://github.com/simonsobs/mapcat)
+database. `mapcat` maintains the metadata of each map. To add ACT depth-1 maps to a
+mapcat SQLite database, set these environment variables and run the `actingest`
+command:
 
 ```
 export MAPCAT_DEPTH_ONE_PARENT=/path/to/depth1/maps
 export MAPCAT_DATABASE_NAME=/path/to/mapcat.sqlite
 ```
-This tells the map catalog where to look for the maps and where the database lives. 
 
-With the existance of a mapcat database, the pipeline can be configured to read from there via :
+The first variable gives the root directory of the depth-1 maps. The second
+variable gives the database file.
 
-```json
-"maps": {
-  "map_generator_type": "mapcat_database",
-  "number_to_read": 1,
-  "instrument": "SOLAT",
-  "frequency": "f090",
-  "array": "i6",
-  "rerun": "True"
-},
+`sotrp-coadd` stores the coadd paths relative to a different root directory.
+Thus, the coadds can be in a different directory from the depth-1 maps:
 
 ```
-for example, which tells the runner to read in 1 map at f090, from array i6 and to rerun it if it has already been analyzed.
-
-### How to configure the pipeline
-
-The .json config file is from where the pipeline runner reads.
-Allowed methods and their properties can be accessed in the `sotrplib/config/` directory.
-Each file contains the relevant configurations and required methods for each type of object; i.e. maps, preprocessors, forced_photometries, etc.
-These configurations are read-in, converted from JSON to pydantic models (`sotrplib/config/config.py`), and used by the pipeline handler to construct the pipeline.
-The basic handler can be found in `sotrplib/handlers/base.py`
-
-Let's follow one example through from .json config to understand what is happening.
-We'll use maps.
-The pipeline expects maps to be a list of `ProcessableMap` objects.
-You'll notice in the samples there are two different settings for `maps`; a dictionary or a list of dictionaries.
-If the converting function sees a list, it knows that they are lists of map objects, so it processes each one individually.
-If the conversion sees a dictionary it knows to expect a map_generator, which, in the case of mapcat_database, it will query the `mapcat.sqlite` db and construct a list of map objects.
-
-Let's take the case of `sample_read_unfiltered_map.json`. Here we have 
-
-```json
-"maps": [
-  {
-    "map_type": "inverse_variance",
-    "intensity_map_path": "./depth1_1538613353_pa5_f090_map.fits",
-    "weights_map_path": "./15386/depth1_1538613353_pa5_f090_ivar.fits",
-    "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
-    "frequency": "f090",
-    "band": "pa5",
-    "intensity_units": "K",
-    "box": [
-      {
-        "ra": {
-          "value": 138.52,
-          "unit": "deg"
-        },
-        "dec": {
-          "value": -13.095,
-          "unit": "deg"
-        }
-      },
-      {
-        "ra": {
-          "value": 140.52,
-          "unit": "deg"
-        },
-        "dec": {
-          "value": -11.095,
-          "unit": "deg"
-        }
-      }
-    ]
-  }
-],
+export MAPCAT_DEPTH_ONE_COADD_PARENT=/path/to/coadds
 ```
-so we can see `map_type` is `inverse_variance`. Going to `config/maps.py`, you can find where map_type is inverse_variance; i.e. the `InverseVarianceMapConfig` class.
-You can see what the required / default arguments are and what the pipeline does when it converts that input `to_map` -- it creates a ProcessableMap class of subclass IntensityAndInverseVarianceMap.
 
-If you look at the other example, `sample_read_mapcat.json`, you will see 
+To read maps from mapcat, use the `mapcat_database` map generator in the
+config:
 
 ```json
 "maps": {
@@ -171,69 +143,81 @@ If you look at the other example, `sample_read_mapcat.json`, you will see
   "rerun": "True"
 },
 ```
-which clearly shows `map_generator_type` as the descriptor, not `map_type`. This implies that it will generate maps from the source (which is listed as mapcat_databse here).
-Checking `config/maps.py` we see the subclass with that map_generator_type is `MapCatDatabaseConfig` which returns a `MapCatDatabaseReader` instance; returning a list of map objects corresponding to what is configured.
 
-Once the map objects are loaded, the pipeline handler then builds the maps and injects them into the rest of the pipeline.
+This example reads one f090 map of array i6. With `rerun`, it also reads a
+map that the pipeline processed before.
 
-The various other components of the pipeline are built in a similar manner, for example map preprocessing is built by configuring a list of `PreProcessor` objects, etc.
+### Pipeline outputs
 
-The pipeline then runs as per your config, and the steps in the handler script.
+There is no default output. Set the outputs in the config:
 
-### Pipeline Outputs
+- `source_outputs`: the measured sources. The output types are `pickle`,
+  `json`, `cutout`, `lightcurvedb` and `lightserve`.
+- `map_outputs`: the map fields as FITS files.
 
-The current default is to output to pickle files because these are simply converted from the pydantic models transferred between the pipeline components in production mode.
+The code for the outputs is in `sotrplib/outputs/`. The `pickle` output
+(`PickleSerializer`) writes dictionaries of lists of `MeasuredSource`
+objects. If you simulate sources, it also writes the `InjectedSource`
+objects. A `MeasuredSource` contains the measurement and a cutout.
 
-The output format can be found in `outputs/core.py`, and in the default case is the `PickleSerializer`.
+A `MeasuredSource` or a `RegisteredSource` can have a list of `CrossMatch`
+objects (`sotrplib/sources/sources.py`). Each `CrossMatch` is a match to a
+catalog. To find a source by its identifier (for example, in socat or
+lightcurvedb), use `CrossMatch.catalog_idx`. Do not use
+`CrossMatch.source_id`:
 
-Essentially this is just dictionaries of lists of MeasuredSource objects (and InjectedSource objects in the case you're simulating sources).
+- `catalog_idx` is the unique, stable identifier of the source in the
+  catalog (for example, a socat UUID).
+- `source_id` can be a name (for example, "Ceres" for a solar-system
+  object). It is not always unique.
 
-These MeasuredSource objects contain information about their measurement and even cutouts.
+### Run with prefect
 
-A `MeasuredSource`/`RegisteredSource` may carry a list of `CrossMatch` objects (see
-`sotrplib/sources/sources.py`) recording catalog matches. When looking up a source by
-identifier (e.g. joining against socat or lightcurvedb), use `CrossMatch.catalog_idx`,
-not `CrossMatch.source_id` -- `catalog_idx` is the catalog's unique, stable identifier
-(e.g. a socat UUID), while `source_id` is sometimes just a human-readable name (e.g.
-"Ceres" for SSO/monitored sources) and is not guaranteed to be unique.
+[prefect](https://docs.prefect.io/v3/get-started) is a workflow orchestrator.
+It has a web interface to monitor and run the pipeline.
 
+1. Install the `prefect` extra:
 
-### Running with prefect
+   ```console
+   uv sync --extra prefect
+   source .venv/bin/activate
+   ```
 
-[prefect](https://docs.prefect.io/v3/get-started) is a workflow orchestrator that provides a conveneient web interface for monitoring and running the pipeline.
-Installing and invoking the pipeline using prefect follows the same basic pattern as above.
+2. Run `sotrp` with the prefect runner:
 
-```console
-uv sync --extra prefect
-source .venv/bin/activate
-export sotrp_runner=prefect
-sotrp -c [path to config file]
-```
+   ```console
+   export sotrp_runner=prefect
+   sotrp -c [path to config file]
+   ```
 
-This will start a temporary prefect server, if you want a persistent server you can start one as described in the [prefect docs](https://docs.prefect.io/v3/get-started/quickstart#open-source).
+   You can also set `"runner": "prefect"` in the config file.
 
-The runner can also be specified via the configuration file or as a command-line argument.
+This procedure starts a temporary prefect server. To use a persistent server,
+do these steps:
 
-```console
-prefect server start --host [HOSTNAME, e.g., localhost] --port [PORT, e.g., 8899] --background
-```
+1. Start the server (see the
+   [prefect docs](https://docs.prefect.io/v3/get-started/quickstart#open-source)):
 
-This will start a prefect server and provide a URL to the dashboard, in this case http://localhost:8484.
-`sotrp-prefect` can then be invoked either by manually specifying the `PREFECT_API_URL` as an environment variable, e.g.,
+   ```console
+   prefect server start --host localhost --port 8484 --background
+   ```
 
-```console
-PREFECT_API_URL=http://localhost:8484/api sotrp-prefect -c [path to config file]
-```
+   The dashboard is at http://localhost:8484.
 
-or by using the prefect tool
+2. Set `PREFECT_API_URL` to the server. Use an environment variable:
 
-```console
-prefect config set PREFECT_API_URL=http://localhost:8484/api
-```
+   ```console
+   PREFECT_API_URL=http://localhost:8484/api sotrp_runner=prefect sotrp -c [path to config file]
+   ```
 
-The server can be stopped with
+   Or use the prefect command:
 
-```console
-prefect server stop
-```
+   ```console
+   prefect config set PREFECT_API_URL=http://localhost:8484/api
+   ```
 
+3. When you are done, stop the server:
+
+   ```console
+   prefect server stop
+   ```
