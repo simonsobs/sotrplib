@@ -244,7 +244,10 @@ class ParquetOutput(SourceOutput):
         """
 
         output_sources = self.create_sources(forced_photometry_candidates)
-        output_sources.to_parquet(self._sources_filename(mapcat_id), index="source_id")
+        output_sources.to_parquet(
+            self._sources_filename(map_id=mapcat_id, map_name=map_name),
+            index="source_id",
+        )
 
         output_lightcurve = self.create_lightcurve(
             forced_photometry_candidates, map_id=mapcat_id
@@ -256,14 +259,16 @@ class ParquetOutput(SourceOutput):
             [output_lightcurve, output_sifter_lightcurve], ignore_index=True
         )
         combined_df.to_parquet(
-            self._lightcurve_filename(mapcat_id), index="measurement_id"
+            self._lightcurve_filename(map_id=mapcat_id, map_name=map_name),
+            index="measurement_id",
         )
 
         output_cutouts = self.create_cutouts(
             forced_photometry_candidates, map_id=mapcat_id
         )
         output_cutouts.to_parquet(
-            self._cutout_filename(mapcat_id), index="measurement_id"
+            self._cutout_filename(map_id=mapcat_id, map_name=map_name),
+            index="measurement_id",
         )
 
         return
