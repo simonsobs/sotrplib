@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.time import Time, TimeDelta
+from astropy.time import Time, TimeDelta, TimezoneInfo
 from mapcat import alembic_location
 from mapcat.database import DepthOneMapTable
 from pixell import enmap
@@ -29,6 +29,8 @@ from sotrplib.sims.sources.core import (
     RandomSourceSimulationParameters,
 )
 from sotrplib.utils.utils import get_fwhm
+
+UTC = TimezoneInfo(tzname="utc")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -199,13 +201,13 @@ def create_test_maps(mapset_with_sources):
             frequency=freq,
             ctime=Time(
                 np.mean(cur_map.time_mean), format="unix", scale="utc"
-            ).to_datetime(),
+            ).to_datetime(timezone=UTC),
             start_time=Time(
                 np.min(cur_map.time_mean), format="unix", scale="utc"
-            ).to_datetime(),
+            ).to_datetime(timezone=UTC),
             stop_time=Time(
                 np.max(cur_map.time_mean), format="unix", scale="utc"
-            ).to_datetime(),
+            ).to_datetime(timezone=UTC),
         )
         d1tables.append(data)
 

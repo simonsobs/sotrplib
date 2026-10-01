@@ -7,6 +7,7 @@ import itertools
 from pathlib import Path
 
 import pandas as pd
+from astropy.time import TimezoneInfo
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 from uuid7 import UUID as UUID7
@@ -16,6 +17,8 @@ from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
+
+UTC = TimezoneInfo(tzname="utc")
 
 
 class ParquetOutput(SourceOutput):
@@ -83,15 +86,21 @@ class ParquetOutput(SourceOutput):
                 {
                     "ra": data.ra.to_value("deg"),
                     "dec": data.dec.to_value("deg"),
-                    "ra_uncertainty": data.err_ra.to_value("deg"),
-                    "dec_uncertainty": data.err_dec.to_value("deg"),
+                    "ra_uncertainty": data.err_ra.to_value("deg")
+                    if data.err_ra is not None
+                    else None,
+                    "dec_uncertainty": data.err_dec.to_value("deg")
+                    if data.err_dec is not None
+                    else None,
                     "source_id": data.source_id,
                     "name": data.catalog_name,
                     "flux": data.flux.to_value("mJy"),
                     "flux_err": data.err_flux.to_value("mJy")
                     if data.err_flux is not None
                     else None,
-                    "time": data.observation_mean_time.to_datetime(),
+                    "time": data.observation_mean_time.to_datetime(timezone=UTC)
+                    if data.observation_mean_time is not None
+                    else None,
                     "measurement_id": data.measurement_id,
                     "frequency": data.frequency,
                     "module": data.array,
@@ -122,15 +131,21 @@ class ParquetOutput(SourceOutput):
                 {
                     "ra": data.ra.to_value("deg"),
                     "dec": data.dec.to_value("deg"),
-                    "ra_uncertainty": data.err_ra.to_value("deg"),
-                    "dec_uncertainty": data.err_dec.to_value("deg"),
+                    "ra_uncertainty": data.err_ra.to_value("deg")
+                    if data.err_ra is not None
+                    else None,
+                    "dec_uncertainty": data.err_dec.to_value("deg")
+                    if data.err_dec is not None
+                    else None,
                     "source_id": data.source_id,
                     "name": data.catalog_name,
                     "flux": data.flux.to_value("mJy"),
                     "flux_err": data.err_flux.to_value("mJy")
                     if data.err_flux is not None
                     else None,
-                    "time": data.observation_mean_time.to_datetime(),
+                    "time": data.observation_mean_time.to_datetime(timezone=UTC)
+                    if data.observation_mean_time is not None
+                    else None,
                     "measurement_id": data.measurement_id,
                     "frequency": data.frequency,
                     "module": data.array,
@@ -157,7 +172,9 @@ class ParquetOutput(SourceOutput):
                     "source_id": data.source_id,
                     "measurement_id": data.measurement_id,
                     "name": data.catalog_name,
-                    "time": data.observation_mean_time.to_datetime(),
+                    "time": data.observation_mean_time.to_datetime(timezone=UTC)
+                    if data.observation_mean_time is not None
+                    else None,
                     "data": data.thumbnail,
                     "units": str(data.thumbnail_units),
                     "frequency": data.frequency,

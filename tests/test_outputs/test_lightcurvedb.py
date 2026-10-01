@@ -14,17 +14,15 @@ direct for asserting exactly what got written.
 import asyncio
 import uuid
 
-import astropy.units as u
-import numpy as np
 import pandas as pd
 import pytest
-from astropy.time import Time
 from lightcurvedb.config import Settings
 from lightcurvedb.models.source import Source
 
 from sotrplib.outputs.lightcurvedb import LightcurveDBOutput
 from sotrplib.sifter.core import SifterResult
-from sotrplib.sources.sources import CrossMatch, MeasuredSource
+
+from .helpers import make_candidate
 
 
 @pytest.fixture
@@ -36,27 +34,17 @@ def _register_socat_source(settings: Settings, socat_id: uuid.UUID) -> uuid.UUID
     async def _create():
         async with settings.backend as backend:
             return await backend.sources.create(
-                Source(socat_id=socat_id, name="Test", ra=10.0, dec=5.0, variable=False)
+                Source(
+                    source_id=socat_id,
+                    socat_id=socat_id,
+                    name="Test",
+                    ra=10.0,
+                    dec=5.0,
+                    variable=False,
+                )
             )
 
     return asyncio.run(_create())
-
-
-def make_candidate(socat_id: uuid.UUID, flux_mjy: float, with_thumbnail: bool):
-    return MeasuredSource(
-        ra=10.0 * u.deg,
-        dec=5.0 * u.deg,
-        flux=flux_mjy * u.mJy,
-        err_flux=1.0 * u.mJy,
-        observation_mean_time=Time("2025-09-10T00:00:00"),
-        crossmatches=[
-            CrossMatch(
-                source_id="TestSource", catalog_idx=socat_id, catalog_name="socat"
-            )
-        ],
-        thumbnail=np.zeros((4, 4)) if with_thumbnail else None,
-        thumbnail_unit=u.mJy if with_thumbnail else None,
-    )
 
 
 def test_output_uploads_flux_measurement_with_uuid_crossmatch(

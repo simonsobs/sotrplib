@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 import uuid7
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.time import Time, TimeDelta
+from astropy.time import Time, TimeDelta, TimezoneInfo
 
 # Libraries are loaded here because of the external database
 # connection; this only happens once, and we don't want it to
@@ -34,6 +34,8 @@ from sotrplib.sources.sources import RegisteredSource
 
 from .core import FluxAndSNRMap, IntensityAndInverseVarianceMap, RhoAndKappaMap
 from .pointing import PointingModel
+
+UTC = TimezoneInfo(tzname="utc")
 
 
 class MapCatDatabaseReader(ABC):
@@ -124,11 +126,11 @@ class MapCatDatabaseReader(ABC):
 
         if self.start_time is not None:
             query = query.where(
-                DepthOneMapTable.stop_time >= self.start_time.to_datetime()
+                DepthOneMapTable.stop_time >= self.start_time.to_datetime(timezone=UTC)
             )
         if self.end_time is not None:
             query = query.where(
-                DepthOneMapTable.start_time <= self.end_time.to_datetime()
+                DepthOneMapTable.start_time <= self.end_time.to_datetime(timezone=UTC)
             )
 
         if self.map_ids:
@@ -296,7 +298,7 @@ def check_if_processed(
         if (r.processing_status == completed_status) | (
             r.processing_status == processing_status
         ) & (
-            (Time.now().to_datetime() - r.processing_start).total_seconds()
+            (Time.now().to_datetime(timezone=UTC) - r.processing_start).total_seconds()
             < stale_limit.to_value("s")
         ):
             return True
@@ -318,7 +320,7 @@ def set_processing_start(map_id: UUID7, session=None):
             )
         ]
     for r in session_results:
-        r.processing_start = Time.now().to_datetime()
+        r.processing_start = Time.now().to_datetime(timezone=UTC)
         r.processing_status = "processing"
 
         session.add(r)
@@ -407,7 +409,7 @@ def set_processing_end(map_id: UUID7, session=None):
             f"No processing_start status found for map_id {map_id} when trying to set processing_end."
         )
     for r in session_result:
-        r.processing_end = Time.now().to_datetime()
+        r.processing_end = Time.now().to_datetime(timezone=UTC)
         r.processing_status = "completed"
         session.add(r)
         session.commit()
