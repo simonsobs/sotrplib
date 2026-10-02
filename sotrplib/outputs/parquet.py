@@ -256,7 +256,7 @@ class ParquetOutput(SourceOutput):
             sifter_result, map_id=mapcat_id
         )
         combined_df = pd.concat(
-            [output_lightcurve, output_sifter_lightcurve], ignore_index=True
+            [output_lightcurves, output_sifter_lightcurves], ignore_index=True
         )
         combined_df.to_parquet(
             self._lightcurve_filename(map_id=mapcat_id, map_name=map_name),
