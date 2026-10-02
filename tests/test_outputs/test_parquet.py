@@ -66,7 +66,7 @@ def test_create_sifter_lightcurve_filters_noise(output, candidate, include_noise
     sifter_result = SifterResult([candidate], [transient], [noise])
     output.output_noise_candidates = include_noise
 
-    lightcurve = output.create_sifter_lightcurve(sifter_result, map_id=None)
+    lightcurve = output.create_sifter_lightcurves(sifter_result, map_id=None)
 
     expected_ids = [candidate.measurement_id, transient.measurement_id]
     if include_noise:
