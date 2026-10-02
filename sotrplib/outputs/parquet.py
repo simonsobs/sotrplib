@@ -249,10 +249,10 @@ class ParquetOutput(SourceOutput):
             index="source_id",
         )
 
-        output_lightcurve = self.create_lightcurve(
+        output_lightcurves = self.create_lightcurves(
             forced_photometry_candidates, map_id=mapcat_id
         )
-        output_sifter_lightcurve = self.create_sifter_lightcurve(
+        output_sifter_lightcurves = self.create_sifter_lightcurves(
             sifter_result, map_id=mapcat_id
         )
         combined_df = pd.concat(
