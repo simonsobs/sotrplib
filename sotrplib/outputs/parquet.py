@@ -94,7 +94,7 @@ class ParquetOutput(SourceOutput):
 
         return df
 
-    def create_lightcurve(
+    def create_lightcurves(
         self, measured: list[MeasuredSource], map_id: UUID7 | None
     ) -> pd.DataFrame:
         """
