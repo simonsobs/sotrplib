@@ -2,6 +2,7 @@ from itertools import combinations
 from typing import Iterable
 
 import numpy as np
+import structlog
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from mapcat.pointing.const import ConstantPointingModel
@@ -304,6 +305,12 @@ class BaseRunner:
         decorated with the flow as prefect needs these to be defined in advance.
         """
         maps = list(maps)
+        if not maps:
+            structlog.get_logger().warning(
+                "pipeline.no_maps_found",
+                message="No input maps. Check the map configuration or database query.",
+            )
+            return []
         sky_box = self.extract_bounding_box(maps)
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(

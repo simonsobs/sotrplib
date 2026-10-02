@@ -31,6 +31,8 @@ class FixedSourceGeneratorConfig(SourceSimulationConfig):
     max_flux: AstroPydanticQuantity[u.Jy]
     number: int
     catalog_fraction: float = 1.0
+    edge_pad: AstroPydanticQuantity[u.arcmin] = 0.0 * u.arcmin
+    "Do not generate sources within this distance of the map edge."
 
     def to_simulator(
         self, log: FilteringBoundLogger | None = None
@@ -40,6 +42,7 @@ class FixedSourceGeneratorConfig(SourceSimulationConfig):
             max_flux=self.max_flux,
             number=self.number,
             catalog_fraction=self.catalog_fraction,
+            edge_pad=self.edge_pad,
             log=log,
         )
 
