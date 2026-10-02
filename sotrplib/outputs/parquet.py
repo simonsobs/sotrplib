@@ -56,7 +56,7 @@ class ParquetOutput(SourceOutput):
 
     def _lightcurve_filename(self, map_id: UUID7 | None, map_name: str) -> Path:
         name = self._get_map_stub_for_filename(map_name=map_name, mapcat_id=map_id)
-        return self.directory / f"{name}_lightcurve.parquet"
+        return self.directory / f"{name}_lightcurves.parquet"
 
     def _cutout_filename(self, map_id: UUID7 | None, map_name: str) -> Path:
         name = self._get_map_stub_for_filename(map_name=map_name, mapcat_id=map_id)
