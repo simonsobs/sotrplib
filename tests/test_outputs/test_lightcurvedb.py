@@ -12,19 +12,17 @@ direct for asserting exactly what got written.
 """
 
 import asyncio
-import uuid
 
-import astropy.units as u
-import numpy as np
 import pandas as pd
 import pytest
-from astropy.time import Time
+import uuid7
 from lightcurvedb.config import Settings
 from lightcurvedb.models.source import Source
 
 from sotrplib.outputs.lightcurvedb import LightcurveDBOutput
 from sotrplib.sifter.core import SifterResult
-from sotrplib.sources.sources import CrossMatch, MeasuredSource
+
+from .helpers import make_candidate
 
 
 @pytest.fixture
@@ -32,37 +30,27 @@ def lightcurvedb_settings(tmp_path):
     return Settings(backend_type="parquet", parquet_base_path=str(tmp_path))
 
 
-def _register_socat_source(settings: Settings, socat_id: uuid.UUID) -> uuid.UUID:
+def _register_socat_source(settings: Settings, socat_id: uuid7.UUID) -> uuid7.UUID:
     async def _create():
         async with settings.backend as backend:
             return await backend.sources.create(
-                Source(socat_id=socat_id, name="Test", ra=10.0, dec=5.0, variable=False)
+                Source(
+                    source_id=socat_id,
+                    socat_id=socat_id,
+                    name="Test",
+                    ra=10.0,
+                    dec=5.0,
+                    variable=False,
+                )
             )
 
     return asyncio.run(_create())
 
 
-def make_candidate(socat_id: uuid.UUID, flux_mjy: float, with_thumbnail: bool):
-    return MeasuredSource(
-        ra=10.0 * u.deg,
-        dec=5.0 * u.deg,
-        flux=flux_mjy * u.mJy,
-        err_flux=1.0 * u.mJy,
-        observation_mean_time=Time("2025-09-10T00:00:00"),
-        crossmatches=[
-            CrossMatch(
-                source_id="TestSource", catalog_idx=socat_id, catalog_name="socat"
-            )
-        ],
-        thumbnail=np.zeros((4, 4)) if with_thumbnail else None,
-        thumbnail_unit=u.mJy if with_thumbnail else None,
-    )
-
-
 def test_output_uploads_flux_measurement_with_uuid_crossmatch(
     tmp_path, lightcurvedb_settings
 ):
-    socat_id = uuid.uuid4()
+    socat_id = uuid7.create()
     lc_source_id = _register_socat_source(lightcurvedb_settings, socat_id)
 
     candidate = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
@@ -88,7 +76,7 @@ def test_output_links_cutout_to_correct_measurement(tmp_path, lightcurvedb_setti
     not any other measurement in the same batch -- this is what broke when
     create_batch()'s (nonexistent) return value was used for the linkage
     instead of each FluxMeasurement's own measurement_id."""
-    socat_id = uuid.uuid4()
+    socat_id = uuid7.create()
     lc_source_id = _register_socat_source(lightcurvedb_settings, socat_id)
 
     no_thumb = make_candidate(socat_id, flux_mjy=10.0, with_thumbnail=False)
@@ -125,7 +113,7 @@ def test_output_creates_unregistered_source_when_upsert_enabled(
     """A socat_id with no matching lightcurvedb source (get_by_socat_id
     misses) should be created on the fly when upsert_sources=True, rather
     than silently dropping the measurement."""
-    socat_id = uuid.uuid4()
+    socat_id = uuid7.create()
     candidate = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
     output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=True)
 
@@ -152,7 +140,7 @@ def test_output_skips_unregistered_source_when_upsert_disabled(
 ):
     """A socat_id with no matching lightcurvedb source (get_by_socat_id
     misses) should be skipped, not raise, when upsert_sources=False."""
-    socat_id = uuid.uuid4()
+    socat_id = uuid7.create()
     candidate = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
     output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=False)
 

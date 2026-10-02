@@ -15,6 +15,7 @@ from sotrplib.outputs.core import (
 )
 from sotrplib.outputs.lightcurvedb import LightcurveDBOutput
 from sotrplib.outputs.lightserve import LightServeOutput
+from sotrplib.outputs.parquet import ParquetOutput
 
 
 class OutputConfig(BaseModel, ABC):
@@ -89,6 +90,23 @@ class LightcurveDBOutputConfig(OutputConfig):
         )
 
 
+class ParquetOutputConfig(OutputConfig):
+    output_type: Literal["parquet"] = "parquet"
+    directory: Path
+    output_source_candidates: bool = True
+    output_transient_candidates: bool = True
+    output_noise_candidates: bool = False
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> ParquetOutput:
+        return ParquetOutput(
+            directory=self.directory,
+            output_source_candidates=self.output_source_candidates,
+            output_transient_candidates=self.output_transient_candidates,
+            output_noise_candidates=self.output_noise_candidates,
+            log=log,
+        )
+
+
 AllOutputConfigTypes = (
     PickleOutputConfig
     | JSONOutputConfig
@@ -96,6 +114,7 @@ AllOutputConfigTypes = (
     | CutoutImageOutputConfig
     | LightServeOutputConfig
     | LightcurveDBOutputConfig
+    | ParquetOutputConfig
 )
 
 SourceOutputConfigTypes = (
@@ -104,6 +123,7 @@ SourceOutputConfigTypes = (
     | LightcurveDBOutputConfig
     | LightServeOutputConfig
     | CutoutImageOutputConfig
+    | ParquetOutputConfig
 )
 
 MapOutputConfigTypes = MapOutputConfig

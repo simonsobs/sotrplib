@@ -2,13 +2,13 @@ from typing import Literal, Optional
 
 import numpy as np
 import structlog
+import uuid7 as uuid
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
 from pixell import reproject
-from pydantic import BaseModel, PrivateAttr
+from pydantic import UUID7, BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
-from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 
@@ -123,7 +123,10 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
     measurement_type: Literal["forced", "blind", "simulated"] = "forced"
-    measurement_id: str | None = None
+    measurement_id: UUID7 = Field(
+        default_factory=uuid.create,
+        description="Unique identifier for this measurement",
+    )
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
