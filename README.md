@@ -47,19 +47,16 @@ use `pytest`.
 install it with `uv pip install [package]`. Then report the problem on the
 GitHub [issue tracker](https://github.com/simonsobs/sotrplib/issues).
 
-## Run the pipeline
+## Running the pipeline
 
-After you install the package, run the pipeline with the `sotrp` command:
+The pipeline can be run with the `sotrp` command:
 
 ```
 sotrp -c [path to config file]
 ```
-but the default config expects environment variables for  the
-source catalog (`socat`) and the map catalog (`mapcat`).
 
-- To make coadds, use the `sotrp-coadd` command (see
-  [docs/coadding/](docs/coadding/overview.md)).
-- To use the library in your own Python code, see [docs/act.md](docs/act.md).
+The default config expects environment variables to point
+to the source catalog (`socat`) and the map catalog (`mapcat`).
 
 The config file is a JSON file with the settings for each part of the
 pipeline. The top directory has example configs (`sample_*.json`).
@@ -69,13 +66,18 @@ them to a runner (`sotrplib/handlers/`). See
 [docs/configuration.md](docs/configuration.md) for the config fields and the
 examples.
 
-### Source catalog (socat)
+- To make coadds, use the `sotrp-coadd` command (see
+  [docs/coadding/](docs/coadding/overview.md)).
+- To use the library in your own Python code, see [docs/act.md](docs/act.md).
+
+
+### Setting up your source catalog (socat)
 
 sotrplib uses [socat](https://github.com/simonsobs/socat/) for the source
 catalog. socat installs commands that add catalogs to its database. For
 example, `socat-act-fits` adds an ACT FITS catalog. socat can also add
-solar-system object ephemerides from a JPL Horizons parquet file. See the
-socat README.
+solar-system object ephemerides from JPL Horizons in parquet format. See the
+socat README for more info.
 
 Set the socat environment variables:
 
@@ -103,13 +105,13 @@ You can also load a catalog file directly into a `RegisteredSourceCatalog`
 `sotrplib/source_catalog/source_catalog.py` for examples. We recommend the
 socat database.
 
-### Map catalog (mapcat)
+### Setting up your map catalog (mapcat)
 
 You can give maps directly in the config, as in
 `sample_read_unfiltered_map.json`. This is useful to test one map.
 
 For a full set of maps, use the [mapcat](https://github.com/simonsobs/mapcat)
-database. mapcat keeps the metadata of each map. To add ACT depth-1 maps to a
+database. `mapcat` maintains the metadata of each map. To add ACT depth-1 maps to a
 mapcat SQLite database, set these environment variables and run the `actingest`
 command:
 
@@ -122,8 +124,7 @@ The first variable gives the root directory of the depth-1 maps. The second
 variable gives the database file.
 
 `sotrp-coadd` stores the coadd paths relative to a different root directory.
-Thus, the coadds can be in a different directory from the depth-1 maps (for
-example, your own data directory):
+Thus, the coadds can be in a different directory from the depth-1 maps:
 
 ```
 export MAPCAT_DEPTH_ONE_COADD_PARENT=/path/to/coadds

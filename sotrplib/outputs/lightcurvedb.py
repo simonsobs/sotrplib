@@ -7,7 +7,7 @@ from datetime import timezone
 from uuid import UUID
 
 import uuid7
-from astropy.time import Time
+from astropy.time import Time, TimezoneInfo
 from lightcurvedb.config import Settings as LightcurveDBSettings
 from lightcurvedb.models.cutout import Cutout
 from lightcurvedb.models.exceptions import SourceNotFoundException
@@ -21,6 +21,8 @@ from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
+
+UTC = TimezoneInfo(tzname="utc")
 
 
 class LightcurveDBOutput(SourceOutput):
@@ -140,12 +142,12 @@ class LightcurveDBOutput(SourceOutput):
             return None
 
         fm = FluxMeasurement(
-            measurement_id=uuid7.create(),
+            measurement_id=input_measurement.measurement_id,
             frequency=90,
             module="i1",
             source_id=source_id,
             time=(
-                input_measurement.observation_mean_time.to_datetime()
+                input_measurement.observation_mean_time.to_datetime(timezone=UTC)
                 if input_measurement.observation_mean_time is not None
                 else (
                     map_time.to_datetime(timezone=timezone.utc)
@@ -188,7 +190,7 @@ class LightcurveDBOutput(SourceOutput):
             Cutout(
                 data=input_measurement.thumbnail.tolist(),
                 time=(
-                    input_measurement.observation_mean_time.to_datetime()
+                    input_measurement.observation_mean_time.to_datetime(timezone=UTC)
                     if input_measurement.observation_mean_time is not None
                     else (
                         map_time.to_datetime(timezone=timezone.utc)

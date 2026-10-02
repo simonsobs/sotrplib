@@ -4,6 +4,7 @@ Output data directly to lightserve.
 
 import httpx
 import uuid7
+from astropy.time import TimezoneInfo
 from lightcurvedb.models.cutout import Cutout
 from lightcurvedb.models.flux import FluxMeasurement
 from soauth.toolkit.client import SOAuth
@@ -15,6 +16,8 @@ from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
+
+UTC = TimezoneInfo(tzname="utc")
 
 
 class LightServeOutput(SourceOutput):
@@ -90,7 +93,7 @@ class LightServeOutput(SourceOutput):
                 frequency=90,
                 module="i1",
                 source_id=socat_to_internal[str(source.crossmatches[0].catalog_idx)],
-                time=source.observation_mean_time.to_datetime(),
+                time=source.observation_mean_time.to_datetime(timezone=UTC),
                 ra=source.ra.to_value("deg"),
                 dec=source.dec.to_value("deg"),
                 ra_uncertainty=(
@@ -115,7 +118,7 @@ class LightServeOutput(SourceOutput):
             cut = (
                 Cutout(
                     data=source.thumbnail.tolist(),
-                    time=source.observation_mean_time.to_datetime(),
+                    time=source.observation_mean_time.to_datetime(timezone=UTC),
                     units=source.thumbnail_unit.to_string(),
                     frequency=90,
                     module="i1",
