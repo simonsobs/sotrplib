@@ -84,7 +84,7 @@ def test_output_writes_parquet_files(tmp_path, output, candidate):
     )
 
     sources = pd.read_parquet(tmp_path / f"{map_id}_sources.parquet")
-    lightcurve = pd.read_parquet(tmp_path / f"{map_id}_lightcurve.parquet")
+    lightcurve = pd.read_parquet(tmp_path / f"{map_id}_lightcurves.parquet")
     cutouts = pd.read_parquet(tmp_path / f"{map_id}_cutouts.parquet")
     assert len(sources) == len(lightcurve) == len(cutouts) == 1
     assert sources.iloc[0]["source_id"] == candidate.source_id
