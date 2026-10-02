@@ -153,31 +153,53 @@ class MultiArrayMapMatcher(MapMatcher):
     Groups transient candidates within `radius` of each other in different
     maps whose observation time ranges overlap, and keeps a group's
     candidates as transient candidates only if they were detected by at
-    least `min_arrays` distinct arrays (optics tubes). The same array in two
-    bands counts once. Candidates in smaller groups (including events seen
-    in a single map) are moved to the sifter result's
-    unconfirmed_transient_candidates.
+    least `min_arrays` distinct arrays (optics tubes) and at least one
+    detection has SNR >= `high_sig`. The same array in two bands counts once.
+    Candidates in other groups (including events seen in a single map) are
+    moved to the sifter result's unconfirmed_transient_candidates.
 
-    Every transient candidate, confirmed or not, gets a map_match (see
+    Only candidates with SNR >= `low_sig` are matched; the others are moved
+    to unconfirmed_transient_candidates without a map_match. To use the
+    low_sig detections, the blind search threshold and the sifter's snr cut
+    must be at or below low_sig (e.g. 3), so that the sifter keeps them as
+    transient candidates.
+
+    Every matched candidate, confirmed or not, gets a map_match (see
     MapMatch) summarizing its group, including a significance combining the
     number of maps and each map's SNR (see map_match_significance) and a
-    rank within the run: confirmed groups first, then by significance.
+    rank within the run: confirmed groups first, then the other notable
+    groups (a detection >= high_sig, or >= min_arrays arrays), then the rest,
+    each by significance.
 
-    If summary_directory is set, the ranked groups are also written there as
-    JSON, one file per run.
+    If summary_directory is set, the ranked confirmed and notable groups are
+    also written there as JSON, one file per run.
     """
 
     def __init__(
         self,
         radius: u.Quantity = 1.5 * u.arcmin,
         min_arrays: int = 2,
+        high_sig: float = 5.0,
+        low_sig: float = 3.0,
         summary_directory: Path | None = None,
         log: FilteringBoundLogger | None = None,
     ):
+        if low_sig > high_sig:
+            raise ValueError(f"low_sig ({low_sig}) must be <= high_sig ({high_sig})")
         self.radius = radius
         self.min_arrays = min_arrays
+        self.high_sig = high_sig
+        self.low_sig = low_sig
         self.summary_directory = summary_directory
         self.log = log or structlog.get_logger()
+
+    def is_notable(self, match: MapMatch) -> bool:
+        """Confirmed, or one detection >= high_sig, or >= min_arrays arrays."""
+        return (
+            match.confirmed
+            or (match.max_snr is not None and match.max_snr >= self.high_sig)
+            or match.n_arrays >= self.min_arrays
+        )
 
     def match(
         self, results: list[MapResult]
@@ -222,7 +244,10 @@ class MultiArrayMapMatcher(MapMatcher):
             n_candidates=sum(len(g.members) for g in groups),
             n_groups=len(groups),
             n_confirmed_groups=sum(g.match.confirmed for g in groups),
+            n_notable_groups=sum(self.is_notable(g.match) for g in groups),
             min_arrays=self.min_arrays,
+            high_sig=self.high_sig,
+            low_sig=self.low_sig,
         )
 
         if self.summary_directory is not None:
@@ -238,33 +263,45 @@ class MultiArrayMapMatcher(MapMatcher):
         for members in clusters:
             arrays = {r.array for r, _ in members if r.array is not None}
             bands = {r.frequency for r, _ in members if r.frequency is not None}
+            snrs = [c.snr for _, c in members if c.snr is not None]
+            max_snr = max(snrs) if snrs else None
+            has_seed = max_snr is not None and max_snr >= self.high_sig
+            multi_array = len(arrays) >= self.min_arrays
+            confirmed = multi_array and has_seed
+            # 0: confirmed, 1: other notable groups, 2: the rest.
+            tier = 0 if confirmed else 1 if (has_seed or multi_array) else 2
             combined_snr, significance = map_match_significance(
                 [c.snr for _, c in members]
             )
             scored.append(
                 (
                     members,
-                    len(arrays) >= self.min_arrays,
+                    tier,
+                    confirmed,
                     arrays,
                     bands,
+                    max_snr,
                     combined_snr,
                     significance,
                 )
             )
-        scored.sort(key=lambda s: (not s[1], -s[5]))
+        scored.sort(key=lambda s: (s[1], -s[7]))
 
         groups = []
         for rank, (
             members,
+            _,
             confirmed,
             arrays,
             bands,
+            max_snr,
             combined_snr,
             significance,
         ) in enumerate(scored, start=1):
             match = MapMatch(
                 match_id=str(uuid7.create()),
                 confirmed=confirmed,
+                max_snr=max_snr,
                 n_maps=len({id(r) for r, _ in members}),
                 n_arrays=len(arrays),
                 n_bands=len(bands),
@@ -303,13 +340,20 @@ class MultiArrayMapMatcher(MapMatcher):
             f"map_match_summary_{label.replace('T', '-').replace(':', '-')}.json"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Single-array groups with no detection >= high_sig (e.g. the many
+        # noise peaks of a low blind-search threshold) are only counted.
+        notable = [g for g in groups if self.is_notable(g.match)]
         path.write_text(
             json.dumps(
                 {
                     "min_arrays": self.min_arrays,
+                    "high_sig": self.high_sig,
+                    "low_sig": self.low_sig,
                     "radius_arcmin": self.radius.to_value(u.arcmin),
                     "maps": [r.map_name for r in results],
-                    "groups": [g.to_dict() for g in groups],
+                    "n_groups": len(groups),
+                    "n_groups_not_listed": len(groups) - len(notable),
+                    "groups": [g.to_dict() for g in notable],
                 },
                 indent=2,
             )
@@ -348,12 +392,14 @@ class MultiArrayMapMatcher(MapMatcher):
         """
         Link candidates within radius of each other in different maps of one
         observation (union-find, so chains across arrays/bands form one
-        cluster). Every candidate ends up in exactly one cluster.
+        cluster). Every candidate with SNR >= low_sig ends up in exactly one
+        cluster.
         """
         nodes = [
             (result, candidate)
             for result in observation
             for candidate in result.sifter_result.transient_candidates
+            if candidate.snr is not None and candidate.snr >= self.low_sig
         ]
         if not nodes:
             return []

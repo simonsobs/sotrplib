@@ -11,7 +11,7 @@ of a run, the map matcher does these steps:
 1. It groups the transient candidates that are at the same position in maps
    of the same observation.
 2. It keeps a group as transient candidates only if a minimum number of
-   different arrays detected it.
+   different arrays detected it, and if one detection has a high SNR.
 3. It gives each group a significance and a rank.
 
 The library code is in `sotrplib/sifter/map_matching.py`. The config model is
@@ -46,6 +46,8 @@ Add a `map_matcher` field to the `sotrp` config:
     "matcher_type": "multi_array",
     "radius": "1.5 arcmin",
     "min_arrays": 2,
+    "high_sig": 5.0,
+    "low_sig": 3.0,
     "summary_directory": "/path/to/outputs/"
 }
 ```
@@ -55,7 +57,11 @@ Add a `map_matcher` field to the `sotrp` config:
 | `matcher_type` | `empty` | `empty`: no map matching. `multi_array`: the map matcher on this page. |
 | `radius` | `1.5 arcmin` | The maximum distance between two detections of one event. |
 | `min_arrays` | `2` | The minimum number of different arrays that must detect an event. |
+| `high_sig` | `5.0` | A confirmed event must have one detection with SNR `high_sig` or more. |
+| `low_sig` | `3.0` | The map matcher uses only the candidates with SNR `low_sig` or more. |
 | `summary_directory` | none | If set, the map matcher writes a JSON summary of the groups in this directory. |
+
+`low_sig` must not be more than `high_sig`.
 
 With `matcher_type: "empty"` (the default), the transient candidates do not
 change. Use this value to analyze one map at a time.
@@ -74,16 +80,70 @@ How the map matcher makes groups
    maps in the same observation.
 2. **Links.** In one observation, the map matcher links two candidates of
    different maps if the distance between them is not more than `radius`.
+   It uses only the candidates with SNR `low_sig` or more. The other
+   candidates go to `unconfirmed_transient_candidates`, with no `map_match`.
 3. **Groups.** Linked candidates are in the same group. The links make
    chains. For example, if A links to B and B links to C, then A, B and C
    are in one group.
-4. **Confirmation.** A group is confirmed if it contains detections from
-   `min_arrays` or more different arrays. One array in two bands counts as
-   one array. The two bands of one tube use the same optics, so a problem in
-   the tube can appear in the two bands.
+4. **Confirmation.** A group is confirmed if both of these conditions are
+   true:
+   - It contains detections from `min_arrays` or more different arrays. One
+     array in two bands counts as one array. The two bands of one tube use
+     the same optics, so a problem in the tube can appear in the two bands.
+   - One of its detections has SNR `high_sig` or more.
 
-Each candidate is in exactly one group. A candidate that has no link is a
-group with one member.
+Each matched candidate is in exactly one group. A candidate that has no link
+is a group with one member.
+
+
+Use a low blind-search threshold
+--------------------------------
+
+With `high_sig` and `low_sig`, a detection at 5 sigma in one array can be
+confirmed by a detection at 3 sigma or more in a different array. To get the
+3-sigma detections, set the blind search and the sifter to `low_sig`:
+
+```json
+"blind_search": {
+    "search_type": "photutils",
+    "parameters": {"sigma_threshold": 3.0}
+},
+"sifter": {
+    "sifter_type": "default",
+    "cuts": {"snr": [3.0, "inf"]}
+},
+"map_matcher": {
+    "matcher_type": "multi_array",
+    "high_sig": 5.0,
+    "low_sig": 3.0
+}
+```
+
+The sifter cuts that you do not give keep their default values (see
+`DEFAULT_SIFTER_CUTS` in `sotrplib/sifter/core.py`). If the sifter `snr` cut
+is more than `low_sig`, the sifter moves the low-SNR detections to
+`noise_candidates`, and the map matcher does not use them.
+
+**Use this configuration only with the `multi_array` map matcher.** With the
+`empty` map matcher, all the 3-sigma detections stay transient candidates.
+
+The cost of a 3-sigma blind search. These values are from two f090 i1
+depth-1 maps of 2025-09-10. Each map has approximately 850 deg² of data:
+
+| | 5 sigma | 3 sigma |
+|---|---|---|
+| Blind-search detections in each map | 1 to 8 | approximately 1500 |
+| Time for each map | approximately 95 s | approximately 120 s to 135 s |
+| Size of the pickle output of each map | approximately 3 MB | approximately 30 MB |
+
+Each detection gets a thumbnail (approximately 15 ms and 18 kB for each
+detection). The runner keeps the results of all the maps in memory until
+the map matching is complete. Thus, for large maps, examine the memory.
+
+The blind search does not fit a Gaussian to a detection. The `fwhm` of a
+detection comes from the second moments of the pixels above the threshold.
+Near the threshold, this value has a large error. The sifter `fwhm` cut can
+thus remove real low-SNR detections.
 
 
 Significance and rank
@@ -114,10 +174,17 @@ For a very bright event, the chi-squared probability is too small for a
 floating-point number. The map matcher then uses the asymptotic form of the
 upper incomplete gamma function, so the significance stays finite.
 
-The map matcher ranks the groups of a run. All the confirmed groups come
-first. Then the map matcher sorts each set of groups by significance. Rank 1
-is the most significant confirmed group. Thus, a bright detection in one
-array cannot have a higher rank than a confirmed group.
+The map matcher ranks the groups of a run in three sets:
+
+1. The confirmed groups.
+2. The other notable groups. A notable group has one detection with SNR
+   `high_sig` or more, or detections from `min_arrays` or more arrays.
+3. All the other groups. These are detections in one array with SNR less
+   than `high_sig`.
+
+The map matcher sorts each set by significance. Rank 1 is the most
+significant confirmed group. Thus, a bright detection in one array cannot
+have a higher rank than a confirmed group.
 
 **Use the significance only to compare the groups.** The significance
 assumes that the noise in each map is Gaussian and independent. Glitches and
@@ -147,7 +214,8 @@ Each transient candidate (confirmed or not) has a `map_match` field. It is a
 | Field | Meaning |
 |---|---|
 | `match_id` | The identifier of the group. All the candidates of a group have the same `match_id`. |
-| `confirmed` | `True` if `min_arrays` or more arrays detected the group. |
+| `confirmed` | `True` if `min_arrays` or more arrays detected the group, and one detection has SNR `high_sig` or more. |
+| `max_snr` | The highest SNR of the detections in the group. |
 | `n_maps` | The number of maps with a detection in the group. |
 | `n_arrays` | The number of different arrays in the group. |
 | `n_bands` | The number of different bands in the group. |
@@ -161,8 +229,14 @@ If `summary_directory` is set, the map matcher writes one JSON file for each
 run. The name of the file is `map_match_summary_<start>.json`. `<start>` is
 the earliest start time of the maps of the run. The file contains:
 
-- `min_arrays`, `radius_arcmin` and the names of the maps of the run;
-- `groups`: the groups, in the sequence of their rank.
+- `min_arrays`, `high_sig`, `low_sig`, `radius_arcmin` and the names of the
+  maps of the run;
+- `n_groups`: the number of groups;
+- `groups`: the confirmed and the notable groups, in the sequence of their
+  rank;
+- `n_groups_not_listed`: the number of the other groups. The file does not
+  list these groups, because a low blind-search threshold can give many of
+  them.
 
 Each group has the fields of `MapMatch`, and also:
 

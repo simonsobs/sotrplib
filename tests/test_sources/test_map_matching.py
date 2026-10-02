@@ -251,3 +251,86 @@ def test_multi_array_config(tmp_path):
     assert matcher.radius == 1.0 * u.arcmin
     assert matcher.min_arrays == 3
     assert matcher.summary_directory == tmp_path
+
+
+def test_low_sig_detection_confirms_high_sig_seed():
+    seed, support = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=3.5)
+    results, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
+        [_result("i1", "i1", [seed]), _result("i3", "i3", [support])]
+    )
+
+    (group,) = groups
+    assert group.match.confirmed
+    assert group.match.max_snr == 6.0
+    assert results[1].sifter_result.transient_candidates == [support]
+
+
+def test_low_sig_only_group_is_not_confirmed():
+    a, b = _candidate(10.0, 0.0, snr=4.5), _candidate(10.0, 0.0, snr=4.5)
+    results, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
+        [_result("i1", "i1", [a]), _result("i3", "i3", [b])]
+    )
+
+    (group,) = groups
+    assert group.match.n_arrays == 2
+    assert not group.match.confirmed
+    for r in results:
+        assert r.sifter_result.transient_candidates == []
+        assert len(r.sifter_result.unconfirmed_transient_candidates) == 1
+
+
+def test_candidates_below_low_sig_are_not_matched():
+    seed, faint = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=2.5)
+    results, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
+        [_result("i1", "i1", [seed]), _result("i3", "i3", [faint])]
+    )
+
+    (group,) = groups
+    assert not group.match.confirmed
+    assert faint.map_match is None
+    assert results[1].sifter_result.unconfirmed_transient_candidates == [faint]
+
+
+def test_notable_groups_rank_above_low_sig_singles():
+    confirmed = [_candidate(10.0, 0.0, snr=4.0), _candidate(10.0, 0.0, snr=5.5)]
+    seed_single = _candidate(20.0, 0.0, snr=5.2)
+    low_pair = [_candidate(30.0, 0.0, snr=4.0), _candidate(30.0, 0.0, snr=4.0)]
+    low_single = _candidate(40.0, 0.0, snr=4.9)
+    _, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
+        [
+            _result("i1", "i1", [confirmed[0], seed_single, low_pair[0], low_single]),
+            _result("i3", "i3", [confirmed[1], low_pair[1]]),
+        ]
+    )
+
+    assert confirmed[0].map_match.rank == 1
+    # seed_single (5.2) and low_pair (2 arrays) are notable, so they rank
+    # above low_single (4.9, one array). low_pair (5.18 sigma) is more
+    # significant than seed_single (5.07 sigma).
+    assert low_pair[0].map_match.rank == 2
+    assert seed_single.map_match.rank == 3
+    assert low_single.map_match.rank == 4
+
+
+def test_summary_lists_only_notable_groups(tmp_path):
+    seed, support = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=3.5)
+    noise = [_candidate(20.0 + i, 0.0, snr=3.2) for i in range(5)]
+    MultiArrayMapMatcher(summary_directory=tmp_path).match(
+        [_result("i1", "i1", [seed, *noise]), _result("i3", "i3", [support])]
+    )
+
+    (path,) = tmp_path.glob("map_match_summary_*.json")
+    summary = json.loads(path.read_text())
+    assert (summary["high_sig"], summary["low_sig"]) == (5.0, 3.0)
+    assert summary["n_groups"] == 6
+    assert summary["n_groups_not_listed"] == 5
+    assert [g["rank"] for g in summary["groups"]] == [1]
+    assert summary["groups"][0]["max_snr"] == 6.0
+
+
+def test_multi_array_config_thresholds():
+    matcher = MultiArrayMapMatcherConfig(high_sig=6.0, low_sig=3.5).to_matcher()
+    assert (matcher.high_sig, matcher.low_sig) == (6.0, 3.5)
+
+    with pytest.raises(ValueError, match="low_sig"):
+        MultiArrayMapMatcherConfig(high_sig=3.0, low_sig=4.0)

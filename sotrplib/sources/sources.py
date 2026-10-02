@@ -110,7 +110,10 @@ class MapMatch(BaseModel):
 
     match_id: str
     confirmed: bool
-    "Detected by at least the matcher's min_arrays distinct arrays."
+    "Detected by at least the matcher's min_arrays distinct arrays, with at "
+    "least one detection at or above the matcher's high_sig."
+    max_snr: float | None = None
+    "Highest SNR of the detections in the group."
     n_maps: int
     n_arrays: int
     n_bands: int
@@ -121,8 +124,9 @@ class MapMatch(BaseModel):
     "distribution with n_maps degrees of freedom (i.e. of independent noise "
     "in every map reaching these SNRs)."
     rank: int
-    "1 = most significant group of the run; confirmed groups rank above all "
-    "unconfirmed ones."
+    "1 = most significant group of the run; confirmed groups rank first, then "
+    "the other notable groups (a detection at or above high_sig, or at least "
+    "min_arrays arrays), then the rest."
 
 
 class MeasuredSource(RegisteredSource):

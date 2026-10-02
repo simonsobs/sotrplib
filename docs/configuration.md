@@ -150,12 +150,33 @@ bands. The preprocessor selects the file with the `frequency` of the map. If
 a band has no file, the preprocessor raises `ValueError`.
 
 
+Sifter cuts
+-----------
+
+The `default` sifter moves a candidate to `noise_candidates` if a value of
+the candidate is outside a cut. The `cuts` field changes one or more cuts:
+
+```json
+"sifter": {
+    "sifter_type": "default",
+    "cuts": {"snr": [3.0, "inf"]}
+}
+```
+
+Each cut is `[min, max]`. The cuts that you do not give keep their default
+values: `fwhm` `[0.5, 2.5]` (in units of the beam FWHM), `snr`
+`[5.0, inf]` and `observation_mean_time` `[1, inf]`. See
+`DEFAULT_SIFTER_CUTS` in `sotrplib/sifter/core.py`.
+
+
 Map matching
 ------------
 
 The `map_matcher` field groups the transient candidates across the maps of
 a run. The default (`"matcher_type": "empty"`) does no map matching. See
-[Map matching](map_matching.md).
+[Map matching](map_matching.md). To confirm a 5-sigma detection with
+3-sigma detections in other arrays, see "Use a low blind-search threshold"
+in that document.
 
 
 Outputs
