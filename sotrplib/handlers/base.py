@@ -1,4 +1,3 @@
-from itertools import combinations
 from typing import Iterable
 
 import numpy as np
@@ -18,8 +17,8 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.maps.utils import enmap_box_to_skycoord
 from sotrplib.outputs.core import MapOutput, SourceOutput
-from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
-from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
+from sotrplib.sifter.core import EmptySifter, SiftingProvider
+from sotrplib.sifter.map_matching import EmptyMapMatcher, MapMatcher, MapResult
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
@@ -32,7 +31,6 @@ from sotrplib.sources.core import (
     ForcedPhotometryProvider,
 )
 from sotrplib.sources.force import EmptyForcedPhotometry
-from sotrplib.sources.sources import MeasuredSource
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 __all__ = ["BaseRunner"]
@@ -54,6 +52,7 @@ class BaseRunner:
     sifter: SiftingProvider | None
     source_outputs: list[SourceOutput] | None
     map_outputs: list[MapOutput] | None
+    map_matcher: MapMatcher | None
     profile: bool = False
 
     def __init__(
@@ -72,6 +71,7 @@ class BaseRunner:
         sifter: SiftingProvider | None,
         source_outputs: list[SourceOutput] | None,
         map_outputs: list[MapOutput] | None,
+        map_matcher: MapMatcher | None = None,
         profile: bool = False,
     ):
         self.map_coadder = map_coadder or EmptyMapCoadder()
@@ -88,6 +88,7 @@ class BaseRunner:
         self.sifter = sifter or EmptySifter()
         self.source_outputs = source_outputs or []
         self.map_outputs = map_outputs or []
+        self.map_matcher = map_matcher or EmptyMapMatcher()
         self.profile = profile
 
     @property
@@ -180,7 +181,7 @@ class BaseRunner:
 
     def coadd_and_analyze_maps(
         self, maps: list[ProcessableMap], simulated_sources: list[SimulatedSource]
-    ) -> tuple[list[MeasuredSource], SifterResult]:
+    ) -> MapResult | None:
         """
         Coadd and analyze maps in a single task to avoid passing maps between processes.
         """
@@ -191,7 +192,12 @@ class BaseRunner:
 
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
-    ) -> tuple[list[MeasuredSource], SifterResult]:
+    ) -> MapResult | None:
+        """
+        Analyze one map and write its map outputs. Source outputs are not
+        written here: they wait for map matching, which needs every map's
+        results (see output_map_result). Returns None for an empty map.
+        """
         # If an exception occurs, set the processing status to failed.
         try:
             input_map = self.profilable_task(self.build_map)(input_map)
@@ -199,7 +205,7 @@ class BaseRunner:
             if input_map is not None:
                 self.profilable_task(input_map.finalize)()
             else:
-                return [], None
+                return None
 
             injected_sources, input_map = self.profilable_task(
                 self.source_injector.inject
@@ -254,24 +260,23 @@ class BaseRunner:
                 input_map=source_subtracted_map,
             )
 
-            for output in self.source_outputs:
-                self.profilable_task(output.output)(
-                    forced_photometry_candidates=forced_photometry_candidates,
-                    sifter_result=sifter_result,
-                    map_name=input_map.map_name,
-                    mapcat_id=input_map.mapcat_id,
-                    pointing_sources=pointing_sources,
-                    injected_sources=injected_sources,
-                )
-
             for output in self.map_outputs:
                 self.profilable_task(output.output)(input_map=input_map)
 
-            if input_map._parent_database is not None:
-                self.profilable_task(set_processing_end)(
-                    input_map.mapcat_id, map_type=input_map.map_type
-                )
-            return forced_photometry_candidates, sifter_result
+            return MapResult(
+                map_name=input_map.map_name,
+                mapcat_id=input_map.mapcat_id,
+                map_type=input_map.map_type,
+                array=input_map.array,
+                frequency=input_map.frequency,
+                observation_start=input_map.observation_start,
+                observation_end=input_map.observation_end,
+                forced_photometry_candidates=forced_photometry_candidates,
+                sifter_result=sifter_result,
+                pointing_sources=pointing_sources,
+                injected_sources=injected_sources,
+                from_database=input_map._parent_database is not None,
+            )
         except Exception:
             # Set the status to "failed". If the status stays "processing",
             # the reader skips the map on the next run.
@@ -281,19 +286,32 @@ class BaseRunner:
                 )
             raise
 
-    def crossmatch_pair(
-        self, candidates: tuple[list], radius: float = 1.5
-    ) -> list[list[tuple]]:
-        positions_1 = np.array([[src.dec.value, src.ra.value] for src in candidates[0]])
-        positions_2 = np.array([[src.dec.value, src.ra.value] for src in candidates[1]])
-        if len(positions_1) == 0 or len(positions_2) == 0:
-            return []
+    def output_map_result(self, result: MapResult) -> None:
+        """
+        Write one map's source outputs, after map matching, and only then
+        mark the map completed.
+        """
+        try:
+            for output in self.source_outputs:
+                self.profilable_task(output.output)(
+                    forced_photometry_candidates=result.forced_photometry_candidates,
+                    sifter_result=result.sifter_result,
+                    map_name=result.map_name,
+                    mapcat_id=result.mapcat_id,
+                    pointing_sources=result.pointing_sources,
+                    injected_sources=result.injected_sources,
+                )
+        except Exception:
+            if result.from_database:
+                set_processing_end(
+                    result.mapcat_id, map_type=result.map_type, status="failed"
+                )
+            raise
 
-        # FIXME: use a better radius
-        _, matches = self.profilable_task(crossmatch_mask)(
-            positions_1, positions_2, radius=radius, return_matches=True
-        )
-        return matches
+        if result.from_database:
+            self.profilable_task(set_processing_end)(
+                result.mapcat_id, map_type=result.map_type
+            )
 
     def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
         return self.flow(self._run)(maps)
@@ -310,21 +328,17 @@ class BaseRunner:
             sky_box, time_range
         )
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
-        results = (
+        map_results = (
             self.basic_task(self.coadd_and_analyze_maps)
             .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )
-        all_transient_candidates = [res[1].transient_candidates for res in results]
-        matches = (
-            self.basic_task(self.crossmatch_pair)
-            .map(combinations(all_transient_candidates, 2))
-            .result()
-        )
+        # Held in memory until every map is analyzed, so map matching can
+        # group transient candidates across maps before anything is written.
+        map_results = [r for r in map_results if r is not None]
+        map_results, _ = self.profilable_task(self.map_matcher.match)(map_results)
 
-        cross_matches = self.profilable_task(n_wise_crossmatch)(
-            matches,
-            dict(zip([mm[0].mapcat_id for mm in map_sets], all_transient_candidates)),
-        )
+        for result in map_results:
+            self.output_map_result(result)
 
-        return results
+        return [(r.forced_photometry_candidates, r.sifter_result) for r in map_results]

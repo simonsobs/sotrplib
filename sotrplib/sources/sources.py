@@ -102,6 +102,33 @@ class RegisteredSource(BaseSource):
         raise NotImplementedError("Haven't figured out what updating means")
 
 
+class MapMatch(BaseModel):
+    """
+    Summary of a group of transient candidates that the map matcher judged
+    to be the same event, seen in one or more maps of one observation.
+    """
+
+    match_id: str
+    confirmed: bool
+    "Detected by at least the matcher's min_arrays distinct arrays, with at "
+    "least one detection at or above the matcher's high_sig."
+    max_snr: float | None = None
+    "Highest SNR of the detections in the group."
+    n_maps: int
+    n_arrays: int
+    n_bands: int
+    combined_snr: float
+    "sqrt of the sum of squared per-map SNRs."
+    significance: float
+    "Gaussian-equivalent significance of combined_snr**2 under the chi-squared "
+    "distribution with n_maps degrees of freedom (i.e. of independent noise "
+    "in every map reaching these SNRs)."
+    rank: int
+    "1 = most significant group of the run; confirmed groups rank first, then "
+    "the other notable groups (a detection at or above high_sig, or at least "
+    "min_arrays arrays), then the rest."
+
+
 class MeasuredSource(RegisteredSource):
     """
     A source object specifically for a measurement in a given map.
@@ -130,6 +157,10 @@ class MeasuredSource(RegisteredSource):
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
+
+    map_match: MapMatch | None = None
+    "The map matcher's group for this detection: shared by detections of the "
+    "same event in other maps (arrays/bands) of the same observation."
 
     fit_method: Literal[
         "lmfit_2d_gaussian",

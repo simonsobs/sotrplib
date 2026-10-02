@@ -51,7 +51,7 @@ Then import the modules in Python:
 |---|---|
 | `sotrplib.maps` | Map classes (`ProcessableMap` and its subclasses), map readers for mapcat, preprocessors, postprocessors, masks, coadders and pointing models. |
 | `sotrplib.sources` | Forced photometry, blind search, source subtraction and source classes. |
-| `sotrplib.sifter` | The sifter, which compares the detected sources with the catalogs. |
+| `sotrplib.sifter` | The sifter, which compares the detected sources with the catalogs, and the map matcher, which groups the transient candidates across maps (see [Map matching](map_matching.md)). |
 | `sotrplib.source_catalog` | Source catalogs, for example SOCat. |
 | `sotrplib.outputs` | Outputs for sources (JSON, pickle, cutouts, lightcurvedb, lightserve) and for maps (FITS). |
 | `sotrplib.handlers` | The pipeline runners: `PipelineRunner` (`basic.py`) and `PrefectRunner` (`prefect.py`). |
@@ -86,7 +86,8 @@ library objects. Then the command runs them. A command contains little
 analysis code. The analysis code is in the library.
 
 The `runner` field of the `sotrp` config selects the runner: `basic`
-(`PipelineRunner`) or `prefect` (`PrefectRunner`).
+(`PipelineRunner`) or `prefect` (`PrefectRunner`). See
+[Run `sotrp` with the prefect runner](prefect.md).
 
 
 The scripts

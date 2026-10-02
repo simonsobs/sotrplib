@@ -4,7 +4,7 @@ The core dependency for the sifter
 
 import itertools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import astropy.units as u
@@ -23,6 +23,8 @@ class SifterResult:
     source_candidates: list[MeasuredSource]
     transient_candidates: list[MeasuredSource]
     noise_candidates: list[MeasuredSource]
+    unconfirmed_transient_candidates: list[MeasuredSource] = field(default_factory=list)
+    "Transient candidates the map matcher couldn't confirm in enough other maps."
 
 
 class SiftingProvider(ABC):
@@ -110,6 +112,14 @@ class SimpleCatalogSifter(SiftingProvider):
         return result
 
 
+DEFAULT_SIFTER_CUTS: dict[str, list[float]] = {
+    "fwhm": [0.5, 2.5],
+    "snr": [5.0, np.inf],
+    "observation_mean_time": [1, np.inf],
+}
+"DefaultSifter cuts, {name: [min, max]}. fwhm is in units of the beam FWHM."
+
+
 class DefaultSifter(SiftingProvider):
     radius_1Jy: AstroPydanticQuantity[u.Jy]
     "matching radius for a 1Jy source, arcmin"
@@ -149,11 +159,7 @@ class DefaultSifter(SiftingProvider):
         self.min_match_radius = min_match_radius
         self.ra_jitter = ra_jitter
         self.dec_jitter = dec_jitter
-        self.cuts = cuts or {
-            "fwhm": [0.5, 2.5],
-            "snr": [5.0, np.inf],
-            "observation_mean_time": [1, np.inf],
-        }
+        self.cuts = {k: list(v) for k, v in (cuts or DEFAULT_SIFTER_CUTS).items()}
         self.crossmatch_with_gaia = crossmatch_with_gaia
         self.crossmatch_with_million_quasar = crossmatch_with_million_quasar
         self.additional_catalogs = additional_catalogs or dict()
