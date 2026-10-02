@@ -140,6 +140,12 @@ Each detection gets a thumbnail (approximately 15 ms and 18 kB for each
 detection). The runner keeps the results of all the maps in memory until
 the map matching is complete. Thus, for large maps, examine the memory.
 
+The sifter calculates the SNR of each transient candidate again with the
+local noise: the RMS of the map in a 0.25 deg region around the candidate.
+This RMS does not use the pixels nearer than 3 times the beam FWHM to the
+candidate (2 pixels minimum), and it does not use masked pixels (zero or not
+finite). Thus, the edge of a map does not make the SNR too high.
+
 The blind search does not fit a Gaussian to a detection. The `fwhm` of a
 detection comes from the second moments of the pixels above the threshold.
 Near the threshold, this value has a large error. The sifter `fwhm` cut can
