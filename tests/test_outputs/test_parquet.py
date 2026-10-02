@@ -41,7 +41,7 @@ def test_create_lightcurve(output, candidate, with_optional_fields):
         candidate.observation_mean_time = None
     map_id = uuid7.create()
 
-    lightcurve = output.create_lightcurve([candidate], map_id=map_id)
+    lightcurve = output.create_lightcurves([candidate], map_id=map_id)
 
     assert len(lightcurve) == 1
     row = lightcurve.iloc[0]
