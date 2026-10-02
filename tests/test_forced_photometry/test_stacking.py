@@ -59,6 +59,6 @@ def test_stacker(database_sessionmaker, create_test_maps):
     for i in range(10):
         assert np.isclose(
             Stamps[0].times[i] - start_time.unix,
-            float(d1tables[0].ctime),
+            float(Time(d1tables[0].ctime).unix),
             rtol=1e-3,
         )

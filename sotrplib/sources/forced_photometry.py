@@ -430,6 +430,19 @@ def gaussian_fit(
         fit = GaussianFitParameters()
         fit.failed = True
 
+        # source_id is the catalog's human-readable name (e.g. "ACT-S
+        # J1353.8+0151"), not a stable identifier. The catalog's own unique
+        # id (e.g. socat's UUID) is already attached as catalog_idx on the
+        # source's own crossmatch, set when it was fetched from the catalog
+        # (see SOCat._sg_to_registered). Fall back to source_id only for
+        # catalogs that don't pre-populate a crossmatch.
+        existing_crossmatch = source.crossmatches[0] if source.crossmatches else None
+        catalog_idx = (
+            existing_crossmatch.catalog_idx
+            if existing_crossmatch is not None
+            else source.source_id
+        )
+
         forced_source = MeasuredSource(
             ra=source.ra,
             dec=source.dec,
@@ -450,6 +463,7 @@ def gaussian_fit(
                     source_type=source.source_type,
                     probability=1.0,  ## todo: set properly
                     catalog_name=source.catalog_name,
+                    catalog_idx=catalog_idx,
                     flux=source.flux,
                     angular_separation=None,
                 )

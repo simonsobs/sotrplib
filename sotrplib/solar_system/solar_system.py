@@ -421,7 +421,7 @@ def get_sso_ephem_in_map(
     log = log or structlog.get_logger()
     log.info(
         "solar_system.get_sso_ephem_in_map.initialize",
-        map_id=input_map.map_id,
+        mapcat_id=input_map.mapcat_id,
         interp_time_range=interp_time_range,
         interp_to=interp_to,
     )

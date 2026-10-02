@@ -7,7 +7,7 @@ from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
 from pixell import reproject
-from pydantic import BaseModel, PrivateAttr
+from pydantic import UUID7, BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -21,10 +21,21 @@ class BaseSource(BaseModel):
 
 
 class CrossMatch(BaseModel):
+    """
+    A single crossmatch result against a catalog entry.
+
+    `catalog_idx` is the catalog's unique, stable identifier for the
+    matched entry (e.g. a socat UUID) and should be used for any lookup
+    that requires uniqueness (database joins, lightcurve linkage, etc.).
+    `source_id` is not guaranteed to be unique -- for some catalogs (e.g.
+    socat's SSO/monitored-source generators) it is a human-readable name
+    such as "Ceres" rather than an identifier.
+    """
+
     ra: AstroPydanticQuantity[u.deg] | None = None
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
-    source_id: str | uuid.UUID
+    source_id: str | UUID7
     source_type: str | None = None
     probability: float | None = None
     angular_separation: AstroPydanticQuantity[u.deg] | None = None
@@ -32,7 +43,7 @@ class CrossMatch(BaseModel):
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     catalog_name: str | None = None
-    catalog_idx: int | str | uuid.UUID | None = None
+    catalog_idx: int | str | UUID7 | None = None
     alternate_names: list[str] | None = None
     mag: float | None = None
     "Optical magnitude of the matched object, if the catalog provides one."
@@ -55,7 +66,7 @@ class RegisteredSource(BaseSource):
     Extendedness and positional uncertainty is stored if available.
     """
 
-    source_id: str | uuid.UUID | None = None
+    source_id: str | UUID7 | None = None
     source_type: (
         Literal["extragalactic", "star", "sso", "simulated", "unknown"] | None
     ) = None
@@ -121,7 +132,10 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
     measurement_type: Literal["forced", "blind", "simulated"] = "forced"
-    measurement_id: str | None = None
+    measurement_id: UUID7 = Field(
+        default_factory=uuid.create,
+        description="Unique identifier for this measurement",
+    )
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
