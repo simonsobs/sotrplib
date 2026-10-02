@@ -139,7 +139,7 @@ class ParquetOutput(SourceOutput):
 
         return df
 
-    def create_sifter_lightcurve(
+    def create_sifter_lightcurves(
         self, sifter_result: SifterResult, map_id: UUID7 | None
     ) -> pd.DataFrame:
         """
