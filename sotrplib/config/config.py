@@ -102,6 +102,9 @@ class Settings(BaseSettings):
 
     log_level: int | str = logging.INFO
 
+    seed: int | None = None
+    "Seed for the random and numpy.random generators. If None, do not set a seed."
+
     # Read environment and command line settings to override default
     model_config = SettingsConfigDict(env_prefix="sotrp_", extra="ignore")
 
