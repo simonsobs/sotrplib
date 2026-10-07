@@ -1,6 +1,7 @@
 from typing import Iterable
 
 import numpy as np
+import structlog
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from mapcat.pointing.const import ConstantPointingModel
@@ -17,7 +18,7 @@ from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.maps.utils import enmap_box_to_skycoord
 from sotrplib.outputs.core import MapOutput, SourceOutput
-from sotrplib.sifter.core import EmptySifter, SiftingProvider
+from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
 from sotrplib.sifter.map_matching import EmptyMapMatcher, MapMatcher, MapResult
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
@@ -31,6 +32,7 @@ from sotrplib.sources.core import (
     ForcedPhotometryProvider,
 )
 from sotrplib.sources.force import EmptyForcedPhotometry
+from sotrplib.sources.sources import MeasuredSource
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 __all__ = ["BaseRunner"]
@@ -313,15 +315,28 @@ class BaseRunner:
                 result.mapcat_id, map_type=result.map_type
             )
 
-    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    def run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         return self.flow(self._run)(maps)
 
-    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    def _run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
+
+        Returns one (forced photometry sources, sifter result) tuple for each
+        map set. If there are no maps, returns an empty list.
         """
         maps = list(maps)
+        if not maps:
+            structlog.get_logger().warning(
+                "pipeline.no_maps_found",
+                message="No input maps. Check the map configuration or database query.",
+            )
+            return []
         sky_box = self.extract_bounding_box(maps)
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(
