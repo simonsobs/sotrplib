@@ -296,13 +296,20 @@ class BaseRunner:
         )
         return matches
 
-    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    def run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         return self.flow(self._run)(maps)
 
-    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    def _run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
+
+        Returns one (forced photometry sources, sifter result) tuple for each
+        map set. If there are no maps, returns an empty list.
         """
         maps = list(maps)
         if not maps:
