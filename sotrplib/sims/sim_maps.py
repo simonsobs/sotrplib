@@ -130,9 +130,10 @@ def make_noise_map(
         map_mean_Jy=map_mean_Jy,
         seed=seed,
     )
-    if not seed:
-        seed = np.random.seed()
-        log.warning("make_noise_map.randomizing_seed", seed=seed)
+    if seed is None:
+        seed = int(np.random.randint(0, 2**32 - 1))
+        log = log.bind(seed=seed)
+        log.warning("make_noise_map.randomizing_seed")
     mask = edge_map(
         imap,
     )
@@ -203,8 +204,8 @@ def photutils_sim_n_sources(
     maxfwhm = gauss_fwhm + (fwhm_uncert_frac * gauss_fwhm)
     minsep = min_sep.to(u.arcmin).value / mapres.to(u.arcmin).value  # in pixels
     log.bind(minfwhm=minfwhm, maxfwhm=maxfwhm, minsep=minsep, omega_b=omega_b)
-    if not seed:
-        seed = np.random.seed()
+    if seed is None:
+        seed = int(np.random.randint(0, 2**32 - 1))
         log.debug("photutils_sim_n_sources.seed_randomized", seed=seed)
 
     ## set the window for each source to be 5x fwhm

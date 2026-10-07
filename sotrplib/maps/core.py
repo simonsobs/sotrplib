@@ -498,6 +498,9 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
             sel=0 if len(intensity_shape) > 2 else None,
             box=enmap_box,
         )
+        self.intensity_units = _units_from_bunit(
+            self.intensity_filename, power=1, default=self.intensity_units, log=log
+        )
         log.debug("intensity_ivar.intensity.read")
 
         # TODO: Set metadata from header e.g. frequency band.
@@ -739,28 +742,45 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         super().finalize()
 
 
-def _flux_units_from_bunit(
+def _units_from_bunit(
     filename: Path, power: int, default: Unit, log: FilteringBoundLogger
 ) -> Unit:
     """
-    Return the flux unit from the FITS BUNIT of a field with the unit
-    flux_units**power (flux: 1, rho: -1). If there is no BUNIT, return
-    `default`.
+    Return the map unit from the FITS BUNIT of a field with the unit
+    units**power (flux or intensity: 1, rho: -1). If there is no BUNIT,
+    if astropy cannot parse BUNIT, or if the unit is not equivalent to
+    `default`, return `default`.
     """
     from astropy.io import fits
 
     bunit = fits.getheader(str(filename)).get("BUNIT")
     if not bunit:
         return default
-    flux_units = u.Unit(bunit, format="fits") ** (1 / power)
-    if flux_units != default:
-        log.info(
-            "map.flux_units_from_bunit",
+    try:
+        units = u.Unit(bunit, format="fits") ** (1 / power)
+    except ValueError:
+        log.warning(
+            "map.units_from_bunit.unparseable",
             bunit=bunit,
-            flux_units=str(flux_units),
             configured=str(default),
         )
-    return flux_units
+        return default
+    if not units.is_equivalent(default):
+        log.warning(
+            "map.units_from_bunit.not_equivalent",
+            bunit=bunit,
+            units=str(units),
+            configured=str(default),
+        )
+        return default
+    if units != default:
+        log.info(
+            "map.units_from_bunit",
+            bunit=bunit,
+            units=str(units),
+            configured=str(default),
+        )
+    return units
 
 
 class RhoAndKappaMap(ProcessableMap):
@@ -827,7 +847,7 @@ class RhoAndKappaMap(ProcessableMap):
         except (IndexError, AttributeError, AssertionError):
             # Rho map does not have Q, U
             self.rho = enmap.read_map(str(self.rho_filename), box=enmap_box)
-        self.flux_units = _flux_units_from_bunit(
+        self.flux_units = _units_from_bunit(
             self.rho_filename, power=-1, default=self.flux_units, log=log
         )
 
@@ -1016,7 +1036,7 @@ class FluxAndSNRMap(ProcessableMap):
         except (IndexError, AttributeError, AssertionError):
             # Flux map does not have Q, U
             self.flux = enmap.read_map(str(self.flux_filename), box=enmap_box)
-        self.flux_units = _flux_units_from_bunit(
+        self.flux_units = _units_from_bunit(
             self.flux_filename, power=1, default=self.flux_units, log=log
         )
 

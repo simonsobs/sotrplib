@@ -118,15 +118,15 @@
             "fraction_gaussian": 0.1,
             "flare_earliest_time": "2025-01-01T00:00:00Z",
             "flare_latest_time": "2025-01-10T00:00:00Z",
-            "flare_width_shortest": "01:00:00",
-            "flare_width_longest": "12:00:00"
+            "flare_width_shortest": "1 hour",
+            "flare_width_longest": "12 hour"
         }
     ],
     "source_injector": {
         "injector_type": "photutils"
     },
     "forced_photometry": {
-        "photometry_type": "scipy"
+        "photometry_type": "lmfit"
     },
     "source_subtractor": {
         "subtractor_type": "photutils"
