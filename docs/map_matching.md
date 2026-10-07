@@ -274,6 +274,45 @@ Three arrays detected the event of rank 1 in all four bands. Only one array
 detected each of the other events.
 
 
+Analyze a campaign with SLURM
+-----------------------------
+
+The script
+`scripts/depth1_map_analysis/slurm_wrapper_map_matching_by_observation.py`
+writes one config and one SLURM job for each observation in mapcat:
+
+1. It reads the depth-1 maps from mapcat.
+2. It groups the maps whose time ranges overlap into observations. This is
+   the same rule as the map matcher.
+3. For each observation, it writes a config that selects the maps of the
+   observation by their `map_id`, and a SLURM job that runs `sotrp` with the
+   basic runner.
+
+Thus, each job contains all the tubes and bands of one observation. An
+observation that crosses a day boundary is in one job only. The jobs run in
+parallel.
+
+```console
+python scripts/depth1_map_analysis/slurm_wrapper_map_matching_by_observation.py \
+    --mapcat /path/to/mapcat.sqlite \
+    --out-dir /path/to/outputs/ \
+    --code-dir /path/to/sotrplib/checkout \
+    --venv /path/to/sotrplib/.venv \
+    --env-setup-file /path/to/env_setup \
+    --beam-profile '/path/to/profile_{band}.txt'
+python scripts/depth1_map_analysis/slurm_submitter.py -d /path/to/outputs/slurm_job_scripts/
+```
+
+- `--code-dir` is the sotrplib checkout that the jobs run. The jobs do not
+  use the installed `sotrp` command. They run `sotrplib.cli` from this
+  directory.
+- The defaults are a 3-sigma blind search and sifter `snr` cut, and the map
+  matcher with `high_sig=5`, `low_sig=3` and `min_arrays=2`. Use
+  `--blind-snr`, `--high-sig`, `--low-sig` and `--min-arrays` to change them.
+- The pickles and the logs go to `--out-dir`. The map-match summaries go to
+  `<out-dir>/map_match/`.
+
+
 Use the map matcher in the library
 ----------------------------------
 
