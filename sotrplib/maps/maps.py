@@ -251,6 +251,59 @@ def get_submap(
     return omap
 
 
+def nan_safe_thumbnail(
+    imap: enmap.ndmap,
+    dec: float,
+    ra: float,
+    r: float,
+    res: float | None = None,
+    proj: str | None = None,
+    apod: float = 2 * arcmin,
+) -> enmap.ndmap:
+    """
+    Reproject a thumbnail of `imap` centred on (dec, ra), with
+    pixell.reproject.thumbnails. All angles are in radians.
+
+    pixell oversamples the cut-out with an FFT. Thus, one NaN pixel in the
+    cut-out (radius r + apod) makes all the thumbnail pixels NaN. This
+    occurs near masked pixels, for example where kappa is 0. If the
+    thumbnail has NaN pixels, this function reprojects a local cut-out with
+    the NaN pixels set to 0. Then it sets the thumbnail pixels near a NaN
+    map pixel back to NaN.
+    """
+    from pixell import reproject
+
+    pos = [dec, ra]
+    kwargs = dict(r=r, res=res, proj=proj, apod=apod)
+    thumb = reproject.thumbnails(imap, pos, **kwargs)
+    if np.all(np.isfinite(thumb)):
+        return thumb
+
+    # Cut out a local region that contains pixell's cut-out (which pixell
+    # makes larger for the FFT), so that the full map is not copied.
+    pix_size = np.min(np.abs(imap.wcs.wcs.cdelt)) * degree
+    margin = 0.5 * (r + apod) + 10 * pix_size
+    (pixbox,) = enmap.neighborhood_pixboxes(
+        imap.shape, imap.wcs, np.array([pos]), r + apod + margin
+    )
+    local = imap.extract_pixbox(pixbox)
+    bad = ~np.isfinite(local)
+    if np.all(bad):
+        return thumb
+
+    filled = enmap.ndmap(np.where(bad, 0.0, local), local.wcs)
+    thumb = reproject.thumbnails(filled, pos, **kwargs)
+    bad_thumb = reproject.thumbnails(
+        enmap.ndmap(bad.astype(float), local.wcs),
+        pos,
+        method="spline",
+        order=1,
+        **kwargs,
+    )
+    thumb[bad_thumb > 0] = np.nan
+    return thumb
+
+
 def get_thumbnail(
     imap: enmap.ndmap,
     ra_deg: float,
@@ -258,24 +311,9 @@ def get_thumbnail(
     size_deg: float = 0.5,
     proj: str = "tan",
 ) -> enmap:
-    from pixell import reproject
-
-    ra = ra_deg * degree
-    dec = dec_deg * degree
-    omap = reproject.thumbnails(
-        imap,
-        [dec, ra],
-        size_deg * degree,
-        proj=proj,
+    return nan_safe_thumbnail(
+        imap, dec_deg * degree, ra_deg * degree, size_deg * degree, proj=proj
     )
-    if np.all(np.isnan(omap)):
-        omap = reproject.thumbnails(
-            np.nan_to_num(imap),
-            [dec, ra],
-            size_deg * degree,
-            proj=proj,
-        )
-    return omap
 
 
 def get_time_safe(time_map: enmap.ndmap, poss: list, r: float = 5.0):

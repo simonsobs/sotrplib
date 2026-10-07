@@ -6,11 +6,11 @@ import uuid7 as uuid
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
-from pixell import reproject
 from pydantic import UUID7, BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
+from sotrplib.maps.maps import nan_safe_thumbnail
 
 
 class BaseSource(BaseModel):
@@ -157,9 +157,10 @@ class MeasuredSource(RegisteredSource):
         Extract a thumbnail from the source's map.
         """
         if reproject_thumb:
-            thumb = reproject.thumbnails(
+            thumb = nan_safe_thumbnail(
                 input_map.flux,
-                [self.dec.to(u.rad).value, self.ra.to(u.rad).value],
+                self.dec.to(u.rad).value,
+                self.ra.to(u.rad).value,
                 r=thumb_width.to(u.rad).value,
                 res=input_map.map_resolution.to(u.rad).value,
             )
