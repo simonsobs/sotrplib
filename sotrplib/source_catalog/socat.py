@@ -42,10 +42,17 @@ class SOCat(SourceCatalog):
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or structlog.get_logger()
-        self.catalog = SOCatClientSettings().client
+        self._catalog = None
         self.log.info(
             "socat.initialized",
         )
+
+    @property
+    def catalog(self):
+        # lazily initialize the catalog client as it cannot be pickled
+        if self._catalog is None:
+            self._catalog = SOCatClientSettings().client
+        return self._catalog
 
     def add_sources(self, sources: list[RegisteredSource], monitored: bool = True):
         for source in sources:
