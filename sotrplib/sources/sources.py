@@ -1,5 +1,4 @@
 from typing import Literal, Optional
-from uuid import UUID
 
 import numpy as np
 import structlog
@@ -132,13 +131,13 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
-    map_id: UUID | None = None
+    map_id: UUID7 | None = None
     "mapcat identifier of the map that gave this measurement (the map_id of "
     "a depth-1 map or the coadd_id of a coadd). None if the map is not in mapcat."
     map_name: str | None = None
     "Label of the map that gave this measurement (ProcessableMap.map_name)."
 
-    group_id: UUID | None = None
+    group_id: UUID7 | None = None
     "The map matcher's group of this detection. The detections of the same "
     "event in the other maps of the run have the same group_id. Set for the "
     "transient candidates of confirmed groups and for the noise candidates "
