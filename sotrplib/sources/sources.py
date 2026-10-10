@@ -1,4 +1,5 @@
 from typing import Literal, Optional
+from uuid import UUID
 
 import numpy as np
 import structlog
@@ -131,6 +132,12 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
+    map_id: UUID | None = None
+    "mapcat identifier of the map that gave this measurement (the map_id of "
+    "a depth-1 map or the coadd_id of a coadd). None if the map is not in mapcat."
+    map_name: str | None = None
+    "Label of the map that gave this measurement (ProcessableMap.map_name)."
+
     fit_method: Literal[
         "lmfit_2d_gaussian",
         "nearest_neighbor",
@@ -146,6 +153,19 @@ class MeasuredSource(RegisteredSource):
     thumbnail_unit: AstroPydanticUnit | None = None
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
+
+    def set_map(self, input_map: ProcessableMap) -> "MeasuredSource":
+        """
+        Record the map that gave this measurement: set map_id and map_name.
+        Returns the source.
+        """
+        self.map_id = input_map.mapcat_id
+        try:
+            self.map_name = input_map.map_name
+        except (AttributeError, TypeError):
+            # map_name needs the observation start time.
+            self.map_name = None
+        return self
 
     def extract_thumbnail(
         self,
