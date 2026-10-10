@@ -1,5 +1,4 @@
 from typing import Literal, Optional
-from uuid import UUID
 
 import numpy as np
 import structlog
@@ -132,7 +131,7 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
-    map_id: UUID | None = None
+    map_id: UUID7 | None = None
     "mapcat identifier of the map that gave this measurement (the map_id of "
     "a depth-1 map or the coadd_id of a coadd). None if the map is not in mapcat."
     map_name: str | None = None
