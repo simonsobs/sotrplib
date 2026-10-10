@@ -8,7 +8,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "pixell",
-    "numpy==1.26.4",
+    "numpy>=2",  # pyarrow >= 26 (through pandas and socat) needs numpy 2
     "astropy",
     "lmfit",
     "h5py",
@@ -20,7 +20,7 @@ dependencies = [
     "pydantic-settings",
     "tqdm",
     "filelock",
-    "photutils",
+    "photutils<3",  # sources/finding.py reads the photutils 2 source catalog
     "structlog",
     "scikit-image",
     "socat @ git+https://github.com/simonsobs/socat",
