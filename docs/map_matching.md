@@ -8,11 +8,14 @@ of these maps. A glitch or an artifact usually appears in only one map.
 The map matcher uses this difference. After the runner analyzes all the maps
 of a run, the map matcher does these steps:
 
-1. It groups the transient candidates that are at the same position in maps
-   of the same observation.
-2. It keeps a group as transient candidates only if a minimum number of
-   different arrays detected it, and if one detection has a high SNR.
-3. It gives each group a significance and a rank.
+1. It groups the transient candidates that are at the same position in
+   different maps of the run.
+2. It gives each group an identifier (`group_id`), a significance and a
+   rank. It writes the `group_id` and the rank on each candidate of the
+   group.
+3. It keeps a group as transient candidates only if a minimum number of
+   different arrays detected it, and if one detection has a high SNR. It
+   moves the other candidates to the noise candidates.
 
 The library code is in `sotrplib/sifter/map_matching.py`. The config model is
 in `sotrplib/config/map_matching.py`.
@@ -66,34 +69,36 @@ Add a `map_matcher` field to the `sotrp` config:
 With `matcher_type: "empty"` (the default), the transient candidates do not
 change. Use this value to analyze one map at a time.
 
-**Put all the maps that you want to compare in one run.** The map matcher
-compares only the maps of one run. To compare the bands, the run must
-contain all the bands. See "Analyze all the maps of one day in one job" in
-[Run `sotrp` with the prefect runner](prefect.md).
+**Put all the maps that you want to compare in one run, and only these
+maps.** The map matcher compares all the maps of one run. It does not apply
+a time cut. Thus, the maps of the run set the time range of the matching.
+For example, if a run contains the maps of two days, the map matcher can
+group a detection of day 1 with a detection of day 2. To compare the arrays
+and bands of one observation, put the maps of one observation in a run (see
+"Analyze a campaign with SLURM" below). See also "Analyze all the maps of
+one day in one job" in [Run `sotrp` with the prefect runner](prefect.md).
 
 
 How the map matcher makes groups
 --------------------------------
 
-1. **Observations.** If the time ranges of two maps overlap, the maps are
-   in the same observation. The map matcher compares only the candidates of
-   maps in the same observation.
-2. **Links.** In one observation, the map matcher links two candidates of
-   different maps if the distance between them is not more than `radius`.
-   It uses only the candidates with SNR `low_sig` or more. The other
-   candidates go to `unconfirmed_transient_candidates`, with no `map_match`.
-3. **Groups.** Linked candidates are in the same group. The links make
+1. **Links.** The map matcher links two candidates of different maps of
+   the run if the distance between them is not more than `radius`. It does
+   not link two candidates of the same map. It uses only the candidates with
+   SNR `low_sig` or more. The other candidates go to `noise_candidates`,
+   with no `group_id`.
+2. **Groups.** Linked candidates are in the same group. The links make
    chains. For example, if A links to B and B links to C, then A, B and C
    are in one group.
-4. **Confirmation.** A group is confirmed if both of these conditions are
+3. **Confirmation.** A group is confirmed if both of these conditions are
    true:
    - It contains detections from `min_arrays` or more different arrays. One
      array in two bands counts as one array. The two bands of one tube use
      the same optics, so a problem in the tube can appear in the two bands.
    - One of its detections has SNR `high_sig` or more.
 
-Each matched candidate is in exactly one group. A candidate that has no link
-is a group with one member.
+Each linked candidate is in exactly one group. A candidate with SNR
+`low_sig` or more that has no link is a group with one member.
 
 
 Use a low blind-search threshold
@@ -201,25 +206,41 @@ cover the position but did not detect the event.
 Results
 -------
 
-The map matcher adds its results to the candidates. The source outputs (for
-example, the pickle files) contain these results.
+The map matcher writes its results on the candidates. The source outputs
+(for example, the pickle files) contain these results.
+
+### The candidate fields
+
+The map matcher sets these fields of `MeasuredSource`
+(`sotrplib/sources/sources.py`) on each candidate of a group:
+
+| Field | Meaning |
+|---|---|
+| `group_id` | The identifier of the group. All the candidates of a group have the same `group_id`. |
+| `group_rank` | The rank of the group in the run. Rank 1 is the most significant. |
+
+Each measured source also has `map_id` (the mapcat identifier of its map)
+and `map_name`. Thus, each candidate links to one map and to one group.
+Use `group_id` to find the detections of one event in the other maps.
 
 ### The sifter result
 
 The map matcher changes the `SifterResult` of each map:
 
 - `transient_candidates` contains only the candidates of confirmed groups.
-- `unconfirmed_transient_candidates` contains the other candidates. The map
-  matcher does not delete them.
+- `noise_candidates` also contains the other candidates. The candidates of
+  groups that are not confirmed keep their `group_id` and `group_rank`. The
+  candidates with SNR less than `low_sig` have no `group_id`.
 
-### The `map_match` field
+### The groups
 
-Each transient candidate (confirmed or not) has a `map_match` field. It is a
-`MapMatch` (`sotrplib/sources/sources.py`) with these fields:
+`match()` also returns the groups (`MapMatchGroup`). A group has these
+fields:
 
 | Field | Meaning |
 |---|---|
-| `match_id` | The identifier of the group. All the candidates of a group have the same `match_id`. |
+| `group_id` | The identifier of the group. It is the same as the `group_id` of its candidates. |
+| `rank` | The rank of the group in the run. |
 | `confirmed` | `True` if `min_arrays` or more arrays detected the group, and one detection has SNR `high_sig` or more. |
 | `max_snr` | The highest SNR of the detections in the group. |
 | `n_maps` | The number of maps with a detection in the group. |
@@ -227,7 +248,8 @@ Each transient candidate (confirmed or not) has a `map_match` field. It is a
 | `n_bands` | The number of different bands in the group. |
 | `combined_snr` | `sqrt(sum(snr_i**2))` of the detections in the group. |
 | `significance` | The significance of the group, in sigma. |
-| `rank` | The rank of the group in the run. Rank 1 is the most significant. |
+| `ra`, `dec` | The mean position of the detections, with the weight `snr**2`. |
+| `members` | The candidates of the group, each with its `MapResult`. |
 
 ### The summary file
 
@@ -244,13 +266,15 @@ the earliest start time of the maps of the run. The file contains:
   list these groups, because a low blind-search threshold can give many of
   them.
 
-Each group has the fields of `MapMatch`, and also:
+Each group has the fields of `MapMatchGroup` (with `ra_deg` and `dec_deg`
+for the position), and also:
 
-- `ra_deg` and `dec_deg`: the mean position of the detections, with the
-  weight `snr**2`;
 - `arrays` and `bands`;
-- `members`: one item for each detection, with the map name, `mapcat_id`,
-  array, band, SNR, flux, position and time.
+- `members`: one item for each detection, with the `measurement_id`, the
+  map name, the `map_id`, array, band, SNR, flux, position and time.
+
+Use the `group_id` or the `measurement_id` to join the summary to the
+candidates in the source outputs.
 
 
 Example
@@ -282,8 +306,7 @@ The script
 writes one config and one SLURM job for each observation in mapcat:
 
 1. It reads the depth-1 maps from mapcat.
-2. It groups the maps whose time ranges overlap into observations. This is
-   the same rule as the map matcher.
+2. It groups the maps whose time ranges overlap into observations.
 3. For each observation, it writes a config that selects the maps of the
    observation by their `map_id`, and a SLURM job that runs `sotrp` with the
    basic runner.
@@ -327,9 +350,10 @@ matcher = MultiArrayMapMatcher(radius=1.5 * u.arcmin, min_arrays=2)
 results, groups = matcher.match(map_results)
 ```
 
-`map_results` is a list of `MapResult`. `match()` returns the updated
-results and the groups (`MapMatchGroup`). Use the returned results, not the
-input list. `map_match_significance()` calculates the significance of a list
+`map_results` is a list of `MapResult`, one for each map. `match()` sets
+`group_id` and `group_rank` on the candidates, moves the candidates that are
+not confirmed to the noise candidates, and returns the updated results and
+the groups (`MapMatchGroup`). Use the returned results, not the input list. `map_match_significance()` calculates the significance of a list
 of SNRs.
 
 
@@ -341,4 +365,5 @@ Limits
 - The map matcher does not compare the fluxes of the detections.
 - `radius` is the same for all the bands. The beam is smaller at the higher
   bands.
-- The map matcher compares only the maps of one run.
+- The map matcher compares only the maps of one run, and it compares all
+  of them. It does not apply a time cut.

@@ -3,9 +3,10 @@ Write one sotrp config and one SLURM job for each observation in mapcat, so
 that the map matcher can compare the maps of all the tubes and bands of an
 observation.
 
-An observation is a set of depth-1 maps whose time ranges overlap (the same
-rule as the map matcher). Each config selects the maps of one observation by
-their map_id. Thus, an observation that crosses a day boundary is analyzed
+An observation is a set of depth-1 maps whose time ranges overlap. Each
+config selects the maps of one observation by their map_id. The map matcher
+compares all the maps of a run, so each run compares only the maps of one
+observation. Thus, an observation that crosses a day boundary is analyzed
 once, in one job.
 
 Each job runs the basic runner. The jobs run in parallel. Submit them with

@@ -272,7 +272,6 @@ class BaseRunner:
                 array=input_map.array,
                 frequency=input_map.frequency,
                 observation_start=input_map.observation_start,
-                observation_end=input_map.observation_end,
                 forced_photometry_candidates=forced_photometry_candidates,
                 sifter_result=sifter_result,
                 pointing_sources=pointing_sources,

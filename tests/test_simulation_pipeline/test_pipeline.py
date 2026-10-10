@@ -75,9 +75,9 @@ def test_pipeline_map_matching_before_outputs(
 ):
     """
     With no catalog every injected source is a transient candidate; the two
-    copies of the map are one observation, so the map matcher groups each
+    copies of the map are two maps of the run, so the map matcher groups each
     source's two detections, and the source outputs (written only after
-    matching) carry the shared, ranked map_match.
+    matching) carry the shared, ranked group_id.
     """
     new_map, sources = map_with_sources
     maps = [new_map, new_map]
@@ -105,13 +105,12 @@ def test_pipeline_map_matching_before_outputs(
 
     transients = [res[1].transient_candidates for res in results]
     assert [len(t) for t in transients] == [len(sources), len(sources)]
-    assert all(c.map_match is not None for t in transients for c in t)
-    assert {c.map_match.match_id for c in transients[0]} == {
-        c.map_match.match_id for c in transients[1]
-    }
-    assert sorted(c.map_match.rank for c in transients[0]) == list(
+    assert all(c.group_id is not None for t in transients for c in t)
+    assert {c.group_id for c in transients[0]} == {c.group_id for c in transients[1]}
+    assert sorted(c.group_rank for c in transients[0]) == list(
         range(1, len(sources) + 1)
     )
+    assert all(c.map_name == new_map.map_name for t in transients for c in t)
 
     # both copies share a map name, so their pickles may land in one file
     pickled = [pickle.load(p.open("rb")) for p in tmp_path.glob("*.pickle")]
@@ -119,13 +118,15 @@ def test_pipeline_map_matching_before_outputs(
     for output in pickled:
         candidates = output["sifted_blind_search"].transient_candidates
         assert len(candidates) == len(sources)
-        assert all(c.map_match.n_maps == 2 for c in candidates)
+        assert all(c.group_id is not None for c in candidates)
 
-    # the same maps with the default min_arrays=2 are all unconfirmed
+    # the same maps with the default min_arrays=2 are all unconfirmed, so
+    # their candidates go to the noise and keep their group_id
     runner.map_matcher = MultiArrayMapMatcher()
     for forced, sifted in runner.run(maps):
         assert sifted.transient_candidates == []
-        assert len(sifted.unconfirmed_transient_candidates) == len(sources)
+        grouped = [c for c in sifted.noise_candidates if c.group_id is not None]
+        assert len(grouped) == len(sources)
 
 
 def test_basic_pipeline_missing_crossmatches(

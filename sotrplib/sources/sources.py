@@ -103,33 +103,6 @@ class RegisteredSource(BaseSource):
         raise NotImplementedError("Haven't figured out what updating means")
 
 
-class MapMatch(BaseModel):
-    """
-    Summary of a group of transient candidates that the map matcher judged
-    to be the same event, seen in one or more maps of one observation.
-    """
-
-    match_id: str
-    confirmed: bool
-    "Detected by at least the matcher's min_arrays distinct arrays, with at "
-    "least one detection at or above the matcher's high_sig."
-    max_snr: float | None = None
-    "Highest SNR of the detections in the group."
-    n_maps: int
-    n_arrays: int
-    n_bands: int
-    combined_snr: float
-    "sqrt of the sum of squared per-map SNRs."
-    significance: float
-    "Gaussian-equivalent significance of combined_snr**2 under the chi-squared "
-    "distribution with n_maps degrees of freedom (i.e. of independent noise "
-    "in every map reaching these SNRs)."
-    rank: int
-    "1 = most significant group of the run; confirmed groups rank first, then "
-    "the other notable groups (a detection at or above high_sig, or at least "
-    "min_arrays arrays), then the rest."
-
-
 class MeasuredSource(RegisteredSource):
     """
     A source object specifically for a measurement in a given map.
@@ -159,15 +132,21 @@ class MeasuredSource(RegisteredSource):
     instrument: str | None = None
     array: str | None = None
 
-    map_match: MapMatch | None = None
-    "The map matcher's group for this detection: shared by detections of the "
-    "same event in other maps (arrays/bands) of the same observation."
-
     map_id: UUID | None = None
     "mapcat identifier of the map that gave this measurement (the map_id of "
     "a depth-1 map or the coadd_id of a coadd). None if the map is not in mapcat."
     map_name: str | None = None
     "Label of the map that gave this measurement (ProcessableMap.map_name)."
+
+    group_id: UUID | None = None
+    "The map matcher's group of this detection. The detections of the same "
+    "event in the other maps of the run have the same group_id. Set for the "
+    "transient candidates of confirmed groups and for the noise candidates "
+    "of groups that are not confirmed. None if the map matcher did not group "
+    "this detection."
+    group_rank: int | None = None
+    "Rank of the group in the run. 1 is the most significant group. The "
+    "confirmed groups rank first."
 
     fit_method: Literal[
         "lmfit_2d_gaussian",

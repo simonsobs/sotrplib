@@ -39,7 +39,6 @@ def _result(
         array=array,
         frequency=frequency,
         observation_start=start,
-        observation_end=start + 3 * HOUR,
         forced_photometry_candidates=[],
         sifter_result=SifterResult(
             source_candidates=[],
@@ -56,13 +55,14 @@ def test_detection_in_two_arrays_is_confirmed():
     )
 
     assert len(groups) == 1
-    match = groups[0].match
-    assert match.confirmed
-    assert (match.n_maps, match.n_arrays, match.n_bands) == (2, 2, 1)
-    assert a.map_match is match and b.map_match is match
+    group = groups[0]
+    assert group.confirmed
+    assert (group.n_maps, group.n_arrays, group.n_bands) == (2, 2, 1)
+    assert a.group_id == b.group_id == group.group_id
+    assert a.group_rank == b.group_rank == 1
     for r in results:
         assert len(r.sifter_result.transient_candidates) == 1
-        assert r.sifter_result.unconfirmed_transient_candidates == []
+        assert r.sifter_result.noise_candidates == []
 
 
 def test_single_array_detection_is_unconfirmed():
@@ -73,12 +73,13 @@ def test_single_array_detection_is_unconfirmed():
     )
 
     assert len(groups) == 2
-    assert not any(g.match.confirmed for g in groups)
-    assert lone.map_match is not None
-    assert lone.map_match.match_id != far.map_match.match_id
+    assert not any(g.confirmed for g in groups)
+    # groups that are not confirmed keep their group_id in the noise
+    assert lone.group_id is not None
+    assert lone.group_id != far.group_id
     for r in results:
         assert r.sifter_result.transient_candidates == []
-        assert len(r.sifter_result.unconfirmed_transient_candidates) == 1
+        assert len(r.sifter_result.noise_candidates) == 1
 
 
 def test_same_array_in_two_bands_counts_once():
@@ -90,8 +91,8 @@ def test_same_array_in_two_bands_counts_once():
     )
 
     assert len(groups) == 1
-    assert (groups[0].match.n_arrays, groups[0].match.n_bands) == (1, 2)
-    assert not groups[0].match.confirmed
+    assert (groups[0].n_arrays, groups[0].n_bands) == (1, 2)
+    assert not groups[0].confirmed
 
 
 def test_three_arrays_three_bands_form_one_group():
@@ -104,20 +105,29 @@ def test_three_arrays_three_bands_form_one_group():
 
     assert len(groups) == 1
     assert groups[0].to_dict()["arrays"] == ["c1", "i1", "i3"]
-    assert groups[0].match.n_bands == 3
+    assert groups[0].n_bands == 3
     assert len(groups[0].members) == 3
 
 
-def test_different_observations_are_not_matched():
+def test_maps_at_different_times_are_matched():
+    # No time cut: the maps of the run set the time range.
     _, groups = MultiArrayMapMatcher().match(
         [
             _result("i1", "i1", [_candidate(10.0, -5.0)], start=T0),
-            _result("i3", "i3", [_candidate(10.0, -5.0)], start=T0 + 5 * HOUR),
+            _result("i3", "i3", [_candidate(10.0, -5.0)], start=T0 + 30 * 24 * HOUR),
         ]
     )
 
+    assert len(groups) == 1
+    assert groups[0].confirmed
+
+
+def test_candidates_of_one_map_are_not_matched():
+    a, b = _candidate(10.0, -5.0), _candidate(10.0, -5.0 + 0.5 / 60)
+    _, groups = MultiArrayMapMatcher(min_arrays=1).match([_result("i1", "i1", [a, b])])
+
     assert len(groups) == 2
-    assert not any(g.match.confirmed for g in groups)
+    assert a.group_id != b.group_id
 
 
 def test_match_across_ra_wrap():
@@ -129,7 +139,7 @@ def test_match_across_ra_wrap():
     )
 
     assert len(groups) == 1
-    assert groups[0].match.confirmed
+    assert groups[0].confirmed
     # the mean position must not average RA 359.9999 and 0.0001 to 180
     assert groups[0].dec.to_value(u.deg) == pytest.approx(0.0, abs=1e-6)
     assert (
@@ -156,7 +166,7 @@ def test_min_arrays_one_keeps_single_detections():
         [_result("i1", "i1", [_candidate(10.0, -5.0)])]
     )
 
-    assert groups[0].match.confirmed
+    assert groups[0].confirmed
     assert len(results[0].sifter_result.transient_candidates) == 1
 
 
@@ -166,7 +176,7 @@ def test_empty_matcher_is_passthrough():
 
     assert groups == []
     assert results[0].sifter_result.transient_candidates == [candidate]
-    assert candidate.map_match is None
+    assert candidate.group_id is None
 
 
 @pytest.mark.parametrize(
@@ -209,14 +219,14 @@ def test_confirmed_groups_rank_above_brighter_unconfirmed():
         ]
     )
 
-    ranked = sorted(groups, key=lambda g: g.match.rank)
-    assert [g.match.rank for g in ranked] == [1, 2, 3, 4]
-    assert [g.match.confirmed for g in ranked] == [True, True, False, False]
+    ranked = sorted(groups, key=lambda g: g.rank)
+    assert [g.rank for g in ranked] == [1, 2, 3, 4]
+    assert [g.confirmed for g in ranked] == [True, True, False, False]
     # within each tier, by significance
-    assert strong_a.map_match.rank == 1
-    assert pair_a.map_match.rank == 2
-    assert bright_single.map_match.rank == 3
-    assert faint_single.map_match.rank == 4
+    assert strong_a.group_rank == 1
+    assert pair_a.group_rank == 2
+    assert bright_single.group_rank == 3
+    assert faint_single.group_rank == 4
 
 
 def test_summary_written(tmp_path):
@@ -233,6 +243,11 @@ def test_summary_written(tmp_path):
     top = summary["groups"][0]
     assert top["confirmed"] and top["arrays"] == ["i1", "i3"]
     assert {m["map_name"] for m in top["members"]} == {"f090_i1", "f090_i3"}
+    assert top["group_id"] == str(a.group_id)
+    assert {m["measurement_id"] for m in top["members"]} == {
+        str(a.measurement_id),
+        str(b.measurement_id),
+    }
     assert top["ra_deg"] == pytest.approx(348.3477, abs=1e-3)
     assert not summary["groups"][1]["confirmed"]
 
@@ -260,8 +275,8 @@ def test_low_sig_detection_confirms_high_sig_seed():
     )
 
     (group,) = groups
-    assert group.match.confirmed
-    assert group.match.max_snr == 6.0
+    assert group.confirmed
+    assert group.max_snr == 6.0
     assert results[1].sifter_result.transient_candidates == [support]
 
 
@@ -272,11 +287,12 @@ def test_low_sig_only_group_is_not_confirmed():
     )
 
     (group,) = groups
-    assert group.match.n_arrays == 2
-    assert not group.match.confirmed
+    assert group.n_arrays == 2
+    assert not group.confirmed
     for r in results:
         assert r.sifter_result.transient_candidates == []
-        assert len(r.sifter_result.unconfirmed_transient_candidates) == 1
+        assert len(r.sifter_result.noise_candidates) == 1
+    assert a.group_id == b.group_id == group.group_id
 
 
 def test_candidates_below_low_sig_are_not_matched():
@@ -286,9 +302,9 @@ def test_candidates_below_low_sig_are_not_matched():
     )
 
     (group,) = groups
-    assert not group.match.confirmed
-    assert faint.map_match is None
-    assert results[1].sifter_result.unconfirmed_transient_candidates == [faint]
+    assert not group.confirmed
+    assert faint.group_id is None
+    assert results[1].sifter_result.noise_candidates == [faint]
 
 
 def test_notable_groups_rank_above_low_sig_singles():
@@ -303,13 +319,13 @@ def test_notable_groups_rank_above_low_sig_singles():
         ]
     )
 
-    assert confirmed[0].map_match.rank == 1
+    assert confirmed[0].group_rank == 1
     # seed_single (5.2) and low_pair (2 arrays) are notable, so they rank
     # above low_single (4.9, one array). low_pair (5.18 sigma) is more
     # significant than seed_single (5.07 sigma).
-    assert low_pair[0].map_match.rank == 2
-    assert seed_single.map_match.rank == 3
-    assert low_single.map_match.rank == 4
+    assert low_pair[0].group_rank == 2
+    assert seed_single.group_rank == 3
+    assert low_single.group_rank == 4
 
 
 def test_summary_lists_only_notable_groups(tmp_path):
