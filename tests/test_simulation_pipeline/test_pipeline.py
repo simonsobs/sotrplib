@@ -2,6 +2,7 @@
 Tests for the fully simulated pipeline setup.
 """
 
+import pickle
 from itertools import combinations
 
 import numpy as np
@@ -11,6 +12,7 @@ from sotrplib.handlers.basic import PipelineRunner
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SimpleCatalogSifter
 from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
+from sotrplib.sifter.map_matching import MultiArrayMapMatcher
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
@@ -66,6 +68,65 @@ def test_basic_pipeline_lmfit(
     )
 
     runner.run(maps)
+
+
+def test_pipeline_map_matching_before_outputs(
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
+):
+    """
+    With no catalog every injected source is a transient candidate; the two
+    copies of the map are two maps of the run, so the map matcher groups each
+    source's two detections, and the source outputs (written only after
+    matching) carry the shared, ranked group_id.
+    """
+    new_map, sources = map_with_sources
+    maps = [new_map, new_map]
+
+    runner = PipelineRunner(
+        map_coadder=None,
+        source_catalogs=[],
+        source_injector=None,
+        preprocessors=None,
+        pointing_provider=None,
+        pointing_residual_model=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=None,
+        source_subtractor=None,
+        blind_search=SigmaClipBlindSearch(),
+        sifter=SimpleCatalogSifter(radius=u.Quantity(30.0, "arcsec")),
+        source_outputs=[PickleSerializer(directory=tmp_path)],
+        map_outputs=None,
+        # both copies share one array, so only min_arrays=1 confirms them
+        map_matcher=MultiArrayMapMatcher(min_arrays=1),
+    )
+
+    results = runner.run(maps)
+
+    transients = [res[1].transient_candidates for res in results]
+    assert [len(t) for t in transients] == [len(sources), len(sources)]
+    assert all(c.group_id is not None for t in transients for c in t)
+    assert {c.group_id for c in transients[0]} == {c.group_id for c in transients[1]}
+    assert sorted(c.group_rank for c in transients[0]) == list(
+        range(1, len(sources) + 1)
+    )
+    assert all(c.map_name == new_map.map_name for t in transients for c in t)
+
+    # both copies share a map name, so their pickles may land in one file
+    pickled = [pickle.load(p.open("rb")) for p in tmp_path.glob("*.pickle")]
+    assert pickled
+    for output in pickled:
+        candidates = output["sifted_blind_search"].transient_candidates
+        assert len(candidates) == len(sources)
+        assert all(c.group_id is not None for c in candidates)
+
+    # the same maps with the default min_arrays=2 are all unconfirmed, so
+    # their candidates go to the noise and keep their group_id
+    runner.map_matcher = MultiArrayMapMatcher()
+    for forced, sifted in runner.run(maps):
+        assert sifted.transient_candidates == []
+        grouped = [c for c in sifted.noise_candidates if c.group_id is not None]
+        assert len(grouped) == len(sources)
 
 
 def test_basic_pipeline_missing_crossmatches(

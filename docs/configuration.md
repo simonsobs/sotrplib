@@ -53,6 +53,9 @@ How `sotrp` uses the config
 4. The command makes the maps from the `maps` field (see "Maps" below).
 5. The runner runs the pipeline on each map. The steps for one map are in
    `BaseRunner` (`sotrplib/handlers/base.py`).
+6. The map matcher groups the transient candidates of all the maps (see
+   [Map matching](map_matching.md)).
+7. The runner writes the source outputs of each map.
 
 You can also set each top-level field with an environment variable that
 starts with `sotrp_`, for example `sotrp_runner=prefect`.
@@ -118,6 +121,64 @@ The `map_type` field of the generator selects the type of map in mapcat:
 [Analyze coadds](coadding/analyze_coadds.md)).
 
 
+Runner
+------
+
+The `runner` field selects the runner:
+
+- `basic` (default): `PipelineRunner` analyzes one map after the other.
+- `prefect`: `PrefectRunner` analyzes the maps in parallel worker processes.
+
+See [Run `sotrp` with the prefect runner](prefect.md).
+
+
+Beam profiles for several bands
+-------------------------------
+
+The `beam1d` field of the `matched_filter` preprocessor is one file, or one
+file for each band:
+
+```json
+"beam1d": {
+    "f090": "/path/to/profile_f090.txt",
+    "f150": "/path/to/profile_f150.txt"
+}
+```
+
+With one file for each band, one config can filter the maps of all the
+bands. The preprocessor selects the file with the `frequency` of the map. If
+a band has no file, the preprocessor raises `ValueError`.
+
+
+Sifter cuts
+-----------
+
+The `default` sifter moves a candidate to `noise_candidates` if a value of
+the candidate is outside a cut. The `cuts` field changes one or more cuts:
+
+```json
+"sifter": {
+    "sifter_type": "default",
+    "cuts": {"snr": [3.0, "inf"]}
+}
+```
+
+Each cut is `[min, max]`. The cuts that you do not give keep their default
+values: `fwhm` `[0.5, 2.5]` (in units of the beam FWHM), `snr`
+`[5.0, inf]` and `observation_mean_time` `[1, inf]`. See
+`DEFAULT_SIFTER_CUTS` in `sotrplib/sifter/core.py`.
+
+
+Map matching
+------------
+
+The `map_matcher` field groups the transient candidates across the maps of
+a run. The default (`"matcher_type": "empty"`) does no map matching. See
+[Map matching](map_matching.md). To confirm a 5-sigma detection with
+3-sigma detections in other arrays, see "Use a low blind-search threshold"
+in that document.
+
+
 Outputs
 -------
 
@@ -136,3 +197,6 @@ For example:
 ```
 
 The code for the outputs is in `sotrplib/outputs/`.
+
+The runner writes the source outputs after map matching. Thus, the source
+outputs contain the results of the map matching.

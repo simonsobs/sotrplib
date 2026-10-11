@@ -15,6 +15,7 @@ from sotrplib.handlers.basic import PipelineRunner
 from .blind_search import AllBlindSearchConfigTypes, EmptyBlindSearchConfig
 from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryConfig
 from .map_coadding import AllMapCoadderConfigTypes, EmptyMapCoadderConfig
+from .map_matching import AllMapMatcherConfigTypes, EmptyMapMatcherConfig
 from .maps import AllMapGeneratorConfigTypes
 from .outputs import MapOutputConfigTypes, SourceOutputConfigTypes
 from .pointing_residual import (
@@ -88,6 +89,9 @@ class Settings(BaseSettings):
     sifter: AllSifterConfigTypes = Field(default_factory=EmptySifterConfig)
     "Sifting settings"
 
+    map_matcher: AllMapMatcherConfigTypes = Field(default_factory=EmptyMapMatcherConfig)
+    "Grouping of transient candidates across maps of the same observation"
+
     source_outputs: list[SourceOutputConfigTypes] = []
     "Source output settings"
 
@@ -139,6 +143,7 @@ class Settings(BaseSettings):
             "source_subtractor": self.source_subtractor.to_source_subtractor(log=log),
             "blind_search": self.blind_search.to_search_provider(log=log),
             "sifter": self.sifter.to_sifter(log=log),
+            "map_matcher": self.map_matcher.to_matcher(log=log),
             "source_outputs": [x.to_output(log=log) for x in self.source_outputs],
             "map_outputs": [x.to_output(log=log) for x in self.map_outputs],
         }
