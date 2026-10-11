@@ -4,6 +4,7 @@ Tests for grouping transient candidates across maps (map matching).
 
 import json
 
+import numpy as np
 import pytest
 from astropy import units as u
 from astropy.time import Time, TimeDelta
@@ -350,3 +351,18 @@ def test_multi_array_config_thresholds():
 
     with pytest.raises(ValueError, match="low_sig"):
         MultiArrayMapMatcherConfig(high_sig=3.0, low_sig=4.0)
+
+
+def test_summary_written_with_numpy_snrs(tmp_path):
+    # Real candidates carry numpy S/N values; the summary must still be JSON.
+    a = _candidate(10.0, 0.0, snr=np.float32(6.0))
+    b = _candidate(10.0, 0.0, snr=np.float64(4.0))
+    _, groups = MultiArrayMapMatcher(summary_directory=tmp_path).match(
+        [_result("i1", "i1", [a]), _result("i3", "i3", [b])]
+    )
+
+    (group,) = groups
+    assert type(group.confirmed) is bool
+    (path,) = tmp_path.glob("map_match_summary_*.json")
+    summary = json.loads(path.read_text())
+    assert summary["groups"][0]["confirmed"] is True

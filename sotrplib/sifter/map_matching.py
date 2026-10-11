@@ -116,7 +116,7 @@ class MapMatchGroup:
                     "map_id": _str_or_none(c.map_id or result.mapcat_id),
                     "array": result.array,
                     "frequency": result.frequency,
-                    "snr": c.snr,
+                    "snr": float(c.snr) if c.snr is not None else None,
                     "flux_mJy": c.flux.to_value(u.mJy) if c.flux is not None else None,
                     "ra_deg": c.ra.to_value(u.deg),
                     "dec_deg": c.dec.to_value(u.deg),
@@ -307,10 +307,10 @@ class MultiArrayMapMatcher(MapMatcher):
             arrays = {r.array for r, _ in members if r.array is not None}
             bands = {r.frequency for r, _ in members if r.frequency is not None}
             snrs = [c.snr for _, c in members if c.snr is not None]
-            max_snr = max(snrs) if snrs else None
-            has_seed = max_snr is not None and max_snr >= self.high_sig
+            max_snr = float(max(snrs)) if snrs else None
+            has_seed = bool(max_snr is not None and max_snr >= self.high_sig)
             multi_array = len(arrays) >= self.min_arrays
-            confirmed = multi_array and has_seed
+            confirmed = bool(multi_array and has_seed)
             # 0: confirmed, 1: other notable groups, 2: the rest.
             tier = 0 if confirmed else 1 if (has_seed or multi_array) else 2
             combined_snr, significance = map_match_significance(snrs)

@@ -114,7 +114,9 @@ class BaseRunner:
         output_map = input_map
         if not np.any(output_map.hits > 0):
             if input_map._parent_database is not None:
-                set_processing_end(input_map.mapcat_id, map_type=input_map.map_type)
+                self.profilable_task(set_processing_end)(
+                    input_map.mapcat_id, map_type=input_map.map_type
+                )
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -282,7 +284,7 @@ class BaseRunner:
             # Set the status to "failed". If the status stays "processing",
             # the reader skips the map on the next run.
             if getattr(input_map, "_parent_database", None) is not None:
-                set_processing_end(
+                self.profilable_task(set_processing_end)(
                     input_map.mapcat_id, map_type=input_map.map_type, status="failed"
                 )
             raise
@@ -304,7 +306,7 @@ class BaseRunner:
                 )
         except Exception:
             if result.from_database:
-                set_processing_end(
+                self.profilable_task(set_processing_end)(
                     result.mapcat_id, map_type=result.map_type, status="failed"
                 )
             raise
@@ -352,7 +354,6 @@ class BaseRunner:
         map_results = [r for r in map_results if r is not None]
         map_results, _ = self.profilable_task(self.map_matcher.match)(map_results)
 
-        for result in map_results:
-            self.output_map_result(result)
+        self.basic_task(self.output_map_result).map(map_results).result()
 
         return [(r.forced_photometry_candidates, r.sifter_result) for r in map_results]
