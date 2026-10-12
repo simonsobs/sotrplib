@@ -468,7 +468,8 @@ def gaussian_fit(
                     angular_separation=None,
                 )
             ],
-        ).set_map(input_map)
+        )
+        out_source.set_map(input_map)
         if np.any(np.isnan(pix)):
             log.warning(
                 f"{preamble}source_position_has_nan_pix",
