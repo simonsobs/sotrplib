@@ -219,6 +219,8 @@ def convert_outstruct_to_measured_source_objects(
         ms.frequency = get_frequency(inmap.frequency) if inmap else None
         ms.instrument = inmap.instrument if inmap else None
         ms.array = inmap.array if inmap else None
+        if inmap is not None:
+            ms.set_map(inmap)
         ms.flux = struct["peakval"]
         ms.err_flux = struct["peakval"] / struct["peaksig"]
         ms.snr = struct["peaksig"]
