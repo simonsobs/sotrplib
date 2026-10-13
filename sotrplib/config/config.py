@@ -17,7 +17,11 @@ from .forced_photometry import AllForcedPhotometryConfigTypes, EmptyPhotometryCo
 from .map_coadding import AllMapCoadderConfigTypes, EmptyMapCoadderConfig
 from .map_matching import AllMapMatcherConfigTypes, EmptyMapMatcherConfig
 from .maps import AllMapGeneratorConfigTypes
-from .outputs import MapOutputConfigTypes, SourceOutputConfigTypes
+from .outputs import (
+    MapMatchOutputConfigTypes,
+    MapOutputConfigTypes,
+    SourceOutputConfigTypes,
+)
 from .pointing_residual import (
     AllPointingResidualConfigTypes,
     EmptyPointingResidualConfig,
@@ -98,6 +102,9 @@ class Settings(BaseSettings):
     map_outputs: list[MapOutputConfigTypes] = []
     "Map output settings"
 
+    map_match_outputs: list[MapMatchOutputConfigTypes] = []
+    "Map-match output settings: what to write with the groups of each run"
+
     runner: Literal["basic", "prefect"] = "basic"
     "Runner to use for the pipeline: 'basic' or 'prefect'"
 
@@ -146,6 +153,7 @@ class Settings(BaseSettings):
             "map_matcher": self.map_matcher.to_matcher(log=log),
             "source_outputs": [x.to_output(log=log) for x in self.source_outputs],
             "map_outputs": [x.to_output(log=log) for x in self.map_outputs],
+            "map_match_outputs": [x.to_output(log=log) for x in self.map_match_outputs],
         }
         return contents
 

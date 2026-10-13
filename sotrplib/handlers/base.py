@@ -17,7 +17,7 @@ from sotrplib.maps.pointing import (
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.maps.utils import enmap_box_to_skycoord
-from sotrplib.outputs.core import MapOutput, SourceOutput
+from sotrplib.outputs.core import MapMatchOutput, MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
 from sotrplib.sifter.map_matching import EmptyMapMatcher, MapMatcher, MapResult
 from sotrplib.sims.sim_source_generators import (
@@ -55,6 +55,7 @@ class BaseRunner:
     source_outputs: list[SourceOutput] | None
     map_outputs: list[MapOutput] | None
     map_matcher: MapMatcher | None
+    map_match_outputs: list[MapMatchOutput] | None
     profile: bool = False
 
     def __init__(
@@ -74,6 +75,7 @@ class BaseRunner:
         source_outputs: list[SourceOutput] | None,
         map_outputs: list[MapOutput] | None,
         map_matcher: MapMatcher | None = None,
+        map_match_outputs: list[MapMatchOutput] | None = None,
         profile: bool = False,
     ):
         self.map_coadder = map_coadder or EmptyMapCoadder()
@@ -91,6 +93,7 @@ class BaseRunner:
         self.source_outputs = source_outputs or []
         self.map_outputs = map_outputs or []
         self.map_matcher = map_matcher or EmptyMapMatcher()
+        self.map_match_outputs = map_match_outputs or []
         self.profile = profile
 
     @property
@@ -352,8 +355,13 @@ class BaseRunner:
         # Held in memory until every map is analyzed, so map matching can
         # group transient candidates across maps before anything is written.
         map_results = [r for r in map_results if r is not None]
-        map_results, _ = self.profilable_task(self.map_matcher.match)(map_results)
+        map_results, summary = self.profilable_task(self.map_matcher.match)(map_results)
 
         self.basic_task(self.output_map_result).map(map_results).result()
+
+        # After the source outputs, so that a failure here does not leave
+        # maps in the "processing" state.
+        for output in self.map_match_outputs:
+            self.profilable_task(output.output)(summary=summary)
 
         return [(r.forced_photometry_candidates, r.sifter_result) for r in map_results]

@@ -14,12 +14,13 @@ cut. Thus, the maps that go into the run set the time range of the matching.
 Map matching needs the results of all the maps at once. Thus, the runner
 keeps the source-output inputs of each map in memory (as a MapResult) until
 the map matcher has run, and only then writes the source outputs.
+
+The map matcher does not write files. It returns a MapMatchSummary, and the
+map-match outputs (sotrplib.outputs.core.MapMatchOutput) write it.
 """
 
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -51,7 +52,7 @@ class MapResult:
     array: str | None
     frequency: str | None
     observation_start: Time | None
-    "Used only to name the map-match summary file."
+    "Used only to name the map-match output files."
     forced_photometry_candidates: list[MeasuredSource]
     sifter_result: SifterResult
     pointing_sources: list[MeasuredSource] = field(default_factory=list)
@@ -78,6 +79,9 @@ class MapMatchGroup:
     confirmed: bool
     "Detected by at least the matcher's min_arrays distinct arrays, with at "
     "least one detection at or above the matcher's high_sig."
+    notable: bool
+    "Confirmed, or one detection at or above high_sig, or at least min_arrays "
+    "arrays."
     max_snr: float | None
     "Highest SNR of the detections in the group."
     n_maps: int
@@ -99,6 +103,7 @@ class MapMatchGroup:
             "group_id": str(self.group_id),
             "rank": self.rank,
             "confirmed": self.confirmed,
+            "notable": self.notable,
             "max_snr": self.max_snr,
             "n_maps": self.n_maps,
             "n_arrays": self.n_arrays,
@@ -133,6 +138,57 @@ class MapMatchGroup:
 
 def _str_or_none(x: Any) -> str | None:
     return str(x) if x is not None else None
+
+
+@dataclass
+class MapMatchSummary:
+    """
+    The result of one map-matching run: all the groups, in the sequence of
+    their rank, and the settings of the matcher. The map-match outputs write
+    it.
+    """
+
+    groups: list[MapMatchGroup] = field(default_factory=list)
+    map_names: list[str] = field(default_factory=list)
+    observation_start: Time | None = None
+    "The earliest start time of the maps of the run."
+    settings: dict = field(default_factory=dict)
+    "The settings of the matcher, e.g. min_arrays, high_sig, low_sig and "
+    "radius_arcmin."
+
+    @property
+    def notable_groups(self) -> list[MapMatchGroup]:
+        return [g for g in self.groups if g.notable]
+
+    def to_dict(self, include_all_groups: bool = False) -> dict:
+        """
+        Return the summary as a JSON-compatible dict. If include_all_groups
+        is False, the dict lists only the notable groups, and counts the
+        other groups in n_groups_not_listed.
+        """
+        listed = self.groups if include_all_groups else self.notable_groups
+        return {
+            **self.settings,
+            "maps": list(self.map_names),
+            "n_groups": len(self.groups),
+            "n_groups_not_listed": len(self.groups) - len(listed),
+            "groups": [g.to_dict() for g in listed],
+        }
+
+    @classmethod
+    def from_results(
+        cls,
+        results: list[MapResult],
+        groups: list[MapMatchGroup] | None = None,
+        settings: dict | None = None,
+    ) -> "MapMatchSummary":
+        starts = [r.observation_start for r in results if r.observation_start]
+        return cls(
+            groups=groups or [],
+            map_names=[r.map_name for r in results],
+            observation_start=min(starts) if starts else None,
+            settings=settings or {},
+        )
 
 
 def map_match_significance(snrs: list[float | None]) -> tuple[float, float]:
@@ -173,10 +229,11 @@ class MapMatcher(ABC):
     @abstractmethod
     def match(
         self, results: list[MapResult]
-    ) -> tuple[list[MapResult], list[MapMatchGroup]]:
+    ) -> tuple[list[MapResult], MapMatchSummary]:
         """
         Group the transient candidates across results. Returns the (updated)
-        results -- use these rather than the inputs -- and the groups.
+        results -- use these rather than the inputs -- and a summary that
+        contains the groups.
         """
         return
 
@@ -186,8 +243,8 @@ class EmptyMapMatcher(MapMatcher):
 
     def match(
         self, results: list[MapResult]
-    ) -> tuple[list[MapResult], list[MapMatchGroup]]:
-        return results, []
+    ) -> tuple[list[MapResult], MapMatchSummary]:
+        return results, MapMatchSummary.from_results(results)
 
 
 class MultiArrayMapMatcher(MapMatcher):
@@ -218,8 +275,8 @@ class MultiArrayMapMatcher(MapMatcher):
     Thus, give it only the maps that must be compared, for example the maps
     of one observation.
 
-    If summary_directory is set, the ranked confirmed and notable groups are
-    also written there as JSON, one file per run.
+    The matcher does not write files. To write the groups, add a map-match
+    output (e.g. JSONMapMatchOutput) to the runner.
     """
 
     def __init__(
@@ -228,7 +285,6 @@ class MultiArrayMapMatcher(MapMatcher):
         min_arrays: int = 2,
         high_sig: float = 5.0,
         low_sig: float = 3.0,
-        summary_directory: Path | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         if low_sig > high_sig:
@@ -237,20 +293,20 @@ class MultiArrayMapMatcher(MapMatcher):
         self.min_arrays = min_arrays
         self.high_sig = high_sig
         self.low_sig = low_sig
-        self.summary_directory = summary_directory
         self.log = log or structlog.get_logger()
 
-    def is_notable(self, group: MapMatchGroup) -> bool:
-        """Confirmed, or one detection >= high_sig, or >= min_arrays arrays."""
-        return (
-            group.confirmed
-            or (group.max_snr is not None and group.max_snr >= self.high_sig)
-            or group.n_arrays >= self.min_arrays
-        )
+    @property
+    def settings(self) -> dict:
+        return {
+            "min_arrays": self.min_arrays,
+            "high_sig": self.high_sig,
+            "low_sig": self.low_sig,
+            "radius_arcmin": self.radius.to_value(u.arcmin),
+        }
 
     def match(
         self, results: list[MapResult]
-    ) -> tuple[list[MapResult], list[MapMatchGroup]]:
+    ) -> tuple[list[MapResult], MapMatchSummary]:
         groups = self._rank(self._cluster(results))
 
         confirmed = {
@@ -287,16 +343,15 @@ class MultiArrayMapMatcher(MapMatcher):
             n_candidates=sum(len(g.members) for g in groups),
             n_groups=len(groups),
             n_confirmed_groups=sum(g.confirmed for g in groups),
-            n_notable_groups=sum(self.is_notable(g) for g in groups),
+            n_notable_groups=sum(g.notable for g in groups),
             min_arrays=self.min_arrays,
             high_sig=self.high_sig,
             low_sig=self.low_sig,
         )
 
-        if self.summary_directory is not None:
-            self._write_summary(groups, results)
-
-        return results, groups
+        return results, MapMatchSummary.from_results(
+            results, groups=groups, settings=self.settings
+        )
 
     def _rank(
         self, clusters: list[list[tuple[MapResult, MeasuredSource]]]
@@ -313,12 +368,14 @@ class MultiArrayMapMatcher(MapMatcher):
             confirmed = bool(multi_array and has_seed)
             # 0: confirmed, 1: other notable groups, 2: the rest.
             tier = 0 if confirmed else 1 if (has_seed or multi_array) else 2
+            notable = tier <= 1
             combined_snr, significance = map_match_significance(snrs)
             scored.append(
                 dict(
                     members=members,
                     tier=tier,
                     confirmed=confirmed,
+                    notable=notable,
                     max_snr=max_snr,
                     n_maps=len({id(r) for r, _ in members}),
                     n_arrays=len(arrays),
@@ -363,36 +420,6 @@ class MultiArrayMapMatcher(MapMatcher):
         mean = SkyCoord(x=xyz[0], y=xyz[1], z=xyz[2], representation_type="cartesian")
         mean = mean.represent_as("unitspherical")
         return mean.lon.to(u.deg), mean.lat.to(u.deg)
-
-    def _write_summary(
-        self, groups: list[MapMatchGroup], results: list[MapResult]
-    ) -> Path:
-        starts = [r.observation_start for r in results if r.observation_start]
-        label = min(starts).isot[:19] if starts else Time.now().isot[:19]
-        path = Path(self.summary_directory) / (
-            f"map_match_summary_{label.replace('T', '-').replace(':', '-')}.json"
-        )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Single-array groups with no detection >= high_sig (e.g. the many
-        # noise peaks of a low blind-search threshold) are only counted.
-        notable = [g for g in groups if self.is_notable(g)]
-        path.write_text(
-            json.dumps(
-                {
-                    "min_arrays": self.min_arrays,
-                    "high_sig": self.high_sig,
-                    "low_sig": self.low_sig,
-                    "radius_arcmin": self.radius.to_value(u.arcmin),
-                    "maps": [r.map_name for r in results],
-                    "n_groups": len(groups),
-                    "n_groups_not_listed": len(groups) - len(notable),
-                    "groups": [g.to_dict() for g in notable],
-                },
-                indent=2,
-            )
-        )
-        self.log.info("map_matcher.summary_written", path=str(path))
-        return path
 
     def _cluster(
         self, results: list[MapResult]

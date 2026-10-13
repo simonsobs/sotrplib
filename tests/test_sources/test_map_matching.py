@@ -9,7 +9,9 @@ import pytest
 from astropy import units as u
 from astropy.time import Time, TimeDelta
 
+from sotrplib.config.config import Settings
 from sotrplib.config.map_matching import MultiArrayMapMatcherConfig
+from sotrplib.outputs.core import JSONMapMatchOutput
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sifter.map_matching import (
     EmptyMapMatcher,
@@ -20,6 +22,14 @@ from sotrplib.sifter.map_matching import (
 from sotrplib.sources.sources import MeasuredSource
 
 T0 = Time("2025-09-10T05:24:35")
+
+
+def _match(matcher, results):
+    """Run the matcher; return the results and the groups of the summary."""
+    results, summary = matcher.match(results)
+    return results, summary.groups
+
+
 HOUR = TimeDelta(3600, format="sec")
 
 
@@ -51,8 +61,8 @@ def _result(
 
 def test_detection_in_two_arrays_is_confirmed():
     a, b = _candidate(348.3478, 2.6759), _candidate(348.3476, 2.6760)
-    results, groups = MultiArrayMapMatcher().match(
-        [_result("i1", "i1", [a]), _result("i3", "i3", [b])]
+    results, groups = _match(
+        MultiArrayMapMatcher(), [_result("i1", "i1", [a]), _result("i3", "i3", [b])]
     )
 
     assert len(groups) == 1
@@ -69,8 +79,9 @@ def test_detection_in_two_arrays_is_confirmed():
 def test_single_array_detection_is_unconfirmed():
     lone = _candidate(7.7443, -9.5003)
     far = _candidate(348.3478, 2.6759)
-    results, groups = MultiArrayMapMatcher().match(
-        [_result("i3", "i3", [lone]), _result("i1", "i1", [far])]
+    results, groups = _match(
+        MultiArrayMapMatcher(),
+        [_result("i3", "i3", [lone]), _result("i1", "i1", [far])],
     )
 
     assert len(groups) == 2
@@ -84,11 +95,12 @@ def test_single_array_detection_is_unconfirmed():
 
 
 def test_same_array_in_two_bands_counts_once():
-    _, groups = MultiArrayMapMatcher().match(
+    _, groups = _match(
+        MultiArrayMapMatcher(),
         [
             _result("c1_f220", "c1", [_candidate(10.0, -5.0)], frequency="f220"),
             _result("c1_f280", "c1", [_candidate(10.0, -5.0)], frequency="f280"),
-        ]
+        ],
     )
 
     assert len(groups) == 1
@@ -102,7 +114,7 @@ def test_three_arrays_three_bands_form_one_group():
         _result("i3_f150", "i3", [_candidate(348.3473, 2.6766)], frequency="f150"),
         _result("c1_f220", "c1", [_candidate(348.3469, 2.6754)], frequency="f220"),
     ]
-    _, groups = MultiArrayMapMatcher().match(maps)
+    _, groups = _match(MultiArrayMapMatcher(), maps)
 
     assert len(groups) == 1
     assert groups[0].to_dict()["arrays"] == ["c1", "i1", "i3"]
@@ -112,11 +124,12 @@ def test_three_arrays_three_bands_form_one_group():
 
 def test_maps_at_different_times_are_matched():
     # No time cut: the maps of the run set the time range.
-    _, groups = MultiArrayMapMatcher().match(
+    _, groups = _match(
+        MultiArrayMapMatcher(),
         [
             _result("i1", "i1", [_candidate(10.0, -5.0)], start=T0),
             _result("i3", "i3", [_candidate(10.0, -5.0)], start=T0 + 30 * 24 * HOUR),
-        ]
+        ],
     )
 
     assert len(groups) == 1
@@ -125,18 +138,21 @@ def test_maps_at_different_times_are_matched():
 
 def test_candidates_of_one_map_are_not_matched():
     a, b = _candidate(10.0, -5.0), _candidate(10.0, -5.0 + 0.5 / 60)
-    _, groups = MultiArrayMapMatcher(min_arrays=1).match([_result("i1", "i1", [a, b])])
+    _, groups = _match(
+        MultiArrayMapMatcher(min_arrays=1), [_result("i1", "i1", [a, b])]
+    )
 
     assert len(groups) == 2
     assert a.group_id != b.group_id
 
 
 def test_match_across_ra_wrap():
-    _, groups = MultiArrayMapMatcher().match(
+    _, groups = _match(
+        MultiArrayMapMatcher(),
         [
             _result("i1", "i1", [_candidate(359.9999, 0.0)]),
             _result("i3", "i3", [_candidate(0.0001, 0.0)]),
-        ]
+        ],
     )
 
     assert len(groups) == 1
@@ -152,19 +168,21 @@ def test_match_across_ra_wrap():
 
 
 def test_outside_radius_is_not_matched():
-    _, groups = MultiArrayMapMatcher(radius=1.0 * u.arcmin).match(
+    _, groups = _match(
+        MultiArrayMapMatcher(radius=1.0 * u.arcmin),
         [
             _result("i1", "i1", [_candidate(10.0, 0.0)]),
             _result("i3", "i3", [_candidate(10.0, 2.0 / 60)]),
-        ]
+        ],
     )
 
     assert len(groups) == 2
 
 
 def test_min_arrays_one_keeps_single_detections():
-    results, groups = MultiArrayMapMatcher(min_arrays=1).match(
-        [_result("i1", "i1", [_candidate(10.0, -5.0)])]
+    results, groups = _match(
+        MultiArrayMapMatcher(min_arrays=1),
+        [_result("i1", "i1", [_candidate(10.0, -5.0)])],
     )
 
     assert groups[0].confirmed
@@ -173,7 +191,7 @@ def test_min_arrays_one_keeps_single_detections():
 
 def test_empty_matcher_is_passthrough():
     candidate = _candidate(10.0, -5.0)
-    results, groups = EmptyMapMatcher().match([_result("i1", "i1", [candidate])])
+    results, groups = _match(EmptyMapMatcher(), [_result("i1", "i1", [candidate])])
 
     assert groups == []
     assert results[0].sifter_result.transient_candidates == [candidate]
@@ -213,11 +231,12 @@ def test_confirmed_groups_rank_above_brighter_unconfirmed():
         _candidate(20.0, 0.0, snr=12.0),
     )
     faint_single = _candidate(30.0, 0.0, snr=5.0)
-    _, groups = MultiArrayMapMatcher().match(
+    _, groups = _match(
+        MultiArrayMapMatcher(),
         [
             _result("i1", "i1", [bright_single, pair_a, strong_a]),
             _result("i3", "i3", [pair_b, strong_b, faint_single]),
-        ]
+        ],
     )
 
     ranked = sorted(groups, key=lambda g: g.rank)
@@ -233,13 +252,15 @@ def test_confirmed_groups_rank_above_brighter_unconfirmed():
 def test_summary_written(tmp_path):
     a, b = _candidate(348.3478, 2.6759, snr=64.8), _candidate(348.3476, 2.676, snr=56.7)
     lone = _candidate(7.7443, -9.5003, snr=11.0)
-    MultiArrayMapMatcher(summary_directory=tmp_path).match(
+    _, summary = MultiArrayMapMatcher().match(
         [_result("f090_i1", "i1", [a, lone]), _result("f090_i3", "i3", [b])]
     )
+    path = JSONMapMatchOutput(directory=tmp_path).output(summary)
 
-    (path,) = tmp_path.glob("map_match_summary_*.json")
+    assert path.name == "map_match_summary_2025-09-10-05-24-35.json"
     summary = json.loads(path.read_text())
     assert summary["min_arrays"] == 2
+    assert summary["maps"] == ["f090_i1", "f090_i3"]
     assert [g["rank"] for g in summary["groups"]] == [1, 2]
     top = summary["groups"][0]
     assert top["confirmed"] and top["arrays"] == ["i1", "i3"]
@@ -253,26 +274,25 @@ def test_summary_written(tmp_path):
     assert not summary["groups"][1]["confirmed"]
 
 
-def test_multi_array_config(tmp_path):
+def test_multi_array_config():
     matcher = MultiArrayMapMatcherConfig.model_validate(
         {
             "matcher_type": "multi_array",
             "radius": "1 arcmin",
             "min_arrays": 3,
-            "summary_directory": str(tmp_path),
         }
     ).to_matcher()
 
     assert isinstance(matcher, MultiArrayMapMatcher)
     assert matcher.radius == 1.0 * u.arcmin
     assert matcher.min_arrays == 3
-    assert matcher.summary_directory == tmp_path
 
 
 def test_low_sig_detection_confirms_high_sig_seed():
     seed, support = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=3.5)
-    results, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
-        [_result("i1", "i1", [seed]), _result("i3", "i3", [support])]
+    results, groups = _match(
+        MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0),
+        [_result("i1", "i1", [seed]), _result("i3", "i3", [support])],
     )
 
     (group,) = groups
@@ -283,8 +303,9 @@ def test_low_sig_detection_confirms_high_sig_seed():
 
 def test_low_sig_only_group_is_not_confirmed():
     a, b = _candidate(10.0, 0.0, snr=4.5), _candidate(10.0, 0.0, snr=4.5)
-    results, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
-        [_result("i1", "i1", [a]), _result("i3", "i3", [b])]
+    results, groups = _match(
+        MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0),
+        [_result("i1", "i1", [a]), _result("i3", "i3", [b])],
     )
 
     (group,) = groups
@@ -298,8 +319,9 @@ def test_low_sig_only_group_is_not_confirmed():
 
 def test_candidates_below_low_sig_are_not_matched():
     seed, faint = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=2.5)
-    results, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
-        [_result("i1", "i1", [seed]), _result("i3", "i3", [faint])]
+    results, groups = _match(
+        MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0),
+        [_result("i1", "i1", [seed]), _result("i3", "i3", [faint])],
     )
 
     (group,) = groups
@@ -313,11 +335,12 @@ def test_notable_groups_rank_above_low_sig_singles():
     seed_single = _candidate(20.0, 0.0, snr=5.2)
     low_pair = [_candidate(30.0, 0.0, snr=4.0), _candidate(30.0, 0.0, snr=4.0)]
     low_single = _candidate(40.0, 0.0, snr=4.9)
-    _, groups = MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0).match(
+    _, groups = _match(
+        MultiArrayMapMatcher(high_sig=5.0, low_sig=3.0),
         [
             _result("i1", "i1", [confirmed[0], seed_single, low_pair[0], low_single]),
             _result("i3", "i3", [confirmed[1], low_pair[1]]),
-        ]
+        ],
     )
 
     assert confirmed[0].group_rank == 1
@@ -332,17 +355,54 @@ def test_notable_groups_rank_above_low_sig_singles():
 def test_summary_lists_only_notable_groups(tmp_path):
     seed, support = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=3.5)
     noise = [_candidate(20.0 + i, 0.0, snr=3.2) for i in range(5)]
-    MultiArrayMapMatcher(summary_directory=tmp_path).match(
+    _, summary = MultiArrayMapMatcher().match(
         [_result("i1", "i1", [seed, *noise]), _result("i3", "i3", [support])]
     )
+    path = JSONMapMatchOutput(directory=tmp_path).output(summary)
 
-    (path,) = tmp_path.glob("map_match_summary_*.json")
     summary = json.loads(path.read_text())
     assert (summary["high_sig"], summary["low_sig"]) == (5.0, 3.0)
     assert summary["n_groups"] == 6
     assert summary["n_groups_not_listed"] == 5
     assert [g["rank"] for g in summary["groups"]] == [1]
     assert summary["groups"][0]["max_snr"] == 6.0
+
+
+def test_summary_lists_all_groups_if_asked(tmp_path):
+    seed, support = _candidate(10.0, 0.0, snr=6.0), _candidate(10.0, 0.0, snr=3.5)
+    noise = [_candidate(20.0 + i, 0.0, snr=3.2) for i in range(5)]
+    _, summary = MultiArrayMapMatcher().match(
+        [_result("i1", "i1", [seed, *noise]), _result("i3", "i3", [support])]
+    )
+    path = JSONMapMatchOutput(directory=tmp_path, include_all_groups=True).output(
+        summary
+    )
+
+    written = json.loads(path.read_text())
+    assert written["n_groups"] == 6
+    assert written["n_groups_not_listed"] == 0
+    assert [g["rank"] for g in written["groups"]] == [1, 2, 3, 4, 5, 6]
+    assert [g["notable"] for g in written["groups"]] == [True] + [False] * 5
+
+
+def test_map_match_output_config(tmp_path):
+    config = Settings.model_validate(
+        {
+            "map_match_outputs": [
+                {"output_type": "json", "directory": str(tmp_path)},
+                {
+                    "output_type": "json",
+                    "directory": str(tmp_path),
+                    "include_all_groups": True,
+                },
+            ],
+        }
+    )
+    outputs = config.to_dependencies()["map_match_outputs"]
+
+    assert [type(o) for o in outputs] == [JSONMapMatchOutput, JSONMapMatchOutput]
+    assert [o.include_all_groups for o in outputs] == [False, True]
+    assert outputs[0].directory == tmp_path
 
 
 def test_multi_array_config_thresholds():
@@ -357,12 +417,12 @@ def test_summary_written_with_numpy_snrs(tmp_path):
     # Real candidates carry numpy S/N values; the summary must still be JSON.
     a = _candidate(10.0, 0.0, snr=np.float32(6.0))
     b = _candidate(10.0, 0.0, snr=np.float64(4.0))
-    _, groups = MultiArrayMapMatcher(summary_directory=tmp_path).match(
+    _, summary = MultiArrayMapMatcher().match(
         [_result("i1", "i1", [a]), _result("i3", "i3", [b])]
     )
 
-    (group,) = groups
+    (group,) = summary.groups
     assert type(group.confirmed) is bool
-    (path,) = tmp_path.glob("map_match_summary_*.json")
+    path = JSONMapMatchOutput(directory=tmp_path).output(summary)
     summary = json.loads(path.read_text())
     assert summary["groups"][0]["confirmed"] is True

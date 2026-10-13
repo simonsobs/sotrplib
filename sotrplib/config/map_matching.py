@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
@@ -42,8 +41,6 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
     "Candidates with SNR >= low_sig are matched; the other arrays can confirm "
     "an event with these detections. The blind search threshold and the "
     "sifter's snr cut must be <= low_sig to give these candidates."
-    summary_directory: Path | None = None
-    "If set, write each run's ranked event groups here as JSON."
 
     @model_validator(mode="after")
     def _check_thresholds(self):
@@ -61,7 +58,6 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
             min_arrays=self.min_arrays,
             high_sig=self.high_sig,
             low_sig=self.low_sig,
-            summary_directory=self.summary_directory,
             log=log,
         )
 

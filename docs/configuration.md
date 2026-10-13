@@ -187,6 +187,8 @@ There is no default output. Add the outputs that you need:
 - `source_outputs`: the measured sources. The `output_type` is `pickle`,
   `json`, `cutout`, `lightcurvedb` or `lightserve`.
 - `map_outputs`: the map fields as FITS files (`output_type: "maps"`).
+- `map_match_outputs`: the groups of the map matcher, one time for each run
+  (`output_type: "json"`). See [Map matching](map_matching.md).
 
 For example:
 

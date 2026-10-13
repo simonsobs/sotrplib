@@ -50,8 +50,7 @@ Add a `map_matcher` field to the `sotrp` config:
     "radius": "1.5 arcmin",
     "min_arrays": 2,
     "high_sig": 5.0,
-    "low_sig": 3.0,
-    "summary_directory": "/path/to/outputs/"
+    "low_sig": 3.0
 }
 ```
 
@@ -62,9 +61,11 @@ Add a `map_matcher` field to the `sotrp` config:
 | `min_arrays` | `2` | The minimum number of different arrays that must detect an event. |
 | `high_sig` | `5.0` | A confirmed event must have one detection with SNR `high_sig` or more. |
 | `low_sig` | `3.0` | The map matcher uses only the candidates with SNR `low_sig` or more. |
-| `summary_directory` | none | If set, the map matcher writes a JSON summary of the groups in this directory. |
 
 `low_sig` must not be more than `high_sig`.
+
+The map matcher does not write files. To write the groups, add a
+`map_match_outputs` field (see "The map-match outputs" below).
 
 With `matcher_type: "empty"` (the default), the transient candidates do not
 change. Use this value to analyze one map at a time.
@@ -234,14 +235,21 @@ The map matcher changes the `SifterResult` of each map:
 
 ### The groups
 
-`match()` also returns the groups (`MapMatchGroup`). A group has these
-fields:
+`match()` also returns a `MapMatchSummary`. The summary contains:
+
+- `groups`: all the groups (`MapMatchGroup`), in the sequence of their rank;
+- `map_names`: the names of the maps of the run;
+- `observation_start`: the earliest start time of the maps of the run;
+- `settings`: `min_arrays`, `high_sig`, `low_sig` and `radius_arcmin`.
+
+A group has these fields:
 
 | Field | Meaning |
 |---|---|
 | `group_id` | The identifier of the group. It is the same as the `group_id` of its candidates. |
 | `rank` | The rank of the group in the run. |
 | `confirmed` | `True` if `min_arrays` or more arrays detected the group, and one detection has SNR `high_sig` or more. |
+| `notable` | `True` if the group is confirmed, or one detection has SNR `high_sig` or more, or `min_arrays` or more arrays detected the group. |
 | `max_snr` | The highest SNR of the detections in the group. |
 | `n_maps` | The number of maps with a detection in the group. |
 | `n_arrays` | The number of different arrays in the group. |
@@ -251,20 +259,43 @@ fields:
 | `ra`, `dec` | The mean position of the detections, with the weight `snr**2`. |
 | `members` | The candidates of the group, each with its `MapResult`. |
 
+### The map-match outputs
+
+The `map_match_outputs` field of the `sotrp` config sets what the runner
+writes with the `MapMatchSummary` of each run. It has the same structure as
+`source_outputs` and `map_outputs`. The runner writes the map-match outputs
+one time for each run, after the source outputs of all the maps. There is
+no default output.
+
+```json
+"map_match_outputs": [
+    {"output_type": "json", "directory": "/path/to/outputs/"}
+]
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `output_type` | | `json`: one JSON file for each run. |
+| `directory` | | The directory for the files. |
+| `include_all_groups` | `false` | If `true`, the file lists all the groups. If `false`, the file lists only the notable groups. |
+
+The code is in `sotrplib/outputs/core.py` (`MapMatchOutput`,
+`JSONMapMatchOutput`).
+
 ### The summary file
 
-If `summary_directory` is set, the map matcher writes one JSON file for each
-run. The name of the file is `map_match_summary_<start>.json`. `<start>` is
-the earliest start time of the maps of the run. The file contains:
+The `json` map-match output writes one file for each run. The name of the
+file is `map_match_summary_<start>.json`. `<start>` is the earliest start
+time of the maps of the run. The file contains:
 
 - `min_arrays`, `high_sig`, `low_sig`, `radius_arcmin` and the names of the
   maps of the run;
 - `n_groups`: the number of groups;
-- `groups`: the confirmed and the notable groups, in the sequence of their
-  rank;
-- `n_groups_not_listed`: the number of the other groups. The file does not
-  list these groups, because a low blind-search threshold can give many of
-  them.
+- `groups`: the notable groups, in the sequence of their rank (all the
+  groups if `include_all_groups` is `true`);
+- `n_groups_not_listed`: the number of the other groups. By default, the
+  file does not list these groups, because a low blind-search threshold can
+  give many of them.
 
 Each group has the fields of `MapMatchGroup` (with `ra_deg` and `dec_deg`
 for the position), and also:

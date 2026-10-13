@@ -249,9 +249,9 @@ def config(obs: list[dict], out_dir: str, summary_dir: str) -> dict:
             "min_arrays": args.min_arrays,
             "high_sig": args.high_sig,
             "low_sig": args.low_sig,
-            "summary_directory": summary_dir,
         },
         "source_outputs": [{"output_type": "pickle", "directory": out_dir}],
+        "map_match_outputs": [{"output_type": "json", "directory": summary_dir}],
         "runner": "basic",
     }
 

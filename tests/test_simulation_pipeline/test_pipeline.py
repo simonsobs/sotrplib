@@ -2,6 +2,7 @@
 Tests for the fully simulated pipeline setup.
 """
 
+import json
 import pickle
 from itertools import combinations
 
@@ -9,7 +10,7 @@ import numpy as np
 from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
-from sotrplib.outputs.core import PickleSerializer
+from sotrplib.outputs.core import JSONMapMatchOutput, PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SimpleCatalogSifter
 from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
 from sotrplib.sifter.map_matching import MultiArrayMapMatcher
@@ -99,6 +100,7 @@ def test_pipeline_map_matching_before_outputs(
         map_outputs=None,
         # both copies share one array, so only min_arrays=1 confirms them
         map_matcher=MultiArrayMapMatcher(min_arrays=1),
+        map_match_outputs=[JSONMapMatchOutput(directory=tmp_path / "match")],
     )
 
     results = runner.run(maps)
@@ -119,6 +121,14 @@ def test_pipeline_map_matching_before_outputs(
         candidates = output["sifted_blind_search"].transient_candidates
         assert len(candidates) == len(sources)
         assert all(c.group_id is not None for c in candidates)
+
+    # one map-match summary for the run, with the same groups
+    (summary_path,) = (tmp_path / "match").glob("map_match_summary_*.json")
+    summary = json.loads(summary_path.read_text())
+    assert summary["min_arrays"] == 1
+    assert {g["group_id"] for g in summary["groups"]} == {
+        str(c.group_id) for c in transients[0]
+    }
 
     # the same maps with the default min_arrays=2 are all unconfirmed, so
     # their candidates go to the noise and keep their group_id
