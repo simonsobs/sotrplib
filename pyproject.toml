@@ -32,6 +32,8 @@ dependencies = [
     "lightcurvedb @ git+https://github.com/simonsobs/lightcurvedb",
     "soauth",
     "uuid7-standard",
+    # sqlmodel>=0.0.45 rejects naive datetimes; drop once we pass tz-aware ones to mapcat.
+    "sqlmodel<0.0.45",
 ]
 
 [project.optional-dependencies]
