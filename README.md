@@ -221,3 +221,8 @@ do these steps:
    ```console
    prefect server stop
    ```
+
+To run the prefect runner in a SLURM job, and to analyze all the bands of a
+day in one job, see [Run `sotrp` with the prefect runner](docs/prefect.md).
+To group the transient candidates across arrays and bands, see
+[Map matching](docs/map_matching.md).

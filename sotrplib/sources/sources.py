@@ -137,6 +137,16 @@ class MeasuredSource(RegisteredSource):
     map_name: str | None = None
     "Label of the map that gave this measurement (ProcessableMap.map_name)."
 
+    group_id: UUID7 | None = None
+    "The map matcher's group of this detection. The detections of the same "
+    "event in the other maps of the run have the same group_id. Set for the "
+    "transient candidates of confirmed groups and for the noise candidates "
+    "of groups that are not confirmed. None if the map matcher did not group "
+    "this detection."
+    group_rank: int | None = None
+    "Rank of the group in the run. 1 is the most significant group. The "
+    "confirmed groups rank first."
+
     fit_method: Literal[
         "lmfit_2d_gaussian",
         "nearest_neighbor",

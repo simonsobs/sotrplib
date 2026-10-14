@@ -17,6 +17,7 @@ from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
+from sotrplib.sifter.map_matching import MapMatchSummary
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
@@ -71,6 +72,55 @@ class MapOutput(ABC):
         do something with the map itself, e.g. save it to disk.
         """
         return
+
+
+class MapMatchOutput(ABC):
+    @abstractmethod
+    def output(self, summary: MapMatchSummary):
+        """
+        Output the result of map matching. The runner calls this one time for
+        each run, after the source outputs of all the maps.
+        """
+        return
+
+
+class JSONMapMatchOutput(MapMatchOutput):
+    """
+    Write the map-match summary of a run to a JSON file in `directory`.
+
+    The name of the file is map_match_summary_<start>.json. <start> is the
+    earliest start time of the maps of the run. If no map has a start time,
+    <start> is the time now.
+
+    If include_all_groups is False, the file lists only the notable groups
+    (confirmed, or one detection >= high_sig, or >= min_arrays arrays). The
+    file counts the other groups in n_groups_not_listed, because a low
+    blind-search threshold can give many of them.
+    """
+
+    def __init__(
+        self,
+        directory: Path,
+        include_all_groups: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.directory = Path(directory)
+        self.include_all_groups = include_all_groups
+        self.log = log or get_logger()
+
+    def output(self, summary: MapMatchSummary) -> Path:
+        start = summary.observation_start or Time.now()
+        label = start.isot[:19].replace("T", "-").replace(":", "-")
+        path = self.directory / f"map_match_summary_{label}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                summary.to_dict(include_all_groups=self.include_all_groups),
+                indent=2,
+            )
+        )
+        self.log.info("map_match_output.json_written", path=str(path))
+        return path
 
 
 class JSONSerializer(SourceOutput):

@@ -47,6 +47,19 @@ class SOCat(SourceCatalog):
             "socat.initialized",
         )
 
+    def __getstate__(self):
+        # The socat client holds SQLAlchemy engines/sessionmakers, which can't
+        # be pickled -- drop it so the catalog can be sent to process-pool
+        # workers (e.g. the prefect runner), and reconnect from the same
+        # environment settings on the other side.
+        state = self.__dict__.copy()
+        del state["catalog"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.catalog = SOCatClientSettings().client
+
     def add_sources(self, sources: list[RegisteredSource], monitored: bool = True):
         for source in sources:
             self.catalog.create_source(

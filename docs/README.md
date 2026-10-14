@@ -7,6 +7,8 @@ the individual pages below for more information.
 - [Installation and Development Requirements](installing.md)
 - [Overview: the Library, the Commands and the Scripts](overview.md)
 - [Configuring the Pipeline](configuration.md)
+- [Run `sotrp` with the prefect runner](prefect.md)
+- [Map matching of transient candidates](map_matching.md)
 - [Running on ACT Data](act.md)
 - Coadds of depth-1 maps:
   - [Overview](coadding/overview.md)

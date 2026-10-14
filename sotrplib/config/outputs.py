@@ -8,6 +8,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.outputs.core import (
     CutoutImageOutput,
+    JSONMapMatchOutput,
     JSONSerializer,
     MapOutputSerializer,
     PickleSerializer,
@@ -107,6 +108,20 @@ class ParquetOutputConfig(OutputConfig):
         )
 
 
+class JSONMapMatchOutputConfig(OutputConfig):
+    output_type: Literal["json"] = "json"
+    directory: Path
+    include_all_groups: bool = False
+    "If False, list only the notable groups. The file counts the other groups."
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> JSONMapMatchOutput:
+        return JSONMapMatchOutput(
+            directory=self.directory,
+            include_all_groups=self.include_all_groups,
+            log=log,
+        )
+
+
 AllOutputConfigTypes = (
     PickleOutputConfig
     | JSONOutputConfig
@@ -127,3 +142,5 @@ SourceOutputConfigTypes = (
 )
 
 MapOutputConfigTypes = MapOutputConfig
+
+MapMatchOutputConfigTypes = JSONMapMatchOutputConfig
