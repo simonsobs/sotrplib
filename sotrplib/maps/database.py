@@ -560,14 +560,9 @@ def sky_coverage_tiles(ra: float, dec: float) -> list[tuple[int, int]]:
     (ra, dec), in degrees, with ra in [0, 360).
 
     mapcat makes the tiles of a map from the RA range of the map geometry.
-    A map that crosses RA 0 has an RA range in [-180, 180), and its tiles
-    near RA 360 have negative x. Thus, a point with ra >= 180 can be in
-    tile ra_to_index(ra) or in tile ra_to_index(ra - 360).
     """
     dec_idx = dec_to_index(dec)
     tiles = [(ra_to_index(ra), dec_idx)]
-    if ra >= 180:
-        tiles.append((ra_to_index(ra - 360), dec_idx))
     return tiles
 
 
