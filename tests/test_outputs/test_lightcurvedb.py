@@ -20,7 +20,7 @@ import uuid7
 from lightcurvedb.config import Settings
 from lightcurvedb.models.source import Source
 
-from sotrplib.outputs.lightcurvedb import LightcurveDBOutput
+from sotrplib.outputs.lightcurvedb import LightcurveDBOutput, lightcurvedb_ra
 from sotrplib.sifter.core import SifterResult
 
 from .helpers import make_candidate
@@ -216,3 +216,32 @@ def test_output_skips_measurement_without_array(tmp_path, lightcurvedb_settings)
     fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
     assert len(fluxes) == 1
     assert fluxes.iloc[0]["flux"] == pytest.approx(0.010)
+
+
+def test_output_wraps_ra_to_lightcurvedb_range(tmp_path, lightcurvedb_settings):
+    """lightcurvedb keeps RA in [-180, 180). A source and a measurement at
+    RA 351.9 deg must be written at -8.1 deg."""
+    socat_id = uuid7.create()
+    candidate = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
+    candidate.ra = 351.9 * u.deg
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=True)
+
+    output.output(
+        forced_photometry_candidates=[candidate],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_name="test_map",
+    )
+
+    sources = pd.read_parquet(tmp_path / "sources.parquet")
+    assert sources.iloc[0]["ra"] == pytest.approx(-8.1)
+    fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{sources.index[0]}.parquet")
+    assert fluxes.iloc[0]["ra"] == pytest.approx(-8.1)
+
+
+@pytest.mark.parametrize(
+    "ra, expected", [(0.0, 0.0), (179.9, 179.9), (180.0, -180.0), (359.0, -1.0)]
+)
+def test_lightcurvedb_ra(ra, expected):
+    assert lightcurvedb_ra(ra) == pytest.approx(expected)

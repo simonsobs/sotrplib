@@ -25,6 +25,15 @@ from .core import SourceOutput
 UTC = TimezoneInfo(tzname="utc")
 
 
+def lightcurvedb_ra(ra_deg: float) -> float:
+    """
+    Return the RA in the lightcurvedb range [-180, 180) degrees. The
+    lightcurvedb tables reject an RA that is not in this range, and sotrplib
+    gives RA in [0, 360).
+    """
+    return (ra_deg + 180.0) % 360.0 - 180.0
+
+
 class LightcurveDBOutput(SourceOutput):
     """
     Output source candidates to straight to lightcurveDB. Note that, for now,
@@ -67,7 +76,7 @@ class LightcurveDBOutput(SourceOutput):
                 source=Source(
                     socat_id=socat_id,
                     name=name,
-                    ra=ra,
+                    ra=lightcurvedb_ra(ra),
                     dec=dec,
                     variable=False,
                     extra=None,
@@ -168,7 +177,7 @@ class LightcurveDBOutput(SourceOutput):
                     else None
                 )
             ),
-            ra=input_measurement.ra.to_value("deg"),
+            ra=lightcurvedb_ra(input_measurement.ra.to_value("deg")),
             dec=input_measurement.dec.to_value("deg"),
             ra_uncertainty=(
                 input_measurement.err_ra.to_value("deg")
