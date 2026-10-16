@@ -100,8 +100,8 @@ script, run it from a checkout of the repository.
 |---|---|
 | `scripts/coadding/` | `submit_week_coadds.py` writes `sotrp-coadd` configs and SLURM jobs for weekly coadds. `coadd_maps.py` is an example that uses the library directly. |
 | `scripts/depth1_map_analysis/` | Scripts that write `sotrp` configs and SLURM jobs for depth-1 maps. `slurm_wrapper_map_matching_by_observation.py` writes one job for each observation, for map matching (see [Map matching](map_matching.md)). |
-| `scripts/historical_lightcurve_extractor/` | Scripts that extract lightcurves from ACT depth-1 maps. |
+| `scripts/historical_lightcurve_extractor/` | Scripts that extract lightcurves from depth-1 maps. `slurm_wrapper_mapcat_historical_extractor.py` writes one job for each source. The job measures the source in all the mapcat maps that cover it, in a time window, and does not change the processing status of the maps. |
 | `scripts/end_to_end/` | An end-to-end test with SOCat, lightcurvedb and lightserve. |
 
 The scripts are examples and tools for specific runs. The library and the
-commands have tests. The scripts do not have tests.
+commands have tests. Most scripts do not have tests.

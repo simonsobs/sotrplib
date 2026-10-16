@@ -18,8 +18,10 @@ def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> Box:
     ``sky_box[0].ra > sky_box[1].ra``.
     returned pixell box has the form ``[[dec_min, ra_max], [dec_max, ra_min]]`` in radians.
     """
-    # make sure the input is in ICRS frame for internal use
-    sky_box = tuple(s.transform_to("icrs") for s in sky_box)
+    # make sure the input is in ICRS frame for internal use. Config sky boxes
+    # are astropy frame objects (AstroPydanticICRS), not SkyCoords, and a frame
+    # object cannot transform_to a frame name, so wrap each corner first.
+    sky_box = tuple(SkyCoord(s).transform_to("icrs") for s in sky_box)
     ra_min = sky_box[0].ra.to_value(u.rad)
     ra_max = sky_box[1].ra.to_value(u.rad)
     dec_min = sky_box[0].dec.to_value(u.rad)
