@@ -59,6 +59,7 @@ Add a `map_matcher` field to the `sotrp` config:
 | `matcher_type` | `empty` | `empty`: no map matching. `multi_array`: the map matcher on this page. |
 | `radius` | `1.5 arcmin` | The maximum distance between two detections of one event. |
 | `min_arrays` | `2` | The minimum number of different arrays that must detect an event. |
+| `min_bands` | `1` | The minimum number of different bands that must detect an event. |
 | `high_sig` | `5.0` | A confirmed event must have one detection with SNR `high_sig` or more. |
 | `low_sig` | `3.0` | The map matcher uses only the candidates with SNR `low_sig` or more. |
 
@@ -91,15 +92,35 @@ How the map matcher makes groups
 2. **Groups.** Linked candidates are in the same group. The links make
    chains. For example, if A links to B and B links to C, then A, B and C
    are in one group.
-3. **Confirmation.** A group is confirmed if both of these conditions are
+3. **Confirmation.** A group is confirmed if all of these conditions are
    true:
    - It contains detections from `min_arrays` or more different arrays. One
      array in two bands counts as one array. The two bands of one tube use
      the same optics, so a problem in the tube can appear in the two bands.
+     If `min_arrays` is 1 or less, this condition is always true, also for
+     maps that have no array.
+   - It contains detections from `min_bands` or more different bands.
    - One of its detections has SNR `high_sig` or more.
 
 Each linked candidate is in exactly one group. A candidate with SNR
 `low_sig` or more that has no link is a group with one member.
+
+### Map matching of coadds
+
+A coadd contains the maps of all the tubes of one band. Thus, two arrays
+cannot detect an event in the coadds of one time window, and `min_arrays: 2`
+does not confirm events correctly. For coadds, use the bands for the
+confirmation:
+
+```json
+"map_matcher": {
+    "matcher_type": "multi_array",
+    "min_arrays": 1,
+    "min_bands": 2
+}
+```
+
+Put the coadds of all the bands of one time window in one run.
 
 
 Use a low blind-search threshold
@@ -190,7 +211,7 @@ The map matcher ranks the groups of a run in three sets:
 
 1. The confirmed groups.
 2. The other notable groups. A notable group has one detection with SNR
-   `high_sig` or more, or detections from `min_arrays` or more arrays.
+   `high_sig` or more, or detections from `min_arrays` or more arrays in `min_bands` or more bands.
 3. All the other groups. These are detections in one array with SNR less
    than `high_sig`.
 
@@ -240,7 +261,7 @@ The map matcher changes the `SifterResult` of each map:
 - `groups`: all the groups (`MapMatchGroup`), in the sequence of their rank;
 - `map_names`: the names of the maps of the run;
 - `observation_start`: the earliest start time of the maps of the run;
-- `settings`: `min_arrays`, `high_sig`, `low_sig` and `radius_arcmin`.
+- `settings`: `min_arrays`, `min_bands`, `high_sig`, `low_sig` and `radius_arcmin`.
 
 A group has these fields:
 
@@ -248,8 +269,8 @@ A group has these fields:
 |---|---|
 | `group_id` | The identifier of the group. It is the same as the `group_id` of its candidates. |
 | `rank` | The rank of the group in the run. |
-| `confirmed` | `True` if `min_arrays` or more arrays detected the group, and one detection has SNR `high_sig` or more. |
-| `notable` | `True` if the group is confirmed, or one detection has SNR `high_sig` or more, or `min_arrays` or more arrays detected the group. |
+| `confirmed` | `True` if `min_arrays` or more arrays and `min_bands` or more bands detected the group, and one detection has SNR `high_sig` or more. |
+| `notable` | `True` if the group is confirmed, or one detection has SNR `high_sig` or more, or `min_arrays` or more arrays in `min_bands` or more bands detected the group. |
 | `max_snr` | The highest SNR of the detections in the group. |
 | `n_maps` | The number of maps with a detection in the group. |
 | `n_arrays` | The number of different arrays in the group. |

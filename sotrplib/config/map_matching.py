@@ -34,7 +34,10 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
     "Maximum separation between detections of the same event in different maps."
     min_arrays: int = 2
     "Distinct arrays (optics tubes) an event must be detected in to stay a "
-    "transient candidate."
+    "transient candidate. Use 1 for coadds (a coadd merges the tubes)."
+    min_bands: int = 1
+    "Distinct bands an event must be detected in to stay a transient "
+    "candidate. Use 2 for coadds."
     high_sig: float = 5.0
     "A confirmed event needs at least one detection with SNR >= high_sig."
     low_sig: float = 3.0
@@ -56,6 +59,7 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
         return MultiArrayMapMatcher(
             radius=self.radius,
             min_arrays=self.min_arrays,
+            min_bands=self.min_bands,
             high_sig=self.high_sig,
             low_sig=self.low_sig,
             log=log,

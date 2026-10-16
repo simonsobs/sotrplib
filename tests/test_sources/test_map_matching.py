@@ -189,6 +189,67 @@ def test_min_arrays_one_keeps_single_detections():
     assert len(results[0].sifter_result.transient_candidates) == 1
 
 
+def test_coadds_in_two_bands_are_confirmed_with_min_bands():
+    """Per-band coadds of the same tubes have the same array label. With
+    min_arrays=1 and min_bands=2, two bands confirm the event."""
+    a, b = _candidate(348.3478, 2.6759), _candidate(348.3476, 2.6760)
+    coadds = [
+        _result("f090", "i1i3i4i6", [a], frequency="f090"),
+        _result("f150", "i1i3i4i6", [b], frequency="f150"),
+    ]
+
+    _, groups = _match(MultiArrayMapMatcher(min_arrays=2), coadds)
+    assert not groups[0].confirmed
+
+    a, b = _candidate(348.3478, 2.6759), _candidate(348.3476, 2.6760)
+    coadds = [
+        _result("f090", "i1i3i4i6", [a], frequency="f090"),
+        _result("f150", "i1i3i4i6", [b], frequency="f150"),
+    ]
+    results, groups = _match(MultiArrayMapMatcher(min_arrays=1, min_bands=2), coadds)
+    assert groups[0].confirmed
+    assert groups[0].n_bands == 2
+    for r in results:
+        assert len(r.sifter_result.transient_candidates) == 1
+
+
+def test_one_band_is_not_confirmed_with_min_bands_two():
+    lone = _candidate(10.0, -5.0, snr=20.0)
+    results, groups = _match(
+        MultiArrayMapMatcher(min_arrays=1, min_bands=2),
+        [_result("f090", "i1i3i4i6", [lone], frequency="f090")],
+    )
+
+    assert not groups[0].confirmed
+    assert groups[0].notable  # high_sig seed
+    assert results[0].sifter_result.transient_candidates == []
+    assert results[0].sifter_result.noise_candidates == [lone]
+
+
+def test_min_arrays_one_accepts_maps_with_no_array_label():
+    a, b = _candidate(10.0, -5.0), _candidate(10.0, -5.0)
+    _, groups = _match(
+        MultiArrayMapMatcher(min_arrays=1, min_bands=2),
+        [
+            _result("f090", None, [a], frequency="f090"),
+            _result("f220", None, [b], frequency="f220"),
+        ],
+    )
+
+    assert groups[0].confirmed
+
+
+def test_default_min_bands_does_not_change_matching():
+    """The default (min_bands=1) keeps the single-band confirmation."""
+    a, b = _candidate(348.3478, 2.6759), _candidate(348.3476, 2.6760)
+    matcher = MultiArrayMapMatcher()
+    assert matcher.min_bands == 1
+    _, groups = _match(matcher, [_result("i1", "i1", [a]), _result("i3", "i3", [b])])
+
+    assert groups[0].confirmed
+    assert groups[0].n_bands == 1
+
+
 def test_empty_matcher_is_passthrough():
     candidate = _candidate(10.0, -5.0)
     results, groups = _match(EmptyMapMatcher(), [_result("i1", "i1", [candidate])])
@@ -280,12 +341,15 @@ def test_multi_array_config():
             "matcher_type": "multi_array",
             "radius": "1 arcmin",
             "min_arrays": 3,
+            "min_bands": 2,
         }
     ).to_matcher()
 
     assert isinstance(matcher, MultiArrayMapMatcher)
     assert matcher.radius == 1.0 * u.arcmin
     assert matcher.min_arrays == 3
+    assert matcher.min_bands == 2
+    assert matcher.settings["min_bands"] == 2
 
 
 def test_low_sig_detection_confirms_high_sig_seed():

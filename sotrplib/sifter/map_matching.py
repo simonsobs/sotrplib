@@ -75,13 +75,14 @@ class MapMatchGroup:
     rank: int
     "1 = most significant group of the run; confirmed groups rank first, then "
     "the other notable groups (a detection at or above high_sig, or at least "
-    "min_arrays arrays), then the rest."
+    "min_arrays arrays in at least min_bands bands), then the rest."
     confirmed: bool
-    "Detected by at least the matcher's min_arrays distinct arrays, with at "
-    "least one detection at or above the matcher's high_sig."
+    "Detected by at least the matcher's min_arrays distinct arrays and "
+    "min_bands distinct bands, with at least one detection at or above the "
+    "matcher's high_sig."
     notable: bool
     "Confirmed, or one detection at or above high_sig, or at least min_arrays "
-    "arrays."
+    "arrays in at least min_bands bands."
     max_snr: float | None
     "Highest SNR of the detections in the group."
     n_maps: int
@@ -153,8 +154,8 @@ class MapMatchSummary:
     observation_start: Time | None = None
     "The earliest start time of the maps of the run."
     settings: dict = field(default_factory=dict)
-    "The settings of the matcher, e.g. min_arrays, high_sig, low_sig and "
-    "radius_arcmin."
+    "The settings of the matcher, e.g. min_arrays, min_bands, high_sig, "
+    "low_sig and radius_arcmin."
 
     @property
     def notable_groups(self) -> list[MapMatchGroup]:
@@ -251,9 +252,14 @@ class MultiArrayMapMatcher(MapMatcher):
     """
     Groups the transient candidates of all the results that are within
     `radius` of each other in different maps. A group is confirmed if at
-    least `min_arrays` distinct arrays (optics tubes) detected it and at
-    least one detection has SNR >= `high_sig`. The same array in two bands
-    counts once.
+    least `min_arrays` distinct arrays (optics tubes) and at least
+    `min_bands` distinct bands detected it, and at least one detection has
+    SNR >= `high_sig`. The same array in two bands counts once.
+
+    For coadds, use min_arrays=1 and min_bands=2. A coadd merges the tubes of
+    a band, so two arrays cannot detect an event in one coadd set. With
+    min_arrays <= 1 the array condition is always true, also for maps with
+    no array label.
 
     Only candidates with SNR >= `low_sig` are grouped. To use the low_sig
     detections, the blind search threshold and the sifter's snr cut must be
@@ -263,7 +269,8 @@ class MultiArrayMapMatcher(MapMatcher):
     Every grouped candidate, confirmed or not, gets the group_id and
     group_rank of its group. The rank is within the run: confirmed groups
     first, then the other notable groups (a detection >= high_sig, or
-    >= min_arrays arrays), then the rest, each by significance (see
+    >= min_arrays arrays in >= min_bands bands), then the rest, each by
+    significance (see
     map_match_significance).
 
     The candidates of confirmed groups stay in transient_candidates. All the
@@ -285,12 +292,14 @@ class MultiArrayMapMatcher(MapMatcher):
         min_arrays: int = 2,
         high_sig: float = 5.0,
         low_sig: float = 3.0,
+        min_bands: int = 1,
         log: FilteringBoundLogger | None = None,
     ):
         if low_sig > high_sig:
             raise ValueError(f"low_sig ({low_sig}) must be <= high_sig ({high_sig})")
         self.radius = radius
         self.min_arrays = min_arrays
+        self.min_bands = min_bands
         self.high_sig = high_sig
         self.low_sig = low_sig
         self.log = log or structlog.get_logger()
@@ -299,6 +308,7 @@ class MultiArrayMapMatcher(MapMatcher):
     def settings(self) -> dict:
         return {
             "min_arrays": self.min_arrays,
+            "min_bands": self.min_bands,
             "high_sig": self.high_sig,
             "low_sig": self.low_sig,
             "radius_arcmin": self.radius.to_value(u.arcmin),
@@ -345,6 +355,7 @@ class MultiArrayMapMatcher(MapMatcher):
             n_confirmed_groups=sum(g.confirmed for g in groups),
             n_notable_groups=sum(g.notable for g in groups),
             min_arrays=self.min_arrays,
+            min_bands=self.min_bands,
             high_sig=self.high_sig,
             low_sig=self.low_sig,
         )
@@ -364,10 +375,13 @@ class MultiArrayMapMatcher(MapMatcher):
             snrs = [c.snr for _, c in members if c.snr is not None]
             max_snr = float(max(snrs)) if snrs else None
             has_seed = bool(max_snr is not None and max_snr >= self.high_sig)
-            multi_array = len(arrays) >= self.min_arrays
-            confirmed = bool(multi_array and has_seed)
+            # min_arrays <= 1 also passes maps with no array label.
+            multi_array = self.min_arrays <= 1 or len(arrays) >= self.min_arrays
+            multi_band = len(bands) >= self.min_bands
+            multi = multi_array and multi_band
+            confirmed = bool(multi and has_seed)
             # 0: confirmed, 1: other notable groups, 2: the rest.
-            tier = 0 if confirmed else 1 if (has_seed or multi_array) else 2
+            tier = 0 if confirmed else 1 if (has_seed or multi) else 2
             notable = tier <= 1
             combined_snr, significance = map_match_significance(snrs)
             scored.append(
