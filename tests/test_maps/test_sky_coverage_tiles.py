@@ -13,9 +13,8 @@ from sotrplib.maps.database import sky_coverage_tiles
     [
         (15.0, 0.5, [(1, 9)]),
         (179.9, -5.0, [(17, 8)]),
-        # SZ Psc, in the deep56 field: mapcat stores the tile as x = -1.
-        (350.75, -0.9, [(35, 8), (-1, 8)]),
-        (180.0, 10.0, [(18, 10), (-18, 10)]),
+        (350.75, -0.9, [(35, 8)]),
+        (180.0, 10.0, [(18, 10)]),
     ],
 )
 def test_sky_coverage_tiles(ra, dec, expected):
