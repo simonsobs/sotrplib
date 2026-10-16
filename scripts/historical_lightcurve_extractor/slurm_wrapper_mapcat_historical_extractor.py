@@ -199,10 +199,8 @@ def maps_covering(
             rows = con.execute(
                 f"SELECT {columns} FROM depth_one_maps m "
                 "JOIN depth_one_sky_coverage c ON c.map_id = m.map_id "
-                # A map that crosses RA 0 has tiles in the [-180, 180)
-                # convention (x - 36). See sotrplib.maps.database.sky_coverage_tiles.
-                "WHERE c.x IN (?, ?) AND c.y = ?",
-                (x, x - 36, y),
+                "WHERE c.x = ? AND c.y = ?",
+                (x, y),
             ).fetchall()
     finally:
         con.close()

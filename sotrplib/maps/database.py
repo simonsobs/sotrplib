@@ -559,7 +559,8 @@ def sky_coverage_tiles(ra: float, dec: float) -> list[tuple[int, int]]:
     Return the mapcat sky-coverage tiles (x, y) that can hold the point
     (ra, dec), in degrees, with ra in [0, 360).
 
-    mapcat makes the tiles of a map from the RA range of the map geometry.
+    The mapcat tile indices are all positive: x is in [0, 36) and y is
+    in [0, 18).
     """
     dec_idx = dec_to_index(dec)
     tiles = [(ra_to_index(ra), dec_idx)]
