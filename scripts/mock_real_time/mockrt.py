@@ -233,13 +233,23 @@ def added_sources(record_dir: Path) -> list[str]:
     return ids
 
 
-def do_backfill(run: RunConfig, record_dir: Path, out_dir: Path, end: datetime) -> dict:
+def do_backfill(
+    run: RunConfig, ledger: Ledger, record_dir: Path, out_dir: Path, end: datetime
+) -> dict:
     """
     Measure each source that the socat update added in all the live maps
     that start before `end` (historical lightcurve extractor, lightcurvedb
     output).
+
+    lightcurvedb keeps each measurement that it gets, also a duplicate. Thus,
+    the ledger records each source that is done (key "backfill:<socat_id>"),
+    and a rerun of the step does not measure the source again.
     """
-    socat_ids = added_sources(record_dir)
+    socat_ids = [
+        socat_id
+        for socat_id in added_sources(record_dir)
+        if not ledger.done(f"backfill:{socat_id}")
+    ]
     if not socat_ids:
         return {"n_sources": 0}
     extractor = _load_script(
@@ -247,10 +257,26 @@ def do_backfill(run: RunConfig, record_dir: Path, out_dir: Path, end: datetime) 
         "scripts/historical_lightcurve_extractor/slurm_wrapper_mapcat_historical_extractor.py",
         "historical_extractor",
     )
+    for socat_id in socat_ids:
+        step(
+            ledger, f"backfill:{socat_id}", backfill_source, run, extractor,
+            socat_id, out_dir / socat_id, end,
+        )  # fmt: skip
+    return {"n_sources": len(socat_ids), "socat_ids": socat_ids}
+
+
+def backfill_source(
+    run: RunConfig, extractor, socat_id: str, out_dir: Path, end: datetime
+) -> None:
+    """
+    Measure one socat source in the live maps that start before `end`. Each
+    source has its own out_dir, thus its own extractor socat database with
+    only this source in it.
+    """
     argv = [
         "--mapcat", str(run.live_mapcat),
         "--copy-from-socat-db", str(run.live_socat),
-        "--socat-id", *socat_ids,
+        "--socat-id", socat_id,
         "--end-time", iso(end).rstrip("Z"),
         "--bands", *run.bands,
         "--optics-tubes", *run.tubes,
@@ -269,7 +295,6 @@ def do_backfill(run: RunConfig, record_dir: Path, out_dir: Path, end: datetime) 
         config_file = Path(str(slurm_file).replace("_sub.slurm", "_config.json"))
         config = json.loads(config_file.read_text())
         run_sotrp(run, config, config_file, config_file.with_suffix(".log"), env=env)
-    return {"n_sources": len(socat_ids), "socat_ids": socat_ids}
 
 
 def submit_week(run: RunConfig, week: int) -> dict:
@@ -487,7 +512,7 @@ def cmd_tick(args) -> None:
     step(ledger, f"day{day:03d}:daily", do_daily, run, day)
     out = run.day_dir(day)
     step(
-        ledger, f"day{day:03d}:backfill", do_backfill, run,
+        ledger, f"day{day:03d}:backfill", do_backfill, run, ledger,
         out / "socat_updates", out / "backfill", end,
     )  # fmt: skip
     week = run.ends_week(day)
@@ -534,7 +559,7 @@ def cmd_coadd_analysis(args) -> None:
         out / "sotrp.log",
     )
     step(
-        ledger, f"{key}:backfill", do_backfill, run,
+        ledger, f"{key}:backfill", do_backfill, run, ledger,
         out / "socat_updates", out / "backfill", end,
     )  # fmt: skip
 

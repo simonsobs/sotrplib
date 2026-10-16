@@ -34,7 +34,9 @@ For each simulated day (a "tick" job), `mockrt.py` does these steps:
    forced photometry of the next days then measures these sources.
 3. **Backfill.** For each new socat source, it runs the historical
    lightcurve extractor on all the live maps that start before the end of
-   the day. The measurements go to lightcurvedb.
+   the day. The measurements go to lightcurvedb. lightcurvedb keeps
+   duplicate measurements, so the ledger records each source that is done
+   (`backfill:<socat_id>`), and a rerun does not measure it again.
 4. **Week.** At the end of each week, it submits a weekly coadd job for each
    band, and a job that runs `sotrp` on the weekly coadds after them. The
    map matcher of the coadds uses two bands (`min_arrays: 1`,

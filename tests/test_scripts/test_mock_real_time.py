@@ -332,3 +332,41 @@ def test_slurm_scripts(tmp_path, mock):
     assert "apptainer run" in services and "/img/postgres_16.sif" in services
     assert "lightcurvedb-setup" in services
     assert str(run.services_env) in services
+
+
+def test_backfill_measures_each_source_once(tmp_path, mock, monkeypatch):
+    """lightcurvedb keeps duplicates, so a rerun of the backfill step must not
+    measure a source that is done again."""
+    mockrt = mock["mockrt"]
+    run = _run(mock, tmp_path)
+    ledger = mockrt.Ledger(tmp_path / "ledger.sqlite")
+    record_dir = tmp_path / "socat_updates"
+    record_dir.mkdir()
+    (record_dir / "socat_update_20250910T052435.json").write_text(
+        json.dumps({"maps": [], "groups": [{"action": "added", "socat_id": "a"}]})
+    )
+
+    measured = []
+
+    class FakeExtractor:
+        @staticmethod
+        def main(argv):
+            measured.append(argv[argv.index("--socat-id") + 1])
+            return []
+
+    monkeypatch.setattr(mockrt, "_load_script", lambda *args: FakeExtractor)
+    end = datetime(2025, 9, 11, tzinfo=timezone.utc)
+
+    out = tmp_path / "backfill"
+    mockrt.do_backfill(run, ledger, record_dir, out, end)
+    assert measured == ["a"]
+    assert ledger.done("backfill:a")
+
+    # A second source is added. A rerun measures only the new source.
+    (record_dir / "socat_update_20250910T052435_rerun.json").write_text(
+        json.dumps({"maps": [], "groups": [{"action": "added", "socat_id": "b"}]})
+    )
+    result = mockrt.do_backfill(run, ledger, record_dir, out, end)
+    assert measured == ["a", "b"]
+    assert result["socat_ids"] == ["b"]
+    assert mockrt.do_backfill(run, ledger, record_dir, out, end) == {"n_sources": 0}
