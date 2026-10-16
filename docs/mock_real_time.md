@@ -69,13 +69,36 @@ no network access):
 apptainer pull postgres_16.sif docker://postgres:16
 ```
 
-To see the lightcurves in lightview, open a tunnel to lightserve and run
-lightview with `VITE_SERVICE_URL` set to the tunnel:
+To see the lightcurves in lightview, run the lightview dev server on the
+login node with `scripts/mock_real_time/lightview.config.mjs`. The vite
+server sends `/api/*` to lightserve (a proxy), so the browser gets the page
+and the data from one port:
 
 ```
-ssh -L 8000:<services node>:<lightserve port> della    # from LIGHTSERVE_URL in services.env
-cd lightview && VITE_SERVICE_URL=http://127.0.0.1:8000 npm run dev
+cd $LIGHTVIEW_DIR
+VITE_SERVICE_URL=/api \
+LIGHTVIEW_DIR=$PWD \
+LIGHTSERVE_TARGET=http://<services node>:<lightserve port> \
+    npx vite --config <sotrplib>/scripts/mock_real_time/lightview.config.mjs
 ```
+
+`LIGHTSERVE_TARGET` is `LIGHTSERVE_URL` in `services.env`. The lightserve
+port changes each time the services job starts. Then, on your computer,
+open a tunnel to the vite port only, and open http://localhost:6979/:
+
+```
+ssh -N -L 6979:localhost:6979 <user>@<login node>
+```
+
+Do not set `VITE_SERVICE_URL` to a second tunnel port (for example
+`http://127.0.0.1:<lightserve port>`). The browser then sends the API
+requests to that port on your computer. If that forward does not work (for
+example, an old tunnel keeps the vite port), lightview shows 0 sources and
+no error.
+
+lightview uses vite 8, which needs Node.js 20.19 or later. With an earlier
+Node.js, npm does not install the rolldown binding and vite stops with
+"Cannot find native binding".
 
 
 Procedure
