@@ -370,3 +370,82 @@ def test_backfill_measures_each_source_once(tmp_path, mock, monkeypatch):
     assert measured == ["a", "b"]
     assert result["socat_ids"] == ["b"]
     assert mockrt.do_backfill(run, ledger, record_dir, out, end) == {"n_sources": 0}
+
+
+def _fake_sbatch(mockrt, monkeypatch):
+    """Record the submitted scripts and their dependencies; return job ids."""
+    jobs = []
+
+    def sbatch(script, dependency=None, begin=None):
+        jobs.append((Path(script).name, dependency, Path(script).read_text()))
+        return str(len(jobs))
+
+    monkeypatch.setattr(mockrt, "sbatch", sbatch)
+    return jobs
+
+
+class _FakeWeeks:
+    @staticmethod
+    def build_config(**kwargs):
+        return {}
+
+
+def test_sequential_week_analysis_submits_next_tick(tmp_path, mock, monkeypatch):
+    mockrt = mock["mockrt"]
+    run = _run(mock, tmp_path)
+    run.slurm_dir.mkdir(parents=True)
+    jobs = _fake_sbatch(mockrt, monkeypatch)
+    monkeypatch.setattr(mockrt, "_load_script", lambda *args: _FakeWeeks)
+
+    mockrt.submit_week(run, 0, next_day=7)
+    name, dependency, text = jobs[-1]
+    assert name == "mockrt_week00_analysis.slurm"
+    assert dependency == ["1", "2", "3", "4"]
+    assert "--next-day 7" in text
+
+
+def test_sequential_month_waits_for_week_analysis(tmp_path, mock, monkeypatch):
+    mockrt = mock["mockrt"]
+    run = _run(mock, tmp_path)
+    run.slurm_dir.mkdir(parents=True)
+    jobs = _fake_sbatch(mockrt, monkeypatch)
+    monkeypatch.setattr(mockrt, "_load_script", lambda *args: _FakeWeeks)
+
+    # Week 3 ends month 0: the month job submits the next tick, not the week.
+    detail = mockrt.submit_week(run, 3, next_day=28)
+    analysis, planner = jobs[-2], jobs[-1]
+    assert "--next-day" not in analysis[2]
+    assert planner[0] == "mockrt_month00_plan.slurm"
+    assert planner[1] == [detail["analysis_job"]]
+    assert "--next-day 28" in planner[2]
+
+    # Not sequential: the month starts after the weekly coadds.
+    jobs.clear()
+    detail = mockrt.submit_week(run, 3)
+    assert jobs[-1][1] == detail["coadd_jobs"]
+    assert all("--next-day" not in text for _, _, text in jobs)
+
+
+@pytest.mark.parametrize("sequential", [True, False])
+def test_tick_at_week_end(tmp_path, mock, monkeypatch, sequential):
+    mockrt = mock["mockrt"]
+    run = _run(mock, tmp_path, sequential=sequential)
+    run.root.mkdir(parents=True)
+    run.save()
+    calls = []
+    monkeypatch.setattr(mockrt, "do_feed", lambda run, day: {})
+    monkeypatch.setattr(mockrt, "do_daily", lambda run, day: {})
+    monkeypatch.setattr(mockrt, "do_backfill", lambda *args: {})
+    monkeypatch.setattr(
+        mockrt,
+        "submit_week",
+        lambda run, week, next_day=None: calls.append(("week", week, next_day)),
+    )
+    monkeypatch.setattr(
+        mockrt, "submit_tick", lambda run, day: calls.append(("tick", day))
+    )
+    mockrt.main(["tick", "--day", "6", "--run-dir", str(run.root)])
+    if sequential:
+        assert calls == [("week", 0, 7)]
+    else:
+        assert calls == [("week", 0, None), ("tick", 7)]

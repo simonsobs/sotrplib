@@ -297,9 +297,12 @@ def backfill_source(
         run_sotrp(run, config, config_file, config_file.with_suffix(".log"), env=env)
 
 
-def submit_week(run: RunConfig, week: int) -> dict:
+def submit_week(run: RunConfig, week: int, next_day: int | None = None) -> dict:
     """Submit the weekly coadd job of each band, and the analysis job after
-    them. At the end of a month, also the month job."""
+    them. At the end of a month, also the month job.
+
+    If next_day is set, the last analysis job (of the week or of the month)
+    submits the tick of next_day."""
     weeks_mod = _load_script(
         run.code_dir, "scripts/coadding/submit_week_coadds.py", "submit_week_coadds"
     )
@@ -336,10 +339,20 @@ def submit_week(run: RunConfig, week: int) -> dict:
         )
         job_ids.append(sbatch(write_slurm(run, name, command, kind="coadd")))
 
+    month = run.ends_month(week)
+    then = [] if next_day is None else ["--next-day", str(next_day)]
     analysis = write_slurm(
         run,
         f"mockrt_week{week:02d}_analysis",
-        mockrt_command(run, "coadd-analysis", "--kind", "week", "--index", str(week)),
+        mockrt_command(
+            run,
+            "coadd-analysis",
+            "--kind",
+            "week",
+            "--index",
+            str(week),
+            *(then if month is None else []),
+        ),
         kind="tick",
         prefect=run.runner == "prefect",
     )
@@ -348,21 +361,23 @@ def submit_week(run: RunConfig, week: int) -> dict:
         "analysis_job": sbatch(analysis, dependency=job_ids),
     }
 
-    month = run.ends_month(week)
     if month is not None:
         planner = write_slurm(
             run,
             f"mockrt_month{month:02d}_plan",
-            mockrt_command(run, "month", "--month", str(month)),
+            mockrt_command(run, "month", "--month", str(month), *then),
             kind="small",
         )
-        detail["month_job"] = sbatch(planner, dependency=job_ids)
+        # In a sequential run, the month starts after the week analysis.
+        after = [detail["analysis_job"]] if next_day is not None else job_ids
+        detail["month_job"] = sbatch(planner, dependency=after)
     return detail
 
 
-def submit_month(run: RunConfig, month: int) -> dict:
+def submit_month(run: RunConfig, month: int, next_day: int | None = None) -> dict:
     """Submit the monthly coadd job of each band (a coadd of the weekly
-    coadds), and the analysis job after them."""
+    coadds), and the analysis job after them. If next_day is set, the
+    analysis job submits the tick of next_day."""
     months_mod = _load_script(
         run.code_dir, "scripts/coadding/submit_month_coadds.py", "submit_month_coadds"
     )
@@ -418,7 +433,15 @@ def submit_month(run: RunConfig, month: int) -> dict:
     analysis = write_slurm(
         run,
         f"mockrt_month{month:02d}_analysis",
-        mockrt_command(run, "coadd-analysis", "--kind", "month", "--index", str(month)),
+        mockrt_command(
+            run,
+            "coadd-analysis",
+            "--kind",
+            "month",
+            "--index",
+            str(month),
+            *([] if next_day is None else ["--next-day", str(next_day)]),
+        ),
         kind="tick",
         prefect=run.runner == "prefect",
     )
@@ -516,10 +539,16 @@ def cmd_tick(args) -> None:
         out / "socat_updates", out / "backfill", end,
     )  # fmt: skip
     week = run.ends_week(day)
+    next_day = day + 1 if not args.no_next and day + 1 < run.n_days else None
     if week is not None and not args.no_coadds:
-        step(ledger, f"week{week:02d}:submit", submit_week, run, week)
-    if not args.no_next and day + 1 < run.n_days:
-        step(ledger, f"day{day + 1:03d}:submit", submit_tick, run, day + 1)
+        # In a sequential run, the last analysis job of the week submits the
+        # next tick.
+        then = next_day if run.sequential else None
+        step(ledger, f"week{week:02d}:submit", submit_week, run, week, then)
+        if then is not None:
+            return
+    if next_day is not None:
+        step(ledger, f"day{next_day:03d}:submit", submit_tick, run, next_day)
 
 
 def cmd_feed(args) -> None:
@@ -562,6 +591,8 @@ def cmd_coadd_analysis(args) -> None:
         ledger, f"{key}:backfill", do_backfill, run, ledger,
         out / "socat_updates", out / "backfill", end,
     )  # fmt: skip
+    if args.next_day is not None:
+        step(ledger, f"day{args.next_day:03d}:submit", submit_tick, run, args.next_day)
 
 
 def cmd_week(args) -> None:
@@ -577,6 +608,7 @@ def cmd_month(args) -> None:
         submit_month,
         run,
         args.month,
+        args.next_day,
     )
 
 
@@ -644,6 +676,12 @@ def parse_args(argv=None):
     )
     analysis.add_argument("--kind", choices=["week", "month"], required=True)
     analysis.add_argument("--index", type=int, required=True)
+    analysis.add_argument(
+        "--next-day",
+        type=int,
+        default=None,
+        help="Submit the tick of this day at the end (sequential run).",
+    )
 
     week = sub.add_parser(
         "week", help="Submit the jobs of a week (normally from a tick)."
@@ -654,6 +692,12 @@ def parse_args(argv=None):
         "month", help="Submit the jobs of a month (normally from a job)."
     )
     month.add_argument("--month", type=int, required=True)
+    month.add_argument(
+        "--next-day",
+        type=int,
+        default=None,
+        help="The month analysis job submits the tick of this day.",
+    )
 
     sub.add_parser("status", help="Show the ledger and the live mapcat.")
 

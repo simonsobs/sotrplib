@@ -46,8 +46,12 @@ For each simulated day (a "tick" job), `mockrt.py` does these steps:
    `sotrp` on the monthly coadds.
 6. **Next day.** It submits the tick of the next day.
 
-The weeks and months do not stop the ticks. They run at the same time, as in
-the real-time system.
+By default, the run is sequential (`"sequential": true` in `mockrt.json`):
+it does one step at a time. After the last day of a week, the week analysis
+job (or, at the end of a month, the month analysis job) submits the tick of
+the next day. Thus, a source that a coadd adds to socat is in socat before
+the next day starts. Set `"sequential": false` to run the weeks and the
+months at the same time as the ticks, as in the real-time system.
 
 A ledger (`ledger.sqlite`) records the status of each step. A step that is
 done does not run again. Thus, if a tick fails, correct the problem and

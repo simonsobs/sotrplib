@@ -53,6 +53,10 @@ class RunConfig:
     "Write the forced photometry to lightcurvedb (needs the services job)."
     pace_minutes: float = 0.0
     "Minimum wall time between the starts of two ticks. 0: no wait."
+    sequential: bool = True
+    """If true, the run does one step at a time: after the last day of a week,
+    the next tick starts when the week (and month) analysis is done. If
+    false, the coadd jobs run at the same time as the ticks."""
     account: str = "simonsobs"
     tick_cpus: int = 8
     tick_mem: str = "128G"
