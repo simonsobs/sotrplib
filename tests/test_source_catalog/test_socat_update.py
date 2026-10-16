@@ -6,6 +6,7 @@ as monitored sources.
 import json
 import os
 import pickle
+import uuid
 
 import pytest
 from astropy import units as u
@@ -76,10 +77,10 @@ def _summary():
 
 
 def test_transient_name():
-    assert transient_name("SOT", 348.3478 * u.deg, 2.6759 * u.deg) == (
+    assert transient_name("SO-T", 348.3478 * u.deg, 2.6759 * u.deg) == (
         "SO-T J231323.5+024033"
     )
-    assert transient_name("SOT", 7.7443 * u.deg, -9.5003 * u.deg).startswith(
+    assert transient_name("SO-T", 7.7443 * u.deg, -9.5003 * u.deg).startswith(
         "SO-T J003058.6-0930"
     )
 
@@ -103,6 +104,7 @@ def test_update_adds_only_confirmed_groups(empty_socat, tmp_path):
     assert fixed[0].name == new.source_id
 
     socat_id = new.crossmatches[0].catalog_idx
+    assert isinstance(socat_id, uuid.UUID) and socat_id.version == 7
     assert socat_id == fixed[0].source_id
     for candidate in members:
         assert candidate.crossmatches[-1].catalog_idx == socat_id
@@ -132,7 +134,9 @@ def test_update_monitors_a_known_unmonitored_source(empty_socat, tmp_path):
     reported = catalog.update(summary)
 
     assert [s.source_id for s in reported] == ["ACT-S J2313.3+0240"]
-    assert reported[0].crossmatches[0].catalog_idx == known.source_id
+    socat_id = reported[0].crossmatches[0].catalog_idx
+    assert isinstance(socat_id, uuid.UUID) and socat_id.version == 7
+    assert socat_id == known.source_id
     assert catalog.catalog.get_source(source_id=known.source_id).monitored
     fixed = catalog.catalog.get_box_fixed(
         lower_left=_icrs(0, -89.9), upper_right=_icrs(359.9, 89.9)

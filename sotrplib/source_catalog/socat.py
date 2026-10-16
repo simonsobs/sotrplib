@@ -3,7 +3,8 @@ Use a SOCat database as a source catalog.
 """
 
 import json
-from datetime import datetime, timezone
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -133,6 +134,10 @@ class SOCat(SourceCatalog):
 
         Each member candidate of an added group gets a crossmatch to the new
         source. Returns the new sources and the newly monitored sources.
+
+        The socat id (a UUID7) of each source is in crossmatches[0].catalog_idx,
+        as for the sources from get_sources_in_box. The source_id of a
+        returned source is its socat name.
         """
         if not self.add_confirmed_transients:
             return []
@@ -167,7 +172,7 @@ class SOCat(SourceCatalog):
             existing = self._closest_source(group.ra, group.dec, t)
             if existing is not None:
                 action = "already_in_catalog"
-                socat_id = existing.crossmatches[0].catalog_idx
+                socat_id: uuid.UUID = existing.crossmatches[0].catalog_idx
                 if (
                     self.monitor_existing_sources
                     and existing.source_type != "sso"
@@ -184,13 +189,13 @@ class SOCat(SourceCatalog):
                     f"socat.update.group_{action}",
                     group_id=str(group.group_id),
                     name=str(existing.source_id),
-                    socat_id=str(socat_id),
+                    socat_id=socat_id,
                 )
                 records.append(
                     {
                         **group_record,
                         "action": action,
-                        "socat_id": str(socat_id),
+                        "socat_id": socat_id,
                         "name": str(existing.source_id),
                     }
                 )
@@ -205,13 +210,14 @@ class SOCat(SourceCatalog):
                 name=name,
                 flags={"monitored": True},
             )
+            socat_id = created.source_id
 
             crossmatch = CrossMatch(
                 source_id=name,
                 source_type="unknown",
                 probability=1.0,
                 catalog_name="socat",
-                catalog_idx=created.source_id,
+                catalog_idx=socat_id,
                 ra=group.ra,
                 dec=group.dec,
                 flux=flux,
@@ -243,7 +249,7 @@ class SOCat(SourceCatalog):
                 {
                     **group_record,
                     "action": "added",
-                    "socat_id": str(created.source_id),
+                    "socat_id": socat_id,
                     "name": name,
                     "flux_mJy": flux.to_value(u.mJy) if flux is not None else None,
                 }
@@ -251,7 +257,7 @@ class SOCat(SourceCatalog):
             self.log.info(
                 "socat.update.added_transient",
                 name=name,
-                socat_id=str(created.source_id),
+                socat_id=socat_id,
                 group_id=str(group.group_id),
                 significance=round(group.significance, 2),
                 ra=group.ra.to_value(u.deg),
@@ -296,10 +302,16 @@ class SOCat(SourceCatalog):
         stamp = start.strftime("%Y%m%dT%H%M%S") if start is not None else "unknown"
         # A rerun of the same maps writes a new file. It does not replace the
         # record of the first run, which has the sources that it added.
-        written = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+        written = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
         path = self.record_directory / f"socat_update_{stamp}_{written}.json"
         with open(path, "w") as f:
-            json.dump({"maps": list(summary.map_names), "groups": records}, f, indent=2)
+            # default=str writes the socat UUIDs as strings.
+            json.dump(
+                {"maps": list(summary.map_names), "groups": records},
+                f,
+                indent=2,
+                default=str,
+            )
         self.log.info("socat.update.record_written", path=str(path))
 
     def get_sources_in_box(
