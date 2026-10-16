@@ -36,7 +36,7 @@ _TIME_RANGE_PADDING = TimeDelta(1, format="jd")
 def transient_name(prefix: str, ra: u.Quantity, dec: u.Quantity) -> str:
     """
     Return a position name for a new source, for example
-    "SOT J231323.4+024034".
+    "SO-T J231323.4+024034".
     """
     position = SkyCoord(ra=ra, dec=dec)
     ra_str = position.ra.to_string(unit=u.hourangle, sep="", precision=1, pad=True)
@@ -59,7 +59,7 @@ class SOCat(SourceCatalog):
         log: FilteringBoundLogger | None = None,
         add_confirmed_transients: bool = False,
         duplicate_radius: u.Quantity = 1.0 * u.arcmin,
-        name_prefix: str = "SOT",
+        name_prefix: str = "SO-T",
         record_directory: Path | None = None,
         monitor_existing_sources: bool = True,
     ):

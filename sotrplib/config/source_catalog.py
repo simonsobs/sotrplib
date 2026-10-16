@@ -40,7 +40,7 @@ class SOCatUpdateConfig(BaseModel):
     "Add each confirmed map-match group as a new monitored fixed source."
     duplicate_radius: AstroPydanticQuantity[u.arcmin] = 1.0 * u.arcmin
     "Do not add a group if a socat source is within this distance."
-    name_prefix: str = "SOT"
+    name_prefix: str = "SO-T"
     'A new source is named "<name_prefix> J<hhmmss.s><+ddmmss>".'
     record_directory: Path | None = None
     "If set, write a JSON record of each update "

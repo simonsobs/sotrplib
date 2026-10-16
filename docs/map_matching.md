@@ -346,7 +346,7 @@ Add an `update` field to the socat source catalog in the `sotrp` config:
         "catalog_type": "socat",
         "update": {
             "duplicate_radius": "1 arcmin",
-            "name_prefix": "SOT",
+            "name_prefix": "SO-T",
             "record_directory": "/path/to/outputs/socat_updates/"
         }
     }
@@ -357,7 +357,7 @@ Add an `update` field to the socat source catalog in the `sotrp` config:
 |---|---|---|
 | `add_confirmed_transients` | `true` | Add each confirmed group as a new monitored fixed source. |
 | `duplicate_radius` | `1 arcmin` | Do not add a group if a socat source is within this distance. |
-| `name_prefix` | `SOT` | The name of a new source is `<name_prefix> J<hhmmss.s><+ddmmss>`. |
+| `name_prefix` | `SO-T` | The name of a new source is `<name_prefix> J<hhmmss.s><+ddmmss>`. |
 | `record_directory` | none | If set, write a JSON record of each update to this directory. |
 | `monitor_existing_sources` | `true` | If a group matches a fixed socat source that is not monitored, set the source to monitored. |
 

@@ -77,10 +77,10 @@ def _summary():
 
 def test_transient_name():
     assert transient_name("SOT", 348.3478 * u.deg, 2.6759 * u.deg) == (
-        "SOT J231323.5+024033"
+        "SO-T J231323.5+024033"
     )
     assert transient_name("SOT", 7.7443 * u.deg, -9.5003 * u.deg).startswith(
-        "SOT J003058.6-0930"
+        "SO-T J003058.6-0930"
     )
 
 
@@ -92,7 +92,7 @@ def test_update_adds_only_confirmed_groups(empty_socat, tmp_path):
 
     assert len(added) == 1
     new = added[0]
-    assert new.source_id == "SOT J231323.5+024033"
+    assert new.source_id == "SO-T J231323.5+024033"
     assert new.flux.to_value(u.mJy) == pytest.approx(800.0)
 
     fixed = catalog.catalog.get_box_fixed(
