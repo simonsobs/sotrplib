@@ -83,11 +83,22 @@ class LightcurveDBOutputConfig(OutputConfig):
     "Over-ride individual settings from the LightcurveDB environment variable setup."
     upsert_sources: bool = False
     "Upsert sources to LightcurveDB before outputting flux measuurements. Data is taken from the crossmatches."
+    create_instruments: bool = True
+    "Create the LightcurveDB instrument (band, tube) of a measurement if it is not registered."
+    telescope: str = "lat"
+    "The telescope of the instruments that the output creates."
+    instrument: str = "latr"
+    "The instrument name of the instruments that the output creates."
 
     def to_output(self, log: FilteringBoundLogger | None = None) -> SourceOutput:
         settings = LightcurveDBSettings(**(self.override_settings or {}))
         return LightcurveDBOutput(
-            settings=settings, upsert_sources=self.upsert_sources, log=log
+            settings=settings,
+            upsert_sources=self.upsert_sources,
+            create_instruments=self.create_instruments,
+            telescope=self.telescope,
+            instrument=self.instrument,
+            log=log,
         )
 
 
