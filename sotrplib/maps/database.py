@@ -219,9 +219,7 @@ class MapCatDatabaseReader(ABC):
                 if dec < -90 or dec > 90:  # pragma: no cover
                     raise ValueError("Dec must be between -90 and 90 degrees")
 
-                ra_idx = ra_to_index(ra)
-                dec_idx = dec_to_index(dec)
-                points.append((ra_idx, dec_idx))
+                points.extend(sky_coverage_tiles(ra, dec))
             points = set(points)
             query = query.join(DepthOneMapTable.depth_one_sky_coverage).where(
                 tuple_(SkyCoverageTable.x, SkyCoverageTable.y).in_(points)
@@ -554,6 +552,23 @@ def check_if_processed(
     ):
         return True
     return False
+
+
+def sky_coverage_tiles(ra: float, dec: float) -> list[tuple[int, int]]:
+    """
+    Return the mapcat sky-coverage tiles (x, y) that can hold the point
+    (ra, dec), in degrees, with ra in [0, 360).
+
+    mapcat makes the tiles of a map from the RA range of the map geometry.
+    A map that crosses RA 0 has an RA range in [-180, 180), and its tiles
+    near RA 360 have negative x. Thus, a point with ra >= 180 can be in
+    tile ra_to_index(ra) or in tile ra_to_index(ra - 360).
+    """
+    dec_idx = dec_to_index(dec)
+    tiles = [(ra_to_index(ra), dec_idx)]
+    if ra >= 180:
+        tiles.append((ra_to_index(ra - 360), dec_idx))
+    return tiles
 
 
 def set_processing_start(
