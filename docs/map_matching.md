@@ -31,7 +31,9 @@ steps:
 
 1. It analyzes each map and keeps the result (a `MapResult`) in memory.
 2. It gives all the results to the map matcher.
-3. It writes the source outputs of each map, with the results of the map
+3. It gives the map-match summary to each source catalog (see "Add
+   confirmed events to socat" below).
+4. It writes the source outputs of each map, with the results of the map
    matching.
 
 The two runners (`basic` and `prefect`) do these steps. Use the prefect
@@ -327,6 +329,74 @@ arrays and 4 bands, in one prefect job. The config has
 
 Three arrays detected the event of rank 1 in all four bands. Only one array
 detected each of the other events.
+
+
+Add confirmed events to socat
+-----------------------------
+
+The runner can add each confirmed group to socat as a new monitored source.
+The forced photometry of the next runs then measures the source in each map
+that contains it.
+
+Add an `update` field to the socat source catalog in the `sotrp` config:
+
+```json
+"source_catalogs": [
+    {
+        "catalog_type": "socat",
+        "update": {
+            "duplicate_radius": "1 arcmin",
+            "name_prefix": "SO-T",
+            "record_directory": "/path/to/outputs/socat_updates/"
+        }
+    }
+]
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `add_confirmed_transients` | `true` | Add each confirmed group as a new monitored fixed source. |
+| `duplicate_radius` | `1 arcmin` | Do not add a group if a socat source is within this distance. |
+| `name_prefix` | `SO-T` | The name of a new source is `<name_prefix> J<hhmmss.s><+ddmmss>`. |
+| `record_directory` | none | If set, write a JSON record of each update to this directory. |
+| `monitor_existing_sources` | `true` | If a group matches a fixed socat source that is not monitored, set the source to monitored. |
+
+If there is no `update` field, the runner does not change socat.
+
+The runner does the update after the map matching and before the source
+outputs. For each confirmed group, `SOCat.update`
+(`sotrplib/source_catalog/socat.py`) does these steps:
+
+1. It looks for a socat source within `duplicate_radius` of the group
+   position. It includes the solar system objects at the time of the first
+   detection. If it finds a source, it does not add the group. Thus, a
+   second run on the same maps does not add the same event again. If the
+   source is a fixed source that is not monitored (for example, a known
+   star that flares), it sets the source to monitored
+   (`monitor_existing_sources`). Then it stops for this group.
+2. It adds a fixed source at the group position, with `monitored` set to
+   true. The flux of the source is the highest flux of the detections of
+   the group.
+3. It adds a crossmatch to the new source to each detection of the group.
+   The source outputs contain these crossmatches.
+
+The runner does not add the groups that are not confirmed.
+
+The socat database keeps only the position, the flux, the name and the
+flags of a source. Thus, set `record_directory` to keep the map-match data
+of each new source. The runner writes one file for each run, with the name
+`socat_update_<start>_<written>.json`. A second run on the same maps writes
+a new file. For each confirmed group, the file contains the `group_id`, the
+significance, the maps, the socat `source_id` and the action (`added`,
+`monitored` or `already_in_catalog`).
+
+If the update fails, the runner sets the status of the maps of the run to
+"failed". The next run analyzes these maps again.
+
+The detections that found the event are transient candidates. They do not
+have a socat source at the time of the forced photometry. To add the
+measurements of the earlier maps to a lightcurve, run the historical
+lightcurve extractor on the new source.
 
 
 Analyze a campaign with SLURM
