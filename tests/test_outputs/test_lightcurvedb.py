@@ -245,3 +245,60 @@ def test_output_wraps_ra_to_lightcurvedb_range(tmp_path, lightcurvedb_settings):
 )
 def test_lightcurvedb_ra(ra, expected):
     assert lightcurvedb_ra(ra) == pytest.approx(expected)
+
+
+def _instruments(settings: Settings) -> set[tuple[int, str]]:
+    async def _get():
+        async with settings.backend as backend:
+            return await backend.instruments.get_all()
+
+    return {(i.frequency, i.module) for i in asyncio.run(_get())}
+
+
+def test_output_creates_missing_instruments(tmp_path, lightcurvedb_settings):
+    """Each flux row refers to an instrument (frequency, module). The output
+    creates the instruments that are not registered, one time each."""
+    socat_id = uuid7.create()
+    _register_socat_source(lightcurvedb_settings, socat_id)
+    candidates = []
+    for flux, band, array in [
+        (10.0, 150.0, "i6"),
+        (20.0, 220.0, "i5"),
+        (30.0, 150.0, "i6"),
+    ]:
+        candidate = make_candidate(socat_id, flux_mjy=flux, with_thumbnail=False)
+        candidate.frequency = band * u.GHz
+        candidate.array = array
+        candidates.append(candidate)
+
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=False)
+    for _ in range(2):
+        output.output(
+            forced_photometry_candidates=candidates,
+            sifter_result=SifterResult(
+                source_candidates=[], transient_candidates=[], noise_candidates=[]
+            ),
+            map_name="test_map",
+        )
+
+    assert _instruments(lightcurvedb_settings) == {(150, "i6"), (220, "i5")}
+
+
+def test_output_does_not_create_instruments_when_disabled(
+    tmp_path, lightcurvedb_settings
+):
+    socat_id = uuid7.create()
+    _register_socat_source(lightcurvedb_settings, socat_id)
+    candidate = make_candidate(socat_id, flux_mjy=10.0, with_thumbnail=False)
+    output = LightcurveDBOutput(
+        settings=lightcurvedb_settings, upsert_sources=False, create_instruments=False
+    )
+    output.output(
+        forced_photometry_candidates=[candidate],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_name="test_map",
+    )
+
+    assert _instruments(lightcurvedb_settings) == set()

@@ -10,8 +10,12 @@ import uuid7
 from astropy.time import Time, TimezoneInfo
 from lightcurvedb.config import Settings as LightcurveDBSettings
 from lightcurvedb.models.cutout import Cutout
-from lightcurvedb.models.exceptions import SourceNotFoundException
+from lightcurvedb.models.exceptions import (
+    InstrumentNotFoundException,
+    SourceNotFoundException,
+)
 from lightcurvedb.models.flux import FluxMeasurement
+from lightcurvedb.models.instrument import Instrument
 from lightcurvedb.models.source import Source
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -45,10 +49,16 @@ class LightcurveDBOutput(SourceOutput):
         self,
         settings: LightcurveDBSettings,
         upsert_sources: bool = False,
+        create_instruments: bool = True,
+        telescope: str = "lat",
+        instrument: str = "latr",
         log: FilteringBoundLogger | None = None,
     ):
         self.settings = settings
         self.upsert_sources = upsert_sources
+        self.create_instruments = create_instruments
+        self.telescope = telescope
+        self.instrument = instrument
         self.log = log or get_logger()
 
     async def _lookup_or_create_source_id(
@@ -261,12 +271,43 @@ class LightcurveDBOutput(SourceOutput):
 
         return flux_measurements, cutouts
 
+    async def _create_missing_instruments(
+        self, backend, flux_measurements: list[FluxMeasurement]
+    ) -> None:
+        """
+        Create the lightcurvedb instruments (frequency, module) of the
+        measurements that are not in the instruments table. Each flux row
+        must refer to a registered instrument.
+        """
+        for frequency, module in sorted(
+            {(fm.frequency, fm.module) for fm in flux_measurements}
+        ):
+            try:
+                await backend.instruments.get(frequency=frequency, module=module)
+            except InstrumentNotFoundException:
+                await backend.instruments.create(
+                    Instrument(
+                        frequency=frequency,
+                        module=module,
+                        telescope=self.telescope,
+                        instrument=self.instrument,
+                        details={"created_by": "sotrplib"},
+                    )
+                )
+                await self.log.ainfo(
+                    "lightcurvedb.output.created_instrument",
+                    frequency=frequency,
+                    module=module,
+                )
+
     async def _upload_sources(
         self,
         flux_measurements: list[FluxMeasurement],
         cutouts: list[Cutout],
     ) -> int:
         async with self.settings.backend as backend:
+            if self.create_instruments:
+                await self._create_missing_instruments(backend, flux_measurements)
             # create_batch() doesn't return the created IDs (neither the
             # postgres nor the parquet backend implementation does, despite
             # _upload_sources previously assuming otherwise) -- use each
