@@ -34,10 +34,12 @@ class CoaddSettings(BaseSettings):
     instrument: str = "LAT"
 
     maps: CoaddMapCatDatabaseConfig
-    "The raw depth-1 maps for the coadd (map_type 'intensity')."
+    "The input maps: raw depth-1 maps (map_type 'intensity'), or registered "
+    "coadds (map_type 'coadd_rhokappa', e.g. the weekly coadds of a month)."
 
     preprocessors: list[AllPreprocessorConfigTypes] = []
-    "The preprocessors to apply to each depth-1 map before the merge."
+    "The preprocessors to apply to each depth-1 map before the merge. Must "
+    "be empty for coadd inputs, which are already filtered."
 
     map_coadder: RhoKappaMapCoadderConfig = Field(
         default_factory=RhoKappaMapCoadderConfig
@@ -54,13 +56,22 @@ class CoaddSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_map_type(self) -> "CoaddSettings":
-        if self.maps.map_type != "intensity":
+        if self.maps.map_type not in ("intensity", "coadd_rhokappa"):
             raise ValueError(
-                "CoaddSettings.maps.map_type must be 'intensity', not "
-                f"'{self.maps.map_type}'. For rho/kappa maps, use the "
-                "map_coadder config of sotrp."
+                "CoaddSettings.maps.map_type must be 'intensity' or "
+                f"'coadd_rhokappa', not '{self.maps.map_type}'. For other "
+                "rho/kappa maps, use the map_coadder config of sotrp."
+            )
+        if self.maps.map_type == "coadd_rhokappa" and self.preprocessors:
+            raise ValueError(
+                "Coadd inputs (map_type 'coadd_rhokappa') are already "
+                "filtered. Remove the preprocessors."
             )
         return self
+
+    @property
+    def inputs_are_coadds(self) -> bool:
+        return self.maps.map_type == "coadd_rhokappa"
 
     @classmethod
     def from_file(cls, config_path: Path | str) -> "CoaddSettings":

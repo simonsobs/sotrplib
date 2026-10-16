@@ -11,6 +11,7 @@ from mapcat.helper import settings as mapcat_settings
 
 from sotrplib.config.coadd import CoaddSettings
 from sotrplib.maps.database import (
+    depth_one_map_ids_of_coadds,
     register_coadd,
     set_processing_end,
     set_processing_start,
@@ -80,6 +81,15 @@ def main():
     # Off by default (see CoaddMapCatDatabaseConfig). The coadd links from
     # register_coadd() record the maps in the coadd.
     track_maps = reader.track_processing
+    # For a coadd of coadds (e.g. a month of weekly coadds), the reader
+    # gives coadd_ids. The status rows then use map_type "coadd".
+    inputs_are_coadds = config.inputs_are_coadds is True
+    input_map_type = "coadd" if inputs_are_coadds else "depth1_map"
+
+    if inputs_are_coadds:
+        # Before the coadd work: stop if two input coadds share a depth-1
+        # map (for example, two weekly coadds with different windows).
+        depth_one_map_ids_of_coadds([m.mapcat_id for m in reader])
 
     try:
         coadd, map_ids, failed_map_ids = stream_coadd(
@@ -119,9 +129,14 @@ def main():
             config.mapcat_registration is not None
             and config.mapcat_registration.enabled
         ):
+            # mapcat links a coadd only to depth-1 maps. Thus, link a coadd
+            # of coadds to the depth-1 maps of its input coadds.
+            depth_one_ids = (
+                depth_one_map_ids_of_coadds(map_ids) if inputs_are_coadds else map_ids
+            )
             coadd_id = register_coadd(
                 coadd=coadd,
-                map_ids=map_ids,
+                map_ids=depth_one_ids,
                 coadd_name=config.mapcat_registration.coadd_name,
                 coadd_type=config.mapcat_registration.coadd_type,
                 output_paths=output_paths,
@@ -129,7 +144,8 @@ def main():
             log.info(
                 "sotrp_coadd.registered",
                 coadd_id=coadd_id,
-                n_maps=len(map_ids),
+                n_inputs=len(map_ids),
+                n_depth_one_maps=len(depth_one_ids),
             )
             # The coadd gets its coadd_id only from register_coadd().
             # set_processing_end() needs a row, so create the row first.
@@ -143,14 +159,14 @@ def main():
         )
         if track_maps:
             for map_id in reader.map_ids:
-                set_processing_end(map_id, status="failed")
+                set_processing_end(map_id, map_type=input_map_type, status="failed")
         raise
     else:
         if track_maps:
             for map_id in map_ids:
-                set_processing_end(map_id, status="completed")
+                set_processing_end(map_id, map_type=input_map_type, status="completed")
             for map_id in failed_map_ids:
-                set_processing_end(map_id, status="failed")
+                set_processing_end(map_id, map_type=input_map_type, status="failed")
 
 
 if __name__ == "__main__":

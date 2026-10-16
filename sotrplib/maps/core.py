@@ -957,13 +957,30 @@ class RhoAndKappaMap(ProcessableMap):
 
 class CoaddRhoAndKappaMap(RhoAndKappaMap):
     """
-    The rho/kappa maps of a registered coadd. There are two differences from
-    a depth-1 RhoAndKappaMap:
+    The rho/kappa maps of a registered coadd. There are three differences
+    from a depth-1 RhoAndKappaMap:
 
     - map_type is "coadd". Thus, the processing status uses the coadd_id.
     - The time map contains absolute unix times. Thus, add_time_offset()
       does not add the start time.
+    - If hits_filename is set, build() reads the hits map (the number of
+      depth-1 maps in each pixel). A coadd of coadds then counts the hits
+      and weights time_mean by the depth-1 maps, not by the coadds.
     """
+
+    def __init__(self, *args, hits_filename: Path | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hits_filename = hits_filename
+
+    def build(self):
+        super().build()
+        if self.hits_filename is not None:
+            enmap_box = (
+                skycoord_box_to_enmap_box(self.sky_box)
+                if self.sky_box is not None
+                else None
+            )
+            self._hits = enmap.read_map(str(self.hits_filename), box=enmap_box)
 
     @property
     def map_type(self) -> MapCatMapType:

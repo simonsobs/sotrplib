@@ -65,8 +65,8 @@ Config
 
 | Field | Meaning |
 |---|---|
-| `maps` | The depth-1 maps for the coadd. Use the `mapcat_database` generator with `map_type: "intensity"` (raw maps). See "Select the maps" below. |
-| `preprocessors` | The preprocessors to apply, in sequence, to **each** depth-1 map before the merge. See "Preprocessors" below. |
+| `maps` | The input maps of the coadd. Use the `mapcat_database` generator with `map_type: "intensity"` (raw depth-1 maps), or with `map_type: "coadd_rhokappa"` (registered coadds, see "Coadds of coadds" below). See "Select the maps" below. |
+| `preprocessors` | The preprocessors to apply, in sequence, to **each** depth-1 map before the merge. See "Preprocessors" below. Must be empty for coadd inputs. |
 | `map_coadder` | The method that merges the maps: `{"coadd_type": "rhokappa"}`. |
 | `map_outputs` | The coadd fields to write to FITS, and the output directory. See "Outputs" below. |
 | `mapcat_registration` | `coadd_name`, `coadd_type` and `enabled`. See "Registration in mapcat" below. |
@@ -117,6 +117,47 @@ This sequence is typical (see `sample_coadd_config.json`):
 5. `edge_mask`: masks the map edges on kappa (10 arcmin).
 
 After the preprocessors, each map is a rho/kappa map.
+
+
+Coadds of coadds
+----------------
+
+`sotrp-coadd` can also merge registered coadds, for example the weekly
+coadds of a month. Set `map_type: "coadd_rhokappa"` in `maps`, and select
+the input coadds with `coadd_type`, `frequency`, the time window and
+`time_binning` (or `map_ids`, which are then coadd_ids):
+
+```json
+"maps": {
+    "map_generator_type": "mapcat_database",
+    "map_type": "coadd_rhokappa",
+    "coadd_type": "weekly",
+    "frequency": "f090",
+    "start_time": "2025-09-04T02:12:31Z",
+    "end_time": "2025-10-02T02:12:31Z",
+    "time_binning": "left-bound"
+},
+"preprocessors": []
+```
+
+The input coadds are already filtered. Thus, `preprocessors` must be empty.
+
+For each input coadd, `sotrp-coadd` reads the hits map
+(`<name>_hits.fits`, next to the rho file), if it exists. Then the hits of
+the new coadd are the number of depth-1 maps in each pixel, and
+`time_mean` has weights for each depth-1 map, not for each coadd.
+
+mapcat links a coadd only to depth-1 maps. Thus, `sotrp-coadd` links the
+new coadd to the depth-1 maps of its input coadds. Before the coadd work,
+it makes sure that no depth-1 map is in two input coadds. If a map is in two
+input coadds, the command stops with an error, because the new coadd would
+count the map two times.
+
+With `track_processing`, the status rows of the inputs use their
+`coadd_id`.
+
+`scripts/coadding/submit_month_coadds.py` writes these jobs for monthly
+coadds (see [Helper scripts](scripts.md)).
 
 
 How the maps are merged

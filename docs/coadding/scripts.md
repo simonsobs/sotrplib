@@ -8,6 +8,7 @@ repository.
 | Script | What it does |
 |---|---|
 | `submit_week_coadds.py` | Writes `sotrp-coadd` configs and SLURM jobs for a set of time windows. |
+| `submit_month_coadds.py` | Writes the jobs for a monthly coadd of each band: a coadd of the weekly coadds. |
 | `coadd_maps.py` | An example that makes a coadd with the library directly. |
 
 
@@ -109,6 +110,61 @@ Set `--time` for the number of maps in a window. Each input map takes
 approximately 5 to 6 minutes. A busy week (approximately 50 maps at f090 or
 f150) takes approximately 5 hours. **The default time limit of 4 hours is
 too short for these weeks.** Each job uses approximately 7 GB of memory.
+
+
+`submit_month_coadds.py`
+------------------------
+
+The script writes the jobs for a monthly coadd of each band. By default, a
+monthly coadd is a coadd of weekly coadds. This is much faster than a coadd
+of the depth-1 maps of the month: the job reads approximately 4 coadds and
+applies no preprocessors. A monthly coadd from depth-1 maps at f090 (more
+than 200 maps) takes approximately 20 hours.
+
+For each band, the script does these steps:
+
+1. It divides the month (`--start-time` to `--end-time`, or
+   `--month-days` days) into week windows of `--week-days` days. The last
+   window can be shorter.
+2. For each window, it looks in mapcat for a weekly coadd
+   (`--week-coadd-type`, default `weekly`) that starts in the window. If
+   there is no weekly coadd, and depth-1 maps start in the window, it
+   writes a job that makes the weekly coadd. This job is the same as a job
+   of `submit_week_coadds.py`.
+3. It writes a job that makes the monthly coadd from the weekly coadds that
+   start in the month. The job runs `sotrp-coadd` with
+   `map_type: "coadd_rhokappa"` (see
+   [Make coadds](make_coadds.md#coadds-of-coadds)). It registers the
+   monthly coadd with `--coadd-type` (default `monthly`).
+
+The script writes `<slurm-dir>/submit.sh`. This file submits the weekly
+coadd jobs, and then the monthly coadd job with a dependency on them
+(`sbatch --dependency=afterok`). `--submit` runs the file.
+
+With `--no-week-coadd`, the script writes one job for each band that makes
+the monthly coadd directly from the depth-1 maps.
+
+If a registered weekly coadd starts in a window but stops more than 1 day
+after the window, the script stops with an error. The monthly coadd would
+then contain maps from outside the month. Align the windows with the
+registered weekly coadds (`--start-time`, `--week-days`), or use
+`--no-week-coadd`.
+
+```
+python scripts/coadding/submit_month_coadds.py \
+  --database-name /path/to/mapcat.sqlite \
+  --depth-one-parent /path/to/depth1/<run> \
+  --output-dir /path/to/coadds/monthly \
+  --week-output-dir /path/to/coadds/weekly \
+  --coadd-parent /path/to/coadds \
+  --start-time 2025-09-04T02:12:31 --month-days 28
+```
+
+`--coadd-parent` must contain `--output-dir`, `--week-output-dir` and the
+registered weekly coadds. The other options are the same as the options of
+`submit_week_coadds.py`. `--time` is the time limit of a job that coadds
+depth-1 maps (default 8 hours). `--month-time` is the time limit of a
+coadd of weekly coadds (default 1 hour).
 
 
 `coadd_maps.py`

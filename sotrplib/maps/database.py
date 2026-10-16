@@ -23,6 +23,7 @@ from mapcat.database import (
     SkyCoverageTable,
     TimeDomainProcessingTable,
 )
+from mapcat.database.links import DepthOneToCoaddTable
 from mapcat.helper import settings as mapcat_settings
 from mapcat.pointing.base import PointingModelStats
 from mapcat.pointing.const import ConstantPointingModel
@@ -410,7 +411,12 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
     def _build_map(self, result):
         tube_slots = {m.tube_slot for m in result.maps if m.tube_slot}
         coadd_parent = mapcat_settings.depth_one_coadd_parent
+        # mapcat stores no hits path. The coadd outputs write the hits map
+        # next to rho, as <name>_hits.fits.
+        rho_path = coadd_parent / result.rho_path
+        hits_path = Path(str(rho_path).removesuffix("_rho.fits") + "_hits.fits")
         return CoaddRhoAndKappaMap(
+            hits_filename=hits_path if hits_path.exists() else None,
             rho_filename=coadd_parent / result.rho_path,
             kappa_filename=coadd_parent / result.kappa_path,
             time_filename=(
@@ -672,6 +678,35 @@ def set_processing_end(
     session.add(row)
     session.commit()
     return
+
+
+def depth_one_map_ids_of_coadds(coadd_ids: list[UUID7], session=None) -> list[UUID7]:
+    """
+    Return the map_id of each depth-1 map in the coadds.
+
+    Raises ValueError if a depth-1 map is in more than one of the coadds. A
+    coadd of these coadds would then count the map two times.
+    """
+    if session is None:
+        session = mapcat_settings.session()
+
+    query = select(DepthOneToCoaddTable).where(
+        DepthOneToCoaddTable.coadd_id.in_(coadd_ids)
+    )
+    links = session.execute(query).scalars().all()
+
+    coadds_of_map: dict = {}
+    for link in links:
+        coadds_of_map.setdefault(link.map_id, []).append(link.coadd_id)
+    shared = {m: c for m, c in coadds_of_map.items() if len(c) > 1}
+    if shared:
+        example_map, example_coadds = next(iter(shared.items()))
+        raise ValueError(
+            f"{len(shared)} depth-1 map(s) are in more than one input coadd, "
+            f"e.g. map {example_map} in coadds {example_coadds}. The coadd "
+            "would count these maps more than one time."
+        )
+    return list(coadds_of_map)
 
 
 def register_coadd(
