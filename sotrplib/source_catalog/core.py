@@ -3,7 +3,7 @@ Source catalog dependencies.
 """
 
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import structlog
@@ -17,6 +17,10 @@ from uuid7 import UUID as UUID7
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
 from sotrplib.utils.utils import angular_separation, normalize_ra
+
+if TYPE_CHECKING:
+    # sifter.map_matching imports this module (through sifter.core).
+    from sotrplib.sifter.map_matching import MapMatchSummary
 
 
 class SourceCatalog(ABC):
@@ -82,6 +86,17 @@ class SourceCatalog(ABC):
         Optionally include a time for moving sources.
         """
         return
+
+    def update(self, summary: "MapMatchSummary") -> list[RegisteredSource]:
+        """
+        Update the catalog with the results of map matching. The runner
+        calls this method one time for each run, after map matching and
+        before the source outputs.
+
+        Returns the sources that the update added. The default does not
+        change the catalog.
+        """
+        return []
 
 
 class RegisteredSourceCatalog(SourceCatalog):

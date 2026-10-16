@@ -2,13 +2,15 @@
 Use a SOCat database as a source catalog.
 """
 
-from typing import Literal
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import structlog
 import tqdm
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import ICRS, SkyCoord
 from astropy.time import Time, TimeDelta
 from pixell import utils as pixell_utils
 from socat.client.settings import SOCatClientSettings
@@ -22,9 +24,23 @@ from sotrplib.utils.utils import angular_separation
 
 from .core import SourceCatalog
 
+if TYPE_CHECKING:
+    from sotrplib.sifter.map_matching import MapMatchSummary
+
 # Specific padding for the time range used to construct
 # interpolation objects. Add this by default to all time ranges.
 _TIME_RANGE_PADDING = TimeDelta(1, format="jd")
+
+
+def transient_name(prefix: str, ra: u.Quantity, dec: u.Quantity) -> str:
+    """
+    Return a position name for a new source, for example
+    "SOT J231323.4+024034".
+    """
+    position = SkyCoord(ra=ra, dec=dec)
+    ra_str = position.ra.to_string(unit=u.hourangle, sep="", precision=1, pad=True)
+    dec_str = position.dec.to_string(sep="", precision=0, alwayssign=True, pad=True)
+    return f"{prefix} J{ra_str}{dec_str}"
 
 
 class SOCat(SourceCatalog):
@@ -40,9 +56,35 @@ class SOCat(SourceCatalog):
     def __init__(
         self,
         log: FilteringBoundLogger | None = None,
+        add_confirmed_transients: bool = False,
+        duplicate_radius: u.Quantity = 1.0 * u.arcmin,
+        name_prefix: str = "SOT",
+        record_directory: Path | None = None,
     ):
+        """
+        Parameters
+        ----------
+        add_confirmed_transients : bool
+            If True, update() adds each confirmed map-match group to the
+            catalog as a new monitored fixed source. The forced photometry
+            of the next runs then measures it.
+        duplicate_radius : u.Quantity
+            update() does not add a group if a catalog source is within this
+            distance of the group position.
+        name_prefix : str
+            update() names a new source "<name_prefix> J<hhmmss.s><+ddmmss>".
+        record_directory : Path | None
+            If not None, update() writes a JSON record of each update to
+            this directory. The socat schema keeps only the position, the
+            flux, the name and the flags. The record keeps the map-match
+            data of each new source (group_id, significance, maps).
+        """
         self.log = log or structlog.get_logger()
         self.catalog = SOCatClientSettings().client
+        self.add_confirmed_transients = add_confirmed_transients
+        self.duplicate_radius = duplicate_radius
+        self.name_prefix = name_prefix
+        self.record_directory = record_directory
         self.log.info(
             "socat.initialized",
         )
@@ -68,6 +110,154 @@ class SOCat(SourceCatalog):
                 name=source.source_id,
                 flags={"monitored": monitored},
             )
+
+    def update(self, summary: "MapMatchSummary") -> list[RegisteredSource]:
+        """
+        Add the confirmed map-match groups of a run to the catalog, as
+        monitored fixed sources. Only does this if add_confirmed_transients
+        is True.
+
+        A group is not added if a catalog source (fixed, or a solar system
+        object at the time of the group) is within duplicate_radius of the
+        group position. Thus, a rerun of the same maps does not add the
+        same event again.
+
+        Each member candidate of an added group gets a crossmatch to the new
+        source. Returns the new sources.
+        """
+        if not self.add_confirmed_transients:
+            return []
+
+        added = []
+        records = []
+        for group in summary.groups:
+            if not group.confirmed:
+                continue
+
+            times = [
+                c.observation_mean_time
+                for _, c in group.members
+                if c.observation_mean_time is not None
+            ]
+            t = min(times) if times else summary.observation_start
+            group_record = {
+                "group_id": str(group.group_id),
+                "confirmed": group.confirmed,
+                "rank": group.rank,
+                "significance": group.significance,
+                "max_snr": group.max_snr,
+                "n_maps": group.n_maps,
+                "n_arrays": group.n_arrays,
+                "n_bands": group.n_bands,
+                "ra_deg": group.ra.to_value(u.deg),
+                "dec_deg": group.dec.to_value(u.deg),
+                "first_detection": t.isot if t is not None else None,
+                "maps": sorted({r.map_name for r, _ in group.members}),
+            }
+
+            existing = self.crossmatch(
+                ra=group.ra,
+                dec=group.dec,
+                radius=self.duplicate_radius,
+                method="closest",
+                t=t,
+            )
+            if existing:
+                self.log.info(
+                    "socat.update.group_already_in_catalog",
+                    group_id=str(group.group_id),
+                    source_id=str(existing[0].source_id),
+                    catalog_idx=str(existing[0].catalog_idx),
+                )
+                records.append(
+                    {
+                        **group_record,
+                        "action": "already_in_catalog",
+                        "socat_id": str(existing[0].catalog_idx),
+                        "name": str(existing[0].source_id),
+                    }
+                )
+                continue
+
+            fluxes = [c.flux.to(u.mJy) for _, c in group.members if c.flux is not None]
+            flux = max(fluxes) if fluxes else None
+            name = transient_name(self.name_prefix, group.ra, group.dec)
+            created = self.catalog.create_source(
+                position=ICRS(ra=group.ra, dec=group.dec),
+                flux=flux,
+                name=name,
+                flags={"monitored": True},
+            )
+
+            crossmatch = CrossMatch(
+                source_id=name,
+                source_type="unknown",
+                probability=1.0,
+                catalog_name="socat",
+                catalog_idx=created.source_id,
+                ra=group.ra,
+                dec=group.dec,
+                flux=flux,
+            )
+            for _, candidate in group.members:
+                candidate.add_crossmatch(
+                    crossmatch.model_copy(
+                        update={
+                            "angular_separation": angular_separation(
+                                group.ra, group.dec, candidate.ra, candidate.dec
+                            )
+                        }
+                    )
+                )
+
+            added.append(
+                RegisteredSource(
+                    ra=group.ra,
+                    dec=group.dec,
+                    flux=flux,
+                    source_id=name,
+                    source_type="unknown",
+                    catalog_name="socat",
+                    observation_mean_time=t,
+                    crossmatches=[crossmatch],
+                )
+            )
+            records.append(
+                {
+                    **group_record,
+                    "action": "added",
+                    "socat_id": str(created.source_id),
+                    "name": name,
+                    "flux_mJy": flux.to_value(u.mJy) if flux is not None else None,
+                }
+            )
+            self.log.info(
+                "socat.update.added_transient",
+                name=name,
+                socat_id=str(created.source_id),
+                group_id=str(group.group_id),
+                significance=round(group.significance, 2),
+                ra=group.ra.to_value(u.deg),
+                dec=group.dec.to_value(u.deg),
+            )
+
+        self.log.info(
+            "socat.update.completed",
+            n_confirmed_groups=sum(g.confirmed for g in summary.groups),
+            n_added=len(added),
+        )
+        if self.record_directory is not None and records:
+            self._write_update_record(summary, records)
+        return added
+
+    def _write_update_record(self, summary: "MapMatchSummary", records: list[dict]):
+        self.record_directory.mkdir(parents=True, exist_ok=True)
+        start = summary.observation_start
+        stamp = start.strftime("%Y%m%dT%H%M%S") if start is not None else "unknown"
+        path = self.record_directory / f"socat_update_{stamp}.json"
+        with open(path, "w") as f:
+            json.dump({"maps": list(summary.map_names), "groups": records}, f, indent=2)
+        self.log.info("socat.update.record_written", path=str(path))
 
     def get_sources_in_box(
         self, sky_box: tuple[SkyCoord, SkyCoord] | None = None, t: Time | None = None
