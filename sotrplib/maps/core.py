@@ -109,6 +109,10 @@ class ProcessableMap(ABC):
     _parent_database: Path | None = None
     "Path to the parent database for this map, if any"
 
+    _track_processing: bool = False
+    "True if the reader set a processing status for this map in mapcat. The "
+    "runner then sets the end status of the map."
+
     _pointing_model: PointingModel | None = None
 
     _available_maps: tuple[str, ...] = ("flux", "snr")
@@ -657,6 +661,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         if self.prefiltered_map.mapcat_id is not None:
             self.mapcat_id = self.prefiltered_map.mapcat_id
         self._parent_database = self.prefiltered_map._parent_database
+        self._track_processing = self.prefiltered_map._track_processing
         self._hits = self.prefiltered_map._hits
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]

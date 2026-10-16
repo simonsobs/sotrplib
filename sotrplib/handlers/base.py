@@ -116,7 +116,7 @@ class BaseRunner:
         self.profilable_task(input_map.build)()
         output_map = input_map
         if not np.any(output_map.hits > 0):
-            if input_map._parent_database is not None:
+            if input_map._track_processing:
                 self.profilable_task(set_processing_end)(
                     input_map.mapcat_id, map_type=input_map.map_type
                 )
@@ -281,12 +281,12 @@ class BaseRunner:
                 sifter_result=sifter_result,
                 pointing_sources=pointing_sources,
                 injected_sources=injected_sources,
-                from_database=input_map._parent_database is not None,
+                track_processing=input_map._track_processing,
             )
         except Exception:
             # Set the status to "failed". If the status stays "processing",
             # the reader skips the map on the next run.
-            if getattr(input_map, "_parent_database", None) is not None:
+            if getattr(input_map, "_track_processing", False):
                 self.profilable_task(set_processing_end)(
                     input_map.mapcat_id, map_type=input_map.map_type, status="failed"
                 )
@@ -308,13 +308,13 @@ class BaseRunner:
                     injected_sources=result.injected_sources,
                 )
         except Exception:
-            if result.from_database:
+            if result.track_processing:
                 self.profilable_task(set_processing_end)(
                     result.mapcat_id, map_type=result.map_type, status="failed"
                 )
             raise
 
-        if result.from_database:
+        if result.track_processing:
             self.profilable_task(set_processing_end)(
                 result.mapcat_id, map_type=result.map_type
             )
