@@ -141,10 +141,23 @@ class LightcurveDBOutput(SourceOutput):
             )
             return None
 
+        if input_measurement.frequency is None or input_measurement.array is None:
+            self.log.warning(
+                "lightcurvedb.output.skipping_source_no_frequency_or_array",
+                frequency=input_measurement.frequency,
+                array=input_measurement.array,
+                ra=input_measurement.ra.to_value("deg"),
+                dec=input_measurement.dec.to_value("deg"),
+            )
+            return None
+
+        frequency = int(input_measurement.frequency.to_value("GHz"))
+        module = input_measurement.array
+
         fm = FluxMeasurement(
             measurement_id=input_measurement.measurement_id,
-            frequency=90,
-            module="i1",
+            frequency=frequency,
+            module=module,
             source_id=source_id,
             time=(
                 input_measurement.observation_mean_time.to_datetime(timezone=UTC)
@@ -180,7 +193,7 @@ class LightcurveDBOutput(SourceOutput):
             extra={
                 "map_id": (
                     input_measurement.map_id
-                    if hasattr(input_measurement, "map_id")
+                    if input_measurement.map_id is not None
                     else mapcat_id
                 ),
             },
@@ -203,8 +216,8 @@ class LightcurveDBOutput(SourceOutput):
                     if input_measurement.flux is not None
                     else "Jy"
                 ),
-                frequency=90,
-                module="i1",
+                frequency=frequency,
+                module=module,
                 source_id=source_id,
             )
             if input_measurement.thumbnail is not None

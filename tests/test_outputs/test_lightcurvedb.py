@@ -13,6 +13,7 @@ direct for asserting exactly what got written.
 
 import asyncio
 
+import astropy.units as u
 import pandas as pd
 import pytest
 import uuid7
@@ -155,3 +156,63 @@ def test_output_skips_unregistered_source_when_upsert_disabled(
 
     assert not (tmp_path / "sources.parquet").exists()
     assert not any((tmp_path / "fluxes").glob("*.parquet"))
+
+
+def test_output_uses_measurement_frequency_and_array(tmp_path, lightcurvedb_settings):
+    """Each flux row and cutout must carry the band and the tube of its own
+    measurement. Previously all rows were written as 90 GHz, module i1."""
+    socat_id = uuid7.create()
+    lc_source_id = _register_socat_source(lightcurvedb_settings, socat_id)
+
+    f150_i3 = make_candidate(socat_id, flux_mjy=10.0, with_thumbnail=True)
+    f150_i3.frequency = 150.0 * u.GHz
+    f150_i3.array = "i3"
+    f280_c1 = make_candidate(socat_id, flux_mjy=20.0, with_thumbnail=True)
+    f280_c1.frequency = 280.0 * u.GHz
+    f280_c1.array = "c1"
+
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=False)
+    output.output(
+        forced_photometry_candidates=[f150_i3, f280_c1],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_name="test_map",
+    )
+
+    fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
+    by_flux = {round(row["flux"], 6): row for _, row in fluxes.iterrows()}
+    assert by_flux[0.01]["frequency"] == 150
+    assert by_flux[0.01]["module"] == "i3"
+    assert by_flux[0.02]["frequency"] == 280
+    assert by_flux[0.02]["module"] == "c1"
+
+    cutouts = pd.read_parquet(tmp_path / "cutouts" / f"{lc_source_id}.parquet")
+    assert sorted(zip(cutouts["frequency"], cutouts["module"])) == [
+        (150, "i3"),
+        (280, "c1"),
+    ]
+
+
+def test_output_skips_measurement_without_array(tmp_path, lightcurvedb_settings):
+    """A measurement with no array (or no frequency) is skipped. The output
+    must not write a guessed band or tube."""
+    socat_id = uuid7.create()
+    lc_source_id = _register_socat_source(lightcurvedb_settings, socat_id)
+
+    good = make_candidate(socat_id, flux_mjy=10.0, with_thumbnail=False)
+    no_array = make_candidate(socat_id, flux_mjy=20.0, with_thumbnail=False)
+    no_array.array = None
+
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=False)
+    output.output(
+        forced_photometry_candidates=[good, no_array],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_name="test_map",
+    )
+
+    fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
+    assert len(fluxes) == 1
+    assert fluxes.iloc[0]["flux"] == pytest.approx(0.010)
