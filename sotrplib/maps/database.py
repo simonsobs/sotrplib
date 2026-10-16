@@ -280,6 +280,7 @@ class MapCatDatabaseReader(ABC):
                 self.map_ids.append(m.mapcat_id)
                 if self.track_processing:
                     set_processing_start(m.mapcat_id, session=session)
+                    m._track_processing = True
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
@@ -477,6 +478,7 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
                 self.map_ids.append(m.mapcat_id)
                 if self.track_processing:
                     set_processing_start(m.mapcat_id, map_type="coadd", session=session)
+                    m._track_processing = True
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
