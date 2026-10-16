@@ -3,6 +3,7 @@ Use a SOCat database as a source catalog.
 """
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -60,6 +61,7 @@ class SOCat(SourceCatalog):
         duplicate_radius: u.Quantity = 1.0 * u.arcmin,
         name_prefix: str = "SOT",
         record_directory: Path | None = None,
+        monitor_existing_sources: bool = True,
     ):
         """
         Parameters
@@ -78,6 +80,10 @@ class SOCat(SourceCatalog):
             this directory. The socat schema keeps only the position, the
             flux, the name and the flags. The record keeps the map-match
             data of each new source (group_id, significance, maps).
+        monitor_existing_sources : bool
+            If a confirmed group matches a fixed catalog source that is not
+            monitored, update() sets the source to monitored (action
+            "monitored"). For example, a known star that flares.
         """
         self.log = log or structlog.get_logger()
         self.catalog = SOCatClientSettings().client
@@ -85,6 +91,7 @@ class SOCat(SourceCatalog):
         self.duplicate_radius = duplicate_radius
         self.name_prefix = name_prefix
         self.record_directory = record_directory
+        self.monitor_existing_sources = monitor_existing_sources
         self.log.info(
             "socat.initialized",
         )
@@ -120,10 +127,12 @@ class SOCat(SourceCatalog):
         A group is not added if a catalog source (fixed, or a solar system
         object at the time of the group) is within duplicate_radius of the
         group position. Thus, a rerun of the same maps does not add the
-        same event again.
+        same event again. If that source is a fixed source that is not
+        monitored, and monitor_existing_sources is True, the source is set
+        to monitored.
 
         Each member candidate of an added group gets a crossmatch to the new
-        source. Returns the new sources.
+        source. Returns the new sources and the newly monitored sources.
         """
         if not self.add_confirmed_transients:
             return []
@@ -155,26 +164,34 @@ class SOCat(SourceCatalog):
                 "maps": sorted({r.map_name for r, _ in group.members}),
             }
 
-            existing = self.crossmatch(
-                ra=group.ra,
-                dec=group.dec,
-                radius=self.duplicate_radius,
-                method="closest",
-                t=t,
-            )
-            if existing:
+            existing = self._closest_source(group.ra, group.dec, t)
+            if existing is not None:
+                action = "already_in_catalog"
+                socat_id = existing.crossmatches[0].catalog_idx
+                if (
+                    self.monitor_existing_sources
+                    and existing.source_type != "sso"
+                    and not self.catalog.get_source(source_id=socat_id).monitored
+                ):
+                    # A known source that is now a confirmed transient (for
+                    # example, a flaring star). Monitor it from now on.
+                    self.catalog.update_source(
+                        source_id=socat_id, flags={"monitored": True}
+                    )
+                    action = "monitored"
+                    added.append(existing)
                 self.log.info(
-                    "socat.update.group_already_in_catalog",
+                    f"socat.update.group_{action}",
                     group_id=str(group.group_id),
-                    source_id=str(existing[0].source_id),
-                    catalog_idx=str(existing[0].catalog_idx),
+                    name=str(existing.source_id),
+                    socat_id=str(socat_id),
                 )
                 records.append(
                     {
                         **group_record,
-                        "action": "already_in_catalog",
-                        "socat_id": str(existing[0].catalog_idx),
-                        "name": str(existing[0].source_id),
+                        "action": action,
+                        "socat_id": str(socat_id),
+                        "name": str(existing.source_id),
                     }
                 )
                 continue
@@ -250,11 +267,37 @@ class SOCat(SourceCatalog):
             self._write_update_record(summary, records)
         return added
 
+    def _closest_source(
+        self, ra: u.Quantity, dec: u.Quantity, t: Time | None
+    ) -> RegisteredSource | None:
+        """
+        The closest catalog source (fixed, or a solar system object at time
+        t) within duplicate_radius, or None. Its first crossmatch has the
+        socat id (catalog_idx).
+        """
+        radius = self.duplicate_radius
+        nearby = self.get_sources_in_box(
+            [
+                SkyCoord(ra=ra - 2.0 * radius, dec=dec - 2.0 * radius),
+                SkyCoord(ra=ra + 2.0 * radius, dec=dec + 2.0 * radius),
+            ],
+            t=t,
+        )
+        best, best_sep = None, None
+        for source in nearby:
+            sep = angular_separation(source.ra, source.dec, ra, dec)
+            if sep <= radius and (best_sep is None or sep < best_sep):
+                best, best_sep = source, sep
+        return best
+
     def _write_update_record(self, summary: "MapMatchSummary", records: list[dict]):
         self.record_directory.mkdir(parents=True, exist_ok=True)
         start = summary.observation_start
         stamp = start.strftime("%Y%m%dT%H%M%S") if start is not None else "unknown"
-        path = self.record_directory / f"socat_update_{stamp}.json"
+        # A rerun of the same maps writes a new file. It does not replace the
+        # record of the first run, which has the sources that it added.
+        written = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+        path = self.record_directory / f"socat_update_{stamp}_{written}.json"
         with open(path, "w") as f:
             json.dump({"maps": list(summary.map_names), "groups": records}, f, indent=2)
         self.log.info("socat.update.record_written", path=str(path))

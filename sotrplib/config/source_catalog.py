@@ -43,7 +43,11 @@ class SOCatUpdateConfig(BaseModel):
     name_prefix: str = "SOT"
     'A new source is named "<name_prefix> J<hhmmss.s><+ddmmss>".'
     record_directory: Path | None = None
-    "If set, write a JSON record of each update (socat_update_<start>.json)."
+    "If set, write a JSON record of each update "
+    "(socat_update_<start>_<written>.json)."
+    monitor_existing_sources: bool = True
+    "If a confirmed group matches a fixed socat source that is not monitored, "
+    "set the source to monitored."
 
 
 class SOCatConfig(SourceCatalogConfig):
@@ -60,6 +64,7 @@ class SOCatConfig(SourceCatalogConfig):
             duplicate_radius=self.update.duplicate_radius,
             name_prefix=self.update.name_prefix,
             record_directory=self.update.record_directory,
+            monitor_existing_sources=self.update.monitor_existing_sources,
         )
 
 

@@ -117,6 +117,41 @@ def test_update_adds_only_confirmed_groups(empty_socat, tmp_path):
     assert record["groups"][0]["socat_id"] == str(socat_id)
 
 
+def test_update_monitors_a_known_unmonitored_source(empty_socat, tmp_path):
+    """A confirmed group on a catalog source that is not monitored (e.g. a
+    flaring star) sets the source to monitored and reports it."""
+    catalog = SOCat(add_confirmed_transients=True, record_directory=tmp_path)
+    known = catalog.catalog.create_source(
+        position=_icrs(348.3477, 2.6760),
+        flux=50 * u.mJy,
+        name="ACT-S J2313.3+0240",
+        flags={"monitored": False},
+    )
+    summary, _, _ = _summary()
+
+    reported = catalog.update(summary)
+
+    assert [s.source_id for s in reported] == ["ACT-S J2313.3+0240"]
+    assert reported[0].crossmatches[0].catalog_idx == known.source_id
+    assert catalog.catalog.get_source(source_id=known.source_id).monitored
+    fixed = catalog.catalog.get_box_fixed(
+        lower_left=_icrs(0, -89.9), upper_right=_icrs(359.9, 89.9)
+    )
+    assert len(fixed) == 1  # no new source
+
+    # A rerun reports the source as already in the catalog, in a new file.
+    summary, _, _ = _summary()
+    assert catalog.update(summary) == []
+    records = sorted(tmp_path.glob("socat_update_*.json"))
+    assert len(records) == 2
+    actions = [json.loads(r.read_text())["groups"][0]["action"] for r in records]
+    assert sorted(actions) == ["already_in_catalog", "monitored"]
+    assert all(
+        json.loads(r.read_text())["groups"][0]["socat_id"] == str(known.source_id)
+        for r in records
+    )
+
+
 def test_update_does_not_add_the_same_event_again(empty_socat):
     catalog = SOCat(add_confirmed_transients=True)
     summary, _, _ = _summary()

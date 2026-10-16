@@ -359,6 +359,7 @@ Add an `update` field to the socat source catalog in the `sotrp` config:
 | `duplicate_radius` | `1 arcmin` | Do not add a group if a socat source is within this distance. |
 | `name_prefix` | `SOT` | The name of a new source is `<name_prefix> J<hhmmss.s><+ddmmss>`. |
 | `record_directory` | none | If set, write a JSON record of each update to this directory. |
+| `monitor_existing_sources` | `true` | If a group matches a fixed socat source that is not monitored, set the source to monitored. |
 
 If there is no `update` field, the runner does not change socat.
 
@@ -369,7 +370,10 @@ outputs. For each confirmed group, `SOCat.update`
 1. It looks for a socat source within `duplicate_radius` of the group
    position. It includes the solar system objects at the time of the first
    detection. If it finds a source, it does not add the group. Thus, a
-   second run on the same maps does not add the same event again.
+   second run on the same maps does not add the same event again. If the
+   source is a fixed source that is not monitored (for example, a known
+   star that flares), it sets the source to monitored
+   (`monitor_existing_sources`). Then it stops for this group.
 2. It adds a fixed source at the group position, with `monitored` set to
    true. The flux of the source is the highest flux of the detections of
    the group.
@@ -381,9 +385,10 @@ The runner does not add the groups that are not confirmed.
 The socat database keeps only the position, the flux, the name and the
 flags of a source. Thus, set `record_directory` to keep the map-match data
 of each new source. The runner writes one file for each run, with the name
-`socat_update_<start>.json`. For each confirmed group, the file contains
-the `group_id`, the significance, the maps, the socat `source_id` and the
-action (`added` or `already_in_catalog`).
+`socat_update_<start>_<written>.json`. A second run on the same maps writes
+a new file. For each confirmed group, the file contains the `group_id`, the
+significance, the maps, the socat `source_id` and the action (`added`,
+`monitored` or `already_in_catalog`).
 
 If the update fails, the runner sets the status of the maps of the run to
 "failed". The next run analyzes these maps again.
