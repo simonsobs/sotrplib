@@ -141,6 +141,18 @@ class LightcurveDBOutput(SourceOutput):
             )
             return None
 
+        # Forced photometry gives no time to a source that is outside the map
+        # or on a NaN pixel (the fit is not done).
+        if input_measurement.observation_mean_time is None and map_time is None:
+            self.log.warning(
+                "lightcurvedb.output.skipping_source_no_time",
+                socat_id=input_measurement.crossmatches[0].catalog_idx,
+                fit_failure_reason=input_measurement.fit_failure_reason,
+                ra=input_measurement.ra.to_value("deg"),
+                dec=input_measurement.dec.to_value("deg"),
+            )
+            return None
+
         fm = FluxMeasurement(
             measurement_id=input_measurement.measurement_id,
             frequency=90,

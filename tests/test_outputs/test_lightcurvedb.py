@@ -155,3 +155,29 @@ def test_output_skips_unregistered_source_when_upsert_disabled(
 
     assert not (tmp_path / "sources.parquet").exists()
     assert not any((tmp_path / "fluxes").glob("*.parquet"))
+
+
+def test_output_skips_source_with_no_time(tmp_path, lightcurvedb_settings):
+    """Forced photometry gives no time to a source outside the map. The
+    output must skip this measurement and upload the others."""
+    socat_id = uuid7.create()
+    lc_source_id = _register_socat_source(lightcurvedb_settings, socat_id)
+
+    good = make_candidate(socat_id, flux_mjy=42.0, with_thumbnail=False)
+    no_time = make_candidate(socat_id, flux_mjy=10.0, with_thumbnail=False)
+    no_time.observation_mean_time = None
+    no_time.fit_failed = True
+    no_time.fit_failure_reason = "source_outside_map_bounds"
+
+    output = LightcurveDBOutput(settings=lightcurvedb_settings, upsert_sources=False)
+    output.output(
+        forced_photometry_candidates=[no_time, good],
+        sifter_result=SifterResult(
+            source_candidates=[], transient_candidates=[], noise_candidates=[]
+        ),
+        map_name="test_map",
+    )
+
+    fluxes = pd.read_parquet(tmp_path / "fluxes" / f"{lc_source_id}.parquet")
+    assert len(fluxes) == 1
+    assert fluxes.iloc[0]["flux"] == pytest.approx(0.042)
