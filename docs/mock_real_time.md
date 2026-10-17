@@ -1,7 +1,7 @@
 Mock real-time run
 ==================
 
-A mock real-time run replays the depth-1 maps of a mapcat, one simulated day
+A mock real-time run replays the depth-1 maps of a mapcat, one observation
 at a time, through the full time-domain chain: mapcat, `sotrp`, socat,
 lightcurvedb and lightview. Use it to test the chain before the real-time
 system runs.
@@ -11,7 +11,7 @@ The scripts are in `scripts/mock_real_time/`:
 | File | What it does |
 |---|---|
 | `mockrt.py` | The command. It makes the run, submits the jobs and records each step. |
-| `feed.py` | Makes the live mapcat and copies the maps of one day into it. |
+| `feed.py` | Makes the live mapcat, lists the observations and copies the maps of one observation into it. |
 | `configs.py` | The run settings, the schedule and the generated configs and SLURM scripts. |
 
 
@@ -21,41 +21,46 @@ What a run does
 The run has a live mapcat and a live socat. The live mapcat starts with no
 maps. The live socat is a copy of a socat database.
 
-For each simulated day (a "tick" job), `mockrt.py` does these steps:
+All the depth-1 maps of one observation (all the tubes and the bands) have
+the same start time. `init` writes the start times of the observations of
+the run to `observations.json`. For each observation (a "tick" job),
+`mockrt.py` does these steps:
 
-1. **Feed.** It copies the maps that start in the day from the source
-   mapcat to the live mapcat. Then it fills the sky coverage of the new maps
-   (the mapcat `updatesky` function).
-2. **Daily run.** It runs `sotrp` on the new maps of the day. All the bands
-   and tubes are in one run, with the multi-array map matcher. The forced
+1. **Feed.** It copies the maps of the observation from the source mapcat
+   to the live mapcat. Then it fills the sky coverage of the new maps (the
+   mapcat `updatesky` function).
+2. **Run.** It runs `sotrp` on the maps of the observation. All the bands
+   and tubes are in one run, with the multi-array map matcher. Thus, the
+   map matcher matches only the maps of this observation. The forced
    photometry goes to lightcurvedb. The socat update adds each confirmed
    map-match group to the live socat as a monitored source (see
    [Map matching](map_matching.md#add-confirmed-events-to-socat)). The
-   forced photometry of the next days then measures these sources.
+   forced photometry of the next observations then measures these sources.
 3. **Backfill.** For each new socat source, it runs the historical
-   lightcurve extractor on all the live maps that start before the end of
-   the day. The measurements go to lightcurvedb. lightcurvedb keeps
+   lightcurve extractor on all the live maps up to and including the
+   observation. The measurements go to lightcurvedb. lightcurvedb keeps
    duplicate measurements, so the ledger records each source that is done
    (`backfill:<socat_id>`), and a rerun does not measure it again.
-4. **Week.** At the end of each week, it submits a weekly coadd job for each
+4. **Week.** After the last observation of each week, it submits a weekly coadd job for each
    band, and a job that runs `sotrp` on the weekly coadds after them. The
    map matcher of the coadds uses two bands (`min_arrays: 1`,
    `min_bands: 2`). This job also does the socat update and the backfill.
 5. **Month.** After the weekly coadds of the last week of a month, a job
    makes a monthly coadd of the weekly coadds of each band, and a job runs
    `sotrp` on the monthly coadds.
-6. **Next day.** It submits the tick of the next day.
+6. **Next observation.** It submits the tick of the next observation.
 
 By default, the run is sequential (`"sequential": true` in `mockrt.json`):
-it does one step at a time. After the last day of a week, the week analysis
-job (or, at the end of a month, the month analysis job) submits the tick of
-the next day. Thus, a source that a coadd adds to socat is in socat before
-the next day starts. Set `"sequential": false` to run the weeks and the
+it does one step at a time. After the last observation of a week, the week
+analysis job (or, at the end of a month, the month analysis job) submits
+the tick of the next observation. Thus, a source that a coadd adds to socat
+is in socat before the next observation starts. Set `"sequential": false` to run the weeks and the
 months at the same time as the ticks, as in the real-time system.
 
 A ledger (`ledger.sqlite`) records the status of each step. A step that is
 done does not run again. Thus, if a tick fails, correct the problem and
-submit the tick again (`mockrt.py start --day N`).
+submit the tick again (`mockrt.py start --obs N`). `N` is the index of the
+observation in `observations.json`.
 
 
 Services
@@ -128,15 +133,15 @@ Procedure
 3. Start the run: `mockrt.py start --run-dir /path/to/run`.
 4. Monitor the run: `mockrt.py status --run-dir /path/to/run`.
 
-To test one day, feed the earlier days and run one tick with no next tick
-and no coadds:
+To test one observation, feed the earlier observations and run one tick
+with no next tick and no coadds:
 
 ```
-python scripts/mock_real_time/mockrt.py feed --run-dir /path/to/run --first 0 --last 5
-python scripts/mock_real_time/mockrt.py tick --run-dir /path/to/run --day 6 --no-next --no-coadds
+python scripts/mock_real_time/mockrt.py feed --run-dir /path/to/run --first 0 --last 9
+python scripts/mock_real_time/mockrt.py tick --run-dir /path/to/run --obs 10 --no-next --no-coadds
 ```
 
-Run the tick in a job: it needs the resources of a daily run.
+Run the tick in a job: it needs the resources of a `sotrp` run.
 
 
 The run directory
@@ -144,10 +149,10 @@ The run directory
 
 ```
 <run-dir>/
-  mockrt.json  env.sh  services.env  ledger.sqlite
+    mockrt.json  observations.json  env.sh  services.env  ledger.sqlite
   mapcat.sqlite  socat.db                  the live databases
   coadds/weekly/<YYYYMMDD>/  coadds/monthly/<YYYYMMDD>/
-  days/day<NNN>_<YYYYMMDD>/   config.json sotrp.log pickles/ map_match/ socat_updates/ backfill/
+    obs/obs<NNNN>_<YYYYMMDDTHHMMSS>/   config.json sotrp.log pickles/ map_match/ socat_updates/ backfill/
   weeks/week<NN>_<YYYYMMDD>/  coadd_configs/ config.json sotrp.log ...
   months/month<NN>_<YYYYMMDD>/
   postgres/  slurm/
@@ -157,10 +162,13 @@ The run directory
 Schedule
 --------
 
-- Day `d` is `[start + d days, start + d + 1 days)`. A map is in the day of
-  its start time.
-- Week `k` is the days `7k` to `7k + 6`. The last day of the run ends its
-  week, also if the week is short.
+- The run has the observations that start in
+  `[start, start + n_days days)`, with a map in the bands and the tubes that
+  is not excluded. An observation is in the day of its start time.
+- Week `k` is the days `7k` to `7k + 6`. The last observation of the run
+  ends its week, also if the week is short. A week with no observations has
+  no coadd. If a month ends in such a week, the run does not make the
+  monthly coadd.
 - A month is `month_weeks` (default 4) weeks. The run makes a monthly coadd
   only for a full month.
 

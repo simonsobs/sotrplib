@@ -28,8 +28,9 @@ class RunConfig:
     code_dir: str
     "The sotrplib checkout (or worktree) that the jobs run."
     start_time: str
-    "Start of simulated day 0 (ISO, UTC)."
+    "Start of day 0 (ISO, UTC). The weeks and the months start at this time."
     n_days: int
+    "The run has the observations in [start_time, start_time + n_days)."
     venv: str = ""
     "Python environment of the jobs. Default: <code_dir>/.venv."
     lightserve_venv: str = ""
@@ -54,9 +55,9 @@ class RunConfig:
     pace_minutes: float = 0.0
     "Minimum wall time between the starts of two ticks. 0: no wait."
     sequential: bool = True
-    """If true, the run does one step at a time: after the last day of a week,
-    the next tick starts when the week (and month) analysis is done. If
-    false, the coadd jobs run at the same time as the ticks."""
+    """If true, the run does one step at a time: after the last observation
+    of a week, the next tick starts when the week (and month) analysis is
+    done. If false, the coadd jobs run at the same time as the ticks."""
     account: str = "simonsobs"
     tick_cpus: int = 8
     tick_mem: str = "128G"
@@ -99,6 +100,10 @@ class RunConfig:
         return self.root / "slurm"
 
     @property
+    def observations_file(self) -> Path:
+        return self.root / "observations.json"
+
+    @property
     def ledger(self) -> Path:
         return self.root / "ledger.sqlite"
 
@@ -120,12 +125,38 @@ class RunConfig:
         t = datetime.fromisoformat(self.start_time.replace("Z", "+00:00"))
         return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
-    def day_window(self, day: int) -> tuple[datetime, datetime]:
-        start = self.t0 + timedelta(days=day)
-        return start, start + timedelta(days=1)
+    @property
+    def end(self) -> datetime:
+        return self.t0 + timedelta(days=self.n_days)
+
+    def observations(self) -> list[datetime]:
+        """The start times of the observations of the run, in time order
+        (observations.json, which mockrt.py writes)."""
+        return [
+            datetime.fromisoformat(t)
+            for t in json.loads(self.observations_file.read_text())
+        ]
+
+    def obs_window(self, obs: int) -> tuple[datetime, datetime]:
+        """A window that has the start time of the maps of the observation,
+        and no other maps (the observations are hours apart)."""
+        start = self.observations()[obs].replace(microsecond=0)
+        return start, start + timedelta(minutes=1)
+
+    def day_of(self, t: datetime) -> int:
+        return (t - self.t0) // timedelta(days=1)
 
     def week_of(self, day: int) -> int:
         return day // self.week_days
+
+    def week_ending_at(self, obs: int) -> int | None:
+        """The week that ends with this observation (the next observation
+        is in a later week, or this is the last observation), or None."""
+        times = self.observations()
+        week = self.week_of(self.day_of(times[obs]))
+        if obs == len(times) - 1 or self.week_of(self.day_of(times[obs + 1])) != week:
+            return week
+        return None
 
     def week_window(self, week: int) -> tuple[datetime, datetime]:
         start = self.t0 + timedelta(days=week * self.week_days)
@@ -134,13 +165,6 @@ class RunConfig:
             self.t0 + timedelta(days=self.n_days),
         )
         return start, end
-
-    def ends_week(self, day: int) -> int | None:
-        """The week that ends with this day (the last day of the run ends
-        its week, also if the week is short), or None."""
-        if (day + 1) % self.week_days == 0 or day == self.n_days - 1:
-            return self.week_of(day)
-        return None
 
     def month_of(self, week: int) -> int:
         return week // self.month_weeks
@@ -159,9 +183,9 @@ class RunConfig:
         start = self.t0 + timedelta(days=month * days)
         return start, start + timedelta(days=days)
 
-    def day_dir(self, day: int) -> Path:
-        start, _ = self.day_window(day)
-        return self.root / "days" / f"day{day:03d}_{start:%Y%m%d}"
+    def obs_dir(self, obs: int) -> Path:
+        start, _ = self.obs_window(obs)
+        return self.root / "obs" / f"obs{obs:04d}_{start:%Y%m%dT%H%M%S}"
 
     def week_dir(self, week: int) -> Path:
         start, _ = self.week_window(week)
@@ -268,10 +292,12 @@ def _socat_with_update(out_dir: Path) -> list[dict]:
     ]
 
 
-def daily_config(run: RunConfig, day: int) -> dict:
-    """sotrp config of the depth-1 maps of one simulated day."""
-    start, end = run.day_window(day)
-    out_dir = run.day_dir(day)
+def obs_config(run: RunConfig, obs: int) -> dict:
+    """sotrp config of the depth-1 maps of one observation (all the tubes
+    and the bands). The map matcher matches only the maps of the
+    observation."""
+    start, end = run.obs_window(obs)
+    out_dir = run.obs_dir(obs)
     return {
         "maps": {
             "map_generator_type": "mapcat_database",

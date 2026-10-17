@@ -3,21 +3,21 @@
 Mock real-time run of the time-domain pipeline.
 
 A mock real-time run replays the depth-1 maps of a source mapcat, one
-simulated day at a time, into a live mapcat. For each day ("tick"):
+observation at a time, into a live mapcat. For each observation ("tick"):
 
-1. feed: copy the maps of the day into the live mapcat, and fill their sky
-   coverage.
-2. daily: run sotrp on the new maps of the day (all bands in one run, multi-
-   array map matching). Forced photometry goes to lightcurvedb. The socat
+1. feed: copy the maps of the observation (all the tubes and the bands) into
+   the live mapcat, and fill their sky coverage.
+2. run: run sotrp on the maps of the observation (multi-array map matching
+   of these maps only). Forced photometry goes to lightcurvedb. The socat
    update adds the confirmed map-match groups to the live socat.
 3. backfill: for each new socat source, measure the source in all the
    earlier maps (historical lightcurve extractor) and write to lightcurvedb.
-4. At the end of each week: submit the weekly coadd jobs (one for each band)
-   and a job that runs sotrp on the weekly coadds (two-band map matching,
-   socat update, backfill). At the end of each month (month_weeks weeks): a
-   job makes the monthly coadds from the weekly coadds, and a job runs sotrp
-   on them.
-5. Submit the tick of the next day.
+4. After the last observation of each week: submit the weekly coadd jobs
+   (one for each band) and a job that runs sotrp on the weekly coadds
+   (two-band map matching, socat update, backfill). At the end of each month
+   (month_weeks weeks): a job makes the monthly coadds from the weekly
+   coadds, and a job runs sotrp on them.
+5. Submit the tick of the next observation.
 
 A ledger (ledger.sqlite) records each step. A step that is complete is not
 run again, so a failed tick can be submitted again.
@@ -47,9 +47,9 @@ import feed  # noqa: E402
 from configs import (  # noqa: E402
     RunConfig,
     coadd_analysis_config,
-    daily_config,
     env_text,
     iso,
+    obs_config,
     services_script,
     slurm_script,
 )
@@ -191,8 +191,24 @@ def mockrt_command(run: RunConfig, *args: str) -> str:
 # --- steps -----------------------------------------------------------------------
 
 
-def do_feed(run: RunConfig, day: int) -> dict:
-    start, end = run.day_window(day)
+def write_observations(run: RunConfig) -> list[str]:
+    """Write observations.json: the start times of the observations of the
+    run (source maps in the bands and the tubes, not excluded)."""
+    times = feed.list_observations(
+        Path(run.source_mapcat),
+        run.t0,
+        run.end,
+        bands=run.bands,
+        tubes=run.tubes,
+        exclude=feed.read_exclude_list(run.exclude_maps_csv),
+    )
+    text = [t.isoformat() for t in times]
+    run.observations_file.write_text(json.dumps(text, indent=1))
+    return text
+
+
+def do_feed(run: RunConfig, obs: int) -> dict:
+    start, end = run.obs_window(obs)
     new = feed.feed_window(
         Path(run.source_mapcat),
         run.live_mapcat,
@@ -206,13 +222,13 @@ def do_feed(run: RunConfig, day: int) -> dict:
     return {"n_maps": len(new), "n_coverage_rows": n_coverage}
 
 
-def do_daily(run: RunConfig, day: int) -> dict:
-    out = run.day_dir(day)
-    start, end = run.day_window(day)
+def do_run(run: RunConfig, obs: int) -> dict:
+    out = run.obs_dir(obs)
+    start, end = run.obs_window(obs)
     n_reset = feed.reset_unfinished_status(run.live_mapcat, start, end)
     if n_reset:
-        print(f"day {day}: reset {n_reset} unfinished map status rows of a failed run")
-    run_sotrp(run, daily_config(run, day), out / "config.json", out / "sotrp.log")
+        print(f"obs {obs}: reset {n_reset} unfinished map status rows of a failed run")
+    run_sotrp(run, obs_config(run, obs), out / "config.json", out / "sotrp.log")
     return {"dir": str(out), "n_reset": n_reset}
 
 
@@ -297,12 +313,12 @@ def backfill_source(
         run_sotrp(run, config, config_file, config_file.with_suffix(".log"), env=env)
 
 
-def submit_week(run: RunConfig, week: int, next_day: int | None = None) -> dict:
+def submit_week(run: RunConfig, week: int, next_obs: int | None = None) -> dict:
     """Submit the weekly coadd job of each band, and the analysis job after
     them. At the end of a month, also the month job.
 
-    If next_day is set, the last analysis job (of the week or of the month)
-    submits the tick of next_day."""
+    If next_obs is set, the last analysis job (of the week or of the month)
+    submits the tick of next_obs."""
     weeks_mod = _load_script(
         run.code_dir, "scripts/coadding/submit_week_coadds.py", "submit_week_coadds"
     )
@@ -340,7 +356,7 @@ def submit_week(run: RunConfig, week: int, next_day: int | None = None) -> dict:
         job_ids.append(sbatch(write_slurm(run, name, command, kind="coadd")))
 
     month = run.ends_month(week)
-    then = [] if next_day is None else ["--next-day", str(next_day)]
+    then = [] if next_obs is None else ["--next-obs", str(next_obs)]
     analysis = write_slurm(
         run,
         f"mockrt_week{week:02d}_analysis",
@@ -369,15 +385,15 @@ def submit_week(run: RunConfig, week: int, next_day: int | None = None) -> dict:
             kind="small",
         )
         # In a sequential run, the month starts after the week analysis.
-        after = [detail["analysis_job"]] if next_day is not None else job_ids
+        after = [detail["analysis_job"]] if next_obs is not None else job_ids
         detail["month_job"] = sbatch(planner, dependency=after)
     return detail
 
 
-def submit_month(run: RunConfig, month: int, next_day: int | None = None) -> dict:
+def submit_month(run: RunConfig, month: int, next_obs: int | None = None) -> dict:
     """Submit the monthly coadd job of each band (a coadd of the weekly
-    coadds), and the analysis job after them. If next_day is set, the
-    analysis job submits the tick of next_day."""
+    coadds), and the analysis job after them. If next_obs is set, the
+    analysis job submits the tick of next_obs."""
     months_mod = _load_script(
         run.code_dir, "scripts/coadding/submit_month_coadds.py", "submit_month_coadds"
     )
@@ -440,7 +456,7 @@ def submit_month(run: RunConfig, month: int, next_day: int | None = None) -> dic
             "month",
             "--index",
             str(month),
-            *([] if next_day is None else ["--next-day", str(next_day)]),
+            *([] if next_obs is None else ["--next-obs", str(next_obs)]),
         ),
         kind="tick",
         prefect=run.runner == "prefect",
@@ -451,11 +467,11 @@ def submit_month(run: RunConfig, month: int, next_day: int | None = None) -> dic
     }
 
 
-def submit_tick(run: RunConfig, day: int) -> str:
+def submit_tick(run: RunConfig, obs: int) -> str:
     script = write_slurm(
         run,
-        f"mockrt_tick{day:03d}",
-        mockrt_command(run, "tick", "--day", str(day)),
+        f"mockrt_obs{obs:04d}",
+        mockrt_command(run, "tick", "--obs", str(obs)),
         kind="tick",
         prefect=run.runner == "prefect",
     )
@@ -490,7 +506,7 @@ def cmd_init(args) -> None:
     for d in (
         run.slurm_dir,
         run.coadd_parent,
-        root / "days",
+        root / "obs",
         root / "weeks",
         root / "months",
     ):
@@ -501,7 +517,8 @@ def cmd_init(args) -> None:
     run.env_file.write_text(env_text(run))
     Ledger(run.ledger)
     print("Run settings:", run.save())
-    print(f"Days 0..{run.n_days - 1} from {run.start_time}")
+    times = write_observations(run)
+    print(f"{len(times)} observations in {run.n_days} days from {run.start_time}")
 
 
 def cmd_services(args) -> None:
@@ -523,41 +540,45 @@ def cmd_start(args) -> None:
         sys.exit(
             "services.env does not exist: start the services job first (mockrt.py services --submit)."
         )
-    submit_tick(run, args.day)
+    if not run.observations_file.exists():
+        write_observations(run)
+    submit_tick(run, args.obs)
 
 
 def cmd_tick(args) -> None:
     run = RunConfig.load(args.run_dir)
     ledger = Ledger(run.ledger)
-    day = args.day
-    _, end = run.day_window(day)
-    step(ledger, f"day{day:03d}:feed", do_feed, run, day)
-    step(ledger, f"day{day:03d}:daily", do_daily, run, day)
-    out = run.day_dir(day)
+    obs = args.obs
+    key = f"obs{obs:04d}"
+    _, end = run.obs_window(obs)
+    step(ledger, f"{key}:feed", do_feed, run, obs)
+    step(ledger, f"{key}:run", do_run, run, obs)
+    out = run.obs_dir(obs)
     step(
-        ledger, f"day{day:03d}:backfill", do_backfill, run, ledger,
+        ledger, f"{key}:backfill", do_backfill, run, ledger,
         out / "socat_updates", out / "backfill", end,
     )  # fmt: skip
-    week = run.ends_week(day)
-    next_day = day + 1 if not args.no_next and day + 1 < run.n_days else None
+    week = run.week_ending_at(obs)
+    n_obs = len(run.observations())
+    next_obs = obs + 1 if not args.no_next and obs + 1 < n_obs else None
     if week is not None and not args.no_coadds:
         # In a sequential run, the last analysis job of the week submits the
         # next tick.
-        then = next_day if run.sequential else None
+        then = next_obs if run.sequential else None
         step(ledger, f"week{week:02d}:submit", submit_week, run, week, then)
         if then is not None:
             return
-    if next_day is not None:
-        step(ledger, f"day{next_day:03d}:submit", submit_tick, run, next_day)
+    if next_obs is not None:
+        step(ledger, f"obs{next_obs:04d}:submit", submit_tick, run, next_obs)
 
 
 def cmd_feed(args) -> None:
-    """Feed days without running the pipeline on them (for example, to start
-    a test in the middle of the data)."""
+    """Feed observations without running the pipeline on them (for example,
+    to start a test in the middle of the data)."""
     run = RunConfig.load(args.run_dir)
     ledger = Ledger(run.ledger)
-    for day in range(args.first, args.last + 1):
-        step(ledger, f"day{day:03d}:feed", do_feed, run, day)
+    for obs in range(args.first, args.last + 1):
+        step(ledger, f"obs{obs:04d}:feed", do_feed, run, obs)
 
 
 def cmd_coadd_analysis(args) -> None:
@@ -591,8 +612,8 @@ def cmd_coadd_analysis(args) -> None:
         ledger, f"{key}:backfill", do_backfill, run, ledger,
         out / "socat_updates", out / "backfill", end,
     )  # fmt: skip
-    if args.next_day is not None:
-        step(ledger, f"day{args.next_day:03d}:submit", submit_tick, run, args.next_day)
+    if args.next_obs is not None:
+        step(ledger, f"obs{args.next_obs:04d}:submit", submit_tick, run, args.next_obs)
 
 
 def cmd_week(args) -> None:
@@ -608,7 +629,7 @@ def cmd_month(args) -> None:
         submit_month,
         run,
         args.month,
-        args.next_day,
+        args.next_obs,
     )
 
 
@@ -653,11 +674,15 @@ def parse_args(argv=None):
     services = sub.add_parser("services", help="Write (and submit) the services job.")
     services.add_argument("--submit", action="store_true")
 
-    start = sub.add_parser("start", help="Submit the tick of a day (default: day 0).")
-    start.add_argument("--day", type=int, default=0)
+    start = sub.add_parser(
+        "start", help="Submit the tick of an observation (default: 0, the first)."
+    )
+    start.add_argument("--obs", type=int, default=0)
 
-    tick = sub.add_parser("tick", help="Run one simulated day (in a job).")
-    tick.add_argument("--day", type=int, required=True)
+    tick = sub.add_parser("tick", help="Run one observation (in a job).")
+    tick.add_argument(
+        "--obs", type=int, required=True, help="Index in observations.json."
+    )
     tick.add_argument(
         "--no-next", action="store_true", help="Do not submit the next tick."
     )
@@ -667,9 +692,9 @@ def parse_args(argv=None):
         help="Do not submit the week jobs (for tests).",
     )
 
-    feed_days = sub.add_parser("feed", help="Feed days only (no pipeline run).")
-    feed_days.add_argument("--first", type=int, required=True)
-    feed_days.add_argument("--last", type=int, required=True)
+    feed_obs = sub.add_parser("feed", help="Feed observations only (no pipeline run).")
+    feed_obs.add_argument("--first", type=int, required=True)
+    feed_obs.add_argument("--last", type=int, required=True)
 
     analysis = sub.add_parser(
         "coadd-analysis", help="Run sotrp on the coadds of a week or a month."
@@ -677,10 +702,10 @@ def parse_args(argv=None):
     analysis.add_argument("--kind", choices=["week", "month"], required=True)
     analysis.add_argument("--index", type=int, required=True)
     analysis.add_argument(
-        "--next-day",
+        "--next-obs",
         type=int,
         default=None,
-        help="Submit the tick of this day at the end (sequential run).",
+        help="Submit the tick of this observation at the end (sequential run).",
     )
 
     week = sub.add_parser(
@@ -693,10 +718,10 @@ def parse_args(argv=None):
     )
     month.add_argument("--month", type=int, required=True)
     month.add_argument(
-        "--next-day",
+        "--next-obs",
         type=int,
         default=None,
-        help="The month analysis job submits the tick of this day.",
+        help="The month analysis job submits the tick of this observation.",
     )
 
     sub.add_parser("status", help="Show the ledger and the live mapcat.")
@@ -706,7 +731,7 @@ def parse_args(argv=None):
         services,
         start,
         tick,
-        feed_days,
+        feed_obs,
         analysis,
         week,
         month,

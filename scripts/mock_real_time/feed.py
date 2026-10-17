@@ -1,17 +1,18 @@
 """
 Make the live mapcat of a mock real-time run, and copy the depth-1 maps of
-one simulated day into it from the source mapcat.
+one observation into it from the source mapcat.
 
 The live mapcat has the same schema as the source mapcat (the script copies
 the CREATE statements and the alembic version). It starts with no maps. For
-each simulated day, feed_day() copies the rows of the maps that start in the
-day: depth_one_maps, and the TOD rows and links of these maps. It does not
+each observation, feed_window() copies the rows of the maps that start in
+the window of the observation: depth_one_maps, and the TOD rows and links of
+these maps. It does not
 copy the processing status or the pointing residuals: the pipeline makes
 these.
 """
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Tables that the live mapcat gets from the source, for each new map.
@@ -90,6 +91,43 @@ def maps_in_window(
         and (tubes is None or tube in tubes)
         and name.split("/")[-1] not in exclude
     ]
+
+
+def list_observations(
+    source: Path,
+    start: datetime,
+    end: datetime,
+    bands: list[str] | None = None,
+    tubes: list[str] | None = None,
+    exclude: set[str] | None = None,
+) -> list[datetime]:
+    """
+    Return the start times of the observations in [start, end), in time
+    order. All the depth-1 maps of one observation (all the tubes and the
+    bands) have the same start time. An observation is in the list only if
+    it has a map in the bands and tubes that is not in `exclude`.
+    """
+    con = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+    try:
+        rows = con.execute(
+            "SELECT map_name, frequency, tube_slot, start_time FROM depth_one_maps "
+            "WHERE start_time >= ? AND start_time < ? ORDER BY start_time",
+            (db_time(start), db_time(end)),
+        ).fetchall()
+    finally:
+        con.close()
+    exclude = exclude or set()
+    times = sorted(
+        {
+            t
+            for name, band, tube, t in rows
+            if (bands is None or band in bands)
+            and (tubes is None or tube in tubes)
+            and name.split("/")[-1] not in exclude
+        }
+    )
+    # The mapcat times are UTC, with no time zone.
+    return [datetime.fromisoformat(t).replace(tzinfo=timezone.utc) for t in times]
 
 
 def feed_window(

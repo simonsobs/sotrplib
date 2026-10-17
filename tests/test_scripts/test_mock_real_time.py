@@ -169,33 +169,65 @@ def _run(mock, tmp_path, **kw):
     )
 
 
-def test_schedule_weeks_and_months(tmp_path, mock):
+def _write_observations(run, hours):
+    """observations.json with one observation at each of the hours after T0."""
+    run.root.mkdir(parents=True, exist_ok=True)
+    run.observations_file.write_text(
+        json.dumps([(T0 + timedelta(hours=h)).isoformat() for h in hours])
+    )
+
+
+def test_list_observations(tmp_path, mock):
+    feed = mock["feed"]
+    source = tmp_path / "source.sqlite"
+    _source_mapcat(source)
+    # m0 and m1 are one observation (same start time).
+    times = feed.list_observations(source, T0, T0 + timedelta(days=2))
+    assert times == [
+        T0 + timedelta(hours=2),
+        T0 + timedelta(hours=20),
+        T0 + timedelta(days=1, hours=3),
+    ]
+    # An observation with no map left after the filters is not in the list.
+    times = feed.list_observations(
+        source, T0, T0 + timedelta(days=2), bands=["f090", "f220"]
+    )
+    assert times == [T0 + timedelta(hours=2), T0 + timedelta(days=1, hours=3)]
+
+
+def test_schedule_observations_weeks_and_months(tmp_path, mock):
     run = _run(mock, tmp_path)
-    assert run.day_window(1) == (T0 + timedelta(days=1), T0 + timedelta(days=2))
-    ends = {
-        d: run.ends_week(d) for d in range(run.n_days) if run.ends_week(d) is not None
-    }
-    # Weeks end on days 6, 13, 20, 27, 34; the last day ends a short week 5.
-    assert ends == {6: 0, 13: 1, 20: 2, 27: 3, 34: 4, 36: 5}
+    # Observations on days 0, 0, 6, 8 and 36 (hours 2, 20, 146, 194, 866).
+    _write_observations(run, [2, 20, 146, 194, 866])
+    start, end = run.obs_window(1)
+    assert start == T0 + timedelta(hours=20) and end - start == timedelta(minutes=1)
+    assert run.obs_dir(1).name == "obs0001_20250904T200000"
+    ends = {o: run.week_ending_at(o) for o in range(5)}
+    # Obs 2 (day 6) ends week 0, obs 3 (day 8) ends week 1, the last obs ends
+    # its week (5).
+    assert ends == {0: None, 1: None, 2: 0, 3: 1, 4: 5}
     assert run.week_window(5) == (T0 + timedelta(days=35), T0 + timedelta(days=37))
     # One full month (weeks 0-3, 28 days). Weeks 4-5 do not make a full month.
     assert [w for w in range(6) if run.ends_month(w) is not None] == [3]
     assert run.month_window(0) == (T0, T0 + timedelta(days=28))
 
 
-def test_daily_config(tmp_path, mock):
+def test_obs_config(tmp_path, mock):
     configs = mock["configs"]
     run = _run(mock, tmp_path)
-    config = configs.daily_config(run, 6)
+    _write_observations(run, [2, 146])
+    config = configs.obs_config(run, 1)
 
     maps = config["maps"]
     assert (maps["start_time"], maps["end_time"]) == (
-        "2025-09-10T00:00:00Z",
-        "2025-09-11T00:00:00Z",
+        "2025-09-10T02:00:00Z",
+        "2025-09-10T02:01:00Z",
     )
     assert maps["time_binning"] == "left-bound" and maps["track_processing"]
     (socat,) = config["source_catalogs"]
-    assert socat["update"]["record_directory"].endswith("day006_20250910/socat_updates")
+    assert socat["update"]["record_directory"].endswith(
+        "obs0001_20250910T020000/socat_updates"
+    )
     assert config["map_matcher"]["min_arrays"] == 2
     assert [o["output_type"] for o in config["source_outputs"]] == [
         "pickle",
@@ -204,7 +236,7 @@ def test_daily_config(tmp_path, mock):
     assert set(config["preprocessors"][1]["beam1d"]) == {"f090", "f150", "f220", "f280"}
 
     run.lightcurvedb = False
-    no_lcdb = configs.daily_config(run, 6)
+    no_lcdb = configs.obs_config(run, 1)
     assert [o["output_type"] for o in no_lcdb["source_outputs"]] == ["pickle"]
 
 
@@ -247,6 +279,7 @@ def test_init_writes_run_dir(tmp_path, mock):
     assert f"MAPCAT_DATABASE_NAME={run.live_mapcat}" in env
     assert f"socat_model_database_name={run.live_socat}" in env
     assert "services.env" in env
+    assert len(run.observations()) == 3
 
     with pytest.raises(SystemExit):
         mockrt.main(
@@ -397,11 +430,11 @@ def test_sequential_week_analysis_submits_next_tick(tmp_path, mock, monkeypatch)
     jobs = _fake_sbatch(mockrt, monkeypatch)
     monkeypatch.setattr(mockrt, "_load_script", lambda *args: _FakeWeeks)
 
-    mockrt.submit_week(run, 0, next_day=7)
+    mockrt.submit_week(run, 0, next_obs=7)
     name, dependency, text = jobs[-1]
     assert name == "mockrt_week00_analysis.slurm"
     assert dependency == ["1", "2", "3", "4"]
-    assert "--next-day 7" in text
+    assert "--next-obs 7" in text
 
 
 def test_sequential_month_waits_for_week_analysis(tmp_path, mock, monkeypatch):
@@ -412,18 +445,18 @@ def test_sequential_month_waits_for_week_analysis(tmp_path, mock, monkeypatch):
     monkeypatch.setattr(mockrt, "_load_script", lambda *args: _FakeWeeks)
 
     # Week 3 ends month 0: the month job submits the next tick, not the week.
-    detail = mockrt.submit_week(run, 3, next_day=28)
+    detail = mockrt.submit_week(run, 3, next_obs=28)
     analysis, planner = jobs[-2], jobs[-1]
-    assert "--next-day" not in analysis[2]
+    assert "--next-obs" not in analysis[2]
     assert planner[0] == "mockrt_month00_plan.slurm"
     assert planner[1] == [detail["analysis_job"]]
-    assert "--next-day 28" in planner[2]
+    assert "--next-obs 28" in planner[2]
 
     # Not sequential: the month starts after the weekly coadds.
     jobs.clear()
     detail = mockrt.submit_week(run, 3)
     assert jobs[-1][1] == detail["coadd_jobs"]
-    assert all("--next-day" not in text for _, _, text in jobs)
+    assert all("--next-obs" not in text for _, _, text in jobs)
 
 
 @pytest.mark.parametrize("sequential", [True, False])
@@ -432,20 +465,27 @@ def test_tick_at_week_end(tmp_path, mock, monkeypatch, sequential):
     run = _run(mock, tmp_path, sequential=sequential)
     run.root.mkdir(parents=True)
     run.save()
+    # Obs 1 (day 6) is the last observation of week 0.
+    _write_observations(run, [2, 146, 194])
     calls = []
-    monkeypatch.setattr(mockrt, "do_feed", lambda run, day: {})
-    monkeypatch.setattr(mockrt, "do_daily", lambda run, day: {})
+    monkeypatch.setattr(mockrt, "do_feed", lambda run, obs: {})
+    monkeypatch.setattr(mockrt, "do_run", lambda run, obs: {})
     monkeypatch.setattr(mockrt, "do_backfill", lambda *args: {})
     monkeypatch.setattr(
         mockrt,
         "submit_week",
-        lambda run, week, next_day=None: calls.append(("week", week, next_day)),
+        lambda run, week, next_obs=None: calls.append(("week", week, next_obs)),
     )
     monkeypatch.setattr(
-        mockrt, "submit_tick", lambda run, day: calls.append(("tick", day))
+        mockrt, "submit_tick", lambda run, obs: calls.append(("tick", obs))
     )
-    mockrt.main(["tick", "--day", "6", "--run-dir", str(run.root)])
+    mockrt.main(["tick", "--obs", "1", "--run-dir", str(run.root)])
     if sequential:
-        assert calls == [("week", 0, 7)]
+        assert calls == [("week", 0, 2)]
     else:
-        assert calls == [("week", 0, None), ("tick", 7)]
+        assert calls == [("week", 0, None), ("tick", 2)]
+
+    # Obs 0 does not end a week: only the next tick.
+    calls.clear()
+    mockrt.main(["tick", "--obs", "0", "--run-dir", str(run.root)])
+    assert calls == [("tick", 1)]
