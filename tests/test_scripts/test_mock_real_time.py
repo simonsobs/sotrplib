@@ -489,3 +489,72 @@ def test_tick_at_week_end(tmp_path, mock, monkeypatch, sequential):
     calls.clear()
     mockrt.main(["tick", "--obs", "0", "--run-dir", str(run.root)])
     assert calls == [("tick", 1)]
+
+
+def _records(record_dir, ids):
+    record_dir.mkdir()
+    (record_dir / "socat_update_20250910T052435.json").write_text(
+        json.dumps(
+            {"maps": [], "groups": [{"action": "added", "socat_id": i} for i in ids]}
+        )
+    )
+
+
+def test_backfill_runs_sources_in_parallel(tmp_path, mock, monkeypatch):
+    import threading
+
+    mockrt = mock["mockrt"]
+    run = _run(mock, tmp_path, backfill_workers=4)
+    ledger = mockrt.Ledger(tmp_path / "ledger.sqlite")
+    _records(tmp_path / "socat_updates", ["a", "b", "c", "d"])
+    monkeypatch.setattr(mockrt, "_load_script", lambda *args: None)
+
+    # Each source waits until all four run at the same time.
+    barrier = threading.Barrier(4, timeout=10)
+    measured = []
+
+    def backfill_source(run, extractor, socat_id, out_dir, end, lock=None):
+        barrier.wait()
+        measured.append(socat_id)
+
+    monkeypatch.setattr(mockrt, "backfill_source", backfill_source)
+    end = datetime(2025, 9, 11, tzinfo=timezone.utc)
+    result = mockrt.do_backfill(
+        run, ledger, tmp_path / "socat_updates", tmp_path / "backfill", end
+    )
+    assert sorted(measured) == ["a", "b", "c", "d"]
+    assert result["n_sources"] == 4
+    assert all(ledger.done(f"backfill:{i}") for i in "abcd")
+
+
+def test_backfill_failure_does_not_stop_other_sources(tmp_path, mock, monkeypatch):
+    mockrt = mock["mockrt"]
+    run = _run(mock, tmp_path, backfill_workers=2)
+    ledger = mockrt.Ledger(tmp_path / "ledger.sqlite")
+    _records(tmp_path / "socat_updates", ["a", "bad", "c"])
+    monkeypatch.setattr(mockrt, "_load_script", lambda *args: None)
+
+    def backfill_source(run, extractor, socat_id, out_dir, end, lock=None):
+        if socat_id == "bad":
+            raise ValueError("no maps")
+
+    monkeypatch.setattr(mockrt, "backfill_source", backfill_source)
+    end = datetime(2025, 9, 11, tzinfo=timezone.utc)
+    with pytest.raises(RuntimeError, match="1 of 3 backfills failed"):
+        mockrt.do_backfill(
+            run, ledger, tmp_path / "socat_updates", tmp_path / "backfill", end
+        )
+    assert ledger.done("backfill:a") and ledger.done("backfill:c")
+    assert ledger.get("backfill:bad") == "failed"
+
+    # A rerun measures only the failed source.
+    rerun = []
+    monkeypatch.setattr(
+        mockrt,
+        "backfill_source",
+        lambda run, extractor, socat_id, *args, **kwargs: rerun.append(socat_id),
+    )
+    mockrt.do_backfill(
+        run, ledger, tmp_path / "socat_updates", tmp_path / "backfill", end
+    )
+    assert rerun == ["bad"]

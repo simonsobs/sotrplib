@@ -40,9 +40,12 @@ the run to `observations.json`. For each observation (a "tick" job),
    lightcurve extractor on all the live maps up to and including the
    observation. The measurements go to lightcurvedb. lightcurvedb keeps
    duplicate measurements, so the ledger records each source that is done
-   (`backfill:<socat_id>`), and a rerun does not measure it again.
-4. **Week.** After the last observation of each week, it submits a weekly coadd job for each
-   band, and a job that runs `sotrp` on the weekly coadds after them. The
+   (`backfill:<socat_id>`), and a rerun does not measure it again. The
+   sources are independent: `backfill_workers` (default 8) sources run at
+   the same time, each in its own `sotrp` run with one CPU. If a source
+   fails, the other sources continue, and then the step fails.
+4. **Week.** After the last observation of each week, it submits a weekly
+   coadd job for each band, and a job that runs `sotrp` on the weekly coadds after them. The
    map matcher of the coadds uses two bands (`min_arrays: 1`,
    `min_bands: 2`). This job also does the socat update and the backfill.
 5. **Month.** After the weekly coadds of the last week of a month, a job

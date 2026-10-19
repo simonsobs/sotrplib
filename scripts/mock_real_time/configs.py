@@ -58,6 +58,9 @@ class RunConfig:
     """If true, the run does one step at a time: after the last observation
     of a week, the next tick starts when the week (and month) analysis is
     done. If false, the coadd jobs run at the same time as the ticks."""
+    backfill_workers: int = 8
+    """The number of sources that the backfill measures at the same time
+    (one sotrp run each, one CPU each). Use at most tick_cpus."""
     account: str = "simonsobs"
     tick_cpus: int = 8
     tick_mem: str = "128G"

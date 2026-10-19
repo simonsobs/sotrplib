@@ -31,6 +31,7 @@ See docs/mock_real_time.md.
 """
 
 import argparse
+import contextlib
 import importlib.util
 import json
 import os
@@ -38,6 +39,8 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -260,6 +263,10 @@ def do_backfill(
     lightcurvedb keeps each measurement that it gets, also a duplicate. Thus,
     the ledger records each source that is done (key "backfill:<socat_id>"),
     and a rerun of the step does not measure the source again.
+
+    The sources are independent, so run.backfill_workers sources run at the
+    same time. If a source fails, the other sources continue, and then the
+    step fails.
     """
     socat_ids = [
         socat_id
@@ -273,21 +280,44 @@ def do_backfill(
         "scripts/historical_lightcurve_extractor/slurm_wrapper_mapcat_historical_extractor.py",
         "historical_extractor",
     )
-    for socat_id in socat_ids:
+    lock = threading.Lock()
+
+    def one(socat_id: str) -> None:
         step(
             ledger, f"backfill:{socat_id}", backfill_source, run, extractor,
-            socat_id, out_dir / socat_id, end,
+            socat_id, out_dir / socat_id, end, lock,
         )  # fmt: skip
+
+    with ThreadPoolExecutor(max_workers=max(1, run.backfill_workers)) as pool:
+        futures = [pool.submit(one, socat_id) for socat_id in socat_ids]
+    errors = [f.exception() for f in futures if f.exception() is not None]
+    if errors:
+        raise RuntimeError(
+            f"{len(errors)} of {len(socat_ids)} backfills failed, first: {errors[0]!r}"
+        )
     return {"n_sources": len(socat_ids), "socat_ids": socat_ids}
 
 
+# One thread for numpy and the FFTs in each backfill run: the runs are in
+# parallel.
+ONE_THREAD = {
+    name: "1" for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+}
+
+
 def backfill_source(
-    run: RunConfig, extractor, socat_id: str, out_dir: Path, end: datetime
+    run: RunConfig,
+    extractor,
+    socat_id: str,
+    out_dir: Path,
+    end: datetime,
+    lock: "threading.Lock | None" = None,
 ) -> None:
     """
     Measure one socat source in the live maps that start before `end`. Each
     source has its own out_dir, thus its own extractor socat database with
-    only this source in it.
+    only this source in it. `lock` serialises the extractor setup (it
+    writes the configs) when several sources run at the same time.
     """
     argv = [
         "--mapcat", str(run.live_mapcat),
@@ -302,10 +332,12 @@ def backfill_source(
     ]  # fmt: skip
     if run.lightcurvedb:
         argv.append("--lightcurvedb")
-    slurm_files = extractor.main(argv)
+    with lock or contextlib.nullcontext():
+        slurm_files = extractor.main(argv)
     env = {
         "socat_model_database_name": str(out_dir / "extractor_socat.db"),
         "sotrp_runner": "basic",
+        **(ONE_THREAD if run.backfill_workers > 1 else {}),
     }
     for slurm_file in slurm_files:
         config_file = Path(str(slurm_file).replace("_sub.slurm", "_config.json"))
