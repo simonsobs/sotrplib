@@ -109,7 +109,9 @@ class ProcessableMap(ABC):
     _parent_database: Path | None = None
     "Path to the parent database for this map, if any"
 
-    _pointing_model: PointingModel | None = None
+    pointing_model: PointingModel | None = None
+    "The pointing model of the map from mapcat, if the reader loaded one. If "
+    "it is set, the runner uses it and does not make a new model."
 
     _available_maps: tuple[str, ...] = ("flux", "snr")
     "Ordered attribute names searched by bbox to find a loaded map."
@@ -657,6 +659,7 @@ class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
         if self.prefiltered_map.mapcat_id is not None:
             self.mapcat_id = self.prefiltered_map.mapcat_id
         self._parent_database = self.prefiltered_map._parent_database
+        self.pointing_model = self.prefiltered_map.pointing_model
         self._hits = self.prefiltered_map._hits
         self.map_resolution = u.Quantity(
             abs(self.rho.wcs.wcs.cdelt[0]), self.rho.wcs.wcs.cunit[0]

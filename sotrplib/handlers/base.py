@@ -235,10 +235,16 @@ class BaseRunner:
                     self.pointing_residual_model.build_model
                 )(pointing_sources=pointing_sources)
                 # The key of the pointing-residual table is the depth-1
-                # map_id. Thus, do not save the model of a coadd.
+                # map_id. Thus, do not save the model of a coadd. With no
+                # residual model, the model is a zero offset that was not
+                # measured. Do not save it, because it replaces a measured
+                # model of the map.
                 if (
                     input_map._parent_database is not None
                     and input_map.map_type == "depth1_map"
+                    and not isinstance(
+                        self.pointing_residual_model, EmptyPointingOffset
+                    )
                 ):
                     save_pointing_model(
                         input_map.mapcat_id, pointing_model, pointing_model_stats
