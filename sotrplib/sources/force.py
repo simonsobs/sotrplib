@@ -376,6 +376,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             reproject_thumb=self.reproject_thumbnails,
             allowable_center_offset=self.allowable_center_offset,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
+            start_at_brightest_pixel=True,
             log=self.log,
         )
 

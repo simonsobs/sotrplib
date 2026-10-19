@@ -111,7 +111,14 @@ class LmFitGaussian2DFitter:
     reprojected : bool, optional
         Whether the thumbnail was reprojected (affects RA offset sign), by default False
     allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
-        Maximum allowable offset from the thumbnail center for the fit, by default u.Quantity(1.0, "arcmin")
+        Maximum allowable offset from the start position for the fit, by default u.Quantity(1.0, "arcmin")
+    start_at_brightest_pixel : bool, optional
+        If True, start the fit at the brightest pixel of the thumbnail, and
+        let the center move by allowable_center_offset from that pixel. Use
+        this for pointing sources: their thumbnails are cut before the
+        pointing correction, so the source can be off the thumbnail center.
+        If False, start the fit at the thumbnail center (the source position).
+        By default False.
     """
 
     def __init__(
@@ -123,6 +130,7 @@ class LmFitGaussian2DFitter:
         allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
             1.0, "arcmin"
         ),
+        start_at_brightest_pixel: bool = False,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -132,6 +140,7 @@ class LmFitGaussian2DFitter:
         self.force_center = force_center
         self.reprojected = reprojected
         self.allowable_center_offset = allowable_center_offset
+        self.start_at_brightest_pixel = start_at_brightest_pixel
         self.fit_method = "lmfit"
         self.model = None
 
@@ -168,25 +177,20 @@ class LmFitGaussian2DFitter:
             u.arcmin
         ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
 
-        # Initial guess for parameters. The source position is the thumbnail
-        # center. Do not start at the brightest pixel of the full thumbnail:
-        # for a faint source that is a noise peak far from the source, and
-        # the fit then measures the noise peak.
+        # Initial guess for parameters. Start at the thumbnail center (the
+        # source position). Do not start at the brightest pixel for a faint
+        # source: that is a noise peak far from the source, and the fit then
+        # measures the noise peak.
+        if self.start_at_brightest_pixel and not self.force_center:
+            y_peak, x_peak = np.unravel_index(
+                np.argmax(self.source.thumbnail), self.source.thumbnail.shape
+            )
+        else:
+            y_peak, x_peak = round((ny - 1) / 2), round((nx - 1) / 2)
+        x0_guess, y0_guess = X[y_peak, x_peak], Y[y_peak, x_peak]
         if self.force_center:
             x0_guess, y0_guess = 0.0, 0.0
-            amplitude_guess = self.source.thumbnail[
-                round((ny - 1) / 2), round((nx - 1) / 2)
-            ]
-        else:
-            near = (np.abs(X) <= allowable_center_offset_pixels[0]) & (
-                np.abs(Y) <= allowable_center_offset_pixels[1]
-            )
-            near_thumbnail = np.where(near, self.source.thumbnail, -np.inf)
-            y_peak, x_peak = np.unravel_index(
-                np.argmax(near_thumbnail), near_thumbnail.shape
-            )
-            x0_guess, y0_guess = X[y_peak, x_peak], Y[y_peak, x_peak]
-            amplitude_guess = self.source.thumbnail[y_peak, x_peak]
+        amplitude_guess = self.source.thumbnail[y_peak, x_peak]
 
         self.initial_guess = self.model.make_params(
             amplitude=amplitude_guess,
@@ -209,12 +213,12 @@ class LmFitGaussian2DFitter:
             self.initial_guess["theta"].set(vary=False)
         else:
             self.initial_guess["x0"].set(
-                min=-allowable_center_offset_pixels[0],
-                max=allowable_center_offset_pixels[0],
+                min=x0_guess - allowable_center_offset_pixels[0],
+                max=x0_guess + allowable_center_offset_pixels[0],
             )
             self.initial_guess["y0"].set(
-                min=-allowable_center_offset_pixels[1],
-                max=allowable_center_offset_pixels[1],
+                min=y0_guess - allowable_center_offset_pixels[1],
+                max=y0_guess + allowable_center_offset_pixels[1],
             )
 
         self.initial_guess["sigma_x"].set(min=0.0, max=nx)
@@ -355,6 +359,7 @@ def gaussian_fit(
     pointing_model: PointingModel | None = None,
     allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
     goodness_of_fit_threshold: float | None = None,
+    start_at_brightest_pixel: bool = False,
     flags: dict = {},
     log: FilteringBoundLogger | None = None,
     debug: bool = False,
@@ -397,6 +402,10 @@ def gaussian_fit(
     goodness_of_fit_threshold : float or None, optional
         If not None, the minimum R^2 value for the fit to be considered successful.
         If None, no R^2 value cut is applied. The default is None.
+    start_at_brightest_pixel : bool, optional
+        If True, start each fit at the brightest pixel of the thumbnail (use
+        for pointing sources, before the pointing correction). If False,
+        start each fit at the source position. The default is False.
     flags : dict, optional
         Dictionary mapping flag names (str) to boolean lists of length
         ``len(source_list)``. For each source, all flag names whose list entry
@@ -563,6 +572,7 @@ def gaussian_fit(
             if forced_source.flux is not None
             else False,
             allowable_center_offset=allowable_center_offset,
+            start_at_brightest_pixel=start_at_brightest_pixel,
             log=log,
         )
 

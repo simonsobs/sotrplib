@@ -154,3 +154,21 @@ def test_lmfit_free_center_stays_near_source():
     assert not fit.failed
     assert fit.amplitude.to_value(u.mJy) == pytest.approx(20.0, rel=0.5)
     assert abs(fit.ra_offset.to_value(u.arcmin)) <= 1.0
+
+
+def test_lmfit_start_at_brightest_pixel_finds_offset_source():
+    ## a pointing source 1.5 arcmin from the center: the start position is
+    ## the brightest pixel, so the fit finds it with a 1 arcmin limit
+    source = _thumbnail_source([(50.0, 1.5, 0.0)])
+    fitter = LmFitGaussian2DFitter(
+        source,
+        force_center=False,
+        allowable_center_offset=1.0 * u.arcmin,
+        start_at_brightest_pixel=True,
+    )
+    fitter.initialize_model()
+    fit = fitter.fit()
+
+    assert not fit.failed
+    assert fit.amplitude.to_value(u.mJy) == pytest.approx(50.0, rel=0.1)
+    assert abs(fit.ra_offset.to_value(u.arcmin)) == pytest.approx(1.5, abs=0.1)
