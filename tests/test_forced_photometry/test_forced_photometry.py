@@ -199,3 +199,21 @@ def test_lmfit_config_ignores_centroid_options():
             flux_limit_centroid="0.1 Jy", allowable_center_offset="1 arcmin"
         )
     assert isinstance(config.to_forced_photometry(), TwoDGaussianFitter)
+
+
+def test_lmfit_error_is_map_noise(map_with_single_source):
+    input_map, sources = map_with_single_source
+    forced_photometry = TwoDGaussianFitter(mode="lmfit")
+    catalog = RegisteredSourceCatalog(sources=[])
+    catalog.add_sources(sources=sources)
+    catalog.valid_fluxes = [s.source_id for s in sources]
+    results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
+
+    ## the flux error is the map noise (flux / SNR) at the source position,
+    ## not the lmfit error
+    pos = np.array([[results[0].dec.to_value(u.rad)], [results[0].ra.to_value(u.rad)]])
+    noise = input_map.flux.at(pos, mode="nn")[0] / input_map.snr.at(pos, mode="nn")[0]
+    assert results[0].err_flux.to_value(input_map.flux_units) == pytest.approx(noise)
+    assert results[0].snr == pytest.approx(
+        (results[0].flux / results[0].err_flux).to_value(u.dimensionless_unscaled)
+    )

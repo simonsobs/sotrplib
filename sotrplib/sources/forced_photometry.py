@@ -345,6 +345,39 @@ class LmFitGaussian2DFitter:
         return self.fit_params
 
 
+def _map_noise_at_fit(
+    input_map: ProcessableMap,
+    source: MeasuredSource,
+    fit: GaussianFitParameters,
+) -> AstroPydanticQuantity | None:
+    """
+    Get the map noise (flux / SNR) at the fitted source position.
+
+    The fitted position is the source position, less the fit offsets
+    (offset = source position - fitted position). If the fit has no offsets
+    (forced center), the fitted position is the source position.
+
+    Returns None if the fit failed, or if the noise is not finite and
+    positive at that position.
+    """
+    if fit.failed:
+        return None
+    dec = source.dec.to_value(u.rad)
+    ra = source.ra.to_value(u.rad)
+    if fit.ra_offset is not None and fit.dec_offset is not None:
+        dec -= fit.dec_offset.to_value(u.rad)
+        ra -= fit.ra_offset.to_value(u.rad) / np.cos(dec)
+    ## noise = flux / SNR, as ProcessableMap.noise, but at one pixel only
+    pos = np.array([[dec], [ra]])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        noise = (
+            input_map.flux.at(pos, mode="nn")[0] / input_map.snr.at(pos, mode="nn")[0]
+        )
+    if not np.isfinite(noise) or noise <= 0:
+        return None
+    return AstroPydanticQuantity(float(noise), input_map.flux_units)
+
+
 def gaussian_fit(
     input_map: ProcessableMap,
     source_list: list[RegisteredSource],
@@ -583,10 +616,17 @@ def gaussian_fit(
         forced_source.fit_failed = fit.failed
         forced_source.fit_failure_reason = fit.failure_reason
         forced_source.flux = fit.amplitude
-        forced_source.err_flux = fit.amplitude_err
+        ## The lmfit error is too small: it treats the thumbnail pixels as
+        ## independent, but the map pixels are correlated over the beam. Use
+        ## the map noise at the fitted position. Keep the lmfit error if the
+        ## map has no noise value there.
+        map_noise = _map_noise_at_fit(input_map, forced_source, fit)
+        forced_source.err_flux = (
+            map_noise if map_noise is not None else fit.amplitude_err
+        )
         forced_source.snr = (
-            (fit.amplitude / fit.amplitude_err).value
-            if (fit.amplitude_err is not None) and (fit.amplitude is not None)
+            (fit.amplitude / forced_source.err_flux).to_value(u.dimensionless_unscaled)
+            if (forced_source.err_flux is not None) and (fit.amplitude is not None)
             else None
         )
 
