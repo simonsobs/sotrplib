@@ -215,8 +215,9 @@ def test_source_injection_forced_photometry():
             continue
         n_valid += 1
         assert min_flux * 0.9 <= res.flux <= max_flux * 1.1
-        assert abs(res.offset_ra.to_value(u.arcmin)) < 1.0
-        assert abs(res.offset_dec.to_value(u.arcmin)) < 1.0
+        ## forced photometry fits at the source position: no centroid offsets
+        assert res.offset_ra is None
+        assert res.offset_dec is None
     assert n_valid >= number // 2
 
 

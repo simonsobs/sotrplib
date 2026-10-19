@@ -20,8 +20,7 @@
     },
     "forced_photometry": {
         "photometry_type": "lmfit",
-        "min_flux": "0.01 Jy",
-        "flux_limit_centroid": "0.1 Jy"
+        "min_flux": "0.01 Jy"
     },
     "source_subtractor": {
         "subtractor_type": "photutils"

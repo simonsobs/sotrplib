@@ -267,9 +267,7 @@ def generate_config_json(
     "forced_photometry": {{
         "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
-        "flux_limit_centroid": "0.1 Jy",
-        "thumbnail_half_width": "4 arcmin",
-        "allowable_centroid_offset": "1.0 arcmin"
+        "thumbnail_half_width": "4 arcmin"
     }},
     "sifter": {{
         "sifter_type": "default"

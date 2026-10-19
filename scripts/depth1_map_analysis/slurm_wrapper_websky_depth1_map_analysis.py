@@ -248,7 +248,6 @@ def generate_config_json(
     "forced_photometry": {{
         "photometry_type": "scipy",
         "reproject_thumbnails": "True",
-        "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "{thumbnail_half_width}"
     }},
     "sifter": {{
