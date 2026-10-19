@@ -141,7 +141,8 @@ class LmFitGaussian2DFitter:
 
         Initialize the 2D Gaussian model and initial parameter guess
 
-        Forcing center removes the x0,y0 from the fit parameters.
+        Forcing center removes x0, y0, sigma_x, sigma_y and theta from the
+        fit parameters: the fit is a beam at the source position.
         """
         self.model = lmfit.Model(gaussian_2d_lmfit, independent_vars=["x", "y"])
         ny, nx = self.source.thumbnail.shape
@@ -155,14 +156,6 @@ class LmFitGaussian2DFitter:
         xy = (X.ravel(), Y.ravel())
         self.xy = xy
 
-        # Initial guess for parameters
-        amplitude_guess = self.source.thumbnail.max()
-        y0_guess, x0_guess = np.unravel_index(
-            np.argmax(self.source.thumbnail), self.source.thumbnail.shape
-        )
-        x0_guess -= (nx - 1) / 2
-        y0_guess -= (ny - 1) / 2
-
         sigma_guess = (
             self.fwhm_guess.to(u.arcmin).value
             / abs(self.source.thumbnail_res.to(u.arcmin).value)
@@ -175,6 +168,26 @@ class LmFitGaussian2DFitter:
             u.arcmin
         ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
 
+        # Initial guess for parameters. The source position is the thumbnail
+        # center. Do not start at the brightest pixel of the full thumbnail:
+        # for a faint source that is a noise peak far from the source, and
+        # the fit then measures the noise peak.
+        if self.force_center:
+            x0_guess, y0_guess = 0.0, 0.0
+            amplitude_guess = self.source.thumbnail[
+                round((ny - 1) / 2), round((nx - 1) / 2)
+            ]
+        else:
+            near = (np.abs(X) <= allowable_center_offset_pixels[0]) & (
+                np.abs(Y) <= allowable_center_offset_pixels[1]
+            )
+            near_thumbnail = np.where(near, self.source.thumbnail, -np.inf)
+            y_peak, x_peak = np.unravel_index(
+                np.argmax(near_thumbnail), near_thumbnail.shape
+            )
+            x0_guess, y0_guess = X[y_peak, x_peak], Y[y_peak, x_peak]
+            amplitude_guess = self.source.thumbnail[y_peak, x_peak]
+
         self.initial_guess = self.model.make_params(
             amplitude=amplitude_guess,
             x0=x0_guess,
@@ -186,16 +199,22 @@ class LmFitGaussian2DFitter:
         )
 
         if self.force_center:
+            # Also keep the beam shape fixed. With a free width, the fit can
+            # make the Gaussian wide to include a noise peak or a nearby
+            # source.
             self.initial_guess["x0"].set(vary=False)
             self.initial_guess["y0"].set(vary=False)
+            self.initial_guess["sigma_x"].set(vary=False)
+            self.initial_guess["sigma_y"].set(vary=False)
+            self.initial_guess["theta"].set(vary=False)
         else:
             self.initial_guess["x0"].set(
-                min=x0_guess - allowable_center_offset_pixels[0],
-                max=x0_guess + allowable_center_offset_pixels[0],
+                min=-allowable_center_offset_pixels[0],
+                max=allowable_center_offset_pixels[0],
             )
             self.initial_guess["y0"].set(
-                min=y0_guess - allowable_center_offset_pixels[1],
-                max=y0_guess + allowable_center_offset_pixels[1],
+                min=-allowable_center_offset_pixels[1],
+                max=allowable_center_offset_pixels[1],
             )
 
         self.initial_guess["sigma_x"].set(min=0.0, max=nx)
