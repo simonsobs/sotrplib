@@ -233,9 +233,7 @@ def config(obs: list[dict], out_dir: str, summary_dir: str) -> dict:
         "forced_photometry": {
             "photometry_type": "lmfit",
             "reproject_thumbnails": True,
-            "flux_limit_centroid": "0.1 Jy",
             "thumbnail_half_width": "4 arcmin",
-            "allowable_center_offset": "1.0 arcmin",
             "near_source_rel_flux_limit": 1.0,
         },
         "sifter": {
