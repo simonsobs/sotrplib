@@ -181,6 +181,94 @@ def get_dflux(kappa: np.ndarray):
     return dflux
 
 
+def snr_tile_rms(
+    snr: np.ndarray,
+    valid: np.ndarray,
+    tile_pix: int,
+    min_pixels: int = 50,
+) -> np.ndarray:
+    """
+    Calculate the robust rms of the snr map in square tiles.
+
+    The rms of a tile is 1.4826 times the median absolute deviation of the
+    valid pixels. Thus, a small number of sources does not change the rms.
+    If the noise model of the matched filter is correct, the rms is
+    approximately 1.
+
+    snr: the snr map, shape (ny, nx).
+    valid: True for the pixels to use, shape (ny, nx).
+    tile_pix: the size of the tiles in pixels. The tiles at the top and
+        right edges can be smaller.
+    min_pixels: a tile with fewer valid pixels gets NaN.
+
+    Returns the rms in each tile, shape (ceil(ny / tile_pix), ceil(nx / tile_pix)).
+    """
+    snr = np.asarray(snr)
+    valid = np.asarray(valid, dtype=bool) & np.isfinite(snr)
+    ny, nx = snr.shape[-2:]
+    nty, ntx = -(-ny // tile_pix), -(-nx // tile_pix)
+    rms = np.full((nty, ntx), np.nan)
+    for j in range(nty):
+        for i in range(ntx):
+            sl = (
+                slice(j * tile_pix, (j + 1) * tile_pix),
+                slice(i * tile_pix, (i + 1) * tile_pix),
+            )
+            values = snr[sl][valid[sl]]
+            if values.size >= min_pixels:
+                rms[j, i] = 1.4826 * np.median(np.abs(values - np.median(values)))
+    return rms
+
+
+def tiles_to_pixels(
+    tile_values: np.ndarray, shape: tuple[int, int], tile_pix: int
+) -> np.ndarray:
+    """
+    Expand a map of tile values (from snr_tile_rms) to a map of pixels
+    of the given shape (ny, nx).
+    """
+    pixels = np.repeat(np.repeat(tile_values, tile_pix, axis=0), tile_pix, axis=1)
+    return pixels[: shape[0], : shape[1]]
+
+
+def snr_rms_tile_mask(
+    snr: np.ndarray,
+    valid: np.ndarray,
+    tile_pix: int,
+    max_rms: float | None = None,
+    min_rms: float | None = None,
+    grow_tiles: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find the tiles of the snr map with an rms outside [min_rms, max_rms].
+
+    snr, valid, tile_pix: see snr_tile_rms.
+    max_rms: tiles with a larger rms are bad. None means no upper limit.
+    min_rms: tiles with a smaller rms are bad. None means no lower limit.
+    grow_tiles: also mark this number of tiles around each bad tile as bad.
+
+    Returns (bad, rms). bad is True in the bad pixels, shape (ny, nx). rms is
+    the rms in each tile (see snr_tile_rms).
+    """
+    from scipy import ndimage
+
+    rms = snr_tile_rms(snr, valid, tile_pix)
+    bad_tiles = np.zeros(rms.shape, dtype=bool)
+    finite = np.isfinite(rms)
+    if max_rms is not None:
+        bad_tiles |= finite & (rms > max_rms)
+    if min_rms is not None:
+        bad_tiles |= finite & (rms < min_rms)
+    if grow_tiles > 0 and bad_tiles.any():
+        bad_tiles = ndimage.binary_dilation(
+            bad_tiles,
+            structure=np.ones((3, 3), dtype=bool),
+            iterations=grow_tiles,
+        )
+    bad = tiles_to_pixels(bad_tiles, np.shape(snr)[-2:], tile_pix)
+    return bad, rms
+
+
 def get_maptype(map_path: Path):
     if "rho" in str(map_path):
         maptype = "rho"

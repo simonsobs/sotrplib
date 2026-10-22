@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import structlog
 from astropy import units as u
 from astropy.time import Time
@@ -225,8 +226,29 @@ class MatchedFilter(MapPreprocessor):
         simple_alpha: float = -3.5,
         lres=(70, 100),
         pixwin: str = "nn",
+        noise_mask_max_rms: float | None = None,
+        noise_mask_tile_size: AstroPydanticQuantity = 0.5 * u.degree,
+        noise_mask_grow_tiles: int = 1,
+        noise_mask_apod: AstroPydanticQuantity = 10 * u.arcmin,
+        noise_mask_max_fraction: float = 0.5,
         log: FilteringBoundLogger | None = None,
     ):
+        """
+        Matched filter of a depth-1 map (see matched_filter_depth1_map).
+
+        noise_mask_max_rms: if not None, filter the map two times. The first
+            filter gives the snr map. Tiles of noise_mask_tile_size where the
+            robust rms of the snr is more than noise_mask_max_rms have much
+            more noise than the noise model (e.g. scan stripes). The second
+            filter removes these tiles from the noise model, so that the noise
+            model is correct for the remaining map.
+        noise_mask_grow_tiles: also remove this number of tiles around each
+            noisy tile.
+        noise_mask_apod: apodization width of the edge of the removed region.
+        noise_mask_max_fraction: if the noisy tiles are more than this fraction
+            of the map, the second filter does not occur, because the noise
+            model needs sufficient area.
+        """
         self.infofile = infofile
         self.maskfile = maskfile
         self.beam1d = beam1d
@@ -243,6 +265,11 @@ class MatchedFilter(MapPreprocessor):
         self.simple_alpha = simple_alpha
         self.lres = lres
         self.pixwin = pixwin
+        self.noise_mask_max_rms = noise_mask_max_rms
+        self.noise_mask_tile_size = noise_mask_tile_size
+        self.noise_mask_grow_tiles = noise_mask_grow_tiles
+        self.noise_mask_apod = noise_mask_apod
+        self.noise_mask_max_fraction = noise_mask_max_fraction
         self.log = log
 
     def _beam1d_for(self, input_map: ProcessableMap) -> Path | None:
@@ -256,8 +283,10 @@ class MatchedFilter(MapPreprocessor):
                 f"{input_map.map_name}; beam1d has bands {sorted(self.beam1d)}."
             ) from None
 
-    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
-        rho, kappa = matched_filter_depth1_map(
+    def _filter(
+        self, input_map: ProcessableMap, noise_model_mask: np.ndarray | None = None
+    ) -> tuple[enmap.ndmap, enmap.ndmap]:
+        return matched_filter_depth1_map(
             imap=input_map.intensity * input_map.intensity_units.to(u.K),
             ivarmap=input_map.inverse_variance / input_map.intensity_units.to(u.K) ** 2,
             band_center=get_frequency(
@@ -287,7 +316,67 @@ class MatchedFilter(MapPreprocessor):
             simple_alpha=self.simple_alpha,
             lres=self.lres,
             pixwin=self.pixwin,
+            noise_model_mask=noise_model_mask,
         )
+
+    def _noise_model_mask(
+        self, input_map: ProcessableMap, rho: enmap.ndmap, kappa: enmap.ndmap
+    ) -> np.ndarray | None:
+        """
+        Make the noise model mask (0 in the noisy tiles, apodized) from the snr
+        of the first filter. Returns None if no tile is noisy, or if the noisy
+        tiles are more than noise_mask_max_fraction of the map.
+        """
+        from sotrplib.maps.maps import get_snr, snr_rms_tile_mask
+
+        log = (self.log or structlog.get_logger()).bind(
+            func_name="matched_filter.noise_model_mask", map_name=input_map.map_name
+        )
+        kappa_values = np.asarray(kappa)
+        valid = kappa_values > 0
+        if input_map.mask is not None:
+            valid &= np.asarray(input_map.mask) > 0
+        snr = get_snr(np.asarray(rho), kappa_values)
+        resolution = u.Quantity(abs(rho.wcs.wcs.cdelt[1]), rho.wcs.wcs.cunit[1])
+        tile_pix = max(
+            1, int(round((self.noise_mask_tile_size / resolution).to_value("")))
+        )
+        noisy, rms = snr_rms_tile_mask(
+            snr,
+            valid,
+            tile_pix,
+            max_rms=self.noise_mask_max_rms,
+            grow_tiles=self.noise_mask_grow_tiles,
+        )
+        fraction = float(noisy[valid].mean()) if valid.any() else 0.0
+        log = log.bind(
+            tile_rms_median=float(np.nanmedian(rms))
+            if np.isfinite(rms).any()
+            else None,
+            noisy_fraction=round(fraction, 4),
+        )
+        if not noisy.any():
+            log.info("matched_filter.noise_model_mask.no_noisy_tiles")
+            return None
+        if fraction > self.noise_mask_max_fraction:
+            log.warning(
+                "matched_filter.noise_model_mask.too_many_noisy_tiles",
+                max_fraction=self.noise_mask_max_fraction,
+            )
+            return None
+        log.info("matched_filter.noise_model_mask.applied")
+        keep = enmap.ndmap((~noisy).astype(np.float32), rho.wcs)
+        return np.asarray(
+            enmap.apod_mask(keep > 0, self.noise_mask_apod.to_value(u.rad))
+        )
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        rho, kappa = self._filter(input_map)
+        if self.noise_mask_max_rms is not None:
+            noise_model_mask = self._noise_model_mask(input_map, rho, kappa)
+            if noise_model_mask is not None:
+                del rho, kappa
+                rho, kappa = self._filter(input_map, noise_model_mask=noise_model_mask)
         return MatchedFilteredIntensityAndInverseVarianceMap(
             rho=rho, kappa=kappa, prefiltered_map=input_map, flux_units=u.mJy
         )

@@ -7,6 +7,7 @@ the snr and flux arrays already exist.
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+import numpy as np
 import structlog
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
@@ -14,7 +15,11 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
-from sotrplib.maps.maps import flat_field_using_photutils, flat_field_using_pixell
+from sotrplib.maps.maps import (
+    flat_field_using_photutils,
+    flat_field_using_pixell,
+    snr_rms_tile_mask,
+)
 from sotrplib.maps.masks import mask_dustgal
 
 
@@ -56,6 +61,78 @@ class GalaxyMask(MapPostprocessor):
         input_map.flux *= galaxy_mask
         input_map.snr *= galaxy_mask
 
+        return input_map
+
+
+class SnrRmsMask(MapPostprocessor):
+    """
+    Mask the tiles of the map where the robust rms of the snr is outside
+    [min_rms, max_rms]. In these tiles the noise model of the matched filter
+    is not correct (e.g. scan stripes), thus the snr is not reliable.
+
+    The postprocessor sets the mask of the map to 0 in the bad tiles and sets
+    the snr and the flux to 0 there (as apply_mask). Thus, forced photometry
+    and the blind search do not use these tiles.
+
+    Put this postprocessor before the flatfield. The flatfield divides the snr
+    by the local rms, thus after the flatfield the rms is approximately 1 in
+    all tiles.
+    """
+
+    def __init__(
+        self,
+        max_rms: float | None = 1.2,
+        min_rms: float | None = None,
+        tile_size: u.Quantity = 0.5 * u.deg,
+        grow_tiles: int = 0,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.max_rms = max_rms
+        self.min_rms = min_rms
+        self.tile_size = tile_size
+        self.grow_tiles = grow_tiles
+        self.log = log or structlog.get_logger()
+
+    def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(
+            func_name="snr_rms_mask.postprocess", map_name=input_map.map_name
+        )
+        snr = np.asarray(input_map.snr)
+        valid = np.isfinite(snr) & (snr != 0)
+        if input_map.mask is not None:
+            valid &= np.asarray(input_map.mask) > 0
+        tile_pix = max(
+            1,
+            int(round((self.tile_size / input_map.res).to_value(""))),
+        )
+        bad, rms = snr_rms_tile_mask(
+            snr,
+            valid,
+            tile_pix,
+            max_rms=self.max_rms,
+            min_rms=self.min_rms,
+            grow_tiles=self.grow_tiles,
+        )
+        finite = np.isfinite(rms)
+        log.info(
+            "snr_rms_mask.tiles",
+            n_tiles=int(finite.sum()),
+            tile_rms_median=float(np.median(rms[finite])) if finite.any() else None,
+            n_above_max=int((rms[finite] > self.max_rms).sum())
+            if self.max_rms is not None
+            else 0,
+            n_below_min=int((rms[finite] < self.min_rms).sum())
+            if self.min_rms is not None
+            else 0,
+            masked_fraction=round(float(bad[valid].mean()), 4) if valid.any() else 0.0,
+        )
+        if not bad.any():
+            return input_map
+
+        good = enmap.ndmap((~bad).astype(np.float32), input_map.snr.wcs)
+        input_map.mask = good if input_map.mask is None else input_map.mask * good
+        input_map.snr *= good
+        input_map.flux *= good
         return input_map
 
 

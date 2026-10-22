@@ -92,6 +92,13 @@ class MatchedFilterConfig(PreprocessorConfig):
     simple_alpha: float = -3.5
     lres: tuple = (70, 100)
     pixwin: str = "nn"
+    noise_mask_max_rms: float | None = None
+    "If not None, filter two times. The second filter removes the tiles where "
+    "the snr rms of the first filter is more than this value from the noise model."
+    noise_mask_tile_size: AstroPydanticQuantity = 0.5 * u.degree
+    noise_mask_grow_tiles: int = 1
+    noise_mask_apod: AstroPydanticQuantity = 10 * u.arcmin
+    noise_mask_max_fraction: float = 0.5
 
     def to_preprocessor(
         self, log: FilteringBoundLogger | None = None
@@ -113,6 +120,11 @@ class MatchedFilterConfig(PreprocessorConfig):
             simple_alpha=self.simple_alpha,
             lres=self.lres,
             pixwin=self.pixwin,
+            noise_mask_max_rms=self.noise_mask_max_rms,
+            noise_mask_tile_size=self.noise_mask_tile_size,
+            noise_mask_grow_tiles=self.noise_mask_grow_tiles,
+            noise_mask_apod=self.noise_mask_apod,
+            noise_mask_max_fraction=self.noise_mask_max_fraction,
             log=log,
         )
 

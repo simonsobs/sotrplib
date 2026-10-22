@@ -11,6 +11,7 @@ from sotrplib.maps.postprocessor import (
     GalaxyMask,
     MapPostprocessor,
     PhotutilsFlatFielder,
+    SnrRmsMask,
 )
 
 
@@ -46,4 +47,26 @@ class FlatfieldConfig(PostprocessorConfig):
         )
 
 
-AllPostprocessorConfigTypes = GalaxyMaskConfig | FlatfieldConfig
+class SnrRmsMaskConfig(PostprocessorConfig):
+    """
+    Mask the tiles where the robust rms of the snr is outside
+    [min_rms, max_rms]. Put it before the flatfield.
+    """
+
+    postprocessor_type: Literal["snr_rms_mask"] = "snr_rms_mask"
+    max_rms: float | None = 1.2
+    min_rms: float | None = None
+    tile_size: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(0.5 * u.deg)
+    grow_tiles: int = 0
+
+    def to_postprocessor(self, log: FilteringBoundLogger | None = None) -> SnrRmsMask:
+        return SnrRmsMask(
+            max_rms=self.max_rms,
+            min_rms=self.min_rms,
+            tile_size=self.tile_size,
+            grow_tiles=self.grow_tiles,
+            log=log,
+        )
+
+
+AllPostprocessorConfigTypes = GalaxyMaskConfig | FlatfieldConfig | SnrRmsMaskConfig

@@ -173,6 +173,7 @@ def matched_filter_depth1_map(
     simple_alpha: float = -3.5,
     lres=(70, 100),
     pixwin: str = "nn",
+    noise_model_mask: np.ndarray | None = None,
 ):
     """
     copy of the script https://github.com/amaurea/tenki/blob/master/filter_depth1.py converted to a function.
@@ -245,6 +246,12 @@ def matched_filter_depth1_map(
     pixwin: str = "nn"
         apply pixel window function. This is included as part of the beam, which is valid in the flat sky
         posible values are nearest neighbor "nn" "0" bilinear "lin" "bilin" "1" or "none"
+
+    noise_model_mask: np.ndarray | None = None
+        weights for the noise model, same shape as the map, from 0 to 1. The 2D noise spectrum
+        uses only the regions with weight > 0. The filter still filters the full map. Use this
+        to remove regions with much more noise (e.g. scan stripes) from the noise model.
+        The mask must be apodized. None means use the full map.
 
     Returns:
     -----------
@@ -320,13 +327,22 @@ def matched_filter_depth1_map(
 
     imap *= noise_apod
 
-    # Build the noise model
+    # Build the noise model. The regions where noise_model_mask is 0 are not
+    # in the noise spectrum, but the filter still filters them.
+    if noise_model_mask is None:
+        noise_map = imap
+        apod_corr = np.mean(noise_apod**2)
+    else:
+        noise_model_mask = np.asarray(noise_model_mask, dtype=imap.dtype)
+        noise_map = imap * noise_model_mask
+        apod_corr = np.mean((noise_apod * noise_model_mask) ** 2)
     iC = build_ips2d_udgrade(
-        S.forward(imap),
+        S.forward(noise_map),
         S.forward(ivarmap * noise_apod),
-        apod_corr=np.mean(noise_apod**2),
+        apod_corr=apod_corr,
         lres=lres,
     )
+    del noise_map
     del noise_apod
     if highpass > 0:
         iC = highpass_ips2d(iC, simple_lknee)

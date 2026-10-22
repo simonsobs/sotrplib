@@ -150,6 +150,58 @@ bands. The preprocessor selects the file with the `frequency` of the map. If
 a band has no file, the preprocessor raises `ValueError`.
 
 
+Noisy regions of the map
+------------------------
+
+The matched filter uses one 2D noise spectrum for the full map. Some maps
+have regions with much more noise than the remaining map, for example scan
+stripes from the end of an observation. These regions make the noise spectrum
+too large. Thus, the snr rms of these regions is more than 1, and the snr rms
+of the remaining map is less than 1.
+
+To remove the noisy regions from the noise spectrum, set
+`noise_mask_max_rms` in the `matched_filter` preprocessor:
+
+```json
+{
+    "preprocessor_type": "matched_filter",
+    "noise_mask_max_rms": 1.2
+}
+```
+
+The preprocessor then filters the map two times:
+
+1. The first filter gives the snr map. The preprocessor calculates the robust
+   rms of the snr in tiles of `noise_mask_tile_size` (default 0.5 deg).
+2. The tiles with an rms more than `noise_mask_max_rms` are noisy. The
+   preprocessor also marks `noise_mask_grow_tiles` (default 1) tiles around
+   each noisy tile. It apodizes the edge of this region by `noise_mask_apod`
+   (default 10 arcmin).
+3. The second filter calculates the noise spectrum without the noisy region,
+   and filters the full map with this spectrum.
+
+If no tile is noisy, the second filter does not occur. If the noisy region is
+more than `noise_mask_max_fraction` (default 0.5) of the map, the second
+filter also does not occur, because the noise spectrum needs sufficient area.
+
+After the second filter, the snr rms of the noisy region is still more than
+1. To remove these tiles from the analysis, use the `snr_rms_mask`
+postprocessor. Put it before the `flatfield` postprocessor, because the
+flatfield makes the rms approximately 1 in all tiles:
+
+```json
+"postprocessors": [
+    {"postprocessor_type": "snr_rms_mask", "max_rms": 1.2},
+    {"postprocessor_type": "flatfield"}
+]
+```
+
+The `snr_rms_mask` postprocessor sets the mask, the snr and the flux of the
+map to 0 in the tiles where the snr rms is more than `max_rms` or less than
+`min_rms` (default: no lower limit). Forced photometry and the blind search
+do not use these tiles.
+
+
 Sifter cuts
 -----------
 
