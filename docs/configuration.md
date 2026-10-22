@@ -201,6 +201,17 @@ map to 0 in the tiles where the snr rms is more than `max_rms` or less than
 `min_rms` (default: no lower limit). Forced photometry and the blind search
 do not use these tiles.
 
+A bright source increases the rms of its tile, because its wings in the
+filtered map (for example ringing) are many pixels with a large snr. Thus,
+both steps use a sigma clip for the tile rms. First, they calculate the rms
+of each tile. Then they do not use the pixels with |snr| more than
+`source_nsigma` (default 5) times the rms of the tile, and the pixels in
+`source_radius` (default 5 arcmin) around them, and calculate the rms again.
+For the matched filter, the settings are `noise_mask_source_nsigma` and
+`noise_mask_source_radius`. The clip is relative to the rms of the tile, thus
+it does not remove the noise of a noisy tile. Do not set `source_nsigma` to
+`null`: then a bright flare can mask its own tile.
+
 
 Sifter cuts
 -----------

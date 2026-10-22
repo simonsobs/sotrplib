@@ -191,7 +191,10 @@ def snr_tile_rms(
     Calculate the robust rms of the snr map in square tiles.
 
     The rms of a tile is 1.4826 times the median absolute deviation of the
-    valid pixels. Thus, a small number of sources does not change the rms.
+    valid pixels. Thus, a small number of faint sources does not change the
+    rms. A bright source changes the rms, because its wings in the filtered
+    map (for example ringing) are many pixels with a large snr. Remove the
+    pixels of bright sources from valid first (see snr_rms_tile_mask).
     If the noise model of the matched filter is correct, the rms is
     approximately 1.
 
@@ -231,6 +234,21 @@ def tiles_to_pixels(
     return pixels[: shape[0], : shape[1]]
 
 
+def grow_mask(mask: np.ndarray, radius_pix: int) -> np.ndarray:
+    """
+    Grow the True regions of a 2d mask by a square of half width radius_pix.
+
+    The square contains the disk of radius radius_pix. Two 1d maximum
+    filters make the square, thus the function is fast for a large map.
+    """
+    from scipy import ndimage
+
+    size = 2 * int(radius_pix) + 1
+    out = ndimage.maximum_filter1d(np.asarray(mask, dtype=np.uint8), size, axis=0)
+    out = ndimage.maximum_filter1d(out, size, axis=1)
+    return out.astype(bool)
+
+
 def snr_rms_tile_mask(
     snr: np.ndarray,
     valid: np.ndarray,
@@ -238,6 +256,8 @@ def snr_rms_tile_mask(
     max_rms: float | None = None,
     min_rms: float | None = None,
     grow_tiles: int = 0,
+    source_nsigma: float | None = 5.0,
+    source_radius_pix: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Find the tiles of the snr map with an rms outside [min_rms, max_rms].
@@ -246,13 +266,38 @@ def snr_rms_tile_mask(
     max_rms: tiles with a larger rms are bad. None means no upper limit.
     min_rms: tiles with a smaller rms are bad. None means no lower limit.
     grow_tiles: also mark this number of tiles around each bad tile as bad.
+    source_nsigma: sigma clip of sources. First, the function calculates the
+        rms of each tile with all the valid pixels. Then it does not use the
+        pixels with |snr| > source_nsigma * (rms of the tile) and calculates
+        the rms again. None means no clip.
+    source_radius_pix: also do not use the pixels in a square of this half
+        width around each clipped pixel (see grow_mask). Make it larger than
+        the wings of the filtered sources.
+
+    Thus, a bright source does not make its tile bad. The clip is relative
+    to the rms of the tile, thus it does not remove the noise of a noisy
+    tile. If the clip leaves too few pixels in a tile, the tile keeps the
+    rms of all its valid pixels.
 
     Returns (bad, rms). bad is True in the bad pixels, shape (ny, nx). rms is
     the rms in each tile (see snr_tile_rms).
     """
     from scipy import ndimage
 
+    valid = np.asarray(valid, dtype=bool)
     rms = snr_tile_rms(snr, valid, tile_pix)
+    if source_nsigma is not None:
+        limit = tiles_to_pixels(
+            np.where(np.isfinite(rms), source_nsigma * rms, np.inf),
+            np.shape(snr)[-2:],
+            tile_pix,
+        )
+        sources = valid & (np.abs(np.nan_to_num(snr)) > limit)
+        if sources.any():
+            if source_radius_pix > 0:
+                sources = grow_mask(sources, int(source_radius_pix))
+            clipped = snr_tile_rms(snr, valid & ~sources, tile_pix)
+            rms = np.where(np.isfinite(clipped), clipped, rms)
     bad_tiles = np.zeros(rms.shape, dtype=bool)
     finite = np.isfinite(rms)
     if max_rms is not None:

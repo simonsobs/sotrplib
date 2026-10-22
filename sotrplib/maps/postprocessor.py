@@ -74,6 +74,11 @@ class SnrRmsMask(MapPostprocessor):
     the snr and the flux to 0 there (as apply_mask). Thus, forced photometry
     and the blind search do not use these tiles.
 
+    The rms of a tile does not use the pixels with |snr| > source_nsigma times
+    the rms of the tile, and the pixels in source_radius around them (a
+    sigma clip, see snr_rms_tile_mask). Thus, a bright source (for
+    example a flare) does not make its tile bad.
+
     Put this postprocessor before the flatfield. The flatfield divides the snr
     by the local rms, thus after the flatfield the rms is approximately 1 in
     all tiles.
@@ -85,12 +90,16 @@ class SnrRmsMask(MapPostprocessor):
         min_rms: float | None = None,
         tile_size: u.Quantity = 0.5 * u.deg,
         grow_tiles: int = 0,
+        source_nsigma: float | None = 5.0,
+        source_radius: u.Quantity = 5 * u.arcmin,
         log: FilteringBoundLogger | None = None,
     ):
         self.max_rms = max_rms
         self.min_rms = min_rms
         self.tile_size = tile_size
         self.grow_tiles = grow_tiles
+        self.source_nsigma = source_nsigma
+        self.source_radius = source_radius
         self.log = log or structlog.get_logger()
 
     def postprocess(self, input_map: ProcessableMap) -> ProcessableMap:
@@ -112,6 +121,10 @@ class SnrRmsMask(MapPostprocessor):
             max_rms=self.max_rms,
             min_rms=self.min_rms,
             grow_tiles=self.grow_tiles,
+            source_nsigma=self.source_nsigma,
+            source_radius_pix=int(
+                round((self.source_radius / input_map.res).to_value(""))
+            ),
         )
         finite = np.isfinite(rms)
         log.info(

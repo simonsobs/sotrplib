@@ -99,6 +99,8 @@ class MatchedFilterConfig(PreprocessorConfig):
     noise_mask_grow_tiles: int = 1
     noise_mask_apod: AstroPydanticQuantity = 10 * u.arcmin
     noise_mask_max_fraction: float = 0.5
+    noise_mask_source_nsigma: float | None = 5.0
+    noise_mask_source_radius: AstroPydanticQuantity = 5 * u.arcmin
 
     def to_preprocessor(
         self, log: FilteringBoundLogger | None = None
@@ -125,6 +127,8 @@ class MatchedFilterConfig(PreprocessorConfig):
             noise_mask_grow_tiles=self.noise_mask_grow_tiles,
             noise_mask_apod=self.noise_mask_apod,
             noise_mask_max_fraction=self.noise_mask_max_fraction,
+            noise_mask_source_nsigma=self.noise_mask_source_nsigma,
+            noise_mask_source_radius=self.noise_mask_source_radius,
             log=log,
         )
 

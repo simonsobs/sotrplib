@@ -58,6 +58,10 @@ class SnrRmsMaskConfig(PostprocessorConfig):
     min_rms: float | None = None
     tile_size: AstroPydanticQuantity[u.deg] = AstroPydanticQuantity(0.5 * u.deg)
     grow_tiles: int = 0
+    source_nsigma: float | None = 5.0
+    "Sigma clip: the tile rms does not use the pixels with |snr| > source_nsigma * rms."
+    source_radius: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(5 * u.arcmin)
+    "The tile rms also does not use the pixels in this radius of them."
 
     def to_postprocessor(self, log: FilteringBoundLogger | None = None) -> SnrRmsMask:
         return SnrRmsMask(
@@ -65,6 +69,8 @@ class SnrRmsMaskConfig(PostprocessorConfig):
             min_rms=self.min_rms,
             tile_size=self.tile_size,
             grow_tiles=self.grow_tiles,
+            source_nsigma=self.source_nsigma,
+            source_radius=self.source_radius,
             log=log,
         )
 

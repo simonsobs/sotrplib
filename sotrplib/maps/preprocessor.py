@@ -231,6 +231,8 @@ class MatchedFilter(MapPreprocessor):
         noise_mask_grow_tiles: int = 1,
         noise_mask_apod: AstroPydanticQuantity = 10 * u.arcmin,
         noise_mask_max_fraction: float = 0.5,
+        noise_mask_source_nsigma: float | None = 5.0,
+        noise_mask_source_radius: AstroPydanticQuantity = 5 * u.arcmin,
         log: FilteringBoundLogger | None = None,
     ):
         """
@@ -248,6 +250,11 @@ class MatchedFilter(MapPreprocessor):
         noise_mask_max_fraction: if the noisy tiles are more than this fraction
             of the map, the second filter does not occur, because the noise
             model needs sufficient area.
+        noise_mask_source_nsigma, noise_mask_source_radius: the rms of a tile
+            does not use the pixels with |snr| > noise_mask_source_nsigma times
+            the rms of the tile, and the pixels near them (a sigma clip, see
+            snr_rms_tile_mask). Thus, a bright source does not make its tile
+            noisy.
         """
         self.infofile = infofile
         self.maskfile = maskfile
@@ -270,6 +277,8 @@ class MatchedFilter(MapPreprocessor):
         self.noise_mask_grow_tiles = noise_mask_grow_tiles
         self.noise_mask_apod = noise_mask_apod
         self.noise_mask_max_fraction = noise_mask_max_fraction
+        self.noise_mask_source_nsigma = noise_mask_source_nsigma
+        self.noise_mask_source_radius = noise_mask_source_radius
         self.log = log
 
     def _beam1d_for(self, input_map: ProcessableMap) -> Path | None:
@@ -347,6 +356,10 @@ class MatchedFilter(MapPreprocessor):
             tile_pix,
             max_rms=self.noise_mask_max_rms,
             grow_tiles=self.noise_mask_grow_tiles,
+            source_nsigma=self.noise_mask_source_nsigma,
+            source_radius_pix=int(
+                round((self.noise_mask_source_radius / resolution).to_value(""))
+            ),
         )
         fraction = float(noisy[valid].mean()) if valid.any() else 0.0
         log = log.bind(

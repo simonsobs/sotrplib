@@ -11,7 +11,12 @@ from pixell import enmap
 from pixell import utils as pixell_utils
 
 from sotrplib.filters.filters import matched_filter_depth1_map
-from sotrplib.maps.maps import snr_rms_tile_mask, snr_tile_rms, tiles_to_pixels
+from sotrplib.maps.maps import (
+    grow_mask,
+    snr_rms_tile_mask,
+    snr_tile_rms,
+    tiles_to_pixels,
+)
 from sotrplib.maps.postprocessor import SnrRmsMask
 
 
@@ -56,6 +61,34 @@ def test_snr_rms_tile_mask_limits_and_grow():
 
     bad, _ = snr_rms_tile_mask(snr, valid, tile_pix=20, max_rms=1.2, grow_tiles=1)
     assert bad[30, 30] and not bad[10, 10]
+
+
+def test_snr_rms_tile_mask_bright_source_does_not_make_tile_bad():
+    # Noise rms 1.1 (below the limit) and a 100 sigma source with wide wings.
+    rng = np.random.default_rng(4)
+    snr = rng.normal(0, 1.1, (100, 100))
+    yy, xx = np.mgrid[:100, :100]
+    snr += 100 * np.exp(-((yy - 25) ** 2 + (xx - 25) ** 2) / (2 * 4.0**2))
+    valid = np.ones(snr.shape, bool)
+
+    bad, rms = snr_rms_tile_mask(
+        snr, valid, tile_pix=50, max_rms=1.2, source_nsigma=None
+    )
+    assert bad[25, 25] and rms[0, 0] > 1.2
+
+    bad, rms = snr_rms_tile_mask(
+        snr, valid, tile_pix=50, max_rms=1.2, source_nsigma=5.0, source_radius_pix=6
+    )
+    assert not bad.any() and rms[0, 0] < 1.2
+
+
+def test_grow_mask():
+    mask = np.zeros((20, 30), bool)
+    mask[10, 15] = True
+    mask[0, 0] = True
+    grown = grow_mask(mask, 2)
+    assert grown[8:13, 13:18].all() and grown[:3, :3].all()
+    assert grown.sum() == 25 + 9
 
 
 def _stripe_map():
