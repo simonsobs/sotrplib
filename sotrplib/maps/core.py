@@ -1160,7 +1160,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         instrument: str | None = None,
         flux_units: Unit = u.mJy,
         mask: ndmap | None = None,
-        map_id: str | None = None,
+        mapcat_id: UUID7 | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         self.map_filename = Path(map_filename)
@@ -1176,8 +1176,8 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         self.mask = mask
         self.map_resolution = None
         self.subfield = None
-        if map_id is not None:
-            self.map_id = map_id
+        if mapcat_id is not None:
+            self.mapcat_id = mapcat_id
         self._hits = None
         self.log = log or structlog.get_logger()
 
