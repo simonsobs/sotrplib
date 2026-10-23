@@ -15,6 +15,7 @@ from sotrplib.maps.preprocessor import (
     MapPreprocessor,
     MatchedFilter,
     PlanetMasker,
+    SPT3GTransientFilter,
 )
 
 
@@ -117,6 +118,32 @@ class MatchedFilterConfig(PreprocessorConfig):
         )
 
 
+class SPT3GTransientFilterConfig(PreprocessorConfig):
+    preprocessor_type: Literal["spt3g_transient_filter"] = "spt3g_transient_filter"
+    mask: bool = False
+    field: str | None = None
+    "Point-source field name for masking; required when mask=True."
+    high_pass: bool = True
+    match_sources: bool = True
+    normalize_weights: bool = True
+    compute_noisechisq: bool = True
+    compute_snr_annulus: bool = False
+
+    def to_preprocessor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> MapPreprocessor:
+        return SPT3GTransientFilter(
+            mask=self.mask,
+            field=self.field,
+            high_pass=self.high_pass,
+            match_sources=self.match_sources,
+            normalize_weights=self.normalize_weights,
+            compute_noisechisq=self.compute_noisechisq,
+            compute_snr_annulus=self.compute_snr_annulus,
+            log=log,
+        )
+
+
 class EdgeMaskConfig(PreprocessorConfig):
     preprocessor_type: Literal["edge_mask"] = "edge_mask"
     edge_width: AstroPydanticQuantity[u.arcmin] = AstroPydanticQuantity(10 * u.arcmin)
@@ -144,6 +171,7 @@ class GalaxyMaskConfig(PreprocessorConfig):
 AllPreprocessorConfigTypes = (
     KappaRhoCleanerConfig
     | MatchedFilterConfig
+    | SPT3GTransientFilterConfig
     | EdgeMaskConfig
     | PlanetMaskConfig
     | GalaxyMaskConfig

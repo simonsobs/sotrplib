@@ -34,6 +34,7 @@ from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 from uuid7 import UUID as UUID7
 
+from sotrplib.maps import gfal
 from sotrplib.sources.sources import RegisteredSource
 
 from .core import (
@@ -43,6 +44,7 @@ from .core import (
     MapCatMapType,
     RhoAndKappaMap,
     SPTFluxAndSNRMap,
+    SPTIntensityAndInverseVarianceMap,
 )
 from .pointing import PointingModel
 
@@ -362,22 +364,95 @@ class FluxMapReader(MapCatDatabaseReader):
 
 
 class SPTMapReader(MapCatDatabaseReader):
-    """Reader for SPT maps, yielding SPTFluxAndSNRMap objects."""
+    """
+    Reader for SPT maps, yielding SPTFluxAndSNRMap objects.
+
+    If `grid_root` is set, map_path is resolved against that grid door (see
+    sotrplib.maps.gfal) and the map file is gfal-copied to `scratch_dir` for
+    each map, instead of being read from MAPCAT_DEPTH_ONE_PARENT. Use this
+    on OSG, where /sptgrid is not POSIX-mounted.
+    """
 
     default_map_units = u.Unit("mJy")
     _valid_unit_equivalent = u.mJy
 
+    def __init__(
+        self,
+        *args,
+        grid_root: str | None = None,
+        scratch_dir: Path | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.grid_root = grid_root
+        self.scratch_dir = scratch_dir
+
     def _build_map(self, result):
+        map_filename = (
+            gfal.grid_url(self.grid_root, result.map_path)
+            if self.grid_root
+            else mapcat_settings.depth_one_parent / result.map_path
+        )
         return SPTFluxAndSNRMap(
-            map_filename=mapcat_settings.depth_one_parent / result.map_path,
-            start_time=Time(
-                result.start_time, format="unix"
-            ),  # only start time is accurate. end time is in file.
+            map_filename=map_filename,
+            # Only the start time is accurate here; the end time is in the
+            # map file itself (read in SPTFluxAndSNRMap.build()).
+            start_time=Time(result.start_time),
             sky_box=self.sky_box,
             flux_units=self.map_units,
             frequency=result.frequency,
             array=result.tube_slot,
             instrument=self.instrument,
+            scratch_dir=self.scratch_dir,
+            log=self.log,
+        )
+
+
+class SPTIntensityMapReader(MapCatDatabaseReader):
+    """
+    Reader for SPT maps, yielding SPTIntensityAndInverseVarianceMap objects
+    (intensity + inverse variance, unweighted from the g3 file's T/W frames).
+    Use this instead of SPTMapReader when matched filtering is wanted: it
+    gives the matched_filter preprocessor the intensity/inverse_variance it
+    needs, rather than the unfiltered flux/snr SPTMapReader produces.
+
+    If `grid_root` is set, map_path is resolved against that grid door (see
+    sotrplib.maps.gfal) and the map file is gfal-copied to `scratch_dir` for
+    each map, instead of being read from MAPCAT_DEPTH_ONE_PARENT. Use this
+    on OSG, where /sptgrid is not POSIX-mounted.
+    """
+
+    default_map_units = u.Unit("K")
+    _valid_unit_equivalent = u.K
+
+    def __init__(
+        self,
+        *args,
+        grid_root: str | None = None,
+        scratch_dir: Path | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.grid_root = grid_root
+        self.scratch_dir = scratch_dir
+
+    def _build_map(self, result):
+        map_filename = (
+            gfal.grid_url(self.grid_root, result.map_path)
+            if self.grid_root
+            else mapcat_settings.depth_one_parent / result.map_path
+        )
+        return SPTIntensityAndInverseVarianceMap(
+            map_filename=map_filename,
+            # Only the start time is accurate here; the end time is in the
+            # map file itself (read in SPTIntensityAndInverseVarianceMap.build()).
+            start_time=Time(result.start_time),
+            sky_box=self.sky_box,
+            intensity_units=self.map_units,
+            frequency=result.frequency,
+            array=result.tube_slot,
+            instrument=self.instrument,
+            scratch_dir=self.scratch_dir,
             log=self.log,
         )
 

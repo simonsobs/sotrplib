@@ -29,6 +29,7 @@ from sotrplib.maps.database import (
     FluxMapReader,
     IntensityMapReader,
     RhoKappaMapReader,
+    SPTIntensityMapReader,
     SPTMapReader,
     TimeBinning,
 )
@@ -306,12 +307,26 @@ class SPTMapCatDatabaseConfig(MapGeneratorConfig):
     map_ids: list[UUID7] | None = None
     sky_box: list[AstroPydanticICRS] | None = None
     map_units: AstroPydanticUnit = u.Unit("mJy")
+    # "intensity" yields SPTIntensityAndInverseVarianceMap (use this to run
+    # the matched_filter preprocessor; set map_units to K). "flux" yields
+    # SPTFluxAndSNRMap, the unfiltered T/W ratio, no matched filter needed
+    # or possible.
+    map_type: Literal["flux", "intensity"] = "flux"
     rerun: bool = False
+    grid_root: str | None = None
+    "Grid door root (e.g. davs://...) that map_path is relative to. If set, "
+    "map files are gfal-copied to scratch_dir instead of read from "
+    "MAPCAT_DEPTH_ONE_PARENT (see sotrplib.maps.gfal)."
+    scratch_dir: Path | None = None
+    "Local scratch directory for grid-fetched map files (see grid_root)."
 
     def to_generator(
         self, log: FilteringBoundLogger | None = None
     ) -> Iterable[ProcessableMap]:
-        _reader_cls = SPTMapReader
+        _reader_cls = {
+            "flux": SPTMapReader,
+            "intensity": SPTIntensityMapReader,
+        }[self.map_type]
         return _reader_cls(
             number_to_read=self.number_to_read,
             start_time=self.start_time,
@@ -323,6 +338,8 @@ class SPTMapCatDatabaseConfig(MapGeneratorConfig):
             map_ids=self.map_ids,
             map_units=self.map_units,
             rerun=self.rerun,
+            grid_root=self.grid_root,
+            scratch_dir=self.scratch_dir,
             log=log,
         )
 

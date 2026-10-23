@@ -15,7 +15,11 @@ from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from tqdm import tqdm
 
-from sotrplib.solar_system.solar_system import load_mpc_orbital_database
+from sotrplib.solar_system.solar_system import (
+    SITE_COORDINATES,
+    horizons_site_coord,
+    load_mpc_orbital_database,
+)
 
 """
 This script queries JPL Horizons for asteroid ephemerides and saves the results to a Parquet file.
@@ -33,8 +37,6 @@ AF 25 Mar 2026
 
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons_file.api"
 
-SITE_COORD = "-67.7876,-22.9585,5.2"
-
 
 def chunk(lst, n):
     """Yield successive n-sized chunks."""
@@ -42,13 +44,13 @@ def chunk(lst, n):
         yield lst[i : i + n]
 
 
-def build_payload(designations, start, stop):
+def build_payload(designations, start, stop, site_coord):
     commands = "".join([f"COMMAND='{d}'" for d in designations])
     payload = f"""
 !$$SOF
 {commands}
 CENTER='coord'
-SITE_COORD='{SITE_COORD}'
+SITE_COORD='{site_coord}'
 MAKE_EPHEM='YES'
 TABLE_TYPE='OBSERVER'
 START_TIME={start}
@@ -61,8 +63,8 @@ CSV_FORMAT='YES'
     return payload
 
 
-def query_batch(designations, start, stop, max_retries=5):
-    payload = build_payload(designations, start, stop)
+def query_batch(designations, start, stop, site_coord, max_retries=5):
+    payload = build_payload(designations, start, stop, site_coord)
 
     for attempt in range(max_retries):
         try:
@@ -137,9 +139,10 @@ def parse_batch_output(text):
     return pd.DataFrame(rows)
 
 
-def main(start, stop):
+def main(start, stop, site="SO"):
     print("Querying JPL Horizons for asteroid ephemerides between:")
-    print(start, " and ", stop)
+    print(start, " and ", stop, "as seen from", site)
+    site_coord = horizons_site_coord(site)
     orbital_db = load_mpc_orbital_database("mpc_orbital_params_bright_asteroids.csv")
 
     ## getting asteroid designations used by horizons api
@@ -149,12 +152,12 @@ def main(start, stop):
         s.split(")")[0].strip("(") + ";" for s in orbital_db["designation"].tolist()
     ]
     print(len(designations), "total asteroids")
-    outfile = f"JPL_batched_ephemerides_{start}_{stop}.parquet"
+    outfile = f"JPL_batched_ephemerides_{site}_{start}_{stop}.parquet"
 
     writer = None
     ## cant do batch submissions to horizons so just one at a time.
     for batch in tqdm(list(chunk(designations, 1))):
-        text = query_batch(batch, start, stop)
+        text = query_batch(batch, start, stop, site_coord)
         print(text.count("Target body name"))
         df = parse_batch_output(text)
         table = pa.Table.from_pandas(df)
@@ -175,7 +178,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--start", type=str, default="2025-01-01")
     parser.add_argument("--stop", type=str, default="2035-01-01")
+    parser.add_argument(
+        "--site",
+        type=str,
+        default="SO",
+        choices=sorted(SITE_COORDINATES.keys()),
+        help="Observing site the ephemeris is computed for (parallax).",
+    )
 
     args = parser.parse_args()
 
-    main(args.start, args.stop)
+    main(args.start, args.stop, args.site)

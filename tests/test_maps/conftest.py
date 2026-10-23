@@ -3,13 +3,14 @@ Map testing
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from astropy import units as u
-from astropy.time import Time, TimeDelta
+from astropy.time import Time
 from pixell import enmap
 
 
@@ -216,8 +217,12 @@ def db_result(separate_map_set_1):
     r.flux_path = paths["rho"]
     r.snr_path = paths["kappa"]
     r.mean_time_path = paths["time"]
-    r.start_time = Time.now() - TimeDelta(3600, format="sec")
-    r.stop_time = Time.now()
+    # DepthOneMapTable.start_time/stop_time are plain datetime columns, not
+    # astropy Time: a reader that wraps them in Time(..., format="unix")
+    # breaks on a real row (caught the hard way in SPTMapReader).
+    now = datetime.now(tz=timezone.utc)
+    r.start_time = now - timedelta(hours=1)
+    r.stop_time = now
     r.frequency = "f090"
     r.tube_slot = "pa5"
     return r

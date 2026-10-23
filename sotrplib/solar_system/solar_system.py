@@ -15,16 +15,33 @@ from tqdm import tqdm
 
 from sotrplib.maps.core import ProcessableMap
 
+# (latitude, longitude, elevation) of each site, for create_observer() and
+# horizons_site_coord(). SPT is from sotrplib/observatories/observatory_information.json
+# ("South Pole Telescope").
+SITE_COORDINATES: dict[str, tuple[u.Quantity, u.Quantity, u.Quantity]] = {
+    "SO": (-22.96098 * u.deg, -67.7876 * u.deg, 5180 * u.m),
+    "SPT": (-89.989667 * u.deg, 44.201333 * u.deg, 2818.0 * u.m),
+}
+
 
 def create_observer(
-    lat: u.Quantity[u.deg] = -22.96098 * u.deg,
-    lon: u.Quantity[u.deg] = -67.7876 * u.deg,
-    elev: u.Quantity[u.m] = 5180 * u.m,
+    lat: u.Quantity[u.deg] = SITE_COORDINATES["SO"][0],
+    lon: u.Quantity[u.deg] = SITE_COORDINATES["SO"][1],
+    elev: u.Quantity[u.m] = SITE_COORDINATES["SO"][2],
 ) -> GeographicPosition:
-    """Create a Skyfield observer for the Simons Observatory LAT site."""
+    """Create a Skyfield observer. Defaults to the Simons Observatory LAT
+    site; pass SITE_COORDINATES["SPT"] (unpacked) for the South Pole
+    Telescope."""
     return wgs84.latlon(
         lat.to_value(u.deg), lon.to_value(u.deg), elevation_m=elev.to_value(u.m)
     )
+
+
+def horizons_site_coord(site: str) -> str:
+    """JPL Horizons SITE_COORD ("lon,lat,elev_km") for a known site name in
+    SITE_COORDINATES (note the lon/lat order swap from create_observer)."""
+    lat, lon, elev = SITE_COORDINATES[site]
+    return f"{lon.to_value(u.deg)},{lat.to_value(u.deg)},{elev.to_value(u.km)}"
 
 
 ## need to normalize the names in Paul's file to the MPC format

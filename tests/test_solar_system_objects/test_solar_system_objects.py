@@ -1,9 +1,15 @@
 from datetime import datetime, timezone
 
 import pytest
+from astropy import units as u
 from skyfield.api import load
 
-from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
+from sotrplib.solar_system.solar_system import (
+    SITE_COORDINATES,
+    create_observer,
+    get_sso_ephems_at_time,
+    horizons_site_coord,
+)
 
 
 def test_planet_positions():
@@ -50,3 +56,34 @@ def test_asteroid_positions(mock_jpl_ephem_db):
     assert sso_ephem[sso]["pos"].ra.degree[0] == pytest.approx(253.365458, abs=1e-4)
     assert sso_ephem[sso]["pos"].dec.degree[0] == pytest.approx(-16.708611, abs=1e-4)
     assert sso_ephem[sso]["pos"].distance.au[0] == pytest.approx(2.018541, abs=1e-5)
+
+
+# ─── site coordinates (SPT asteroid ephemerides) ───────────────────────────
+
+
+def test_site_coordinates_has_spt_and_so():
+    assert set(SITE_COORDINATES) == {"SO", "SPT"}
+
+
+def test_create_observer_accepts_spt_site():
+    lat, lon, elev = SITE_COORDINATES["SPT"]
+    observer = create_observer(lat, lon, elev)
+    assert observer.latitude.degrees == pytest.approx(-89.989667, abs=1e-6)
+    assert observer.longitude.degrees == pytest.approx(44.201333, abs=1e-6)
+    assert observer.elevation.m == pytest.approx(2818.0, abs=1e-6)
+
+
+def test_horizons_site_coord_swaps_lat_lon_order_for_spt():
+    # create_observer() takes (lat, lon, elev); Horizons' SITE_COORD wants
+    # "lon,lat,elev_km".
+    lat, lon, elev = SITE_COORDINATES["SPT"]
+    expected = (
+        f"{lon.to_value(u.deg)},{lat.to_value(u.deg)},{elev.to_value(u.km)}"
+    )
+    assert horizons_site_coord("SPT") == expected
+    assert horizons_site_coord("SPT") == "44.201333,-89.989667,2.818"
+
+
+def test_horizons_site_coord_unknown_site_raises():
+    with pytest.raises(KeyError):
+        horizons_site_coord("MARS_BASE")

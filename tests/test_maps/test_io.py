@@ -12,14 +12,21 @@ import uuid7
 from astropy import units as u
 from astropy.time import Time, TimeDelta
 
-from sotrplib.config.maps import InverseVarianceMapConfig, RhoKappaMapConfig
+from sotrplib.config.maps import (
+    InverseVarianceMapConfig,
+    RhoKappaMapConfig,
+    SPTMapCatDatabaseConfig,
+)
 from sotrplib.handlers.basic import PipelineRunner
+from sotrplib.maps import gfal
 from sotrplib.maps.core import (
     CoaddedRhoKappaMap,
     CoaddRhoAndKappaMap,
     FluxAndSNRMap,
     IntensityAndInverseVarianceMap,
     RhoAndKappaMap,
+    SPTFluxAndSNRMap,
+    SPTIntensityAndInverseVarianceMap,
 )
 from sotrplib.maps.database import (
     CoaddRhoKappaMapReader,
@@ -27,6 +34,8 @@ from sotrplib.maps.database import (
     IntensityMapReader,
     MapCatDatabaseReader,
     RhoKappaMapReader,
+    SPTIntensityMapReader,
+    SPTMapReader,
     register_coadd,
 )
 from sotrplib.utils.utils import get_fwhm
@@ -188,6 +197,89 @@ def test_build_map_passes_metadata(db_result):
         result = IntensityMapReader(map_units=u.mK)._build_map(db_result)
     assert result.frequency == db_result.frequency
     assert result.array == db_result.tube_slot
+
+
+# ─── SPTMapReader ──────────────────────────────────────────────────────────
+
+
+def test_spt_build_map_type(db_result):
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/")
+        result = SPTMapReader()._build_map(db_result)
+    assert isinstance(result, SPTFluxAndSNRMap)
+
+
+def test_spt_build_map_reads_local_path_without_grid_root(db_result):
+    """With no grid_root, SPTMapReader resolves map_filename against
+    MAPCAT_DEPTH_ONE_PARENT, like the other readers."""
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/")
+        result = SPTMapReader()._build_map(db_result)
+    assert isinstance(result.map_filename, Path)
+    assert result.scratch_dir is None
+
+
+def test_spt_build_map_uses_grid_url_when_grid_root_set(db_result):
+    """With grid_root set, map_filename is a grid URL (map_path joined onto
+    grid_root), not a path under MAPCAT_DEPTH_ONE_PARENT."""
+    grid_root = "davs://osg-gridftp.grid.uchicago.edu:2880/sptgrid/data/onlinemaps/ra0hdec-52.25"
+    scratch_dir = Path("/scratch/spt")
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/should-not-be-used")
+        result = SPTMapReader(grid_root=grid_root, scratch_dir=scratch_dir)._build_map(
+            db_result
+        )
+    assert result.map_filename == gfal.grid_url(grid_root, db_result.map_path)
+    assert result.scratch_dir == scratch_dir
+
+
+# ─── SPTIntensityMapReader ──────────────────────────────────────────────────
+
+
+def test_spt_intensity_build_map_type(db_result):
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/")
+        result = SPTIntensityMapReader()._build_map(db_result)
+    assert isinstance(result, SPTIntensityAndInverseVarianceMap)
+
+
+def test_spt_intensity_reader_default_units():
+    assert SPTIntensityMapReader().map_units.is_equivalent(u.K)
+
+
+def test_spt_intensity_build_map_reads_local_path_without_grid_root(db_result):
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/")
+        result = SPTIntensityMapReader()._build_map(db_result)
+    assert isinstance(result.map_filename, Path)
+    assert result.scratch_dir is None
+
+
+def test_spt_intensity_build_map_uses_grid_url_when_grid_root_set(db_result):
+    grid_root = "davs://osg-gridftp.grid.uchicago.edu:2880/sptgrid/data/onlinemaps/ra0hdec-52.25"
+    scratch_dir = Path("/scratch/spt")
+    with patch("sotrplib.maps.database.mapcat_settings") as settings:
+        settings.depth_one_parent = Path("/should-not-be-used")
+        result = SPTIntensityMapReader(
+            grid_root=grid_root, scratch_dir=scratch_dir
+        )._build_map(db_result)
+    assert result.map_filename == gfal.grid_url(grid_root, db_result.map_path)
+    assert result.scratch_dir == scratch_dir
+
+
+# ─── SPTMapCatDatabaseConfig.map_type ───────────────────────────────────────
+
+
+def test_spt_mapcat_config_defaults_to_flux_reader():
+    generator = SPTMapCatDatabaseConfig().to_generator()
+    assert isinstance(generator, SPTMapReader)
+
+
+def test_spt_mapcat_config_intensity_map_type_uses_intensity_reader():
+    generator = SPTMapCatDatabaseConfig(
+        map_type="intensity", map_units=u.Unit("K")
+    ).to_generator()
+    assert isinstance(generator, SPTIntensityMapReader)
 
 
 # ─── build_query time windowing ────────────────────────────────────────────────

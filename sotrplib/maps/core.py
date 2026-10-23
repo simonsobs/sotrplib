@@ -2,6 +2,7 @@
 Core map objects.
 """
 
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
@@ -18,6 +19,7 @@ from pixell.enmap import ndmap
 from structlog.types import FilteringBoundLogger
 from uuid7 import UUID as UUID7
 
+from sotrplib.maps import gfal
 from sotrplib.maps.utils import (
     enmap_box_to_skycoord,
     pixell_map_union,
@@ -615,6 +617,158 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         super().finalize()
 
 
+class SPTIntensityAndInverseVarianceMap(IntensityAndInverseVarianceMap):
+    """
+    SPT maps read from a .g3 file, as intensity + inverse variance, so that
+    the standard matched_filter preprocessor can run on them (producing real
+    rho/kappa) -- unlike SPTFluxAndSNRMap, which reads the same g3 file but
+    goes straight to an unfiltered flux/snr ratio, skipping matched
+    filtering entirely.
+
+    The g3 file's "T" frame is weighted (``T.weighted is True``: T = sum of
+    weight*data), the standard spt3g_software convention (see
+    ``spt3g.maps.RemoveWeights`` / ``maputils.cxx::RemoveWeightsT``).
+    Dividing by the weight map "W" (``Wunpol.TT``) gives the calibrated
+    intensity, exactly as RemoveWeightsT does; W itself is the inverse
+    variance (K^-2) of that calibrated intensity.
+    """
+
+    def __init__(
+        self,
+        map_filename: Path | str,
+        start_time: Time,
+        end_time: Time | None = None,
+        time_filename: Path | None = None,
+        info_filename: Path | None = None,
+        sky_box: tuple[SkyCoord, SkyCoord] | None = None,
+        frequency: str | None = None,
+        array: str | None = None,
+        instrument: str | None = None,
+        matched_filtered: bool = False,
+        mask: ndmap | None = None,
+        intensity_units: Unit = u.K,
+        mapcat_id: UUID7 | None = None,
+        scratch_dir: Path | None = None,
+        log: FilteringBoundLogger | None = None,
+    ):
+        # map_filename may be a grid URL (davs://, gsiftp://): Path() must
+        # not touch it, since it collapses the "//" after the scheme.
+        self.map_filename = (
+            map_filename if gfal.is_grid_url(str(map_filename)) else Path(map_filename)
+        )
+        self.scratch_dir = Path(scratch_dir) if scratch_dir is not None else None
+        "Where a grid map_filename is gfal-copied to; see sotrplib.maps.gfal."
+        self.observation_start = start_time
+        self.observation_end = end_time
+        self.time_filename = time_filename
+        self.info_filename = info_filename
+        self.sky_box = sky_box
+        self.frequency = frequency
+        self.array = array
+        self.instrument = instrument
+        self.matched_filtered = matched_filtered
+        self.mask = mask
+        self.intensity_units = intensity_units
+        self.map_resolution = None
+        self.subfield = None
+        if mapcat_id is not None:
+            self.mapcat_id = mapcat_id
+        self._hits = None
+        self.log = log or structlog.get_logger()
+
+    @property
+    def bbox(self) -> np.ndarray:
+        # After build(), intensity is set; delegate to ProcessableMap.bbox.
+        # We skip IntensityAndInverseVarianceMap.bbox's fallback that reads
+        # self.intensity_filename.
+        for attr in self._available_maps:
+            if (m := getattr(self, attr, None)) is not None:
+                return m.box()
+        return [[-72 * np.pi / 180, 53 * np.pi / 180], [-40 * np.pi / 180, -53 * np.pi / 180]]
+
+    def build(self):
+        from spt3g import core, maps
+
+        log = self.log.bind(map_filename=str(self.map_filename))
+        scratch_dir = self.scratch_dir or Path(tempfile.gettempdir()) / "sotrplib_spt"
+
+        T_weighted = None
+        W_map = None
+        with gfal.fetch_to_scratch(
+            str(self.map_filename), scratch_dir, log=log
+        ) as local_g3:
+            for frame in core.G3File(str(local_g3)):
+                if frame.type == core.G3FrameType.Observation:
+                    self.start_time = Time(
+                        frame["ObservationStart"].time / core.G3Units.s, format="unix"
+                    )
+                    self.end_time = Time(
+                        frame["ObservationStop"].time / core.G3Units.s, format="unix"
+                    )
+                    self.subfield = frame["SourceName"]
+                elif frame.type == core.G3FrameType.Map:
+                    maps.CropMaps(frame, pad=10 * core.G3Units.arcmin)
+                    if not frame["T"].weighted:
+                        raise ValueError(
+                            f"{self.map_filename}: T is not weighted, so T/W "
+                            "would not unweight it (see "
+                            "spt3g_software maputils.cxx::RemoveWeightsT)."
+                        )
+                    T_weighted = frame["T"]
+                    W_map = frame.get("Wpol", frame.get("Wunpol", None))
+                    break
+
+            if T_weighted is None:
+                raise ValueError(f"No map frame found in {self.map_filename}")
+            if W_map is None:
+                raise ValueError(f"No weights found in map frame in {self.map_filename}")
+
+            log.info("spt_intensity_ivar.g3_read")
+
+            # Copy out of the G3 frame buffers before the scratch file is
+            # deleted (fetch_to_scratch's cleanup, on exiting this `with`).
+            T_weighted = enmap.enmap(T_weighted, wcs=T_weighted.wcs)
+            W = enmap.enmap(W_map.TT, wcs=W_map.TT.wcs)
+
+            # Unweight (maputils.cxx::RemoveWeightsT: T /= W) to get the
+            # calibrated intensity, then convert G3Units to Kelvin.
+            with np.errstate(divide="ignore", invalid="ignore"):
+                self.intensity = (T_weighted / W) / core.G3Units.K
+            # W is the inverse variance of the calibrated (unweighted)
+            # intensity, in units of G3Units.K^-2 (see spt3g_software
+            # maps/python/fitsio.py's 'kcmb^2' convention: a Temp^n
+            # quantity's internal value is its physical value times
+            # G3Units.K^n; here n=-2, so physical = internal * G3Units.K^2).
+            self.inverse_variance = W * core.G3Units.K**2
+            log.info("spt_intensity_ivar.enmap_created")
+
+        self.map_resolution = u.Quantity(
+            abs(self.intensity.wcs.wcs.cdelt[0]), self.intensity.wcs.wcs.cunit[0]
+        )
+
+        if self.time_filename is not None:
+            try:
+                time_map = enmap.read_map(str(self.time_filename), sel=0)
+                assert type(time_map) is enmap.ndmap
+            except (IndexError, AttributeError, AssertionError):
+                time_map = enmap.read_map(str(self.time_filename))
+        else:
+            from sotrplib.sims.sim_maps import make_sim_spt_time_map
+
+            time_map = make_sim_spt_time_map(
+                self.intensity, self.start_time, self.end_time
+            )
+            log.debug("spt_intensity_ivar.time.none")
+
+        self.time_first = time_map
+        self.time_last = time_map
+        self.time_mean = time_map
+
+        self.add_time_offset(self.observation_start)
+        self.observation_length = self.observation_end - self.observation_start
+        self.observation_time = self.observation_start + self.observation_length / 2
+
+
 class MatchedFilteredIntensityAndInverseVarianceMap(ProcessableMap):
     """
     Resulting rho/kappa maps after ingesting intensity and ivar maps and
@@ -1149,7 +1303,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
 
     def __init__(
         self,
-        map_filename: Path,
+        map_filename: Path | str,
         start_time: Time,
         end_time: Time | None = None,
         time_filename: Path | None = None,
@@ -1161,9 +1315,16 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         flux_units: Unit = u.mJy,
         mask: ndmap | None = None,
         mapcat_id: UUID7 | None = None,
+        scratch_dir: Path | None = None,
         log: FilteringBoundLogger | None = None,
     ):
-        self.map_filename = Path(map_filename)
+        # map_filename may be a grid URL (davs://, gsiftp://): Path() must
+        # not touch it, since it collapses the "//" after the scheme.
+        self.map_filename = (
+            map_filename if gfal.is_grid_url(str(map_filename)) else Path(map_filename)
+        )
+        self.scratch_dir = Path(scratch_dir) if scratch_dir is not None else None
+        "Where a grid map_filename is gfal-copied to; see sotrplib.maps.gfal."
         self.observation_start = start_time
         self.observation_end = end_time
         self.time_filename = time_filename
@@ -1193,41 +1354,47 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
 
     def build(self):
         from spt3g import core, maps
-        
-        log = self.log.bind(map_filename=self.map_filename)
+
+        log = self.log.bind(map_filename=str(self.map_filename))
+        scratch_dir = self.scratch_dir or Path(tempfile.gettempdir()) / "sotrplib_spt"
 
         T_map = None
         W_map = None
-        for frame in core.G3File(str(self.map_filename)):
-            if frame.type == core.G3FrameType.Observation:
-                self.start_time = Time(
-                    frame["ObservationStart"].time / core.G3Units.s, format="unix"
-                )
-                self.end_time = Time(
-                    frame["ObservationStop"].time / core.G3Units.s, format="unix"
-                )
-                self.subfield = frame["SourceName"]
-            elif frame.type == core.G3FrameType.Map:
-                maps.CropMaps(frame,pad=10*core.G3Units.arcmin)
-                T_map = frame["T"]
-                W_map = frame.get("Wpol", frame.get("Wunpol", None))
-                break
+        with gfal.fetch_to_scratch(
+            str(self.map_filename), scratch_dir, log=log
+        ) as local_g3:
+            for frame in core.G3File(str(local_g3)):
+                if frame.type == core.G3FrameType.Observation:
+                    self.start_time = Time(
+                        frame["ObservationStart"].time / core.G3Units.s, format="unix"
+                    )
+                    self.end_time = Time(
+                        frame["ObservationStop"].time / core.G3Units.s, format="unix"
+                    )
+                    self.subfield = frame["SourceName"]
+                elif frame.type == core.G3FrameType.Map:
+                    maps.CropMaps(frame, pad=10 * core.G3Units.arcmin)
+                    T_map = frame["T"]
+                    W_map = frame.get("Wpol", frame.get("Wunpol", None))
+                    break
 
-        if T_map is None:
-            raise ValueError(f"No map frame found in {self.map_filename}")
-        if W_map is None:
-            raise ValueError(f"No weights found in map frame in {self.map_filename}")
+            if T_map is None:
+                raise ValueError(f"No map frame found in {self.map_filename}")
+            if W_map is None:
+                raise ValueError(f"No weights found in map frame in {self.map_filename}")
 
-        log.info("spt_flux_snr.g3_read")
-        
-        enmap_box = None
-        # sky_box not yet implemented for spt maps
-        #if self.sky_box is not None:
-        #    enmap_box = skycoord_box_to_enmap_box(self.sky_box)
+            log.info("spt_flux_snr.g3_read")
 
-        T_map = enmap.enmap(T_map, wcs=T_map.wcs)
-        W_map = enmap.enmap(W_map.TT, wcs=W_map.TT.wcs)
-        log.info("spt_flux_snr.enmap_created")
+            enmap_box = None
+            # sky_box not yet implemented for spt maps
+            # if self.sky_box is not None:
+            #     enmap_box = skycoord_box_to_enmap_box(self.sky_box)
+
+            # Copy out of the G3 frame buffers before the scratch file is
+            # deleted (fetch_to_scratch's cleanup, on exiting this `with`).
+            T_map = enmap.enmap(T_map, wcs=T_map.wcs)
+            W_map = enmap.enmap(W_map.TT, wcs=W_map.TT.wcs)
+            log.info("spt_flux_snr.enmap_created")
         
         # cut out the requested sky box if provided
         if enmap_box is not None:
