@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sotrplib"
-version = "0.0.3"
+version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "pixell",
-    "numpy==1.26.4",
+    "numpy>=2",  # pyarrow >= 26 (through pandas and socat) needs numpy 2
     "astropy",
     "lmfit",
     "h5py",
@@ -20,7 +20,7 @@ dependencies = [
     "pydantic-settings",
     "tqdm",
     "filelock",
-    "photutils>=2.0",
+    "photutils<3",  # sources/finding.py reads the photutils 2 source catalog
     "structlog",
     "scikit-image",
     "socat @ git+https://github.com/simonsobs/socat",
@@ -38,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "ruff",
+    "ruff==0.12.5",  # keep in sync with .pre-commit-config.yaml
     "coverage",
     "pytest-cov",
     "pre-commit",
@@ -53,6 +53,10 @@ spt = [
 
 [project.scripts]
 "sotrp" = "sotrplib.cli:main"
+"sotrp-coadd" = "sotrplib.coadd_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sotrplib*"]
 
 [tool.ruff.lint]
 extend-select = ["I"]

@@ -7,12 +7,12 @@ from typing import Literal
 
 import numpy as np
 import structlog
-import uuid7 as uuid
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from astropy.time import Time
 from pixell import utils as pixell_utils
 from structlog.types import FilteringBoundLogger
+from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import CrossMatch, RegisteredSource
@@ -62,7 +62,7 @@ class SourceCatalog(ABC):
         return
 
     @abstractmethod
-    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
+    def source_by_id(self, id: str | UUID7) -> RegisteredSource:
         """
         Get the information about a source by its internal ID.
         """
@@ -96,7 +96,25 @@ class RegisteredSourceCatalog(SourceCatalog):
         self.sources = sources
 
     def add_sources(self, sources: list[RegisteredSource]):
-        self.sources.extend(sources)
+        self._sources.extend(sources)
+        self._catalog_positions = np.array(
+            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in self._sources]
+        )
+
+    @property
+    def sources(self):
+        return self._sources
+
+    @sources.setter
+    def sources(self, sources: list[RegisteredSource]):
+        self._sources = sources
+        self._catalog_positions = np.array(
+            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in sources]
+        )
+
+    @property
+    def catalog_positions(self):
+        return self._catalog_positions
 
     def get_sources_in_map(
         self,
@@ -116,7 +134,7 @@ class RegisteredSourceCatalog(SourceCatalog):
         if not np.any(inside):
             log.warning(
                 "get_sources_in_map.no_sources_in_map",
-                map_id=input_map.map_id,
+                mapcat_id=input_map.mapcat_id,
                 wcs=input_map.flux.wcs,
             )
             return []
@@ -182,7 +200,7 @@ class RegisteredSourceCatalog(SourceCatalog):
             sources = [s for s in sources if s.flux >= flux_lower_limit]
         return sources
 
-    def source_by_id(self, id: str | uuid.UUID) -> RegisteredSource:
+    def source_by_id(self, id: str | UUID7) -> RegisteredSource:
         source_ids = [s.source_id for s in self.sources]
         if id not in source_ids:
             return None
@@ -202,12 +220,9 @@ class RegisteredSourceCatalog(SourceCatalog):
         if len(self.sources) == 0:
             return []
 
-        catalog_positions = np.array(
-            [(s.ra.to("radian").value, s.dec.to("radian").value) for s in self.sources]
-        )
         matches = pixell_utils.crossmatch(
             pos1=[[ra.to("radian").value, dec.to("radian").value]],
-            pos2=catalog_positions,
+            pos2=self.catalog_positions,
             rmax=radius.to("radian").value,
             mode=method,
             coords="radec",

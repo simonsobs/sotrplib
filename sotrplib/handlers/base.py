@@ -1,7 +1,7 @@
-from itertools import combinations
 from typing import Iterable
 
 import numpy as np
+import structlog
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from mapcat.pointing.const import ConstantPointingModel
@@ -17,9 +17,9 @@ from sotrplib.maps.pointing import (
 from sotrplib.maps.postprocessor import MapPostprocessor
 from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.maps.utils import enmap_box_to_skycoord
-from sotrplib.outputs.core import MapOutput, SourceOutput
+from sotrplib.outputs.core import MapMatchOutput, MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
-from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
+from sotrplib.sifter.map_matching import EmptyMapMatcher, MapMatcher, MapResult
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
@@ -54,6 +54,8 @@ class BaseRunner:
     sifter: SiftingProvider | None
     source_outputs: list[SourceOutput] | None
     map_outputs: list[MapOutput] | None
+    map_matcher: MapMatcher | None
+    map_match_outputs: list[MapMatchOutput] | None
     profile: bool = False
 
     def __init__(
@@ -72,6 +74,8 @@ class BaseRunner:
         sifter: SiftingProvider | None,
         source_outputs: list[SourceOutput] | None,
         map_outputs: list[MapOutput] | None,
+        map_matcher: MapMatcher | None = None,
+        map_match_outputs: list[MapMatchOutput] | None = None,
         profile: bool = False,
     ):
         self.map_coadder = map_coadder or EmptyMapCoadder()
@@ -88,6 +92,8 @@ class BaseRunner:
         self.sifter = sifter or EmptySifter()
         self.source_outputs = source_outputs or []
         self.map_outputs = map_outputs or []
+        self.map_matcher = map_matcher or EmptyMapMatcher()
+        self.map_match_outputs = map_match_outputs or []
         self.profile = profile
 
     @property
@@ -111,7 +117,9 @@ class BaseRunner:
         output_map = input_map
         if not np.any(output_map.hits > 0):
             if input_map._parent_database is not None:
-                set_processing_end(input_map.map_id)
+                self.profilable_task(set_processing_end)(
+                    input_map.mapcat_id, map_type=input_map.map_type
+                )
             return None
         for preprocessor in self.preprocessors:
             output_map = self.profilable_task(preprocessor.preprocess)(
@@ -180,7 +188,7 @@ class BaseRunner:
 
     def coadd_and_analyze_maps(
         self, maps: list[ProcessableMap], simulated_sources: list[SimulatedSource]
-    ) -> tuple[list[MeasuredSource], SifterResult]:
+    ) -> MapResult | None:
         """
         Coadd and analyze maps in a single task to avoid passing maps between processes.
         """
@@ -191,121 +199,169 @@ class BaseRunner:
 
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
-    ) -> tuple[list[MeasuredSource], SifterResult]:
-        input_map = self.profilable_task(self.build_map)(input_map)
+    ) -> MapResult | None:
+        """
+        Analyze one map and write its map outputs. Source outputs are not
+        written here: they wait for map matching, which needs every map's
+        results (see output_map_result). Returns None for an empty map.
+        """
+        # If an exception occurs, set the processing status to failed.
+        try:
+            input_map = self.profilable_task(self.build_map)(input_map)
 
-        if input_map is not None:
-            self.profilable_task(input_map.finalize)()
-        else:
-            return [], None
+            if input_map is not None:
+                self.profilable_task(input_map.finalize)()
+            else:
+                return None
 
-        injected_sources, input_map = self.profilable_task(self.source_injector.inject)(
-            input_map=input_map, simulated_sources=simulated_sources
-        )
+            injected_sources, input_map = self.profilable_task(
+                self.source_injector.inject
+            )(input_map=input_map, simulated_sources=simulated_sources)
 
-        for postprocessor in self.postprocessors:
-            input_map = self.profilable_task(postprocessor.postprocess)(
-                input_map=input_map
-            )
-
-        pointing_sources = self.profilable_task(self.pointing_provider.force)(
-            input_map=input_map, catalogs=self.source_catalogs
-        )
-
-        cached = getattr(input_map, "pointing_model", None)
-        if isinstance(cached, (ConstantPointingModel | PolynomialPointingModel)):
-            pointing_model = cached
-        else:
-            pointing_model, pointing_model_stats = self.profilable_task(
-                self.pointing_residual_model.build_model
-            )(pointing_sources=pointing_sources)
-            if input_map._parent_database is not None:
-                save_pointing_model(
-                    input_map.map_id, pointing_model, pointing_model_stats
+            for postprocessor in self.postprocessors:
+                input_map = self.profilable_task(postprocessor.postprocess)(
+                    input_map=input_map
                 )
 
-        forced_photometry_candidates = self.profilable_task(
-            self.forced_photometry.force
-        )(
-            input_map=input_map,
-            catalogs=self.source_catalogs,
-            pointing_model=pointing_model,
-        )
-
-        source_subtracted_map = self.profilable_task(self.source_subtractor.subtract)(
-            sources=forced_photometry_candidates, input_map=input_map
-        )
-
-        blind_sources, _ = self.profilable_task(self.blind_search.search)(
-            input_map=source_subtracted_map,
-            pointing_model=pointing_model,
-        )
-
-        sifter_result = self.profilable_task(self.sifter.sift)(
-            sources=blind_sources,
-            catalogs=self.source_catalogs,
-            input_map=source_subtracted_map,
-        )
-
-        for output in self.source_outputs:
-            self.profilable_task(output.output)(
-                forced_photometry_candidates=forced_photometry_candidates,
-                sifter_result=sifter_result,
-                map_id=input_map.map_id,
-                pointing_sources=pointing_sources,
-                injected_sources=injected_sources,
+            pointing_sources = self.profilable_task(self.pointing_provider.force)(
+                input_map=input_map, catalogs=self.source_catalogs
             )
 
-        for output in self.map_outputs:
-            self.profilable_task(output.output)(input_map=input_map)
+            cached = getattr(input_map, "pointing_model", None)
+            if isinstance(cached, (ConstantPointingModel | PolynomialPointingModel)):
+                pointing_model = cached
+            else:
+                pointing_model, pointing_model_stats = self.profilable_task(
+                    self.pointing_residual_model.build_model
+                )(pointing_sources=pointing_sources)
+                # The key of the pointing-residual table is the depth-1
+                # map_id. Thus, do not save the model of a coadd.
+                if (
+                    input_map._parent_database is not None
+                    and input_map.map_type == "depth1_map"
+                ):
+                    save_pointing_model(
+                        input_map.mapcat_id, pointing_model, pointing_model_stats
+                    )
 
-        if input_map._parent_database is not None:
-            self.profilable_task(set_processing_end)(input_map.map_id)
-        return forced_photometry_candidates, sifter_result
+            forced_photometry_candidates = self.profilable_task(
+                self.forced_photometry.force
+            )(
+                input_map=input_map,
+                catalogs=self.source_catalogs,
+                pointing_model=pointing_model,
+            )
 
-    def crossmatch_pair(
-        self, candidates: tuple[list], radius: float = 1.5
-    ) -> list[list[tuple]]:
-        positions_1 = np.array([[src.dec.value, src.ra.value] for src in candidates[0]])
-        positions_2 = np.array([[src.dec.value, src.ra.value] for src in candidates[1]])
-        if len(positions_1) == 0 or len(positions_2) == 0:
-            return []
+            source_subtracted_map = self.profilable_task(
+                self.source_subtractor.subtract
+            )(sources=forced_photometry_candidates, input_map=input_map)
 
-        # FIXME: use a better radius
-        _, matches = self.profilable_task(crossmatch_mask)(
-            positions_1, positions_2, radius=radius, return_matches=True
-        )
-        return matches
+            blind_sources, _ = self.profilable_task(self.blind_search.search)(
+                input_map=source_subtracted_map,
+                pointing_model=pointing_model,
+            )
 
-    def run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+            sifter_result = self.profilable_task(self.sifter.sift)(
+                sources=blind_sources,
+                catalogs=self.source_catalogs,
+                input_map=source_subtracted_map,
+            )
+
+            for output in self.map_outputs:
+                self.profilable_task(output.output)(input_map=input_map)
+
+            return MapResult(
+                map_name=input_map.map_name,
+                mapcat_id=input_map.mapcat_id,
+                map_type=input_map.map_type,
+                array=input_map.array,
+                frequency=input_map.frequency,
+                observation_start=input_map.observation_start,
+                forced_photometry_candidates=forced_photometry_candidates,
+                sifter_result=sifter_result,
+                pointing_sources=pointing_sources,
+                injected_sources=injected_sources,
+                from_database=input_map._parent_database is not None,
+            )
+        except Exception:
+            # Set the status to "failed". If the status stays "processing",
+            # the reader skips the map on the next run.
+            if getattr(input_map, "_parent_database", None) is not None:
+                self.profilable_task(set_processing_end)(
+                    input_map.mapcat_id, map_type=input_map.map_type, status="failed"
+                )
+            raise
+
+    def output_map_result(self, result: MapResult) -> None:
+        """
+        Write one map's source outputs, after map matching, and only then
+        mark the map completed.
+        """
+        try:
+            for output in self.source_outputs:
+                self.profilable_task(output.output)(
+                    forced_photometry_candidates=result.forced_photometry_candidates,
+                    sifter_result=result.sifter_result,
+                    map_name=result.map_name,
+                    mapcat_id=result.mapcat_id,
+                    pointing_sources=result.pointing_sources,
+                    injected_sources=result.injected_sources,
+                )
+        except Exception:
+            if result.from_database:
+                self.profilable_task(set_processing_end)(
+                    result.mapcat_id, map_type=result.map_type, status="failed"
+                )
+            raise
+
+        if result.from_database:
+            self.profilable_task(set_processing_end)(
+                result.mapcat_id, map_type=result.map_type
+            )
+
+    def run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         return self.flow(self._run)(maps)
 
-    def _run(self, maps: list[ProcessableMap]) -> tuple[list[list], list[object]]:
+    def _run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
+
+        Returns one (forced photometry sources, sifter result) tuple for each
+        map set. If there are no maps, returns an empty list.
         """
+        maps = list(maps)
+        if not maps:
+            structlog.get_logger().warning(
+                "pipeline.no_maps_found",
+                message="No input maps. Check the map configuration or database query.",
+            )
+            return []
         sky_box = self.extract_bounding_box(maps)
         time_range = self.observation_time_range(maps)
         all_simulated_sources = self.basic_task(self.simulate_sources)(
             sky_box, time_range
         )
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
-        results = (
+        map_results = (
             self.basic_task(self.coadd_and_analyze_maps)
             .map(map_sets, self.unmapped(all_simulated_sources))
             .result()
         )
-        all_transient_candidates = [res[1].transient_candidates for res in results]
-        matches = (
-            self.basic_task(self.crossmatch_pair)
-            .map(combinations(all_transient_candidates, 2))
-            .result()
-        )
+        # Held in memory until every map is analyzed, so map matching can
+        # group transient candidates across maps before anything is written.
+        map_results = [r for r in map_results if r is not None]
+        map_results, summary = self.profilable_task(self.map_matcher.match)(map_results)
 
-        cross_matches = self.profilable_task(n_wise_crossmatch)(
-            matches,
-            dict(zip([mm[0].map_id for mm in map_sets], all_transient_candidates)),
-        )
+        self.basic_task(self.output_map_result).map(map_results).result()
 
-        return results
+        # After the source outputs, so that a failure here does not leave
+        # maps in the "processing" state.
+        for output in self.map_match_outputs:
+            self.profilable_task(output.output)(summary=summary)
+
+        return [(r.forced_photometry_candidates, r.sifter_result) for r in map_results]

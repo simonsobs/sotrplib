@@ -6,9 +6,9 @@
             "weights_map_path": "./depth1_1538613353_pa5_f090_ivar.fits",
             "time_map_path": "./depth1_1538613353_pa5_f090_time.fits",
             "frequency": "f090",
-            "band": "pa5",
+            "array": "pa5",
             "intensity_units": "K",
-            "box":[
+            "sky_box": [
                     {
                     "ra":{"value":138.52,"unit":"deg"},
                     "dec":{"value":-13.095,"unit":"deg"}
@@ -48,7 +48,7 @@
     "sifter": {
         "sifter_type": "default"
     },
-    "outputs": [
+    "source_outputs": [
         {
             "output_type": "pickle",
             "directory": "."

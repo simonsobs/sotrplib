@@ -10,6 +10,7 @@ from typing import Literal
 
 import structlog
 from astropy import units as u
+from astropy.time import Time
 from astropydantic import AstroPydanticQuantity
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
@@ -22,7 +23,14 @@ from sotrplib.maps.core import (
 
 # avoid importing maps at module import time to prevent circular imports;
 # import inside methods where needed
-from sotrplib.maps.masks import mask_dustgal, mask_edge, mask_planets
+from sotrplib.maps.masks import (
+    mask_asteroids,
+    mask_asteroids_socat,
+    mask_dustgal,
+    mask_edge,
+    mask_planets,
+)
+from sotrplib.solar_system.solar_system import load_jpl_ephem_database
 from sotrplib.utils.utils import get_frequency, get_fwhm
 
 
@@ -66,6 +74,111 @@ class PlanetMasker(MapPreprocessor):
         return input_map
 
 
+class AsteroidMasker(MapPreprocessor):
+    """
+    Mask the solar-system objects that cross each map in its observation
+    window.
+
+    - First method: SOCat (source_type "sso"). SOCat uses the per-pixel time
+      of the map to refine each position.
+    - Second method: a local ephemeris file (see
+      sotrplib.solar_system.download_ephem_from_horizons). The masker uses
+      it only if SOCat is not configured or a query fails. If SOCat finds
+      no objects, the masker does not use the file.
+
+    The masker loads the ephemeris file one time, not for each map.
+    """
+
+    mask_radius: AstroPydanticQuantity = 10 * u.arcmin
+
+    def __init__(
+        self,
+        use_socat: bool = True,
+        ephem_file_path: Path | None = None,
+        start_time: Time | None = None,
+        end_time: Time | None = None,
+        mask_radius: AstroPydanticQuantity = 10 * u.arcmin,
+        interp_time_range: AstroPydanticQuantity = 0.5 * u.day,
+        interp_to: AstroPydanticQuantity | None = 10 * u.min,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.mask_radius = mask_radius
+        self.interp_time_range = interp_time_range
+        self.interp_to = interp_to
+        self.log = log or structlog.get_logger()
+
+        self.socat = None
+        if use_socat:
+            try:
+                from sotrplib.source_catalog.socat import SOCat
+
+                self.socat = SOCat(log=self.log)
+            except Exception:
+                self.log.warning("AsteroidMasker.init.socat_unavailable", exc_info=True)
+
+        self.ephem_df = None
+        if ephem_file_path is not None:
+            self.ephem_df = load_jpl_ephem_database(
+                ephem_file_path=ephem_file_path,
+                start_time=start_time,
+                stop_time=end_time,
+                log=self.log,
+            )
+
+        if self.socat is None and self.ephem_df is None:
+            self.log.error(
+                "AsteroidMasker.init.no_method_available",
+                message="Neither SOCat nor a local ephem_file_path is available -- "
+                "asteroid masking will be a no-op.",
+            )
+
+    def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
+        log = self.log.bind(func="AsteroidMasker.preprocess")
+        log.info(
+            "AsteroidMasker.preprocess.masking_asteroids",
+            mask_radius=self.mask_radius,
+            time_range=[input_map.observation_start, input_map.observation_end],
+        )
+
+        asteroid_mask = None
+        if self.socat is not None:
+            try:
+                asteroid_mask = mask_asteroids_socat(
+                    input_map=input_map,
+                    socat=self.socat,
+                    mask_radius=self.mask_radius,
+                    log=log,
+                )
+            except Exception:
+                log.warning(
+                    "AsteroidMasker.preprocess.socat_query_failed", exc_info=True
+                )
+                asteroid_mask = None
+
+        if asteroid_mask is None and self.ephem_df is not None:
+            log.info("AsteroidMasker.preprocess.using_local_ephem_fallback")
+            asteroid_mask = mask_asteroids(
+                input_map=input_map,
+                ephem_df=self.ephem_df,
+                mask_radius=self.mask_radius,
+                interp_time_range=self.interp_time_range,
+                interp_to=self.interp_to,
+                log=log,
+            )
+
+        if asteroid_mask is None:
+            log.error("AsteroidMasker.preprocess.no_method_available")
+            return input_map
+
+        input_map.mask = (
+            input_map.mask * asteroid_mask
+            if input_map.mask is not None
+            else asteroid_mask
+        )
+        log.info("AsteroidMasker.preprocess.completed")
+        return input_map
+
+
 class KappaRhoCleaner(MapPreprocessor):
     cut_on: Literal["median", "percentile", "max"] = "median"
     fraction: float = 0.05
@@ -98,7 +211,7 @@ class MatchedFilter(MapPreprocessor):
         self,
         infofile: Path | None = None,
         maskfile: Path | None = None,
-        beam1d: Path | None = None,
+        beam1d: Path | dict[str, Path] | None = None,
         shrink_holes: AstroPydanticQuantity = 20 * u.arcmin,
         apod_edge: AstroPydanticQuantity = 10 * u.arcmin,
         apod_holes: AstroPydanticQuantity = 5 * u.arcmin,
@@ -132,6 +245,17 @@ class MatchedFilter(MapPreprocessor):
         self.pixwin = pixwin
         self.log = log
 
+    def _beam1d_for(self, input_map: ProcessableMap) -> Path | None:
+        if not isinstance(self.beam1d, dict):
+            return self.beam1d
+        try:
+            return self.beam1d[input_map.frequency]
+        except KeyError:
+            raise ValueError(
+                f"No beam1d profile for band '{input_map.frequency}' of map "
+                f"{input_map.map_name}; beam1d has bands {sorted(self.beam1d)}."
+            ) from None
+
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         rho, kappa = matched_filter_depth1_map(
             imap=input_map.intensity * input_map.intensity_units.to(u.K),
@@ -149,7 +273,7 @@ class MatchedFilter(MapPreprocessor):
                 arr=input_map.array,
                 instrument=input_map.instrument,
             ),
-            beam1d=self.beam1d,
+            beam1d=self._beam1d_for(input_map),
             shrink_holes=self.shrink_holes,
             apod_edge=self.apod_edge,
             apod_holes=self.apod_holes,

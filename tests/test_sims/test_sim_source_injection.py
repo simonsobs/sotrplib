@@ -1,3 +1,4 @@
+import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
@@ -390,3 +391,107 @@ def test_sim_maps_inject_sources():
     assert injected_map is not None
     assert injected_map.flux is not None
     assert len(sources) == number
+
+
+def test_injected_peak_flux_independent_of_fwhm():
+    """
+    A random fwhm must not change the injected peak flux (issue #161).
+    """
+    flux = u.Quantity(1.0, "Jy")
+    start_time = Time("2025-10-01T00:00:00", format="isot", scale="utc")
+    base_map = maps.SimulatedMap(
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        frequency="f090",
+        array="pa5",
+        simulation_parameters=maps.SimulationParameters(
+            center_ra=50.0 * u.deg,
+            center_dec=0.0 * u.deg,
+            width_ra=4.0 * u.deg,
+            width_dec=4.0 * u.deg,
+            map_noise=u.Quantity(1e-9, "Jy"),
+        ),
+    )
+    base_map.build()
+    base_map.finalize()
+
+    sources = [
+        sim_sources.FixedSimulatedSource(
+            position=SkyCoord(ra=ra * u.deg, dec=dec * u.deg), flux=flux
+        )
+        for ra, dec in [(49.0, -1.0), (51.0, -1.0), (49.0, 1.0), (51.0, 1.0)]
+    ]
+    injector = source_injector.PhotutilsSourceInjector(
+        gauss_fwhm=get_fwhm(base_map.frequency), fwhm_uncertainty_fraction=0.3
+    )
+    _, new_map = injector.inject(input_map=base_map, simulated_sources=sources)
+
+    difference = new_map.flux - base_map.flux
+    for source in sources:
+        y, x = base_map.flux.wcs.world_to_array_index(source.position(start_time))
+        peak = difference[y - 2 : y + 3, x - 2 : x + 3].max()
+        assert u.isclose(peak * base_map.flux_units, flux, rtol=0.01)
+
+
+def test_fixed_source_generation_edge_pad():
+    left = 10.0 * u.deg
+    right = 20.0 * u.deg
+    bottom = 40.0 * u.deg
+    top = 50.0 * u.deg
+    edge_pad = 1.0 * u.deg
+    time = Time.now()
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=u.Quantity(1.0, "Jy"),
+        max_flux=u.Quantity(10.0, "Jy"),
+        number=256,
+        edge_pad=edge_pad,
+    )
+    sources, _ = generator.generate(
+        sky_box=[SkyCoord(ra=left, dec=bottom), SkyCoord(ra=right, dec=top)]
+    )
+
+    # The RA pad is edge_pad / cos(dec) at the highest |dec| in the box.
+    ra_pad = edge_pad / np.cos((top - edge_pad).to_value(u.rad))
+    for source in sources:
+        position = source.position(time)
+        assert left + ra_pad < position.ra < right - ra_pad
+        assert bottom + edge_pad < position.dec < top - edge_pad
+
+
+def test_fixed_source_generation_edge_pad_in_map():
+    start_time = Time("2025-10-01T00:00:00", format="isot", scale="utc")
+    base_map = maps.SimulatedMap(
+        observation_start=start_time,
+        observation_end=start_time + TimeDelta(3600, format="sec"),
+        frequency="f090",
+        array="pa5",
+        simulation_parameters=maps.SimulationParameters(
+            center_ra=50.0 * u.deg,
+            center_dec=0.0 * u.deg,
+            width_ra=4.0 * u.deg,
+            width_dec=4.0 * u.deg,
+        ),
+    )
+    base_map.build()
+    edge_pad = 30.0 * u.arcmin
+    pad_pixels = (edge_pad / base_map.map_resolution).to_value(u.one)
+
+    generator = sim_source_generators.FixedSourceGenerator(
+        min_flux=u.Quantity(1.0, "Jy"),
+        max_flux=u.Quantity(10.0, "Jy"),
+        number=256,
+        edge_pad=edge_pad,
+    )
+    sources, _ = generator.generate(input_map=base_map)
+
+    ny, nx = base_map.flux.shape[-2:]
+    for source in sources:
+        y, x = base_map.flux.sky2pix(
+            [
+                source.position(start_time).dec.to_value(u.rad),
+                source.position(start_time).ra.to_value(u.rad),
+            ]
+        )
+        assert pad_pixels - 1 <= y <= ny - pad_pixels
+        assert pad_pixels - 1 <= x <= nx - pad_pixels

@@ -1,11 +1,17 @@
 import numpy as np
+import pandas as pd
 import structlog
 from astropy import units as u
 from astropy.time import Time
 from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.solar_system.solar_system import create_observer, get_sso_ephems_at_time
+from sotrplib.maps.core import ProcessableMap
+from sotrplib.solar_system.solar_system import (
+    create_observer,
+    get_sso_ephem_in_map,
+    get_sso_ephems_at_time,
+)
 
 
 def mask_dustgal(
@@ -87,6 +93,119 @@ def mask_planets(
         planets=planets,
     )
     return mask
+
+
+def _mask_from_positions(
+    input_map: ProcessableMap,
+    positions: list[tuple[str, u.Quantity, u.Quantity]],
+    mask_radius: u.Quantity,
+    log: FilteringBoundLogger,
+    func_name: str,
+) -> enmap.ndmap:
+    """Return a mask with a hole of `mask_radius` at each position."""
+    asteroid_locs = []
+    for _name, ra, dec in positions:
+        dec_val = np.atleast_1d(dec.to_value(u.rad))[0]
+        ra_val = np.atleast_1d(ra.to_value(u.rad))[0]
+        asteroid_locs.append(input_map.time_mean.sky2pix([dec_val, ra_val]))
+
+    mask = enmap.ones(input_map.time_mean.shape, input_map.time_mean.wcs)
+    if len(asteroid_locs) > 0:
+        mask_radius_pix = 1.0
+        asteroid_mask = make_src_mask(
+            input_map.time_mean,
+            srcs_pix=asteroid_locs,
+            fwhm=None,
+            mask_radius=[mask_radius_pix] * len(asteroid_locs),
+        )
+        mask *= asteroid_mask
+
+    ## grow_mask grows the True regions. Invert to grow the False holes.
+    mask = enmap.enmap(mask, mask.wcs, dtype=bool)
+    mask = ~enmap.grow_mask(~mask, mask_radius.to_value(u.rad))
+    log.info(
+        f"{func_name}.completed",
+        input_map_wcs=input_map.time_mean.wcs,
+        n_asteroids_masked=len(asteroid_locs),
+        asteroid_names=[name for name, _, _ in positions],
+    )
+    return mask
+
+
+def mask_asteroids_socat(
+    input_map: ProcessableMap,
+    socat,
+    mask_radius: u.Quantity = 10 * u.arcmin,
+    log: FilteringBoundLogger | None = None,
+) -> enmap.ndmap:
+    """
+    Mask the solar-system objects that SOCat finds in the map footprint and
+    observation window. Use this function before mask_asteroids(), because
+    SOCat uses the per-pixel time of the map to refine each position.
+
+    Args:
+        input_map: map to create the asteroid mask for.
+        socat: a sotrplib.source_catalog.socat.SOCat instance.
+        mask_radius: radius to mask around each detected asteroid position.
+    """
+    log = log or structlog.get_logger()
+    log = log.bind(func="mask_asteroids_socat")
+
+    sources = socat.get_sources_in_map(input_map, monitored=False)
+    sso_sources = [s for s in sources if s.source_type == "sso"]
+
+    positions = [(str(s.source_id), s.ra, s.dec) for s in sso_sources]
+    return _mask_from_positions(
+        input_map, positions, mask_radius, log, "mask_asteroids_socat"
+    )
+
+
+def mask_asteroids(
+    input_map: ProcessableMap,
+    ephem_df: pd.DataFrame,
+    mask_radius: u.Quantity = 10 * u.arcmin,
+    interp_time_range: u.Quantity = 0.5 * u.day,
+    interp_to: u.Quantity | None = 10 * u.min,
+    log: FilteringBoundLogger | None = None,
+) -> enmap.ndmap:
+    """
+    Mask the asteroids that cross the map footprint in the observation
+    window. Each mask is at the position of the asteroid at its crossing
+    time. The positions come from a local ephemeris file.
+
+    Use this function only if SOCat is not available. It uses one time for
+    each asteroid, not the per-pixel time.
+
+    Args:
+        input_map: map to create the asteroid mask for. It must be a
+            ProcessableMap with time_mean, observation_start/end and
+            filter_sources.
+        ephem_df: asteroid ephemeris database, as loaded by
+            sotrplib.solar_system.solar_system.load_jpl_ephem_database or
+            load_mpc_orbital_database.
+        mask_radius: radius to mask around each detected asteroid position.
+        interp_time_range: time range for interpolate_ephem.
+        interp_to: sample interval for get_sso_ephem_in_map.
+    """
+    log = log or structlog.get_logger()
+    log = log.bind(func="mask_asteroids")
+
+    sso_ephems = get_sso_ephem_in_map(
+        input_map=input_map,
+        ephem_df=ephem_df,
+        interp_time_range=interp_time_range,
+        interp_to=interp_to,
+        planets=[],  # planets are handled separately, by mask_planets
+        log=log,
+    )
+
+    positions = [
+        (obj, sso_ephems[obj]["pos"].ra, sso_ephems[obj]["pos"].dec)
+        for obj in sso_ephems
+    ]
+    return _mask_from_positions(
+        input_map, positions, mask_radius, log, "mask_asteroids"
+    )
 
 
 def mask_edge(imap: enmap.ndmap, pix_num: int):

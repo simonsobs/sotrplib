@@ -13,7 +13,7 @@ def test_stacker(database_sessionmaker, create_test_maps):
         session.add_all(d1tables)
         session.commit()
 
-    update_sky_coverage.core(session=database_sessionmaker, convention="standard")
+    update_sky_coverage.core(session=database_sessionmaker)
 
     end_time = Time("2025-01-10T00:00:00", scale="utc")
     start_time = end_time - TimeDelta(11, format="jd")
@@ -59,6 +59,6 @@ def test_stacker(database_sessionmaker, create_test_maps):
     for i in range(10):
         assert np.isclose(
             Stamps[0].times[i] - start_time.unix,
-            float(d1tables[0].ctime),
+            float(Time(d1tables[0].ctime).unix),
             rtol=1e-3,
         )

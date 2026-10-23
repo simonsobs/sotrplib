@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from astropy import units as u
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from pixell import enmap
 
 
@@ -207,7 +207,7 @@ def db_result(separate_map_set_1):
     """Mock DepthOneMapTable row pointing at the tmp FITS files."""
     paths = separate_map_set_1
     r = MagicMock()
-    r.map_id = 42
+    r.map_id = "11111111-1111-1111-1111-111111111111"
     r.map_path = paths["map"]
     r.ivar_path = paths["ivar"]
     r.rho_path = paths["rho"]
@@ -216,8 +216,8 @@ def db_result(separate_map_set_1):
     r.flux_path = paths["rho"]
     r.snr_path = paths["kappa"]
     r.mean_time_path = paths["time"]
-    r.start_time = Time.now().unix - 3600
-    r.stop_time = Time.now().unix
+    r.start_time = Time.now() - TimeDelta(3600, format="sec")
+    r.stop_time = Time.now()
     r.frequency = "f090"
     r.tube_slot = "pa5"
     return r

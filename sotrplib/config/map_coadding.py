@@ -8,7 +8,12 @@ from typing import Literal
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.maps.map_coadding import EmptyMapCoadder, MapCoadder, RhoKappaMapCoadder
+from sotrplib.maps.map_coadding import (
+    EmptyMapCoadder,
+    IntensityMapCoadder,
+    MapCoadder,
+    RhoKappaMapCoadder,
+)
 
 
 class MapCoadderConfig(BaseModel, ABC):
@@ -48,4 +53,25 @@ class RhoKappaMapCoadderConfig(MapCoadderConfig):
         )
 
 
-AllMapCoadderConfigTypes = RhoKappaMapCoadderConfig | EmptyMapCoadderConfig
+class IntensityMapCoadderConfig(MapCoadderConfig):
+    coadd_type: Literal["intensity"] = "intensity"
+
+    frequencies: list[str] | None = None
+    arrays: list[str] | None = None
+    instrument: str | None = None
+
+    def to_coadder(
+        self,
+        log: FilteringBoundLogger | None = None,
+    ) -> MapCoadder:
+        return IntensityMapCoadder(
+            frequencies=self.frequencies,
+            arrays=self.arrays,
+            instrument=self.instrument,
+            log=log,
+        )
+
+
+AllMapCoadderConfigTypes = (
+    RhoKappaMapCoadderConfig | IntensityMapCoadderConfig | EmptyMapCoadderConfig
+)
