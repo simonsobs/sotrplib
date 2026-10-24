@@ -674,6 +674,8 @@ class SPTIntensityAndInverseVarianceMap(IntensityAndInverseVarianceMap):
         if mapcat_id is not None:
             self.mapcat_id = mapcat_id
         self._hits = None
+        self._g3_map_frame = None
+        "Cached post-CropMaps G3 Map frame, set by build(); see preprocessor.SPT3GTransientFilter."
         self.log = log or structlog.get_logger()
 
     @property
@@ -707,7 +709,13 @@ class SPTIntensityAndInverseVarianceMap(IntensityAndInverseVarianceMap):
                     )
                     self.subfield = frame["SourceName"]
                 elif frame.type == core.G3FrameType.Map:
-                    maps.CropMaps(frame, pad=10 * core.G3Units.arcmin)
+                    # 20 arcmin, not 10: SPT3GTransientFilter reuses this
+                    # same cropped frame (see self._g3_map_frame below), and
+                    # spt3g.transients.NormalizeMapWeights's default
+                    # bright_source_radius is 10 arcmin, so 10 arcmin of pad
+                    # would leave no safety margin against edge-truncation
+                    # artifacts there.
+                    maps.CropMaps(frame, pad=20 * core.G3Units.arcmin)
                     if not frame["T"].weighted:
                         raise ValueError(
                             f"{self.map_filename}: T is not weighted, so T/W "
@@ -716,6 +724,11 @@ class SPTIntensityAndInverseVarianceMap(IntensityAndInverseVarianceMap):
                         )
                     T_weighted = frame["T"]
                     W_map = frame.get("Wpol", frame.get("Wunpol", None))
+                    # Cached for SPT3GTransientFilter (sotrplib.maps.preprocessor),
+                    # so it can reuse this already-read, already-cropped frame
+                    # instead of gfal-copying and re-parsing the .g3 file a
+                    # second time just to run spt3g's native matched filter.
+                    self._g3_map_frame = frame
                     break
 
             if T_weighted is None:

@@ -323,12 +323,15 @@ class SPT3GTransientFilter(MapPreprocessor):
     ``TransientMapFiltering`` operates on native ``G3SkyMap``/
     ``G3SkyMapWeights`` frame objects, not the enmap intensity/
     inverse_variance arrays already extracted onto a
-    ``SPTIntensityAndInverseVarianceMap``, so this preprocessor re-reads
-    ``input_map``'s original ``.g3`` file (gfal-copying it to scratch again
-    if it's a grid URL) rather than operating on ``input_map.intensity``/
-    ``input_map.inverse_variance`` directly. ``input_map`` must therefore
-    expose ``map_filename`` and ``scratch_dir`` (as
-    ``SPTIntensityAndInverseVarianceMap`` does).
+    ``SPTIntensityAndInverseVarianceMap``, so this preprocessor needs the
+    original (post-``CropMaps``) G3 Map frame, not ``input_map.intensity``/
+    ``input_map.inverse_variance`` directly. If ``input_map`` has a cached
+    ``_g3_map_frame`` (``SPTIntensityAndInverseVarianceMap.build()`` stashes
+    one there), that's reused directly -- gfal-copying the file and parsing
+    it a second time, just to run this filter, would be wasteful. Otherwise
+    it falls back to gfal-copying and reading ``input_map.map_filename``
+    itself (cropping it the same way), so this preprocessor still works
+    standalone against any map exposing ``map_filename``/``scratch_dir``.
 
     Band-specific flux calibration (K -> mJy), the high-pass radial filter,
     and the Gaussian matched-filter FWHM are spt3g_software's own hardcoded
@@ -383,10 +386,16 @@ class SPT3GTransientFilter(MapPreprocessor):
             map_filename=str(input_map.map_filename),
         )
         band = input_map.frequency
-        scratch_dir = (
-            getattr(input_map, "scratch_dir", None)
-            or Path(tempfile.gettempdir()) / "sotrplib_spt"
-        )
+
+        class _FrameSource:
+            def __init__(self, frames):
+                self._frames = list(frames)
+
+            def __call__(self, frame):
+                if frame is None:
+                    out, self._frames = self._frames, []
+                    return out
+                return []
 
         results = []
 
@@ -394,11 +403,9 @@ class SPT3GTransientFilter(MapPreprocessor):
             if frame.type == core.G3FrameType.Map:
                 results.append(frame)
 
-        with gfal.fetch_to_scratch(
-            str(input_map.map_filename), scratch_dir, log=log
-        ) as local_g3:
+        def _run(map_frame):
             pipe = core.G3Pipeline()
-            pipe.Add(core.G3Reader, filename=str(local_g3))
+            pipe.Add(_FrameSource([map_frame]))
             pipe.Add(spt3g_maps.map_modules.MakeMapsUnpolarized)
             pipe.Add(
                 transients.TransientMapFiltering,
@@ -416,6 +423,32 @@ class SPT3GTransientFilter(MapPreprocessor):
             )
             pipe.Add(_collect)
             pipe.Run()
+
+        cached_frame = getattr(input_map, "_g3_map_frame", None)
+        if cached_frame is not None:
+            # SPTIntensityAndInverseVarianceMap.build() already gfal-copied,
+            # read, and CropMaps-ed this frame; reuse it instead of paying
+            # for a second grid copy and .g3 parse just to run this filter.
+            log.info("SPT3GTransientFilter.preprocess.reusing_cached_frame")
+            _run(cached_frame)
+        else:
+            log.info("SPT3GTransientFilter.preprocess.no_cached_frame")
+            scratch_dir = (
+                getattr(input_map, "scratch_dir", None)
+                or Path(tempfile.gettempdir()) / "sotrplib_spt"
+            )
+            with gfal.fetch_to_scratch(
+                str(input_map.map_filename), scratch_dir, log=log
+            ) as local_g3:
+                map_frame = None
+                for frame in core.G3File(str(local_g3)):
+                    if frame.type == core.G3FrameType.Map:
+                        map_frame = frame
+                        break
+                if map_frame is None:
+                    raise ValueError(f"No Map frame found in {input_map.map_filename}")
+                spt3g_maps.CropMaps(map_frame, pad=20 * core.G3Units.arcmin)
+                _run(map_frame)
 
         if not results:
             raise ValueError(
