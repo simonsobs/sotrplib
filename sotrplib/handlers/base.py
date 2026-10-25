@@ -19,7 +19,12 @@ from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.maps.utils import enmap_box_to_skycoord
 from sotrplib.outputs.core import MapMatchOutput, MapOutput, SourceOutput
 from sotrplib.sifter.core import EmptySifter, SifterResult, SiftingProvider
-from sotrplib.sifter.map_matching import EmptyMapMatcher, MapMatcher, MapResult
+from sotrplib.sifter.map_matching import (
+    EmptyMapMatcher,
+    MapMatcher,
+    MapMatchSummary,
+    MapResult,
+)
 from sotrplib.sims.sim_source_generators import (
     SimulatedSource,
     SimulatedSourceGenerator,
@@ -319,6 +324,25 @@ class BaseRunner:
                 result.mapcat_id, map_type=result.map_type
             )
 
+    def update_source_catalogs(
+        self, results: list[MapResult], summary: MapMatchSummary
+    ) -> None:
+        """
+        Give the map-match summary to each source catalog (see
+        SourceCatalog.update). If an update fails, set the status of the
+        maps to "failed", so that the next run analyzes them again.
+        """
+        try:
+            for catalog in self.source_catalogs:
+                catalog.update(summary)
+        except Exception:
+            for result in results:
+                if result.from_database:
+                    set_processing_end(
+                        result.mapcat_id, map_type=result.map_type, status="failed"
+                    )
+            raise
+
     def run(
         self, maps: list[ProcessableMap]
     ) -> list[tuple[list[MeasuredSource], SifterResult]]:
@@ -356,6 +380,10 @@ class BaseRunner:
         # group transient candidates across maps before anything is written.
         map_results = [r for r in map_results if r is not None]
         map_results, summary = self.profilable_task(self.map_matcher.match)(map_results)
+
+        # Before the source outputs, so that the outputs contain the
+        # crossmatches to new catalog sources.
+        self.profilable_task(self.update_source_catalogs)(map_results, summary)
 
         self.basic_task(self.output_map_result).map(map_results).result()
 
