@@ -219,9 +219,7 @@ class MapCatDatabaseReader(ABC):
                 if dec < -90 or dec > 90:  # pragma: no cover
                     raise ValueError("Dec must be between -90 and 90 degrees")
 
-                ra_idx = ra_to_index(ra)
-                dec_idx = dec_to_index(dec)
-                points.append((ra_idx, dec_idx))
+                points.extend(sky_coverage_tiles(ra, dec))
             points = set(points)
             query = query.join(DepthOneMapTable.depth_one_sky_coverage).where(
                 tuple_(SkyCoverageTable.x, SkyCoverageTable.y).in_(points)
@@ -280,6 +278,7 @@ class MapCatDatabaseReader(ABC):
                 self.map_ids.append(m.mapcat_id)
                 if self.track_processing:
                     set_processing_start(m.mapcat_id, session=session)
+                    m._track_processing = True
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
@@ -477,6 +476,7 @@ class CoaddRhoKappaMapReader(MapCatDatabaseReader):
                 self.map_ids.append(m.mapcat_id)
                 if self.track_processing:
                     set_processing_start(m.mapcat_id, map_type="coadd", session=session)
+                    m._track_processing = True
                 if len(maps) >= self.number_to_read:
                     break
         self._map_list = maps
@@ -552,6 +552,19 @@ def check_if_processed(
     ):
         return True
     return False
+
+
+def sky_coverage_tiles(ra: float, dec: float) -> list[tuple[int, int]]:
+    """
+    Return the mapcat sky-coverage tiles (x, y) that can hold the point
+    (ra, dec), in degrees, with ra in [0, 360).
+
+    The mapcat tile indices are all positive: x is in [0, 36) and y is
+    in [0, 18).
+    """
+    dec_idx = dec_to_index(dec)
+    tiles = [(ra_to_index(ra), dec_idx)]
+    return tiles
 
 
 def set_processing_start(
