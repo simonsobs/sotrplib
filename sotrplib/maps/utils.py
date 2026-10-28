@@ -10,6 +10,34 @@ type Box = np.ndarray[
 ]  # shape (2,2): [[dec_min, ra_max],[dec_max, ra_min]] in radians
 
 
+def enmap_footprint_box(shape, wcs, nsamp: int = 100) -> Box:
+    """
+    Robust sky bounding box for an enmap geometry, including non-rectilinear
+    projections (e.g. ZEA) where the corner-to-corner diagonal used by
+    ``enmap.box()``/``enmap.corners()`` does not bound the map's true
+    footprint: on a curved projection, the true dec/ra extremum can be
+    reached partway along an edge rather than at a corner, so a box built
+    from just the two opposite corners can undercount the footprint by many
+    degrees.
+
+    Samples ``nsamp`` points along each of the array's four edges (not just
+    its two opposite corners) and returns the box enclosing all of them. For
+    a rectilinear projection (e.g. CAR), where dec and ra vary independently
+    along each pixel axis, this agrees with ``enmap.box()``.
+
+    Returns ``[[dec_min, ra_max], [dec_max, ra_min]]`` in radians, the same
+    convention as ``enmap.box()`` (ra_min may be "negative"/unwound to
+    signal a region that wraps through RA=0).
+    """
+    ny, nx = shape[-2:]
+    ys = np.linspace(-0.5, ny - 0.5, nsamp)
+    xs = np.linspace(-0.5, nx - 0.5, nsamp)
+    edge_y = np.concatenate([ys, ys, np.full(nsamp, -0.5), np.full(nsamp, ny - 0.5)])
+    edge_x = np.concatenate([np.full(nsamp, -0.5), np.full(nsamp, nx - 0.5), xs, xs])
+    dec, ra = enmap.pix2sky(shape, wcs, np.array([edge_y, edge_x]))
+    return np.array([[dec.min(), ra.max()], [dec.max(), ra.min()]])
+
+
 def skycoord_box_to_enmap_box(sky_box: tuple[SkyCoord, SkyCoord]) -> Box:
     """Convert a ``(lower_left, upper_right)`` SkyCoord box to a pixell enmap box.
     Convert to ICRS frame to use internally.

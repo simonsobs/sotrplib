@@ -22,6 +22,7 @@ from uuid7 import UUID as UUID7
 from sotrplib.maps import gfal
 from sotrplib.maps.utils import (
     enmap_box_to_skycoord,
+    enmap_footprint_box,
     pixell_map_union,
     skycoord_box_to_enmap_box,
 )
@@ -265,13 +266,15 @@ class ProcessableMap(ABC):
         """
         The bounding box of the map as a pixell enmap box.
 
-        Returns ``enmap.box(shape, wcs)`` on the first loaded map found in
-        ``_available_maps``.
+        Returns ``enmap_footprint_box(shape, wcs)`` (not ``enmap.box()``,
+        whose corner-to-corner diagonal undercounts the true footprint of a
+        non-rectilinear projection such as SPT3G's ZEA maps) on the first
+        loaded map found in ``_available_maps``.
         Returns ``None`` if no map or sky_box is available.
         """
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
-                return enmap.box(m.shape, m.wcs)
+                return enmap_footprint_box(m.shape, m.wcs)
 
         return None
 
@@ -483,7 +486,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         if (box := super().bbox) is not None:
             return box
         shape, wcs = enmap.read_map_geometry(str(self.intensity_filename))
-        return enmap.box(shape, wcs)
+        return enmap_footprint_box(shape, wcs)
 
     def build(self):
         log = self.log.bind(
@@ -685,7 +688,7 @@ class SPTIntensityAndInverseVarianceMap(IntensityAndInverseVarianceMap):
         # self.intensity_filename.
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
-                return m.box()
+                return enmap_footprint_box(m.shape, m.wcs)
         return [[-72 * np.pi / 180, 53 * np.pi / 180], [-40 * np.pi / 180, -53 * np.pi / 180]]
 
     def build(self):
@@ -999,7 +1002,7 @@ class RhoAndKappaMap(ProcessableMap):
         if (box := super().bbox) is not None:
             return box
         shape, wcs = enmap.read_map_geometry(str(self.rho_filename))
-        return enmap.box(shape, wcs)
+        return enmap_footprint_box(shape, wcs)
 
     def build(self):
         log = self.log.bind(rho_filename=self.rho_filename)
@@ -1188,7 +1191,7 @@ class FluxAndSNRMap(ProcessableMap):
         if (box := super().bbox) is not None:
             return box
         shape, wcs = enmap.read_map_geometry(str(self.flux_filename))
-        return enmap.box(shape, wcs)
+        return enmap_footprint_box(shape, wcs)
 
     def build(self):
         log = self.log.bind(flux_filename=self.flux_filename)
@@ -1361,7 +1364,7 @@ class SPTFluxAndSNRMap(FluxAndSNRMap):
         # We skip FluxAndSNRMap.bbox's fallback that reads self.flux_filename.
         for attr in self._available_maps:
             if (m := getattr(self, attr, None)) is not None:
-                return m.box()
+                return enmap_footprint_box(m.shape, m.wcs)
         #[[dec_min, ra_max], [dec_max, ra_min]]
         return [[-72*np.pi/180, 53*np.pi/180], [-40*np.pi/180, -53*np.pi/180]]
 
