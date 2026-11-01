@@ -89,6 +89,47 @@ def _hat_design(t, nodes):
     return a
 
 
+def _hull(u_, v_) -> list[tuple[float, float]]:
+    """Convex hull (counter-clockwise vertices) of the points, monotone chain."""
+    pts = sorted(set(zip(np.round(u_, 6).tolist(), np.round(v_, 6).tolist())))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def _clamp_to_hull(u_, v_, hull):
+    """Move points outside the convex polygon to the nearest point on its edge."""
+    h = np.asarray(hull, dtype=float)
+    if len(h) < 3:
+        return u_, v_
+    p = np.stack([u_, v_], axis=-1)
+    a, b = h, np.roll(h, -1, axis=0)
+    e = b - a
+    rel = p[:, None, :] - a[None, :, :]
+    inside = np.all(
+        e[None, :, 0] * rel[..., 1] - e[None, :, 1] * rel[..., 0] >= 0, axis=1
+    )
+    t = np.clip(np.sum(rel * e[None], -1) / np.sum(e * e, -1)[None], 0, 1)
+    proj = a[None] + t[..., None] * e[None]
+    d2 = np.sum((p[:, None, :] - proj) ** 2, -1)
+    near = proj[np.arange(len(p)), np.argmin(d2, axis=1)]
+    out = np.where(inside[:, None], p, near)
+    return out[:, 0], out[:, 1]
+
+
 def _ridge(a, y, sig, penalty):
     """
     Weighted ridge fit. ``penalty`` is the diagonal of the prior precision.
@@ -122,9 +163,17 @@ class ParametricPointingModel(PointingModelProtocol):
     scale: float = 1.0
     u_range: tuple[float, float] = (-1.0, 1.0)
     v_range: tuple[float, float] = (-1.0, 1.0)
+    # Convex hull of the sources in (u, v). Positions outside it are moved to
+    # its edge, so the model does not extrapolate into regions without sources.
+    hull: list[tuple[float, float]] | None = None
     nodes: tuple[float, ...] = (0.0,)
     coeffs_ra: list[float]
     coeffs_dec: list[float]
+    # Range of the offsets (arcsec) that the model can give. The fit sets it
+    # to the range of the fitted offsets at the sources plus a margin, so
+    # that the model cannot give a larger offset in a region without sources.
+    range_ra: tuple[float, float] | None = None
+    range_dec: tuple[float, float] | None = None
 
     @property
     def n_parameters(self) -> int:
@@ -151,12 +200,20 @@ class ParametricPointingModel(PointingModelProtocol):
         )
         uu = np.clip(x / self.scale, *self.u_range)
         vv = np.clip(y / self.scale, *self.v_range)
+        if self.hull is not None:
+            uu, vv = _clamp_to_hull(uu, vv, self.hull)
         return _legendre_design(uu, vv, self.order)
 
     def offsets_at(self, pos: SkyCoord | None = None, times=None):
         """On-sky offsets (catalogue - fit) in arcsec at the positions or times."""
         a = self._design(pos, times)
-        return a @ np.asarray(self.coeffs_ra), a @ np.asarray(self.coeffs_dec)
+        off_ra = a @ np.asarray(self.coeffs_ra)
+        off_dec = a @ np.asarray(self.coeffs_dec)
+        if self.range_ra is not None:
+            off_ra = np.clip(off_ra, *self.range_ra)
+        if self.range_dec is not None:
+            off_dec = np.clip(off_dec, *self.range_dec)
+        return off_ra, off_dec
 
     def _shift(self, pos: SkyCoord, sign: float, times=None) -> SkyCoord:
         off_ra, off_dec = self.offsets_at(pos, times)
@@ -313,8 +370,14 @@ class ParametricPointingOffset:
                 if k > max(1, len(idx) // 3):
                     continue
                 nodes = np.linspace(t0, t1, k) if k > 1 else np.array([t0])
+                # The node values bound a piecewise-linear model, so the
+                # shape check uses the nodes as the grid.
                 cands.append(
-                    ({"nodes": tuple(nodes.tolist())}, _hat_design(t[idx], nodes))
+                    (
+                        {"nodes": tuple(nodes.tolist())},
+                        _hat_design(t[idx], nodes),
+                        np.eye(len(nodes)),
+                    )
                 )
         else:
             v = _unit_vectors(ra[idx], dec[idx]).sum(0)
@@ -329,15 +392,27 @@ class ParametricPointingOffset:
                 scale=scale,
                 u_range=(float(uu.min()), float(uu.max())),
                 v_range=(float(vv.min()), float(vv.max())),
+                hull=[(float(a), float(b)) for a, b in _hull(uu, vv)],
             )
             cands = []
             for order in range(self.max_order + 1):
                 if len(_legendre_terms(order)) > max(1, len(idx) // 3):
                     continue
-                cands.append(({"order": order}, _legendre_design(uu, vv, order)))
+                gu, gv = np.meshgrid(
+                    np.linspace(uu.min(), uu.max(), 41),
+                    np.linspace(vv.min(), vv.max(), 41),
+                )
+                gu_h, gv_h = _clamp_to_hull(gu.ravel(), gv.ravel(), params["hull"])
+                cands.append(
+                    (
+                        {"order": order},
+                        _legendre_design(uu, vv, order),
+                        _legendre_design(gu_h, gv_h, order),
+                    )
+                )
 
         best = None
-        for extra, a in cands:
+        for extra, a, grid in cands:
             for prior in self.prior_choices if a.shape[1] > 1 else (np.inf,):
                 pen = np.full(a.shape[1], 1.0 / prior**2)
                 if self.coordinate == "tangent":
@@ -346,7 +421,7 @@ class ParametricPointingOffset:
                     # Hat functions: penalise departures from the weighted mean
                     # by a prior on each node; the mean is set by the data.
                     pen[:] = 1.0 / prior**2 if a.shape[1] > 1 else 0.0
-                score, coefs = 0.0, []
+                score, coefs, sane = 0.0, [], True
                 for yv in (dra, ddec):
                     c, loo = _ridge(
                         a,
@@ -361,19 +436,39 @@ class ParametricPointingOffset:
                     )
                     score += np.sum((loo / sig[idx]) ** 2)
                     coefs.append(c)
+                    # Shape check: in the box, the model must stay near the
+                    # range of its values at the sources.
+                    f_src, f_grid = a @ c, grid @ c
+                    lo, hi = f_src.min(), f_src.max()
+                    slack = 0.5 * (hi - lo) + 2.0
+                    if f_grid.min() < lo - slack or f_grid.max() > hi + slack:
+                        sane = False
+                if not sane and a.shape[1] > 1:
+                    continue
                 if best is None or score < best[0]:
                     best = (score, extra, coefs, a, prior)
         score, extra, (c_ra, c_dec), a, prior = best
+        ranges = []
+        for c in (c_ra, c_dec):
+            f_src = a @ c
+            margin = max(2.0, 0.1 * (f_src.max() - f_src.min()))
+            ranges.append([float(f_src.min() - margin), float(f_src.max() + margin)])
         if self.coordinate == "time":
             # Add back the weighted means removed before the fit.
             w = 1 / sig[idx] ** 2
-            c_ra = c_ra + np.average(dra[idx], weights=w)
-            c_dec = c_dec + np.average(ddec[idx], weights=w)
+            m_ra = np.average(dra[idx], weights=w)
+            m_dec = np.average(ddec[idx], weights=w)
+            c_ra = c_ra + m_ra
+            c_dec = c_dec + m_dec
+            ranges[0] = [ranges[0][0] + m_ra, ranges[0][1] + m_ra]
+            ranges[1] = [ranges[1][0] + m_dec, ranges[1][1] + m_dec]
         model = ParametricPointingModel(
             **params,
             **extra,
             coeffs_ra=list(map(float, c_ra)),
             coeffs_dec=list(map(float, c_dec)),
+            range_ra=tuple(ranges[0]),
+            range_dec=tuple(ranges[1]),
         )
 
         res_ra = dra[idx] - a @ c_ra

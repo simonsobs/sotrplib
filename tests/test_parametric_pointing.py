@@ -68,6 +68,31 @@ def test_time_model_recovers_drift():
     assert off_ra == pytest.approx([5.0, 5.0 + 18.0], abs=2.0)
 
 
+def test_tangent_model_stays_bounded_away_from_a_line_of_sources():
+    # Sources on a narrow diagonal strip (as on the Galactic plane), plus a
+    # few far away. The model must not swing far outside the measured range
+    # in the empty corners of the box.
+    rng = np.random.default_rng(3)
+    s = rng.uniform(-30, 30, 80)
+    ra = (s + rng.normal(0, 0.5, 80)) % 360
+    dec = 0.6 * s + rng.normal(0, 0.5, 80)
+    ra = np.r_[ra, [25.0, 335.0]]
+    dec = np.r_[dec, [-20.0, 20.0]]
+    snr = rng.uniform(15, 60, 82)
+    dra = 5.0 + 6.0 * np.r_[s, 0, 0] / 30 + rng.normal(0, 0.6 * 120 / snr)
+    ddec = -2.0 + rng.normal(0, 0.6 * 120 / snr)
+    fw = np.full(82, 120.0)
+    model, _, _ = ParametricPointingOffset("tangent").fit_arrays(
+        ra, dec, dra, ddec, snr, fw
+    )
+    corners = SkyCoord(
+        ra=[25.0, 335.0, 25.0, 335.0] * u.deg, dec=[18.0, -18.0, -18.0, 18.0] * u.deg
+    )
+    off_ra, off_dec = model.offsets_at(corners)
+    assert np.all((off_ra > -10) & (off_ra < 20))
+    assert np.all(np.abs(off_dec + 2.0) < 10)
+
+
 def test_time_model_with_too_few_sources_gives_zero():
     ra, dec, dra, ddec, snr, fw, t, x = _field(n=2)
     model, _, _ = ParametricPointingOffset("time").fit_arrays(
