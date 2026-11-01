@@ -80,7 +80,7 @@ class RobustResidualConfig(PointingResidualConfig):
     regions without sources.
     """
 
-    pointing_residual_type: Literal["robust_constant", "robust_gp"] = "robust_gp"
+    pointing_residual_type: Literal["robust_constant", "robust_gp"] = "robust_constant"
     min_snr: float = 5.0
     min_sources: int = 3
     max_offset: AstroPydanticQuantity[u.arcmin] = 5.0 * u.arcmin
