@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 
 PointingModel = ConstantPointingModel | PolynomialPointingModel
+# GaussianProcessPointingModel (sotrplib.maps.robust_pointing) is also a valid
+# model for the handlers. mapcat cannot store it yet.
 
 
 class MapPointingOffset(ABC):

@@ -44,6 +44,7 @@ from .core import (
     RhoAndKappaMap,
 )
 from .pointing import PointingModel
+from .robust_pointing import GaussianProcessPointingModel
 
 # How build_query() selects the maps for a time window:
 #   "restrictive": all of the map is in the window.
@@ -626,6 +627,13 @@ def save_pointing_model(
             ra_model_coefficients=pointing_model.ra_model_coefficients,
             dec_model_coefficients=pointing_model.dec_model_coefficients,
         )
+    elif isinstance(pointing_model, GaussianProcessPointingModel):
+        # mapcat has no table type for the GP model yet. Save the constant
+        # part, so that a cached read gives a correct mean offset.
+        get_logger().warn(
+            "save_pointing_model.gp_model_saved_as_constant", map_id=str(map_id)
+        )
+        model = pointing_model.as_constant()
     else:
         raise ValueError(
             f"Unsupported pointing model type {type(pointing_model)} for saving to DB."
