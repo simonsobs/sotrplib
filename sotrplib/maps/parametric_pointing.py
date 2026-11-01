@@ -252,6 +252,8 @@ class ParametricPointingOffset:
         Numbers of time nodes to try for "time".
     prior_choices : tuple[float, ...]
         Prior widths (arcsec) to try for the non-constant terms.
+    min_abs_glat : float
+        Sources with |Galactic latitude| below this value (deg) are not used.
     The gate and clip parameters are the same as for ``RobustPointingOffset``.
     """
 
@@ -268,6 +270,7 @@ class ParametricPointingOffset:
         clip_sigma: float = 4.0,
         sys_floor: u.Quantity = 2.0 * u.arcsec,
         fwhm_snr: float = 10.0,
+        min_abs_glat: float = 5.0,
         log: FilteringBoundLogger | None = None,
     ):
         self.coordinate = coordinate
@@ -281,6 +284,7 @@ class ParametricPointingOffset:
         self.clip_sigma = clip_sigma
         self.sys_floor = sys_floor
         self.fwhm_snr = fwhm_snr
+        self.min_abs_glat = min_abs_glat
         self.log = log or structlog.get_logger()
 
     def _zero(self):
@@ -311,6 +315,12 @@ class ParametricPointingOffset:
             & (snr >= self.min_snr)
             & (np.hypot(dra, ddec) <= max_off)
         )
+        if self.min_abs_glat > 0 and ok.any():
+            # The Galactic plane is too crowded for pointing fits: the sources
+            # are confused with each other and with diffuse emission.
+            glat = np.full(len(ra), np.nan)
+            glat[ok] = SkyCoord(ra=ra[ok] * u.deg, dec=dec[ok] * u.deg).galactic.b.deg
+            ok &= np.abs(glat) >= self.min_abs_glat
         if self.coordinate == "time":
             if t is None:
                 raise ValueError("The time-based model needs the source times.")
