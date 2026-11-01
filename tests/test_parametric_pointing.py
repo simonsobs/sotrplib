@@ -68,6 +68,15 @@ def test_time_model_recovers_drift():
     assert off_ra == pytest.approx([5.0, 5.0 + 18.0], abs=2.0)
 
 
+def test_time_model_with_too_few_sources_gives_zero():
+    ra, dec, dra, ddec, snr, fw, t, x = _field(n=2)
+    model, _, _ = ParametricPointingOffset("time").fit_arrays(
+        ra, dec, dra, ddec, snr, fw, times=t
+    )
+    off_ra, off_dec = model.offsets_at(times=np.array([100.0]))
+    assert off_ra[0] == 0.0 and off_dec[0] == 0.0
+
+
 def test_directions_and_cos_dec():
     model = ParametricPointingModel(
         coordinate="tangent", coeffs_ra=[36.0], coeffs_dec=[18.0]

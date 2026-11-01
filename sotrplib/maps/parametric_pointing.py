@@ -131,6 +131,14 @@ class ParametricPointingModel(PointingModelProtocol):
         return 2 * len(self.coeffs_ra)
 
     def _design(self, pos: SkyCoord | None, times=None):
+        if len(self.coeffs_ra) == 1:
+            # A constant model needs neither the positions nor the times.
+            n = (
+                len(np.atleast_1d(times))
+                if times is not None
+                else len(np.atleast_1d(pos.ra))
+            )
+            return np.ones((n, 1))
         if self.coordinate == "time":
             if times is None:
                 raise ValueError("A time-based pointing model needs the times.")
