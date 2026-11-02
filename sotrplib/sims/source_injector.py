@@ -120,15 +120,23 @@ class PhotutilsSourceInjector(SourceInjector):
             gauss_fwhm_pixels=gauss_fwhm_pixels, min_fwhm=min_fwhm, max_fwhm=max_fwhm
         )
 
+        x_fwhm = [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources]
+        y_fwhm = [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources]
+
+        # photutils sets the integrated flux of each source. The conversion
+        # below uses the nominal beam area, so scale each flux by the ratio of
+        # the source beam area to the nominal beam area. Then the peak flux is
+        # the nominal flux for all fwhm values.
         table_data = {
             "x_0": [source_to_array_index(x)[1] for x in valid_sources],
             "y_0": [source_to_array_index(x)[0] for x in valid_sources],
             "flux": [
                 x.flux(time=observed_times[i]).to_value(input_map.flux_units)
+                * (x_fwhm[i] * y_fwhm[i] / gauss_fwhm_pixels**2)
                 for i, x in enumerate(valid_sources)
             ],
-            "x_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
-            "y_fwhm": [random.uniform(min_fwhm, max_fwhm) for _ in valid_sources],
+            "x_fwhm": x_fwhm,
+            "y_fwhm": y_fwhm,
             "theta": [random.uniform(theta_min, theta_max) for _ in valid_sources],
         }
 

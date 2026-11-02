@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from astropy import units as u
 from astropy.time import Time
 from pixell import enmap
 from structlog import get_logger
@@ -16,6 +17,7 @@ from uuid7 import UUID as UUID7
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sifter.core import SifterResult
+from sotrplib.sifter.map_matching import MapMatchSummary
 from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
@@ -26,6 +28,20 @@ def _filename_label(map_name: str | None, mapcat_id: UUID7 | None) -> str:
     real mapcat_id (stringified) if a name isn't available.
     """
     return map_name if map_name is not None else str(mapcat_id)
+
+
+# The power of the flux unit for each field. snr, hits and times have no
+# flux unit.
+_FLUX_UNIT_POWERS = {"flux": 1, "rho": -1, "kappa": -2}
+
+
+def _field_unit(input_map: ProcessableMap, field_id: str) -> u.UnitBase | None:
+    """Return the FITS BUNIT for `field_id` of `input_map`."""
+    power = _FLUX_UNIT_POWERS.get(field_id)
+    flux_units = getattr(input_map, "flux_units", None)
+    if power is None or flux_units is None:
+        return None
+    return u.Unit(flux_units) ** power
 
 
 class SourceOutput(ABC):
@@ -58,6 +74,55 @@ class MapOutput(ABC):
         return
 
 
+class MapMatchOutput(ABC):
+    @abstractmethod
+    def output(self, summary: MapMatchSummary):
+        """
+        Output the result of map matching. The runner calls this one time for
+        each run, after the source outputs of all the maps.
+        """
+        return
+
+
+class JSONMapMatchOutput(MapMatchOutput):
+    """
+    Write the map-match summary of a run to a JSON file in `directory`.
+
+    The name of the file is map_match_summary_<start>.json. <start> is the
+    earliest start time of the maps of the run. If no map has a start time,
+    <start> is the time now.
+
+    If include_all_groups is False, the file lists only the notable groups
+    (confirmed, or one detection >= high_sig, or >= min_arrays arrays). The
+    file counts the other groups in n_groups_not_listed, because a low
+    blind-search threshold can give many of them.
+    """
+
+    def __init__(
+        self,
+        directory: Path,
+        include_all_groups: bool = False,
+        log: FilteringBoundLogger | None = None,
+    ):
+        self.directory = Path(directory)
+        self.include_all_groups = include_all_groups
+        self.log = log or get_logger()
+
+    def output(self, summary: MapMatchSummary) -> Path:
+        start = summary.observation_start or Time.now()
+        label = start.isot[:19].replace("T", "-").replace(":", "-")
+        path = self.directory / f"map_match_summary_{label}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                summary.to_dict(include_all_groups=self.include_all_groups),
+                indent=2,
+            )
+        )
+        self.log.info("map_match_output.json_written", path=str(path))
+        return path
+
+
 class JSONSerializer(SourceOutput):
     """
     Serialize a source candidate list to a JSON file.
@@ -72,6 +137,8 @@ class JSONSerializer(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
+        map_name: str,
+        mapcat_id: UUID7 | None = None,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -201,10 +268,11 @@ class MapOutputSerializer(MapOutput):
         self.field_ids = field_ids
         self.log = log or get_logger()
 
-    def output(self, input_map: ProcessableMap):
+    def output(self, input_map: ProcessableMap) -> dict[str, Path]:
         log = self.log
         # make sure output directory exists
         self.directory.mkdir(parents=True, exist_ok=True)
+        written: dict[str, Path] = {}
         label = _filename_label(input_map.map_name, input_map.mapcat_id)
         for field_id in self.field_ids:
             if hasattr(input_map, field_id):
@@ -217,7 +285,11 @@ class MapOutputSerializer(MapOutput):
                     )
                     continue
                 filename = self.directory / f"{label}_{field_id}.fits"
-                enmap.write_map(str(filename), map_to_save)
+                extra = {}
+                if (unit := _field_unit(input_map, field_id)) is not None:
+                    extra["BUNIT"] = unit.to_string("fits")
+                enmap.write_map(str(filename), map_to_save, extra=extra)
+                written[field_id] = filename
                 log.info(
                     "MapOutputSerializer.saved_map",
                     field_id=field_id,
@@ -230,3 +302,4 @@ class MapOutputSerializer(MapOutput):
                     field_id=field_id,
                     map_name=input_map.map_name,
                 )
+        return written

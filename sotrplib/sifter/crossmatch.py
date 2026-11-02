@@ -488,6 +488,9 @@ def recalculate_local_snr(
     fwhm: u.Quantity = 2.2 * u.arcmin,
     snr_cut: float = 5.0,
     ratio_cut: float = 10.0,
+    mask_fwhm: float = 3.0,
+    min_mask_pix: float = 2.0,
+    min_noise_pix: int = 50,
     log: FilteringBoundLogger | None = None,
 ):
     """
@@ -500,6 +503,15 @@ def recalculate_local_snr(
     - fwhm_arcmin: The band full width at half maximum in arcmin.
     - snr_cut: The SNR cut to use for the new local noise.
     - ratio_cut: The ratio of the old SNR to the new SNR above which to cut.
+    - mask_fwhm: The local noise does not use the pixels nearer to the source
+      than mask_fwhm * fwhm. For a bright source, the radius is larger: the
+      distance at which the beam is at the noise level.
+    - min_mask_pix: The minimum mask radius, in pixels.
+    - min_noise_pix: If fewer pixels remain for the local noise, the SNR
+      does not change.
+
+    The local noise also does not use masked pixels (zero or not finite), for
+    example near the edge of the map.
 
     assumes that if the new snr is significantly different from the old snr, the region is noisier than expected.
     empircally 30% change seems to indicate a noisy region....
@@ -517,8 +529,6 @@ def recalculate_local_snr(
     log = log.bind(func_name="recalculate_local_snr")
     updated_transient_candidates = []
     updated_noise_candidates = []
-    ## same mask for each one
-    mask = None
     for candidate in transient_candidates:
         # Extract a thumbnail of the transient source
         ra, dec = candidate.ra, candidate.dec
@@ -529,9 +539,6 @@ def recalculate_local_snr(
             size_deg=thumb_size.to(u.deg).value,
         )
 
-        # Mask the center out to 2 times the FWHM
-        # if isinstance(mask,type(None)):
-        center = tuple(int(t / 2) for t in thumbnail.shape)
         fwhm_pix = (
             fwhm.to(u.arcmin).value
             / u.Quantity(abs(thumbnail.wcs.wcs.cdelt[0]), thumbnail.wcs.wcs.cunit[0])
@@ -539,22 +546,26 @@ def recalculate_local_snr(
             .value
         )
 
-        mask_radius = get_pix_from_peak_to_noise(
+        # Mask the source out to mask_fwhm * fwhm, or to where a bright
+        # source's beam reaches the noise level (times sqrt(2) for the matched
+        # filter), and to min_mask_pix or more.
+        beam_radius = get_pix_from_peak_to_noise(
             candidate.flux.to(u.Jy).value,
             candidate.flux.to(u.Jy).value / candidate.snr,
             fwhm_pix=fwhm_pix,
-        )[0]
-        mask_radius *= np.sqrt(2)  ## for matched filter size
+        )[0] * np.sqrt(2)
+        mask_radius = max(mask_fwhm * fwhm_pix, min_mask_pix, beam_radius)
+        ypix, xpix = thumbnail.sky2pix([dec.to(u.rad).value, ra.to(u.rad).value])
         Y, X = np.ogrid[: thumbnail.shape[0], : thumbnail.shape[1]]
-        dist_from_center = np.sqrt((X - center[1]) ** 2 + (Y - center[0]) ** 2)
-        mask = dist_from_center >= mask_radius
+        dist_from_source = np.sqrt((X - xpix) ** 2 + (Y - ypix) ** 2)
 
-        # Calculate the RMS noise of the unmasked region
-        unmasked_flux = thumbnail[mask > 0]
-        rms_noise = np.nanstd(unmasked_flux)
-        # Recalculate the SNR using the new RMS noise
+        # Calculate the RMS noise without the source and the masked pixels.
+        values = np.asarray(thumbnail)
+        use = (dist_from_source >= mask_radius) & np.isfinite(values) & (values != 0)
         old_snr = candidate.snr
-        candidate.snr = candidate.flux.to(imap.flux_units).value / rms_noise
+        if np.count_nonzero(use) >= min_noise_pix:
+            rms_noise = np.std(values[use])
+            candidate.snr = candidate.flux.to(imap.flux_units).value / rms_noise
         new_snr = candidate.snr
         snr_ratio = old_snr / new_snr
         # print('oldsnr: %.1f, newsnr: %.1f, ratio o/n: %.2f, --- flux: %.1f,err_flux: %.1f'%(old_snr,new_snr,snr_ratio,candidate.flux.to_value(imap.flux_units),rms_noise))

@@ -3,11 +3,12 @@ from pathlib import Path
 from typing import Literal
 
 from astropy import units as u
-from astropydantic import AstroPydanticQuantity
+from astropydantic import AstroPydanticQuantity, AstroPydanticTime
 from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.preprocessor import (
+    AsteroidMasker,
     EdgeMask,
     GalaxyMask,
     KappaRhoCleaner,
@@ -35,6 +36,31 @@ class PlanetMaskConfig(PreprocessorConfig):
         return PlanetMasker(mask_radius=self.mask_radius, log=log)
 
 
+class AsteroidMaskConfig(PreprocessorConfig):
+    preprocessor_type: Literal["asteroid_mask"] = "asteroid_mask"
+    use_socat: bool = True
+    ephem_file_path: Path | None = None
+    start_time: AstroPydanticTime | None = None
+    end_time: AstroPydanticTime | None = None
+    mask_radius: AstroPydanticQuantity = 10 * u.arcmin
+    interp_time_range: AstroPydanticQuantity = 0.5 * u.day
+    interp_to: AstroPydanticQuantity | None = 10 * u.min
+
+    def to_preprocessor(
+        self, log: FilteringBoundLogger | None = None
+    ) -> AsteroidMasker:
+        return AsteroidMasker(
+            use_socat=self.use_socat,
+            ephem_file_path=self.ephem_file_path,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            mask_radius=self.mask_radius,
+            interp_time_range=self.interp_time_range,
+            interp_to=self.interp_to,
+            log=log,
+        )
+
+
 class KappaRhoCleanerConfig(PreprocessorConfig):
     preprocessor_type: Literal["kappa_rho"] = "kappa_rho"
     cut_on: Literal["median", "percentile", "max"] = "median"
@@ -50,7 +76,9 @@ class MatchedFilterConfig(PreprocessorConfig):
     preprocessor_type: Literal["matched_filter"] = "matched_filter"
     infofile: Path | None = None
     maskfile: Path | None = None
-    beam1d: Path | None = None
+    beam1d: Path | dict[str, Path] | None = None
+    "1D beam profile file, or a mapping of band (e.g. 'f090') to profile file "
+    "so one config can filter maps of several bands."
     shrink_holes: AstroPydanticQuantity = 20 * u.arcmin
     apod_edge: AstroPydanticQuantity = 10 * u.arcmin
     apod_holes: AstroPydanticQuantity = 5 * u.arcmin
@@ -119,4 +147,5 @@ AllPreprocessorConfigTypes = (
     | EdgeMaskConfig
     | PlanetMaskConfig
     | GalaxyMaskConfig
+    | AsteroidMaskConfig
 )

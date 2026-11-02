@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 def generate_random_positions_in_map(
     n: int,
     imap: enmap.ndmap,
+    edge_pad_pixels: int = 0,
     log: FilteringBoundLogger | None = None,
 ):
     """
@@ -28,13 +29,20 @@ def generate_random_positions_in_map(
     Arguments:
         n (int): Number of positions to generate.
         imap (enmap.ndmap): Input map for generating random positions.
+        edge_pad_pixels (int): Do not put positions within this number of
+            pixels of the map edge.
 
     Returns:
         tuple: Two numpy arrays containing the RA and Dec positions.
     """
     log = log or get_logger()
-    x = np.random.uniform(0, imap.shape[0], n)
-    y = np.random.uniform(0, imap.shape[1], n)
+    pad = edge_pad_pixels
+    if 2 * pad >= min(imap.shape[-2:]):
+        raise ValueError(
+            f"edge_pad_pixels={pad} is too large for a map of shape {imap.shape}"
+        )
+    x = np.random.uniform(pad, imap.shape[-2] - pad, n)
+    y = np.random.uniform(pad, imap.shape[-1] - pad, n)
     positions = []
     for i in range(n):
         positions.append(tuple(imap.pix2sky((x[i], y[i])) * u.rad))

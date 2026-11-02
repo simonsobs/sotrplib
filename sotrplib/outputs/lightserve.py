@@ -4,6 +4,7 @@ Output data directly to lightserve.
 
 import httpx
 import uuid7
+from astropy.time import TimezoneInfo
 from lightcurvedb.models.cutout import Cutout
 from lightcurvedb.models.flux import FluxMeasurement
 from soauth.toolkit.client import SOAuth
@@ -15,6 +16,8 @@ from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
+
+UTC = TimezoneInfo(tzname="utc")
 
 
 class LightServeOutput(SourceOutput):
@@ -62,7 +65,7 @@ class LightServeOutput(SourceOutput):
         source_translations = client.get("/sources/").json()
         # socat_id comes back from JSON as a plain string (UUIDs serialize
         # to strings), so normalize both sides of the lookup to str() --
-        # source.crossmatches[0].catalog_idx may be a real uuid.UUID object
+        # source.crossmatches[0].catalog_idx may be a real UUID7 object
         # depending on which crossmatch mechanism produced it.
         socat_to_internal = {
             str(st["socat_id"]): st["source_id"] for st in source_translations
@@ -90,7 +93,7 @@ class LightServeOutput(SourceOutput):
                 frequency=90,
                 module="i1",
                 source_id=socat_to_internal[str(source.crossmatches[0].catalog_idx)],
-                time=source.observation_mean_time.to_datetime(),
+                time=source.observation_mean_time.to_datetime(timezone=UTC),
                 ra=source.ra.to_value("deg"),
                 dec=source.dec.to_value("deg"),
                 ra_uncertainty=(
@@ -115,7 +118,7 @@ class LightServeOutput(SourceOutput):
             cut = (
                 Cutout(
                     data=source.thumbnail.tolist(),
-                    time=source.observation_mean_time.to_datetime(),
+                    time=source.observation_mean_time.to_datetime(timezone=UTC),
                     units=source.thumbnail_unit.to_string(),
                     frequency=90,
                     module="i1",
