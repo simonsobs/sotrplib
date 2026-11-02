@@ -82,6 +82,19 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
     near_source_radius: AstroPydanticQuantity[u.arcmin] | None = u.Quantity(
         20.0, "arcmin"
     )
+    # Point-source cut: a fitted pointing source is removed if its larger
+    # fitted FWHM is more than max_fwhm_ratio times the reference FWHM of
+    # the band. This removes extended sources (Galactic dust, mostly at
+    # f220 and f280). The reference values are the median fitted FWHM of
+    # bright high-latitude sources in the phase-2 wide depth-1 maps
+    # (matched filtered). The nominal beams (get_fwhm) are up to 23% smaller.
+    max_fwhm_ratio: float | None = 1.5
+    reference_fwhm: dict[str, AstroPydanticQuantity[u.arcmin]] | None = {
+        "f090": u.Quantity(2.19, "arcmin"),
+        "f150": u.Quantity(1.53, "arcmin"),
+        "f220": u.Quantity(1.19, "arcmin"),
+        "f280": u.Quantity(1.11, "arcmin"),
+    }
     goodness_of_fit_threshold: float | None = None
 
     def to_forced_photometry(
@@ -95,6 +108,8 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
             allowable_center_offset=self.allowable_center_offset,
             near_source_rel_flux_limit=self.near_source_rel_flux_limit,
             near_source_radius=self.near_source_radius,
+            max_fwhm_ratio=self.max_fwhm_ratio,
+            reference_fwhm=self.reference_fwhm,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             log=log,
         )

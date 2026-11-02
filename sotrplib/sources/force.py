@@ -250,6 +250,8 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
     allowable_center_offset: u.Quantity
     near_source_rel_flux_limit: float
     near_source_radius: u.Quantity | None
+    max_fwhm_ratio: float | None
+    reference_fwhm: dict[str, u.Quantity] | None
     goodness_of_fit_threshold: float | None
     log: FilteringBoundLogger
 
@@ -261,6 +263,8 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         near_source_rel_flux_limit: float = 0.3,
         near_source_radius: u.Quantity | None = None,
+        max_fwhm_ratio: float | None = None,
+        reference_fwhm: dict[str, u.Quantity] | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(3.0, "arcmin"),
         goodness_of_fit_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
@@ -289,6 +293,17 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         near_source_radius : astropy.units.Quantity or None, optional
             Radius of the nearby-source search. If None (default), the
             radius is thumbnail_half_width * sqrt(2). ACT DR6 uses 10 arcmin.
+        max_fwhm_ratio : float or None, optional
+            Point-source cut. A fitted source is removed (and marked
+            extended) if its larger fitted FWHM is more than
+            max_fwhm_ratio times the reference FWHM of the band. Extended
+            sources (for example Galactic dust, mostly at f220 and f280)
+            give bad pointing offsets. None (default) disables the cut.
+        reference_fwhm : dict of str to astropy.units.Quantity or None, optional
+            Reference FWHM per band (for example {"f150": 1.53 arcmin}): the
+            fitted FWHM of a bright point source in the maps that are fitted.
+            For a band that is not in the dict, or if None, the nominal beam
+            (get_fwhm) is used.
         allowable_center_offset : astropy.units.Quantity, optional
             Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
         goodness_of_fit_threshold : float or None, optional
@@ -302,9 +317,35 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         self.thumbnail_half_width = thumbnail_half_width
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.near_source_radius = near_source_radius
+        self.max_fwhm_ratio = max_fwhm_ratio
+        self.reference_fwhm = reference_fwhm
         self.allowable_center_offset = allowable_center_offset
         self.goodness_of_fit_threshold = goodness_of_fit_threshold
         self.log = log or get_logger()
+
+    def _remove_extended(
+        self, fit_sources: list[MeasuredSource], beam_fwhm: u.Quantity
+    ) -> list[MeasuredSource]:
+        """Remove the fitted sources that are wider than max_fwhm_ratio *
+        beam_fwhm on either axis, and mark them extended. Sources with no
+        fitted FWHM are kept."""
+        if self.max_fwhm_ratio is None:
+            return fit_sources
+        limit = self.max_fwhm_ratio * beam_fwhm
+        keep = []
+        for s in fit_sources:
+            widths = [w for w in (s.fwhm_ra, s.fwhm_dec) if w is not None]
+            if widths and max(widths) > limit:
+                s.extended = True
+                continue
+            keep.append(s)
+        self.log.info(
+            "TwoDGaussianPointingFitter.removed_extended",
+            n_removed=len(fit_sources) - len(keep),
+            n_kept=len(keep),
+            fwhm_limit=limit.to(u.arcmin),
+        )
+        return keep
 
     def _has_nearby_sources(
         self,
@@ -409,5 +450,5 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             log=self.log,
         )
-
-        return fit_sources
+        reference = (self.reference_fwhm or {}).get(input_map.frequency, fwhm)
+        return self._remove_extended(fit_sources, u.Quantity(reference))

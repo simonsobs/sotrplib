@@ -2,7 +2,7 @@ from astropy import units as u
 
 from sotrplib.config.forced_photometry import Lmfit2DGaussianPointingConfig
 from sotrplib.sources.force import TwoDGaussianPointingFitter
-from sotrplib.sources.sources import RegisteredSource
+from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 
 
 def _src(ra, dec, flux_jy, name):
@@ -46,3 +46,35 @@ def test_pointing_config_defaults_to_act_isolation_cut():
     fitter = Lmfit2DGaussianPointingConfig().to_forced_photometry()
     assert fitter.near_source_rel_flux_limit == 0.2
     assert fitter.near_source_radius == 20 * u.arcmin
+
+
+def _fit(fwhm_ra, fwhm_dec):
+    return MeasuredSource(
+        ra=10 * u.deg,
+        dec=0 * u.deg,
+        flux=1 * u.Jy,
+        fwhm_ra=fwhm_ra * u.arcmin if fwhm_ra is not None else None,
+        fwhm_dec=fwhm_dec * u.arcmin if fwhm_dec is not None else None,
+    )
+
+
+def test_point_source_cut_removes_and_marks_extended_fits():
+    fitter = TwoDGaussianPointingFitter(max_fwhm_ratio=1.5)
+    point = _fit(1.2, 1.3)
+    wide = _fit(1.2, 2.0)  # 2.0' > 1.5 * 1.19'
+    unknown = _fit(None, None)
+    kept = fitter._remove_extended([point, wide, unknown], 1.19 * u.arcmin)
+    assert kept == [point, unknown]
+    assert wide.extended is True
+
+
+def test_point_source_cut_is_off_by_default():
+    fitter = TwoDGaussianPointingFitter()
+    wide = _fit(5.0, 5.0)
+    assert fitter._remove_extended([wide], 1.0 * u.arcmin) == [wide]
+
+
+def test_pointing_config_defaults_to_point_source_cut():
+    fitter = Lmfit2DGaussianPointingConfig().to_forced_photometry()
+    assert fitter.max_fwhm_ratio == 1.5
+    assert fitter.reference_fwhm["f220"] == 1.19 * u.arcmin
