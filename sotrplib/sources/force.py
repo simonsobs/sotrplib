@@ -3,7 +3,7 @@ from typing import List, Literal
 
 import numpy as np
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, search_around_sky
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -13,7 +13,7 @@ from sotrplib.source_catalog.core import SourceCatalog
 from sotrplib.sources.core import ForcedPhotometryProvider
 from sotrplib.sources.forced_photometry import gaussian_fit
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
-from sotrplib.utils.utils import angular_separation, get_fwhm
+from sotrplib.utils.utils import get_fwhm
 
 
 class EmptyForcedPhotometry(ForcedPhotometryProvider):
@@ -249,6 +249,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
     thumbnail_half_width: u.Quantity
     allowable_center_offset: u.Quantity
     near_source_rel_flux_limit: float
+    near_source_radius: u.Quantity | None
     goodness_of_fit_threshold: float | None
     log: FilteringBoundLogger
 
@@ -259,6 +260,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         reproject_thumbnails: bool = False,
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         near_source_rel_flux_limit: float = 0.3,
+        near_source_radius: u.Quantity | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(3.0, "arcmin"),
         goodness_of_fit_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
@@ -281,6 +283,12 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             If another source within the thumbnail_half_width has a flux
             greater than near_source_rel_flux_limit * pointing_source.flux,
             the pointing source is excluded from fitting.
+            All catalog sources in the map are neighbours, also the ones
+            below min_flux. A value of 0.2 is the ACT DR6 isolation cut
+            (the pointing source is 5 times brighter than its neighbours).
+        near_source_radius : astropy.units.Quantity or None, optional
+            Radius of the nearby-source search. If None (default), the
+            radius is thumbnail_half_width * sqrt(2). ACT DR6 uses 10 arcmin.
         allowable_center_offset : astropy.units.Quantity, optional
             Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
         goodness_of_fit_threshold : float or None, optional
@@ -293,9 +301,51 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
+        self.near_source_radius = near_source_radius
         self.allowable_center_offset = allowable_center_offset
         self.goodness_of_fit_threshold = goodness_of_fit_threshold
         self.log = log or get_logger()
+
+    def _has_nearby_sources(
+        self,
+        pointing_sources: list[RegisteredSource],
+        all_sources: list[RegisteredSource],
+    ) -> np.ndarray:
+        """Return True for each pointing source that has a catalog source
+        brighter than near_source_rel_flux_limit * its flux within
+        near_source_radius."""
+        flagged = np.zeros(len(pointing_sources), dtype=bool)
+        neighbours = [
+            s
+            for s in all_sources
+            if s.flux is not None
+            and np.isfinite(s.ra.to_value(u.deg))
+            and np.isfinite(s.dec.to_value(u.deg))
+        ]
+        if not pointing_sources or not neighbours:
+            return flagged
+        radius = (
+            self.near_source_radius
+            if self.near_source_radius is not None
+            else self.thumbnail_half_width * (2**0.5)
+        )
+        p_coords = SkyCoord(
+            ra=[s.ra for s in pointing_sources], dec=[s.dec for s in pointing_sources]
+        )
+        n_coords = SkyCoord(
+            ra=[s.ra for s in neighbours], dec=[s.dec for s in neighbours]
+        )
+        p_flux = np.array([s.flux.to_value(u.Jy) for s in pointing_sources])
+        n_flux = np.array([s.flux.to_value(u.Jy) for s in neighbours])
+        n_ids = np.array([id(s) for s in neighbours])
+        p_ids = np.array([id(s) for s in pointing_sources])
+        ip, jn, _, _ = search_around_sky(p_coords, n_coords, radius)
+        # A source is not its own neighbour (the pointing sources are
+        # objects from all_sources).
+        other = n_ids[jn] != p_ids[ip]
+        bright = n_flux[jn] > self.near_source_rel_flux_limit * p_flux[ip]
+        flagged[ip[other & bright]] = True
+        return flagged
 
     def force(
         self,
@@ -307,13 +357,12 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             arr=input_map.array,
             instrument=input_map.instrument,
         )
-        ## get all forced photometry sources from catalogs
+        ## Get all catalog sources in the map. The faint ones are only
+        ## used as neighbours in the isolation check.
         source_list = list(
             itertools.chain(
                 *[
-                    c.forced_photometry_sources(
-                        input_map, flux_lower_limit=self.min_flux
-                    )
+                    c.forced_photometry_sources(input_map, flux_lower_limit=None)
                     for c in catalogs
                 ]
             )
@@ -324,29 +373,9 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             for source in source_list
             if (source.flux is not None) and (source.flux > self.min_flux)
         ]
-        ## check if there are any pointing sources with a source within the thumbnail_half_width
-        ## and above near_source_rel_flux_limit * pointing_source.flux
-        has_nearby_sources = [False] * len(pointing_source_list)
-        for i, pointing_source in enumerate(pointing_source_list):
-            for init_source in source_list:
-                if pointing_source == init_source:
-                    continue
-                sep = angular_separation(
-                    pointing_source.ra,
-                    pointing_source.dec,
-                    init_source.ra,
-                    init_source.dec,
-                )
-                if (
-                    sep < self.thumbnail_half_width * (2**0.5)
-                    and init_source.flux is not None
-                ):
-                    if (
-                        init_source.flux
-                        > pointing_source.flux * self.near_source_rel_flux_limit
-                    ):
-                        has_nearby_sources[i] = True
-                        break
+        ## Remove the pointing sources that have a catalog source brighter
+        ## than near_source_rel_flux_limit * their flux nearby.
+        has_nearby_sources = self._has_nearby_sources(pointing_source_list, source_list)
         pointing_source_list = [
             src
             for src, has_nearby in zip(pointing_source_list, has_nearby_sources)
@@ -362,7 +391,9 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             reproject_thumbnails=self.reproject_thumbnails,
             allowable_center_offset=self.allowable_center_offset,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
-            removed_nearby_sources=sum(has_nearby_sources),
+            removed_nearby_sources=int(np.sum(has_nearby_sources)),
+            near_source_radius=self.near_source_radius,
+            near_source_rel_flux_limit=self.near_source_rel_flux_limit,
         )
         if len(pointing_source_list) == 0:
             return []

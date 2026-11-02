@@ -74,7 +74,14 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
     reproject_thumbnails: bool = False
     thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
     allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(3.0, "arcmin")
-    near_source_rel_flux_limit: float = 0.3
+    # Isolation cut: a pointing source is used only if no catalog source
+    # within near_source_radius is brighter than 0.2 times its flux (it is
+    # 5 times brighter than its neighbours). This removes most pointing
+    # sources in crowded Galactic-plane regions.
+    near_source_rel_flux_limit: float = 0.2
+    near_source_radius: AstroPydanticQuantity[u.arcmin] | None = u.Quantity(
+        20.0, "arcmin"
+    )
     goodness_of_fit_threshold: float | None = None
 
     def to_forced_photometry(
@@ -87,6 +94,7 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
             thumbnail_half_width=self.thumbnail_half_width,
             allowable_center_offset=self.allowable_center_offset,
             near_source_rel_flux_limit=self.near_source_rel_flux_limit,
+            near_source_radius=self.near_source_radius,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             log=log,
         )
