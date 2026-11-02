@@ -254,6 +254,9 @@ class ParametricPointingOffset:
         Prior widths (arcsec) to try for the non-constant terms.
     min_abs_glat : float
         Sources with |Galactic latitude| below this value (deg) are not used.
+        Default 0 (no cut): the isolation cut of the pointing fitter
+        (near_source_rel_flux_limit, near_source_radius) removes the crowded
+        Galactic-plane sources and keeps the isolated ones.
     The gate and clip parameters are the same as for ``RobustPointingOffset``.
     """
 
@@ -270,7 +273,7 @@ class ParametricPointingOffset:
         clip_sigma: float = 4.0,
         sys_floor: u.Quantity = 2.0 * u.arcsec,
         fwhm_snr: float = 10.0,
-        min_abs_glat: float = 5.0,
+        min_abs_glat: float = 0.0,
         log: FilteringBoundLogger | None = None,
     ):
         self.coordinate = coordinate
