@@ -191,11 +191,17 @@ class BaseRunner:
     ) -> MapResult | None:
         """
         Coadd and analyze maps in a single task to avoid passing maps between processes.
+        If the map matcher does not hold the results, write the source outputs here
+        and return None.
         """
         coadded_map = self.profilable_task(self.map_coadder.coadd_maps)(maps)
-        return self.profilable_task(self.analyze_map)(
+        result = self.profilable_task(self.analyze_map)(
             input_map=coadded_map, simulated_sources=simulated_sources
         )
+        if result is not None and not self.map_matcher.hold_all_maps:
+            self.output_map_result(result)
+            return None
+        return result
 
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
@@ -331,9 +337,16 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
 
-        Returns one (forced photometry sources, sifter result) tuple for each
-        map set. If there are no maps, returns an empty list.
+        If map_matcher.hold_all_maps is True, returns one (forced photometry
+        sources, sifter result) tuple for each map set. If it is False, or if
+        there are no maps, returns an empty list.
         """
+        # Before the reader starts, because the reader sets the processing status.
+        if not self.map_matcher.hold_all_maps and self.map_match_outputs:
+            raise ValueError(
+                "map_match_outputs need the results of all the maps. Use a map "
+                "matcher with hold_all_maps=True."
+            )
         maps = list(maps)
         if not maps:
             structlog.get_logger().warning(
