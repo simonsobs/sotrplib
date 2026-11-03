@@ -191,11 +191,17 @@ class BaseRunner:
     ) -> MapResult | None:
         """
         Coadd and analyze maps in a single task to avoid passing maps between processes.
+        If the map matcher does not hold the results, write the source outputs here
+        and return None.
         """
         coadded_map = self.profilable_task(self.map_coadder.coadd_maps)(maps)
-        return self.profilable_task(self.analyze_map)(
+        result = self.profilable_task(self.analyze_map)(
             input_map=coadded_map, simulated_sources=simulated_sources
         )
+        if result is not None and not self.map_matcher.hold_all_maps:
+            self.output_map_result(result)
+            return None
+        return result
 
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
@@ -319,17 +325,6 @@ class BaseRunner:
                 result.mapcat_id, map_type=result.map_type
             )
 
-    def analyze_and_output_map(
-        self, maps: list[ProcessableMap], simulated_sources: list[SimulatedSource]
-    ) -> None:
-        """
-        Analyze one map set and write its source outputs immediately. Does not
-        keep the result.
-        """
-        result = self.coadd_and_analyze_maps(maps, simulated_sources)
-        if result is not None:
-            self.output_map_result(result)
-
     def run(
         self, maps: list[ProcessableMap]
     ) -> list[tuple[list[MeasuredSource], SifterResult]]:
@@ -365,11 +360,6 @@ class BaseRunner:
             sky_box, time_range
         )
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
-        if not self.map_matcher.hold_all_maps:
-            self.basic_task(self.analyze_and_output_map).map(
-                map_sets, self.unmapped(all_simulated_sources)
-            ).result()
-            return []
         map_results = (
             self.basic_task(self.coadd_and_analyze_maps)
             .map(map_sets, self.unmapped(all_simulated_sources))
