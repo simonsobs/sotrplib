@@ -497,7 +497,7 @@ def test_default_matcher_writes_each_map_after_its_analysis(empty_map):
     results = runner.run([empty_map, empty_map])
 
     assert events == ["analyze", "output", "analyze", "output"]
-    assert results == [empty_map.map_name, empty_map.map_name]
+    assert results == []
 
 
 def test_hold_all_maps_writes_after_all_analyses(empty_map):
@@ -510,15 +510,15 @@ def test_hold_all_maps_writes_after_all_analyses(empty_map):
     assert all(isinstance(r, tuple) for r in results)
 
 
-def test_failed_map_does_not_stop_the_other_maps(empty_map):
+def test_failed_map_keeps_the_outputs_of_the_previous_maps(empty_map):
     events = []
-    runner = _recording_runner(events, EmptyMapMatcher(), fail_on_call=1)
+    runner = _recording_runner(events, EmptyMapMatcher(), fail_on_call=2)
 
-    with pytest.raises(RuntimeError, match="1 of 2 maps failed.*bad map"):
+    with pytest.raises(ValueError, match="bad map"):
         runner.run([empty_map, empty_map])
 
-    # The second map still has its source output.
-    assert events == ["analyze", "analyze", "output"]
+    # The first map has its source output before the second map fails.
+    assert events == ["analyze", "output", "analyze"]
 
 
 def test_map_match_outputs_need_held_results(tmp_path, empty_map):

@@ -39,8 +39,7 @@ The runner does these steps only if the map matcher has
 The `empty` map matcher does not need the other maps. Thus, by default, the
 runner writes the source outputs of each map when the analysis of the map is
 complete, and it does not keep the result. If one map fails, the runner
-continues with the other maps. After all the maps, it gives an error that
-shows the number of maps that failed.
+stops. The source outputs of the maps that are complete stay on the disk.
 
 The two runners (`basic` and `prefect`) do these steps. Use the prefect
 runner to analyze many maps in parallel. See

@@ -67,14 +67,14 @@ def test_basic_pipeline(tmp_path, fit_mode: str):
 def test_pipeline_without_holding(tmp_path, fit_mode: str):
     """
     The default map matcher does not hold the results: the workers write the
-    source outputs and the runner returns the map names.
+    source outputs and the runner returns an empty list.
     """
     runner, maps = _make_runner_and_maps(tmp_path, fit_mode, EmptyMapMatcher())
 
     with prefect_test_harness():
         result = runner.run(maps)
 
-    assert result == [m.map_name for m in maps]
+    assert result == []
     assert list(tmp_path.glob("*.pickle"))
 
 
