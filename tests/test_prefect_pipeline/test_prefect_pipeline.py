@@ -9,6 +9,7 @@ from prefect.testing.utilities import prefect_test_harness
 from sotrplib.handlers.prefect import PrefectRunner
 from sotrplib.outputs.core import PickleSerializer
 from sotrplib.sifter.core import DefaultSifter, SifterResult
+from sotrplib.sifter.map_matching import EmptyMapMatcher
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.sims.sim_source_generators import FixedSourceGenerator
 from sotrplib.sims.source_injector import PhotutilsSourceInjector
@@ -17,10 +18,7 @@ from sotrplib.sources.force import TwoDGaussianFitter
 from sotrplib.sources.sources import MeasuredSource
 
 
-def test_basic_pipeline(tmp_path, fit_mode: str):
-    """
-    Tests a complete setup of the basic pipeline run.
-    """
+def _make_runner_and_maps(tmp_path, fit_mode: str, map_matcher: EmptyMapMatcher):
     empty_map = SimulatedMap(
         observation_start=Time.now() - TimeDelta(1, format="jd"),
         observation_end=Time.now(),
@@ -48,11 +46,36 @@ def test_basic_pipeline(tmp_path, fit_mode: str):
         sifter=DefaultSifter(),
         source_outputs=[PickleSerializer(directory=tmp_path)],
         map_outputs=None,
+        map_matcher=map_matcher,
+    )
+    return runner, maps
+
+
+def test_basic_pipeline(tmp_path, fit_mode: str):
+    """
+    Tests a complete setup of the basic pipeline run.
+    """
+    runner, maps = _make_runner_and_maps(
+        tmp_path, fit_mode, EmptyMapMatcher(hold_all_maps=True)
     )
 
     with prefect_test_harness():
         result = runner.run(maps)
         _validate_pipeline_result(result, len(maps))
+
+
+def test_pipeline_without_holding(tmp_path, fit_mode: str):
+    """
+    The default map matcher does not hold the results: the workers write the
+    source outputs and the runner returns an empty list.
+    """
+    runner, maps = _make_runner_and_maps(tmp_path, fit_mode, EmptyMapMatcher())
+
+    with prefect_test_harness():
+        result = runner.run(maps)
+
+    assert result == []
+    assert list(tmp_path.glob("*.pickle"))
 
 
 def _validate_pipeline_result(result, nmaps):

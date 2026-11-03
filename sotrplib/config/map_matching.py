@@ -23,9 +23,12 @@ class MapMatcherConfig(BaseModel, ABC):
 
 class EmptyMapMatcherConfig(MapMatcherConfig):
     matcher_type: Literal["empty"] = "empty"
+    hold_all_maps: bool = False
+    "If False, write the source outputs of each map when its analysis is "
+    "complete. If True, write all the source outputs after all the analyses."
 
     def to_matcher(self, log: FilteringBoundLogger | None = None) -> EmptyMapMatcher:
-        return EmptyMapMatcher()
+        return EmptyMapMatcher(hold_all_maps=self.hold_all_maps)
 
 
 class MultiArrayMapMatcherConfig(MapMatcherConfig):

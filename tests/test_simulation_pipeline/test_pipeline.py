@@ -7,13 +7,18 @@ import pickle
 from itertools import combinations
 
 import numpy as np
+import pytest
 from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
-from sotrplib.outputs.core import JSONMapMatchOutput, PickleSerializer
+from sotrplib.outputs.core import (
+    JSONMapMatchOutput,
+    PickleSerializer,
+    SourceOutput,
+)
 from sotrplib.sifter.core import DefaultSifter, SimpleCatalogSifter
 from sotrplib.sifter.crossmatch import crossmatch_mask, n_wise_crossmatch
-from sotrplib.sifter.map_matching import MultiArrayMapMatcher
+from sotrplib.sifter.map_matching import EmptyMapMatcher, MultiArrayMapMatcher
 from sotrplib.sims.maps import SimulatedMap
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.blind import SigmaClipBlindSearch
@@ -440,3 +445,91 @@ def test_default_sifter(
     assert source_ids == match_ids
     assert len(res.source_candidates) == 4
     assert len(res.transient_candidates) == 0
+
+
+class _RecordingOutput(SourceOutput):
+    """Records the sequence of the analyses and the source outputs."""
+
+    def __init__(self, events: list[str]):
+        self.events = events
+
+    def output(self, map_name, **kwargs):
+        self.events.append("output")
+
+
+def _recording_runner(events, map_matcher, fail_on_call=None, **kwargs):
+    runner = PipelineRunner(
+        map_coadder=None,
+        source_catalogs=[],
+        source_injector=None,
+        preprocessors=None,
+        pointing_provider=None,
+        pointing_residual_model=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=None,
+        source_subtractor=None,
+        blind_search=None,
+        sifter=None,
+        source_outputs=[_RecordingOutput(events)],
+        map_outputs=None,
+        map_matcher=map_matcher,
+        **kwargs,
+    )
+    analyze = runner.coadd_and_analyze_maps
+    calls = []
+
+    def recording_analyze(maps, simulated_sources):
+        calls.append(1)
+        events.append("analyze")
+        if len(calls) == fail_on_call:
+            raise ValueError("bad map")
+        return analyze(maps, simulated_sources)
+
+    runner.coadd_and_analyze_maps = recording_analyze
+    return runner
+
+
+def test_default_matcher_writes_each_map_after_its_analysis(empty_map):
+    events = []
+    runner = _recording_runner(events, EmptyMapMatcher())
+
+    results = runner.run([empty_map, empty_map])
+
+    assert events == ["analyze", "output", "analyze", "output"]
+    assert results == []
+
+
+def test_hold_all_maps_writes_after_all_analyses(empty_map):
+    events = []
+    runner = _recording_runner(events, EmptyMapMatcher(hold_all_maps=True))
+
+    results = runner.run([empty_map, empty_map])
+
+    assert events == ["analyze", "analyze", "output", "output"]
+    assert all(isinstance(r, tuple) for r in results)
+
+
+def test_failed_map_keeps_the_outputs_of_the_previous_maps(empty_map):
+    events = []
+    runner = _recording_runner(events, EmptyMapMatcher(), fail_on_call=2)
+
+    with pytest.raises(ValueError, match="bad map"):
+        runner.run([empty_map, empty_map])
+
+    # The first map has its source output before the second map fails.
+    assert events == ["analyze", "output", "analyze"]
+
+
+def test_map_match_outputs_need_held_results(tmp_path, empty_map):
+    events = []
+    runner = _recording_runner(
+        events,
+        EmptyMapMatcher(),
+        map_match_outputs=[JSONMapMatchOutput(directory=tmp_path)],
+    )
+
+    with pytest.raises(ValueError, match="hold_all_maps"):
+        runner.run([empty_map])
+
+    assert events == []
