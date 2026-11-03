@@ -226,6 +226,14 @@ def _chi2_logsf(total: float, df: int) -> float:
 
 
 class MapMatcher(ABC):
+    hold_all_maps: bool = True
+    """
+    If True, the runner keeps the results of all the maps in memory and gives
+    them to match() before it writes the source outputs. If False, the runner
+    writes the source outputs of each map when its analysis is complete, and
+    does not call match().
+    """
+
     @abstractmethod
     def match(
         self, results: list[MapResult]
@@ -239,7 +247,14 @@ class MapMatcher(ABC):
 
 
 class EmptyMapMatcher(MapMatcher):
-    """No map matching: every transient candidate is kept as-is."""
+    """
+    No map matching: every transient candidate is kept as-is. The runner does
+    not need the results of the other maps, thus by default it does not hold
+    them. Set hold_all_maps to True to get all the results from the runner.
+    """
+
+    def __init__(self, hold_all_maps: bool = False):
+        self.hold_all_maps = hold_all_maps
 
     def match(
         self, results: list[MapResult]

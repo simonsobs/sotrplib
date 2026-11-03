@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Iterable
 
 import numpy as np
@@ -36,6 +37,13 @@ from sotrplib.sources.sources import MeasuredSource
 from sotrplib.sources.subtractor import EmptySourceSubtractor, SourceSubtractor
 
 __all__ = ["BaseRunner"]
+
+
+@dataclass
+class _FailedMap:
+    """Marks a map set that failed when the runner does not hold the results."""
+
+    error: str
 
 
 class BaseRunner:
@@ -319,21 +327,49 @@ class BaseRunner:
                 result.mapcat_id, map_type=result.map_type
             )
 
+    def analyze_and_output_map(
+        self, maps: list[ProcessableMap], simulated_sources: list[SimulatedSource]
+    ) -> str | None | _FailedMap:
+        """
+        Analyze one map set and write its source outputs immediately. Does not
+        keep the result. A failure of this map does not stop the other maps.
+
+        Returns the map name, None for an empty map, or a _FailedMap.
+        """
+        try:
+            result = self.coadd_and_analyze_maps(maps, simulated_sources)
+            if result is None:
+                return None
+            self.output_map_result(result)
+            return result.map_name
+        except Exception as e:
+            structlog.get_logger().exception("pipeline.map_failed", error=str(e))
+            return _FailedMap(error=f"{type(e).__name__}: {e}")
+
     def run(
         self, maps: list[ProcessableMap]
-    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
+    ) -> list[tuple[list[MeasuredSource], SifterResult]] | list[str]:
         return self.flow(self._run)(maps)
 
     def _run(
         self, maps: list[ProcessableMap]
-    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
+    ) -> list[tuple[list[MeasuredSource], SifterResult]] | list[str]:
         """
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
 
-        Returns one (forced photometry sources, sifter result) tuple for each
-        map set. If there are no maps, returns an empty list.
+        If map_matcher.hold_all_maps is True, returns one (forced photometry
+        sources, sifter result) tuple for each map set. If it is False, returns
+        the names of the maps that have source outputs, and raises RuntimeError
+        after all the maps if one or more maps failed. If there are no maps,
+        returns an empty list.
         """
+        # Before the reader starts, because the reader sets the processing status.
+        if not self.map_matcher.hold_all_maps and self.map_match_outputs:
+            raise ValueError(
+                "map_match_outputs need the results of all the maps. Use a map "
+                "matcher with hold_all_maps=True."
+            )
         maps = list(maps)
         if not maps:
             structlog.get_logger().warning(
@@ -347,6 +383,8 @@ class BaseRunner:
             sky_box, time_range
         )
         map_sets = self.basic_task(self.map_coadder.group_maps)(maps)
+        if not self.map_matcher.hold_all_maps:
+            return self._run_without_holding(map_sets, all_simulated_sources)
         map_results = (
             self.basic_task(self.coadd_and_analyze_maps)
             .map(map_sets, self.unmapped(all_simulated_sources))
@@ -365,3 +403,32 @@ class BaseRunner:
             self.profilable_task(output.output)(summary=summary)
 
         return [(r.forced_photometry_candidates, r.sifter_result) for r in map_results]
+
+    def _run_without_holding(
+        self,
+        map_sets: list[list[ProcessableMap]],
+        simulated_sources: list[SimulatedSource],
+    ) -> list[str]:
+        """
+        Write the source outputs of each map when its analysis is complete. Run
+        all the maps, then raise RuntimeError if one or more maps failed.
+        """
+        statuses = (
+            self.basic_task(self.analyze_and_output_map)
+            .map(map_sets, self.unmapped(simulated_sources))
+            .result()
+        )
+        failed = [s for s in statuses if isinstance(s, _FailedMap)]
+        written = [s for s in statuses if isinstance(s, str)]
+        structlog.get_logger().info(
+            "pipeline.run_complete",
+            n_written=len(written),
+            n_failed=len(failed),
+            n_empty=len(statuses) - len(written) - len(failed),
+        )
+        if failed:
+            raise RuntimeError(
+                f"{len(failed)} of {len(statuses)} maps failed. "
+                f"First failure: {failed[0].error}"
+            )
+        return written

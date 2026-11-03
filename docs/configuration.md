@@ -173,7 +173,10 @@ Map matching
 ------------
 
 The `map_matcher` field groups the transient candidates across the maps of
-a run. The default (`"matcher_type": "empty"`) does no map matching. See
+a run. The default (`"matcher_type": "empty"`) does no map matching, and the
+runner writes the source outputs of each map when its analysis is complete.
+`map_match_outputs` needs a map matcher that holds the results of all the
+maps: `multi_array`, or `empty` with `"hold_all_maps": true`. See
 [Map matching](map_matching.md). To confirm a 5-sigma detection with
 3-sigma detections in other arrays, see "Use a low blind-search threshold"
 in that document.

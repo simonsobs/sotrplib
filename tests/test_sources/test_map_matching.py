@@ -10,7 +10,10 @@ from astropy import units as u
 from astropy.time import Time, TimeDelta
 
 from sotrplib.config.config import Settings
-from sotrplib.config.map_matching import MultiArrayMapMatcherConfig
+from sotrplib.config.map_matching import (
+    EmptyMapMatcherConfig,
+    MultiArrayMapMatcherConfig,
+)
 from sotrplib.outputs.core import JSONMapMatchOutput
 from sotrplib.sifter.core import SifterResult
 from sotrplib.sifter.map_matching import (
@@ -403,6 +406,14 @@ def test_map_match_output_config(tmp_path):
     assert [type(o) for o in outputs] == [JSONMapMatchOutput, JSONMapMatchOutput]
     assert [o.include_all_groups for o in outputs] == [False, True]
     assert outputs[0].directory == tmp_path
+
+
+def test_hold_all_maps_config():
+    assert Settings.model_validate({}).map_matcher.hold_all_maps is False
+    assert EmptyMapMatcherConfig().to_matcher().hold_all_maps is False
+    held = EmptyMapMatcherConfig(hold_all_maps=True).to_matcher()
+    assert held.hold_all_maps is True
+    assert MultiArrayMapMatcherConfig().to_matcher().hold_all_maps is True
 
 
 def test_multi_array_config_thresholds():
