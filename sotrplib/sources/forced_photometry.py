@@ -109,12 +109,10 @@ class LmFitGaussian2DFitter:
     force_center : bool, optional
         If True, the Gaussian center is at the thumbnail center (the source
         position) and the beam shape is fixed: only the amplitude and the
-        background are fit. Use this for forced photometry. If False, the fit
+        background are fit. If False, the fit
         also starts at the thumbnail center, but the center can move by
-        allowable_center_offset from that position, and the shape is free. Use
-        this for pointing sources: their thumbnails are cut before the pointing
-        correction, so the source can be off the thumbnail center. By default
-        False.
+        allowable_center_offset from that position, and the shape is free.
+        By default False.
     reprojected : bool, optional
         Whether the thumbnail was reprojected (affects RA offset sign), by default False
     allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
@@ -192,9 +190,7 @@ class LmFitGaussian2DFitter:
             self.allowable_center_offset.to(u.arcmin).value / pixel_on_sky
         )
 
-        # Initial guess for parameters. All fits start at the thumbnail center
-        # (the source position). Do not use the brightest pixel: it can be a
-        # noise peak or a different source, away from this source.
+        # Initial guess for parameters. 
         x0_guess, y0_guess = 0.0, 0.0
         amplitude_guess = self.source.thumbnail[
             np.clip(round(y_source), 0, ny - 1), np.clip(round(x_source), 0, nx - 1)
@@ -211,9 +207,7 @@ class LmFitGaussian2DFitter:
         )
 
         if self.force_center:
-            # Also keep the beam shape fixed. With a free width, the fit can
-            # make the Gaussian wide to include a noise peak or a nearby
-            # source.
+            # Also keep the beam shape fixed. 
             self.initial_guess["x0"].set(vary=False)
             self.initial_guess["y0"].set(vary=False)
             self.initial_guess["sigma_x"].set(vary=False)
@@ -435,9 +429,7 @@ def gaussian_fit(
         source position. If the SNR of that fit is at or above this limit, and
         the source has no nearby_source flag, fit again with a free position
         and shape. Use the fit at the source position if the second fit fails.
-        This selects on the flux in this map, not on the catalog flux, which
-        does not tell if a variable source is bright now. If None, all fits
-        are at the source position. The default is None.
+        If None, just fit fixed position/beam. The default is None.
     thumbnail_half_width : astropy.units.Quantity, optional
         Half-width of the thumbnail cut-out around each source position, in
         angular units. The default is 0.25 deg.

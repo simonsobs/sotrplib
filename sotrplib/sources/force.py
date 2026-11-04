@@ -121,11 +121,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
         Each source is first fit at its catalog position (after the pointing
         correction) with the beam shape fixed. If that fit is significant in
-        this map, the source is fit again with a free position and shape. The
-        offsets and widths are a diagnostic for moving and extended sources.
-        A faint source stays at its position: a centroid fit on a faint source
-        finds a noise peak. The selection does not use the catalog flux: it
-        does not tell if a variable source is bright in this map.
+        this map, the source is fit again with a free position and shape. 
         Parameters
         ----------
         mode : {"lmfit"}, optional
