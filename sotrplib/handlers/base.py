@@ -198,6 +198,11 @@ class BaseRunner:
         result = self.profilable_task(self.analyze_map)(
             input_map=coadded_map, simulated_sources=simulated_sources
         )
+        # The runner keeps these objects until the end of the run, and the result
+        # does not use their arrays. Without this, the memory increases with each map.
+        coadded_map.release()
+        for input_map in maps:
+            input_map.release()
         if result is not None and not self.map_matcher.hold_all_maps:
             self.output_map_result(result)
             return None
@@ -276,7 +281,7 @@ class BaseRunner:
             for output in self.map_outputs:
                 self.profilable_task(output.output)(input_map=input_map)
 
-            return MapResult(
+            result = MapResult(
                 map_name=input_map.map_name,
                 mapcat_id=input_map.mapcat_id,
                 map_type=input_map.map_type,
@@ -289,6 +294,11 @@ class BaseRunner:
                 injected_sources=injected_sources,
                 from_database=input_map._parent_database is not None,
             )
+            # A preprocessor can make a new map. Reference cycles can keep it in
+            # memory after this method, thus remove its arrays here.
+            input_map.release()
+            source_subtracted_map.release()
+            return result
         except Exception:
             # Set the status to "failed". If the status stays "processing",
             # the reader skips the map on the next run.
