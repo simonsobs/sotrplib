@@ -121,7 +121,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
 
         Each source is first fit at its catalog position (after the pointing
         correction) with the beam shape fixed. If that fit is significant in
-        this map, the source is fit again with a free position and shape. 
+        this map, the source is fit again with a free position and shape.
         Parameters
         ----------
         mode : {"lmfit"}, optional

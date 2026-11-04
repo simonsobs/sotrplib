@@ -161,7 +161,7 @@ class MeasuredSource(RegisteredSource):
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
     thumbnail_unit: AstroPydanticUnit | None = None
     thumbnail_source_pixel: tuple[float, float] | None = None
-    "The (y, x) pixel of the source position in the thumbnail. It could be" 
+    "The (y, x) pixel of the source position in the thumbnail. It could be"
     "a fraction of a pixel. "
     "None if the source is at the middle of the thumbnail."
 

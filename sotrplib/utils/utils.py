@@ -553,3 +553,31 @@ def fit_poss(rho, kappa, poss, rmax=8 * pixell_utils.arcmin, tol=1e-4, snmin=3):
     # dpos = pixell_utils.rewind(oposs[:,i]-poss[:,i])
     # print("%3d %6.2f %8.3f %8.3f %8.3f %8.3f" % (i, osns[i], poss[1,i]/pixell_utils.degree, poss[0,i]/pixell_utils.degree, dpos[1]/pixell_utils.arcmin, dpos[0]/pixell_utils.arcmin))
     return oposs, osns
+
+
+def rescale_gaussian_axes(
+    sigma_1: float,
+    sigma_2: float,
+    theta: float,
+    x_scale: float,
+    y_scale: float,
+) -> tuple[float, float, float]:
+    """
+    Scale the x and y coordinates of a rotated Gaussian. Returns the new
+    principal widths, in the input order, and the new angle in radians.
+    """
+    scale = np.diag([x_scale, y_scale])
+    rotation = np.array(
+        [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
+    )
+    covariance = (
+        scale @ rotation @ np.diag([sigma_1**2, sigma_2**2]) @ rotation.T @ scale.T
+    )
+    variances, axes = np.linalg.eigh(covariance)
+    first = np.argmax(np.abs(axes.T @ scale @ rotation[:, 0]))
+    new_theta = np.arctan2(axes[1, first], axes[0, first]) % np.pi
+    return (
+        float(np.sqrt(variances[first])),
+        float(np.sqrt(variances[1 - first])),
+        float(new_theta),
+    )

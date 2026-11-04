@@ -429,12 +429,14 @@ def _map_with_gaussian(
     return input_map, source, image
 
 
-def _fit_and_model(input_map, source, centroid_snr_limit=5.0):
+def _fit_and_model(input_map, source, centroid_snr_limit=5.0, reproject=False):
     catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=[source])
     catalog.valid_fluxes = [source.source_id]
     result = TwoDGaussianFitter(
-        mode="lmfit", centroid_snr_limit=centroid_snr_limit
+        mode="lmfit",
+        centroid_snr_limit=centroid_snr_limit,
+        reproject_thumbnails=reproject,
     ).force(input_map=input_map, catalogs=[catalog])[0]
     model = make_model_source_map(
         input_map.flux,
@@ -486,3 +488,18 @@ def test_fit_widths_and_flux_are_on_the_sky(center_dec):
     fixed, _ = _fit_and_model(input_map, source, centroid_snr_limit=None)
     assert fixed.fit_params["forced_center"]
     assert fixed.flux.to_value(u.Jy) == pytest.approx(10.0, abs=0.1)
+
+
+@pytest.mark.parametrize("center_dec", [0.0, -60.0])
+@pytest.mark.parametrize("position_angle", [0.0, 30.0, 90.0, 120.0])
+@pytest.mark.parametrize("reproject", [False, True])
+def test_rotated_fit_widths_are_on_the_sky(center_dec, position_angle, reproject):
+    input_map, source, image = _map_with_gaussian(
+        center_dec * u.deg, 4.0, 2.2, position_angle
+    )
+    result, model = _fit_and_model(input_map, source, reproject=reproject)
+    widths = sorted(
+        [result.fwhm_ra.to_value(u.arcmin), result.fwhm_dec.to_value(u.arcmin)]
+    )
+    assert widths == pytest.approx([2.2, 4.0], abs=0.1)
+    assert np.abs(image - model).max() < 0.2

@@ -22,7 +22,7 @@ from sotrplib.sources.sources import (
     MeasuredSource,
     RegisteredSource,
 )
-from sotrplib.utils.utils import get_frequency, get_fwhm
+from sotrplib.utils.utils import get_frequency, get_fwhm, rescale_gaussian_axes
 
 if TYPE_CHECKING:
     from sotrplib.maps.pointing import PointingModel
@@ -190,7 +190,7 @@ class LmFitGaussian2DFitter:
             self.allowable_center_offset.to(u.arcmin).value / pixel_on_sky
         )
 
-        # Initial guess for parameters. 
+        # Initial guess for parameters.
         x0_guess, y0_guess = 0.0, 0.0
         amplitude_guess = self.source.thumbnail[
             np.clip(round(y_source), 0, ny - 1), np.clip(round(x_source), 0, nx - 1)
@@ -207,13 +207,17 @@ class LmFitGaussian2DFitter:
         )
 
         if self.force_center:
-            # Also keep the beam shape fixed. 
+            # Also keep the beam shape fixed.
             self.initial_guess["x0"].set(vary=False)
             self.initial_guess["y0"].set(vary=False)
             self.initial_guess["sigma_x"].set(vary=False)
             self.initial_guess["sigma_y"].set(vary=False)
             self.initial_guess["theta"].set(vary=False)
         else:
+            # A round start has no gradient in theta.
+            self.initial_guess["sigma_x"].set(value=1.2 * sigma_guess[0])
+            self.initial_guess["sigma_y"].set(value=0.8 * sigma_guess[1])
+            self.initial_guess["theta"].set(value=np.pi / 4)
             self.initial_guess["x0"].set(
                 min=x0_guess - allowable_center_offset_pixels[0],
                 max=x0_guess + allowable_center_offset_pixels[0],
@@ -225,7 +229,6 @@ class LmFitGaussian2DFitter:
 
         self.initial_guess["sigma_x"].set(min=0.0, max=nx)
         self.initial_guess["sigma_y"].set(min=0.0, max=ny)
-        self.initial_guess["theta"].set(min=0, max=np.pi)
         self.log.debug(
             "Gaussian2DFitter.model_initialized",
             fit_method=self.fit_method,
@@ -305,24 +308,22 @@ class LmFitGaussian2DFitter:
                 else None
             )
 
-        ## the widths are on the sky, as the offsets are
-        fwhm_x = (
-            2.355 * sigma_x * abs(self.source.thumbnail_res[0]) * self._ra_pixel_scale()
+        ## Principal widths and angle on the sky.
+        res_x, res_y = abs(self.source.thumbnail_res)
+        sky_x, sky_y, sky_theta = rescale_gaussian_axes(
+            sigma_x,
+            sigma_y,
+            theta,
+            res_x.to_value(u.arcmin) * self._ra_pixel_scale(),
+            res_y.to_value(u.arcmin),
         )
-        fwhm_y = 2.355 * sigma_y * abs(self.source.thumbnail_res[1])
-        fwhm_x_err = (
-            2.355
-            * sigma_x_err
-            * abs(self.source.thumbnail_res[0])
-            * self._ra_pixel_scale()
-            if sigma_x_err is not None
-            else None
-        )
-        fwhm_y_err = (
-            2.355 * sigma_y_err * abs(self.source.thumbnail_res[1])
-            if sigma_y_err is not None
-            else None
-        )
+        ## Report the angle in the sense of the model map, also if x is flipped.
+        if self.source.thumbnail_res[0] * self.source.thumbnail_res[1] < 0:
+            sky_theta = (np.pi - sky_theta) % np.pi
+        fwhm_x = 2.355 * sky_x * u.arcmin
+        fwhm_y = 2.355 * sky_y * u.arcmin
+        fwhm_x_err = fwhm_x * sigma_x_err / sigma_x if sigma_x_err is not None else None
+        fwhm_y_err = fwhm_y * sigma_y_err / sigma_y if sigma_y_err is not None else None
 
         amplitude = AstroPydanticQuantity(
             amplitude + offset, self.source.thumbnail_unit
@@ -346,7 +347,7 @@ class LmFitGaussian2DFitter:
             fwhm_dec=fwhm_y,
             fwhm_ra_err=fwhm_x_err,
             fwhm_dec_err=fwhm_y_err,
-            theta=theta * u.rad,
+            theta=sky_theta * u.rad,
             theta_err=theta_err * u.rad if theta_err is not None else None,
             forced_center=self.force_center,
             chisquared=chisquared,

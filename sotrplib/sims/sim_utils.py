@@ -11,6 +11,8 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.utils.utils import rescale_gaussian_axes
+
 if TYPE_CHECKING:
     from sotrplib.sources.sources import MeasuredSource
 
@@ -408,24 +410,21 @@ def make_2d_gaussian_model_param_table(
                 break
         if not cut:
             try:
-                ## The widths are on the sky. Pixels in RA are smaller on the sky.
-                fwhm_x = s.fwhm_ra / math.cos(s.dec.to_value(u.rad))
-                fwhm_y = s.fwhm_dec
-            except Exception:
-                fwhm_x = None
-                fwhm_y = None
-            if fwhm_x is None:
-                fwhm_x = nominal_fwhm
-            if fwhm_y is None:
-                fwhm_y = nominal_fwhm
-            try:
                 fit_params = s.fit_params if s.fit_params is not None else {}
             except Exception:
                 fit_params = {}
-            if "theta" in fit_params.keys():
-                theta = fit_params["theta"]
-            else:
-                theta = 0.0 * u.deg
+            theta = fit_params.get("theta", 0.0 * u.deg)
+            fwhm_x, fwhm_y = nominal_fwhm, nominal_fwhm
+            if s.fwhm_ra is not None and s.fwhm_dec is not None:
+                ## Sky widths and angle to map pixel widths and angle.
+                x_pix, y_pix, theta_pix = rescale_gaussian_axes(
+                    s.fwhm_ra.to_value(u.deg),
+                    s.fwhm_dec.to_value(u.deg),
+                    theta.to_value(u.rad),
+                    1 / math.cos(s.dec.to_value(u.rad)),
+                    1.0,
+                )
+                fwhm_x, fwhm_y, theta = x_pix * u.deg, y_pix * u.deg, theta_pix * u.rad
 
             omega_b = (math.pi / 4.0 / math.log(2)) * (fwhm_x * fwhm_y / map_res**2)
 
