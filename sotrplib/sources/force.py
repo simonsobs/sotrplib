@@ -97,6 +97,8 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
     mode: Literal["lmfit"] = "lmfit"
     reproject_thumbnails: bool
     thumbnail_half_width: u.Quantity
+    allowable_center_offset: u.Quantity
+    centroid_snr_limit: float | None
     goodness_of_fit_threshold: float | None
     near_source_rel_flux_limit: float | None
     min_flux: u.Quantity | None = None
@@ -109,18 +111,21 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
         min_flux: u.Quantity | None = None,
         near_source_rel_flux_limit: float | None = None,
+        allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+        centroid_snr_limit: float | None = 5.0,
         goodness_of_fit_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         """
         Initialize the GaussianFitter.
 
-        Each source is fit at its catalog position (after the pointing
-        correction) with the beam shape fixed. The fit does not find a
-        centroid: the catalog flux does not tell if a variable source is
-        bright in this map, and a centroid fit on a faint source finds a noise
-        peak. The pointing correction (TwoDGaussianPointingFitter) gives the
-        position offsets.
+        Each source is first fit at its catalog position (after the pointing
+        correction) with the beam shape fixed. If that fit is significant in
+        this map, the source is fit again with a free position and shape. The
+        offsets and widths are a diagnostic for moving and extended sources.
+        A faint source stays at its position: a centroid fit on a faint source
+        finds a noise peak. The selection does not use the catalog flux: it
+        does not tell if a variable source is bright in this map.
         Parameters
         ----------
         mode : {"lmfit"}, optional
@@ -130,6 +135,11 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             If False, just cuts out square in pixel space.
         thumbnail_half_width : astropy.units.Quantity, optional
             Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+        allowable_center_offset : astropy.units.Quantity, optional
+            Maximum offset of a free fit from the source position (default: 1.0 arcmin).
+        centroid_snr_limit : float | None, optional
+            Minimum SNR of the fit at the source position to do a free fit
+            (default: 5.0). If None, all fits are at the source position.
         near_source_rel_flux_limit : float | None, optional
             Relative flux limit to exclude nearby sources (default: None).
             If another source within the thumbnail_half_width has a flux
@@ -148,6 +158,8 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         self.mode = mode
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
+        self.allowable_center_offset = allowable_center_offset
+        self.centroid_snr_limit = centroid_snr_limit
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.goodness_of_fit_threshold = goodness_of_fit_threshold
         self.min_flux = min_flux
@@ -228,6 +240,8 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
             pointing_model=pointing_model,
+            allowable_center_offset=self.allowable_center_offset,
+            centroid_snr_limit=self.centroid_snr_limit,
             flags={"nearby_source": has_nearby_sources},
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             log=self.log,

@@ -47,25 +47,25 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
     photometry_type: Literal["lmfit"] = "lmfit"
     reproject_thumbnails: bool = False
     thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(1.0, "arcmin")
+    centroid_snr_limit: float | None = 5.0
     near_source_rel_flux_limit: float = 1.0
     min_flux: AstroPydanticQuantity[u.Jy] | None = None
     goodness_of_fit_threshold: float | None = None
 
     @model_validator(mode="before")
     @classmethod
-    def ignore_centroid_options(cls, data: Any) -> Any:
-        # Forced photometry does not fit centroids now. Older configs can
-        # have these options: ignore them, with a warning.
-        if isinstance(data, dict):
-            for key in ("flux_limit_centroid", "allowable_center_offset"):
-                if key in data:
-                    warnings.warn(
-                        f"forced_photometry.{key} is not used: forced photometry "
-                        "fits each source at its position. Remove it from the config.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )
-                    data = {k: v for k, v in data.items() if k != key}
+    def ignore_flux_limit_centroid(cls, data: Any) -> Any:
+        # The catalog flux does not select the free fits now. Older configs can
+        # have this option: ignore it, with a warning.
+        if isinstance(data, dict) and "flux_limit_centroid" in data:
+            warnings.warn(
+                "forced_photometry.flux_limit_centroid is not used: use "
+                "centroid_snr_limit. Remove it from the config.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            data = {k: v for k, v in data.items() if k != "flux_limit_centroid"}
         return data
 
     def to_forced_photometry(
@@ -75,6 +75,8 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
             mode="lmfit",
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
+            allowable_center_offset=self.allowable_center_offset,
+            centroid_snr_limit=self.centroid_snr_limit,
             near_source_rel_flux_limit=self.near_source_rel_flux_limit,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             min_flux=self.min_flux,

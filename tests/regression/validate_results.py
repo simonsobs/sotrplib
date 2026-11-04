@@ -62,8 +62,8 @@ def main():
     # This script reads the sources from the return value of the runner.
     pipeline.map_matcher = EmptyMapMatcher(hold_all_maps=True)
 
-    # Forced photometry fits at the source position and gives no offsets. Only
-    # the pointing fits measure a position, and the runner does not return them.
+    # Pointing fits measure the position of all bright sources. Forced fits do
+    # this only for significant sources. The runner does not return pointing fits.
     pointing_fits = []
     pointing_force = pipeline.pointing_provider.force
 
@@ -93,7 +93,6 @@ def main():
     photometry, sifter_result = result
 
     found = [candidate for candidate in photometry if not candidate.fit_failed]
-    assert all(candidate.fit_params["dec_offset"] is None for candidate in found)
     centroided = [candidate for candidate in pointing_fits if not candidate.fit_failed]
     assert len(centroided) > 0
 
@@ -142,6 +141,9 @@ def main():
         duration=profiler.last_session.duration,
         number_with_forced_photometry=len(photometry),
         number_with_pointing_fit=len(centroided),
+        number_forced_with_free_fit=sum(
+            not candidate.fit_params["forced_center"] for candidate in found
+        ),
         median_flux_ratio_above_100mJy=float(np.median(bright_flux_ratios)),
         number_blind_sources=len(sifter_result.source_candidates),
         number_noise_sources=len(sifter_result.noise_candidates),

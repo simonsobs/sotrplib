@@ -359,7 +359,16 @@ def make_2d_gaussian_model_param_table(
     )
     for i in range(len(sources)):
         s = sources[i]
-        pix = imap.sky2pix(np.array([s.dec.to(u.rad).value, s.ra.to(u.rad).value]))
+        ## The model goes at the fitted position, if the fit has one. The fit gives
+        ## offset = source position - fitted position, and the RA offset is on the sky.
+        dec = s.dec.to(u.rad).value
+        ra = s.ra.to(u.rad).value
+        offset_ra = getattr(s, "offset_ra", None)
+        offset_dec = getattr(s, "offset_dec", None)
+        if offset_ra is not None and offset_dec is not None:
+            dec -= offset_dec.to(u.rad).value
+            ra -= offset_ra.to(u.rad).value / math.cos(dec)
+        pix = imap.sky2pix(np.array([dec, ra]))
 
         ## unfortunate naming, a,b are semi-major and semi-minor axes,
         ## but really they're x,y from photutils gaussian fit.

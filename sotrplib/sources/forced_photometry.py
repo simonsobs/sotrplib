@@ -383,6 +383,7 @@ def gaussian_fit(
     source_list: list[RegisteredSource],
     fit_method: str = "lmfit",
     fit_centroid: bool = False,
+    centroid_snr_limit: float | None = None,
     thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
     fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
@@ -412,6 +413,14 @@ def gaussian_fit(
         position and shape, from the thumbnail center and in the limit of
         allowable_center_offset (use for pointing sources, before the pointing
         correction). The default is False.
+    centroid_snr_limit : float or None, optional
+        Applies if fit_centroid is False. If not None, first fit a beam at the
+        source position. If the SNR of that fit is at or above this limit, and
+        the source has no nearby_source flag, fit again with a free position
+        and shape. Use the fit at the source position if the second fit fails.
+        This selects on the flux in this map, not on the catalog flux, which
+        does not tell if a variable source is bright now. If None, all fits
+        are at the source position. The default is None.
     thumbnail_half_width : astropy.units.Quantity, optional
         Half-width of the thumbnail cut-out around each source position, in
         angular units. The default is 0.25 deg.
@@ -585,23 +594,37 @@ def gaussian_fit(
             fit_sources.append(forced_source)
             continue
 
-        fitter = LmFitGaussian2DFitter(
-            forced_source,
-            reprojected=reproject_thumb,
-            fwhm_guess=fwhm
-            if fwhm is not None
-            else get_fwhm(
-                freq=input_map.frequency,
-                arr=input_map.array,
-                instrument=input_map.instrument,
-            ),
-            force_center=not fit_centroid,
-            allowable_center_offset=allowable_center_offset,
-            log=log,
-        )
+        def run_fit(force_center: bool) -> GaussianFitParameters:
+            fitter = LmFitGaussian2DFitter(
+                forced_source,
+                reprojected=reproject_thumb,
+                fwhm_guess=fwhm
+                if fwhm is not None
+                else get_fwhm(
+                    freq=input_map.frequency,
+                    arr=input_map.array,
+                    instrument=input_map.instrument,
+                ),
+                force_center=force_center,
+                allowable_center_offset=allowable_center_offset,
+                log=log,
+            )
+            fitter.initialize_model()
+            return fitter.fit()
 
-        fitter.initialize_model()
-        fit = fitter.fit()
+        fit = run_fit(force_center=not fit_centroid)
+        if (
+            not fit_centroid
+            and centroid_snr_limit is not None
+            and not fit.failed
+            and "nearby_source" not in source_flags
+        ):
+            ## A faint source stays at its position: a free fit finds a noise peak.
+            noise = _map_noise_at_fit(input_map, forced_source, fit)
+            if noise is not None and fit.amplitude / noise >= centroid_snr_limit:
+                free_fit = run_fit(force_center=False)
+                if not free_fit.failed:
+                    fit = free_fit
         if debug:
             log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 

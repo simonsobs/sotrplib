@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
+import structlog
 from astropy import units as u
 
+from sotrplib.maps.maps import make_model_source_map
 from sotrplib.sims.sources.core import (
     RandomSourceSimulation,
     RandomSourceSimulationParameters,
@@ -13,7 +15,7 @@ from sotrplib.sources.force import (
     TwoDGaussianFitter,
     TwoDGaussianPointingFitter,
 )
-from sotrplib.sources.forced_photometry import LmFitGaussian2DFitter
+from sotrplib.sources.forced_photometry import LmFitGaussian2DFitter, gaussian_fit
 from sotrplib.sources.sources import MeasuredSource
 
 ### sources returned from simulations need to be converted to registered sources
@@ -60,16 +62,18 @@ def test_lmfit(map_with_single_source):
     assert results[0].flux.to(u.Jy).value == pytest.approx(
         sources[0].flux.to(u.Jy).value, rel=2e-1
     )
-    ## forced photometry fits at the source position: no centroid offsets
-    assert results[0].fit_params["forced_center"]
-    assert results[0].offset_ra is None
-    assert results[0].offset_dec is None
+    ## a bright source gets a free fit, and the offset is small
+    assert not results[0].fit_params["forced_center"]
+    assert abs(results[0].offset_ra.to_value(u.arcmin)) < 0.1
+    assert abs(results[0].offset_dec.to_value(u.arcmin)) < 0.1
     assert results[0].fit_method == "lmfit_2d_gaussian"
 
 
 def test_lmfit_forced_at_catalog_position(map_with_single_source):
     input_map, sources = map_with_single_source
-    forced_photometry = TwoDGaussianFitter(mode="lmfit", reproject_thumbnails=False)
+    forced_photometry = TwoDGaussianFitter(
+        mode="lmfit", reproject_thumbnails=False, centroid_snr_limit=None
+    )
 
     ## the catalog position is 3 arcmin from the source: the forced flux is
     ## the flux at the catalog position, not the flux of the source
@@ -230,9 +234,14 @@ def test_lmfit_config_ignores_centroid_options():
 
     with pytest.warns(DeprecationWarning, match="flux_limit_centroid"):
         config = LmfitGaussianFitterConfig(
-            flux_limit_centroid="0.1 Jy", allowable_center_offset="1 arcmin"
+            flux_limit_centroid="0.1 Jy",
+            allowable_center_offset="2 arcmin",
+            centroid_snr_limit=7.0,
         )
-    assert isinstance(config.to_forced_photometry(), TwoDGaussianFitter)
+    fitter = config.to_forced_photometry()
+    assert isinstance(fitter, TwoDGaussianFitter)
+    assert fitter.allowable_center_offset == 2 * u.arcmin
+    assert fitter.centroid_snr_limit == 7.0
 
 
 def test_lmfit_error_is_map_noise(map_with_single_source):
@@ -289,3 +298,81 @@ def test_lmfit_fits_at_source_position(empty_map):
         assert forced[source_id].flux.to_value(u.Jy) == pytest.approx(
             fit.flux.to_value(u.Jy), rel=0.005
         )
+
+
+def _catalog(sources):
+    catalog = RegisteredSourceCatalog(sources=[])
+    catalog.add_sources(sources=sources)
+    catalog.valid_fluxes = [s.source_id for s in sources]
+    return catalog
+
+
+def test_lmfit_bright_source_gets_free_fit(map_with_single_source):
+    ## a bright source moved from its catalog position: the fit gives the
+    ## offset and the width, and it does not go past the limit
+    input_map, sources = map_with_single_source
+    moved = [x.model_copy() for x in sources]
+    moved[0].dec = moved[0].dec + 0.5 * u.arcmin
+    results = TwoDGaussianFitter(mode="lmfit").force(
+        input_map=input_map, catalogs=[_catalog(moved)]
+    )
+    assert not results[0].fit_failed
+    assert not results[0].fit_params["forced_center"]
+    assert abs(results[0].offset_dec.to_value(u.arcmin)) == pytest.approx(0.5, abs=0.05)
+    assert results[0].fwhm_ra.to_value(u.arcmin) == pytest.approx(2.2, abs=0.2)
+
+
+def test_lmfit_faint_source_stays_at_position(map_with_single_source):
+    ## a limit that this source does not reach: the fit stays at the position
+    input_map, sources = map_with_single_source
+    results = TwoDGaussianFitter(mode="lmfit", centroid_snr_limit=1e12).force(
+        input_map=input_map, catalogs=[_catalog(sources)]
+    )
+    assert not results[0].fit_failed
+    assert results[0].fit_params["forced_center"]
+    assert results[0].offset_ra is None
+
+
+def test_lmfit_nearby_source_stays_at_position(map_with_single_source):
+    input_map, sources = map_with_single_source
+    results = gaussian_fit(
+        input_map,
+        source_list=[x.model_copy() for x in sources],
+        thumbnail_half_width=0.1 * u.deg,
+        fwhm=2.2 * u.arcmin,
+        centroid_snr_limit=5.0,
+        flags={"nearby_source": [True]},
+    )
+    assert results[0].fit_params["forced_center"]
+    assert results[0].offset_ra is None
+
+
+def test_subtraction_model_is_at_fitted_position(map_with_single_source):
+    ## the catalog position is wrong, but the fit finds the source: the model
+    ## must be at the source, not at the catalog position
+    input_map, sources = map_with_single_source
+    true_pixel = np.asarray(
+        input_map.flux.sky2pix(
+            [sources[0].dec.to_value(u.rad), sources[0].ra.to_value(u.rad)]
+        )
+    )
+    moved = [x.model_copy() for x in sources]
+    moved[0].ra = moved[0].ra + 0.5 * u.arcmin
+    moved[0].dec = moved[0].dec - 0.5 * u.arcmin
+    results = TwoDGaussianFitter(mode="lmfit").force(
+        input_map=input_map, catalogs=[_catalog(moved)]
+    )
+    assert not results[0].fit_params["forced_center"]
+
+    model = np.asarray(
+        make_model_source_map(
+            input_map.flux,
+            results,
+            nominal_fwhm=2.2 * u.arcmin,
+            matched_filtered=True,
+            log=structlog.get_logger(),
+        )
+    )
+    y, x = np.indices(model.shape)
+    centroid = np.array([(y * model).sum(), (x * model).sum()]) / model.sum()
+    assert centroid == pytest.approx(true_pixel, abs=0.1)
