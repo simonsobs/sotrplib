@@ -191,11 +191,22 @@ class BaseRunner:
     ) -> MapResult | None:
         """
         Coadd and analyze maps in a single task to avoid passing maps between processes.
+        If the map matcher does not hold the results, write the source outputs here
+        and return None.
         """
         coadded_map = self.profilable_task(self.map_coadder.coadd_maps)(maps)
-        return self.profilable_task(self.analyze_map)(
+        result = self.profilable_task(self.analyze_map)(
             input_map=coadded_map, simulated_sources=simulated_sources
         )
+        # The runner keeps these objects until the end of the run, and the result
+        # does not use their arrays. Without this, the memory increases with each map.
+        coadded_map.release()
+        for input_map in maps:
+            input_map.release()
+        if result is not None and not self.map_matcher.hold_all_maps:
+            self.output_map_result(result)
+            return None
+        return result
 
     def analyze_map(
         self, input_map: ProcessableMap, simulated_sources: list[SimulatedSource]
@@ -270,7 +281,7 @@ class BaseRunner:
             for output in self.map_outputs:
                 self.profilable_task(output.output)(input_map=input_map)
 
-            return MapResult(
+            result = MapResult(
                 map_name=input_map.map_name,
                 mapcat_id=input_map.mapcat_id,
                 map_type=input_map.map_type,
@@ -283,6 +294,11 @@ class BaseRunner:
                 injected_sources=injected_sources,
                 from_database=input_map._parent_database is not None,
             )
+            # A preprocessor can make a new map. Reference cycles can keep it in
+            # memory after this method, thus remove its arrays here.
+            input_map.release()
+            source_subtracted_map.release()
+            return result
         except Exception:
             # Set the status to "failed". If the status stays "processing",
             # the reader skips the map on the next run.
@@ -331,9 +347,16 @@ class BaseRunner:
         The actual pipeline run logic has to be in a separate method so that it can be
         decorated with the flow as prefect needs these to be defined in advance.
 
-        Returns one (forced photometry sources, sifter result) tuple for each
-        map set. If there are no maps, returns an empty list.
+        If map_matcher.hold_all_maps is True, returns one (forced photometry
+        sources, sifter result) tuple for each map set. If it is False, or if
+        there are no maps, returns an empty list.
         """
+        # Before the reader starts, because the reader sets the processing status.
+        if not self.map_matcher.hold_all_maps and self.map_match_outputs:
+            raise ValueError(
+                "map_match_outputs need the results of all the maps. Use a map "
+                "matcher with hold_all_maps=True."
+            )
         maps = list(maps)
         if not maps:
             structlog.get_logger().warning(

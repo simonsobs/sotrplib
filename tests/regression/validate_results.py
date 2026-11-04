@@ -10,6 +10,7 @@ import structlog
 from astropy.coordinates import SkyCoord
 
 from sotrplib.config.config import Settings
+from sotrplib.sifter.map_matching import EmptyMapMatcher
 from sotrplib.sources.sources import MeasuredSource
 
 
@@ -57,6 +58,8 @@ def calculate_separation(candidate: MeasuredSource) -> float:
 def main():
     config = Settings.from_file("regression.json")
     pipeline = config.to_runner()
+    # This script reads the sources from the return value of the runner.
+    pipeline.map_matcher = EmptyMapMatcher(hold_all_maps=True)
 
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
