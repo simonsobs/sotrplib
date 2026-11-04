@@ -1609,8 +1609,8 @@ wheels = [
 
 [[package]]
 name = "lightcurvedb"
-version = "0.1.0"
-source = { git = "https://github.com/simonsobs/lightcurvedb#d2bb41fbb73c80dc6d7d427c9e5c9daeb6fe4dfd" }
+version = "0.1.1"
+source = { git = "https://github.com/simonsobs/lightcurvedb#72f3e0a5415b20b9d9a6e01ef37418b6c2303685" }
 dependencies = [
     { name = "astropy" },
     { name = "asyncer" },
@@ -3787,8 +3787,8 @@ wheels = [
 
 [[package]]
 name = "socat"
-version = "0.1.0"
-source = { git = "https://github.com/simonsobs/socat#0624457bff5cbfa5d589a65f72bba6ad2483ad79" }
+version = "1.0.0"
+source = { git = "https://github.com/simonsobs/socat#5f321895704af5a0f3ad05bcf9ef414fe24efb5c" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
@@ -3797,6 +3797,7 @@ dependencies = [
     { name = "astroquery" },
     { name = "asyncer" },
     { name = "fastapi" },
+    { name = "numpy" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "pyarrow" },
@@ -3804,6 +3805,7 @@ dependencies = [
     { name = "scipy" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
+    { name = "tqdm" },
     { name = "uuid7-standard" },
     { name = "uvicorn" },
 ]
