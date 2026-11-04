@@ -281,7 +281,7 @@ class BaseRunner:
             for output in self.map_outputs:
                 self.profilable_task(output.output)(input_map=input_map)
 
-            return MapResult(
+            result = MapResult(
                 map_name=input_map.map_name,
                 mapcat_id=input_map.mapcat_id,
                 map_type=input_map.map_type,
@@ -294,6 +294,11 @@ class BaseRunner:
                 injected_sources=injected_sources,
                 from_database=input_map._parent_database is not None,
             )
+            # A preprocessor can make a new map. Reference cycles can keep it in
+            # memory after this method, thus remove its arrays here.
+            input_map.release()
+            source_subtracted_map.release()
+            return result
         except Exception:
             # Set the status to "failed". If the status stays "processing",
             # the reader skips the map on the next run.

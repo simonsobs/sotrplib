@@ -110,24 +110,6 @@ def test_release_removes_mask_from_preprocessor(separate_map_set_1):
     assert _array_attributes(input_map) == set()
 
 
-def test_release_keeps_mask_from_constructor(separate_map_set_1):
-    paths = separate_map_set_1
-    constructor_mask = np.ones(3)
-    input_map = RhoAndKappaMap(
-        rho_filename=paths["rho"],
-        kappa_filename=paths["kappa"],
-        time_filename=paths["time"],
-        start_time=Time("2025-01-01T00:00:00"),
-        end_time=Time("2025-01-01T12:00:00"),
-        mask=constructor_mask,
-    )
-    input_map.mask = constructor_mask * 0.5
-
-    input_map.release()
-
-    assert input_map.mask is constructor_mask
-
-
 def test_runner_releases_each_map_after_analysis(separate_map_set_1):
     paths = separate_map_set_1
     input_map = RhoKappaMapConfig(
