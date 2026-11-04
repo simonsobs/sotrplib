@@ -116,6 +116,16 @@ class ProcessableMap(ABC):
     _available_maps: tuple[str, ...] = ("flux", "snr")
     "Ordered attribute names searched by bbox to find a loaded map."
 
+    def release(self):
+        """
+        Remove all the arrays of this map from memory. To use the map again, call
+        build and finalize again.
+        """
+        for name, value in list(vars(self).items()):
+            if isinstance(value, np.ndarray):
+                del vars(self)[name]
+        self.finalized = False
+
     @abstractmethod
     def build(self):
         """

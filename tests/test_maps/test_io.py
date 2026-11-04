@@ -64,6 +64,83 @@ def test_basic_pipeline_rhokappa(separate_map_set_1):
     runner.run([input_map])
 
 
+def _array_attributes(input_map):
+    return {k for k, v in vars(input_map).items() if isinstance(v, np.ndarray)}
+
+
+def test_release_removes_arrays_and_build_reads_them_again(separate_map_set_1):
+    paths = separate_map_set_1
+    input_map = RhoKappaMapConfig(
+        rho_map_path=paths["rho"],
+        kappa_map_path=paths["kappa"],
+        time_map_path=paths["time"],
+        observation_start="2025-01-01T00:00:00Z",
+        observation_end="2025-01-01T12:00:00Z",
+    ).to_map()
+    input_map.build()
+    input_map.finalize()
+    flux = input_map.flux.copy()
+    assert _array_attributes(input_map)
+
+    input_map.release()
+
+    assert _array_attributes(input_map) == set()
+    assert not input_map.finalized
+
+    input_map.build()
+    input_map.finalize()
+    assert np.array_equal(input_map.flux, flux)
+
+
+def test_release_removes_mask_from_preprocessor(separate_map_set_1):
+    paths = separate_map_set_1
+    input_map = RhoKappaMapConfig(
+        rho_map_path=paths["rho"],
+        kappa_map_path=paths["kappa"],
+        time_map_path=paths["time"],
+        observation_start="2025-01-01T00:00:00Z",
+        observation_end="2025-01-01T12:00:00Z",
+    ).to_map()
+    input_map.build()
+    input_map.mask = np.ones_like(input_map.rho)
+
+    input_map.release()
+
+    assert input_map.mask is None
+    assert _array_attributes(input_map) == set()
+
+
+def test_runner_releases_each_map_after_analysis(separate_map_set_1):
+    paths = separate_map_set_1
+    input_map = RhoKappaMapConfig(
+        rho_map_path=paths["rho"],
+        kappa_map_path=paths["kappa"],
+        time_map_path=paths["time"],
+        observation_start="2025-01-01T00:00:00Z",
+        observation_end="2025-01-01T12:00:00Z",
+    ).to_map()
+    runner = PipelineRunner(
+        map_coadder=None,
+        source_catalogs=[],
+        source_injector=None,
+        preprocessors=None,
+        pointing_provider=None,
+        pointing_residual_model=None,
+        postprocessors=None,
+        source_simulators=None,
+        forced_photometry=None,
+        source_subtractor=None,
+        blind_search=None,
+        sifter=None,
+        source_outputs=None,
+        map_outputs=None,
+    )
+
+    runner.run([input_map])
+
+    assert _array_attributes(input_map) == set()
+
+
 def test_basic_pipeline_ivar(separate_map_set_1):
     """
     Tests a complete setup of the basic pipeline run with input intensity, inverse variance maps

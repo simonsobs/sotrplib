@@ -2,6 +2,7 @@
 Tests for the fully simulated pipeline setup.
 """
 
+import copy
 import json
 import pickle
 from itertools import combinations
@@ -11,6 +12,7 @@ import pytest
 from astropy import units as u
 
 from sotrplib.handlers.basic import PipelineRunner
+from sotrplib.maps.preprocessor import MapPreprocessor
 from sotrplib.outputs.core import (
     JSONMapMatchOutput,
     PickleSerializer,
@@ -54,7 +56,9 @@ def test_basic_pipeline_lmfit(
 
     new_map, sources = map_with_sources
     source_cat = RegisteredSourceCatalog(sources=sources)
-    maps = [new_map, new_map]
+    # The runner releases each map after its analysis, and this map has its data
+    # only in memory.
+    maps = [copy.deepcopy(new_map), copy.deepcopy(new_map)]
 
     runner = PipelineRunner(
         map_coadder=None,
@@ -86,7 +90,9 @@ def test_pipeline_map_matching_before_outputs(
     matching) carry the shared, ranked group_id.
     """
     new_map, sources = map_with_sources
-    maps = [new_map, new_map]
+    # The runner releases each map after its analysis, and this map has its data
+    # only in memory.
+    maps = [copy.deepcopy(new_map), copy.deepcopy(new_map)]
 
     runner = PipelineRunner(
         map_coadder=None,
@@ -138,6 +144,7 @@ def test_pipeline_map_matching_before_outputs(
     # the same maps with the default min_arrays=2 are all unconfirmed, so
     # their candidates go to the noise and keep their group_id
     runner.map_matcher = MultiArrayMapMatcher()
+    maps = [copy.deepcopy(new_map), copy.deepcopy(new_map)]
     for forced, sifted in runner.run(maps):
         assert sifted.transient_candidates == []
         grouped = [c for c in sifted.noise_candidates if c.group_id is not None]
@@ -533,3 +540,27 @@ def test_map_match_outputs_need_held_results(tmp_path, empty_map):
         runner.run([empty_map])
 
     assert events == []
+
+
+class _NewMapPreprocessor(MapPreprocessor):
+    """Makes a new map, as the matched filter does."""
+
+    def __init__(self):
+        self.new_maps = []
+
+    def preprocess(self, input_map):
+        new_map = copy.deepcopy(input_map)
+        self.new_maps.append(new_map)
+        return new_map
+
+
+def test_runner_releases_map_made_by_preprocessor(empty_map):
+    preprocessor = _NewMapPreprocessor()
+    runner = _recording_runner([], EmptyMapMatcher())
+    runner.preprocessors = [preprocessor]
+
+    runner.run([empty_map])
+
+    (new_map,) = preprocessor.new_maps
+    assert not any(isinstance(v, np.ndarray) for v in vars(new_map).values())
+    assert not any(isinstance(v, np.ndarray) for v in vars(empty_map).values())
