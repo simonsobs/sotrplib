@@ -2,6 +2,10 @@ import numpy as np
 import pytest
 from astropy import units as u
 
+from sotrplib.sims.sources.core import (
+    RandomSourceSimulation,
+    RandomSourceSimulationParameters,
+)
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
@@ -70,7 +74,7 @@ def test_lmfit_forced_at_catalog_position(map_with_single_source):
     ## the catalog position is 3 arcmin from the source: the forced flux is
     ## the flux at the catalog position, not the flux of the source
     new_sources = [x.model_copy() for x in sources]
-    new_sources[0].ra += 0.05 * u.deg
+    new_sources[0].dec += 0.05 * u.deg
 
     catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=new_sources)
@@ -176,19 +180,49 @@ def test_lmfit_forced_center_noise_is_not_biased():
     assert 0.25 < np.mean(np.array(fluxes) < 0) < 0.75
 
 
-def test_lmfit_free_center_starts_at_brightest_pixel():
-    ## a pointing source 1.5 arcmin from the center: the fit starts at the
-    ## brightest pixel, so it finds the source with a 1 arcmin limit
-    source = _thumbnail_source([(50.0, 1.5, 0.0)])
+def test_lmfit_free_center_starts_at_thumbnail_center():
+    ## the brightest pixel is 5 arcmin from the center, and it is not the start
+    source = _thumbnail_source([(50.0, 1.5, 0.0), (200.0, -5.0, 5.0)])
     fitter = LmFitGaussian2DFitter(
-        source, force_center=False, allowable_center_offset=1.0 * u.arcmin
+        source, force_center=False, allowable_center_offset=3.0 * u.arcmin
+    )
+    fitter.initialize_model()
+
+    assert fitter.initial_guess["x0"].value == 0.0
+    assert fitter.initial_guess["y0"].value == 0.0
+    assert fitter.initial_guess["x0"].max == pytest.approx(6.0)
+    assert fitter.initial_guess["y0"].min == pytest.approx(-6.0)
+
+
+@pytest.mark.parametrize("dx,dy", [(1.5, 0.0), (-1.0, 1.0), (2.0, 0.0), (0.0, 0.0)])
+def test_lmfit_free_center_finds_offset_source(dx, dy):
+    ## a pointing source off the center: the fit moves from the center to it
+    source = _thumbnail_source([(50.0, dx, dy)])
+    fitter = LmFitGaussian2DFitter(
+        source, force_center=False, allowable_center_offset=3.0 * u.arcmin
     )
     fitter.initialize_model()
     fit = fitter.fit()
 
     assert not fit.failed
     assert fit.amplitude.to_value(u.mJy) == pytest.approx(50.0, rel=0.1)
-    assert abs(fit.ra_offset.to_value(u.arcmin)) == pytest.approx(1.5, abs=0.1)
+    assert abs(fit.ra_offset.to_value(u.arcmin)) == pytest.approx(abs(dx), abs=0.1)
+    assert abs(fit.dec_offset.to_value(u.arcmin)) == pytest.approx(abs(dy), abs=0.1)
+
+
+def test_lmfit_free_center_stays_in_allowed_offset():
+    ## a peak far outside the limit: the center does not go past the limit
+    source = _thumbnail_source([(50.0, 6.0, 0.0)])
+    limit = 1.0 * u.arcmin
+    fitter = LmFitGaussian2DFitter(
+        source, force_center=False, allowable_center_offset=limit
+    )
+    fitter.initialize_model()
+    fit = fitter.fit()
+
+    if not fit.failed:
+        assert abs(fit.ra_offset) <= limit * 1.0001
+        assert abs(fit.dec_offset) <= limit * 1.0001
 
 
 def test_lmfit_config_ignores_centroid_options():
@@ -217,3 +251,41 @@ def test_lmfit_error_is_map_noise(map_with_single_source):
     assert results[0].snr == pytest.approx(
         (results[0].flux / results[0].err_flux).to_value(u.dimensionless_unscaled)
     )
+
+
+def test_lmfit_fits_at_source_position(empty_map):
+    ## the fit coordinates are centered at the source position, also if the
+    ## thumbnail has an even number of pixels or the source is not at the
+    ## center of a pixel
+    parameters = RandomSourceSimulationParameters(
+        n_sources=10,
+        min_flux=u.Quantity(9.999, "Jy"),
+        max_flux=u.Quantity(10.001, "Jy"),
+        fwhm_uncertainty_frac=0.0,
+        fraction_return=1.0,
+    )
+    input_map, sources = RandomSourceSimulation(parameters=parameters).simulate(
+        input_map=empty_map
+    )
+    catalog = RegisteredSourceCatalog(sources=[])
+    catalog.add_sources(sources=sources)
+    catalog.valid_fluxes = [s.source_id for s in sources]
+
+    free = TwoDGaussianPointingFitter(
+        mode="lmfit", min_flux=1.0 * u.Jy, near_source_rel_flux_limit=100.0
+    ).force(input_map=input_map, catalogs=[catalog])
+    free = {r.source_id: r for r in free if not r.fit_failed}
+    forced = TwoDGaussianFitter(mode="lmfit").force(
+        input_map=input_map, catalogs=[catalog]
+    )
+    forced = {r.source_id: r for r in forced if not r.fit_failed}
+
+    assert len(free) >= 5
+    assert next(iter(free.values())).thumbnail.shape[0] % 2 == 0
+    for source_id, fit in free.items():
+        ## 0.05 arcmin is 0.1 pixels
+        assert abs(fit.fit_params["ra_offset"]) < 0.05 * u.arcmin
+        assert abs(fit.fit_params["dec_offset"]) < 0.05 * u.arcmin
+        assert forced[source_id].flux.to_value(u.Jy) == pytest.approx(
+            fit.flux.to_value(u.Jy), rel=0.005
+        )

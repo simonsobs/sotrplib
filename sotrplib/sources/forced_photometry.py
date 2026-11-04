@@ -110,14 +110,15 @@ class LmFitGaussian2DFitter:
         If True, the Gaussian center is at the thumbnail center (the source
         position) and the beam shape is fixed: only the amplitude and the
         background are fit. Use this for forced photometry. If False, the fit
-        starts at the brightest pixel of the thumbnail and the center can move
-        by allowable_center_offset from that pixel. Use this for pointing
-        sources: their thumbnails are cut before the pointing correction, so
-        the source can be off the thumbnail center. By default False.
+        also starts at the thumbnail center, but the center can move by
+        allowable_center_offset from that position, and the shape is free. Use
+        this for pointing sources: their thumbnails are cut before the pointing
+        correction, so the source can be off the thumbnail center. By default
+        False.
     reprojected : bool, optional
         Whether the thumbnail was reprojected (affects RA offset sign), by default False
     allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
-        Maximum allowable offset from the brightest pixel for the fit, if
+        Maximum allowable offset from the thumbnail center for the fit, if
         force_center is False, by default u.Quantity(1.0, "arcmin")
     """
 
@@ -154,9 +155,14 @@ class LmFitGaussian2DFitter:
         self.model = lmfit.Model(gaussian_2d_lmfit, independent_vars=["x", "y"])
         ny, nx = self.source.thumbnail.shape
 
-        # Define coordinate system centered at the image middle (i.e. the thumbnail center)
-        x = np.arange(nx) - (nx - 1) / 2
-        y = np.arange(ny) - (ny - 1) / 2
+        # Define coordinate system centered at the source position. This is
+        # the middle of the thumbnail, if the thumbnail does not give a position.
+        y_source, x_source = self.source.thumbnail_source_pixel or (
+            (ny - 1) / 2,
+            (nx - 1) / 2,
+        )
+        x = np.arange(nx) - x_source
+        y = np.arange(ny) - y_source
         X, Y = np.meshgrid(x, y)
         self.X = X
         self.Y = Y
@@ -175,19 +181,13 @@ class LmFitGaussian2DFitter:
             u.arcmin
         ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
 
-        # Initial guess for parameters. With a forced center, the fit is at
-        # the thumbnail center (the source position). Do not use the
-        # brightest pixel: for a faint or quiet source that is a noise peak
-        # away from the source, and the fit then measures the noise peak.
-        if self.force_center:
-            y_peak, x_peak = round((ny - 1) / 2), round((nx - 1) / 2)
-            x0_guess, y0_guess = 0.0, 0.0
-        else:
-            y_peak, x_peak = np.unravel_index(
-                np.argmax(self.source.thumbnail), self.source.thumbnail.shape
-            )
-            x0_guess, y0_guess = X[y_peak, x_peak], Y[y_peak, x_peak]
-        amplitude_guess = self.source.thumbnail[y_peak, x_peak]
+        # Initial guess for parameters. All fits start at the thumbnail center
+        # (the source position). Do not use the brightest pixel: it can be a
+        # noise peak or a different source, away from this source.
+        x0_guess, y0_guess = 0.0, 0.0
+        amplitude_guess = self.source.thumbnail[
+            np.clip(round(y_source), 0, ny - 1), np.clip(round(x_source), 0, nx - 1)
+        ]
 
         self.initial_guess = self.model.make_params(
             amplitude=amplitude_guess,
@@ -409,9 +409,9 @@ def gaussian_fit(
     fit_centroid : bool, optional
         If False, fit each source at its position (after the pointing
         correction) with the beam shape fixed. If True, also fit the source
-        position and shape, from the brightest pixel of the thumbnail (use for
-        pointing sources, before the pointing correction). The default is
-        False.
+        position and shape, from the thumbnail center and in the limit of
+        allowable_center_offset (use for pointing sources, before the pointing
+        correction). The default is False.
     thumbnail_half_width : astropy.units.Quantity, optional
         Half-width of the thumbnail cut-out around each source position, in
         angular units. The default is 0.25 deg.

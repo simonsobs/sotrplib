@@ -160,6 +160,9 @@ class MeasuredSource(RegisteredSource):
     thumbnail: NDArray | None = None
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
     thumbnail_unit: AstroPydanticUnit | None = None
+    thumbnail_source_pixel: tuple[float, float] | None = None
+    "The (y, x) pixel of the source position in the thumbnail. It is a fraction "
+    "of a pixel. None if the source is at the middle of the thumbnail."
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
 
@@ -192,6 +195,7 @@ class MeasuredSource(RegisteredSource):
                 r=thumb_width.to(u.rad).value,
                 res=input_map.map_resolution.to(u.rad).value,
             )
+            self.thumbnail_source_pixel = None
         else:
             thumb = input_map.flux.submap(
                 [
@@ -204,6 +208,15 @@ class MeasuredSource(RegisteredSource):
                         self.ra.to(u.rad).value + thumb_width.to(u.rad).value,
                     ],
                 ],
+            )
+            # A submap keeps whole map pixels, so the source is not always at
+            # the middle of the thumbnail.
+            source_pixel = thumb.sky2pix(
+                [self.dec.to(u.rad).value, self.ra.to(u.rad).value]
+            )
+            self.thumbnail_source_pixel = (
+                float(source_pixel[0]),
+                float(source_pixel[1]),
             )
 
         self.thumbnail_res = (
