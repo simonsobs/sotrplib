@@ -1,6 +1,9 @@
+import numpy as np
 import pytest
 from astropy import units as u
+from pixell import enmap
 
+from sotrplib.maps.weights import POOR_WEIGHTS_CENTER, PoorWeightsCriteria
 from sotrplib.source_catalog.core import RegisteredSourceCatalog
 from sotrplib.sources.force import (
     EmptyForcedPhotometry,
@@ -101,3 +104,64 @@ def test_lmfit_rotation(map_with_single_asymmetric_source):
     assert theta_fit is not None
 
     ## TODO : include information about injected source rotation once available
+
+
+def _catalog(sources):
+    catalog = RegisteredSourceCatalog(sources=[])
+    catalog.add_sources(sources=sources)
+    catalog.valid_fluxes = [s.source_id for s in sources]
+    return catalog
+
+
+def _weights_with_hole(input_map, source, half_width_pix=3):
+    weights = enmap.ndmap(np.ones(input_map.flux.shape), input_map.flux.wcs)
+    y, x = (
+        int(np.round(p))
+        for p in weights.sky2pix(
+            [source.dec.to_value(u.rad), source.ra.to_value(u.rad)]
+        )
+    )
+    weights[
+        y - half_width_pix : y + half_width_pix + 1,
+        x - half_width_pix : x + half_width_pix + 1,
+    ] = 0.0
+    return weights
+
+
+def test_lmfit_poor_weights_flagged(map_with_single_source):
+    input_map, sources = map_with_single_source
+    input_map.weights = _weights_with_hole(input_map, sources[0])
+
+    forced_photometry = TwoDGaussianFitter(
+        mode="lmfit", poor_weights=PoorWeightsCriteria()
+    )
+    results = forced_photometry.force(input_map=input_map, catalogs=[_catalog(sources)])
+
+    assert len(results) == 1
+    assert POOR_WEIGHTS_CENTER in results[0].flags
+    ## flag only; the fit is still done
+    assert not results[0].fit_failed
+
+
+def test_lmfit_poor_weights_disabled(map_with_single_source):
+    input_map, sources = map_with_single_source
+    input_map.weights = _weights_with_hole(input_map, sources[0])
+
+    forced_photometry = TwoDGaussianFitter(mode="lmfit")
+    results = forced_photometry.force(input_map=input_map, catalogs=[_catalog(sources)])
+
+    assert len(results) == 1
+    assert not any(f.startswith("poor_weights") for f in results[0].flags)
+
+
+def test_lmfit_poor_weights_without_weight_map(map_with_single_source):
+    input_map, sources = map_with_single_source
+    assert input_map.weights is None
+
+    forced_photometry = TwoDGaussianFitter(
+        mode="lmfit", poor_weights=PoorWeightsCriteria()
+    )
+    results = forced_photometry.force(input_map=input_map, catalogs=[_catalog(sources)])
+
+    assert len(results) == 1
+    assert not any(f.startswith("poor_weights") for f in results[0].flags)
