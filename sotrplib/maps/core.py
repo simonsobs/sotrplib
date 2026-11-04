@@ -114,6 +114,28 @@ class ProcessableMap(ABC):
     _available_maps: tuple[str, ...] = ("flux", "snr")
     "Ordered attribute names searched by bbox to find a loaded map."
 
+    _can_release: bool = False
+    "True if build can read the arrays of this map again from the disk."
+
+    _constructor_mask: ndmap | None = None
+    "The mask given to the constructor. Preprocessors can replace `mask`."
+
+    def release(self):
+        """
+        Remove the arrays of this map from memory. Call build to read them again.
+
+        This has no effect on a map that keeps its data only in memory, because
+        build cannot make that data again. The mask goes back to the mask given
+        to the constructor, because the preprocessors make their masks again.
+        """
+        if not self._can_release:
+            return
+        for name, value in list(vars(self).items()):
+            if isinstance(value, np.ndarray) and name != "_constructor_mask":
+                del vars(self)[name]
+        self.mask = self._constructor_mask
+        self.finalized = False
+
     @abstractmethod
     def build(self):
         """
@@ -439,6 +461,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
     """
 
     _available_maps: tuple[str, ...] = ("intensity",)
+    _can_release: bool = True
 
     def __init__(
         self,
@@ -471,6 +494,7 @@ class IntensityAndInverseVarianceMap(ProcessableMap):
         self.instrument = instrument
         self.matched_filtered = matched_filtered
         self.mask = mask
+        self._constructor_mask = mask
         if mapcat_id is not None:
             self.mapcat_id = mapcat_id
         self._hits = None
@@ -792,6 +816,7 @@ class RhoAndKappaMap(ProcessableMap):
     """
 
     _available_maps: tuple[str, ...] = ("rho", "kappa", "flux", "snr")
+    _can_release: bool = True
 
     def __init__(
         self,
@@ -822,6 +847,7 @@ class RhoAndKappaMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
+        self._constructor_mask = mask
         if mapcat_id is not None:
             self.mapcat_id = mapcat_id
         self._hits = None
@@ -982,6 +1008,8 @@ class FluxAndSNRMap(ProcessableMap):
     sky_box is tuple of skycoords: (SkyCoord(ra=ra_min, dec=dec_min), SkyCoord(ra=ra_max, dec=dec_max))
     """
 
+    _can_release: bool = True
+
     def __init__(
         self,
         flux_filename: Path,
@@ -1011,6 +1039,7 @@ class FluxAndSNRMap(ProcessableMap):
         self.instrument = instrument
         self.flux_units = flux_units
         self.mask = mask
+        self._constructor_mask = mask
         if mapcat_id is not None:
             self.mapcat_id = mapcat_id
         self._hits = None

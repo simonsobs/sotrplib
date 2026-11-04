@@ -198,6 +198,11 @@ class BaseRunner:
         result = self.profilable_task(self.analyze_map)(
             input_map=coadded_map, simulated_sources=simulated_sources
         )
+        # The runner keeps these objects until the end of the run, and the result
+        # does not use their arrays. Without this, the memory increases with each map.
+        coadded_map.release()
+        for input_map in maps:
+            input_map.release()
         if result is not None and not self.map_matcher.hold_all_maps:
             self.output_map_result(result)
             return None

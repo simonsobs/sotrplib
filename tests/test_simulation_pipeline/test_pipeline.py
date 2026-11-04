@@ -533,3 +533,16 @@ def test_map_match_outputs_need_held_results(tmp_path, empty_map):
         runner.run([empty_map])
 
     assert events == []
+
+
+def test_release_keeps_data_of_map_that_cannot_build_again(map_with_sources):
+    """
+    The injected sources are only in memory, thus release has no effect.
+    """
+    new_map, _ = map_with_sources
+    flux = new_map.flux.copy()
+
+    new_map.release()
+
+    assert np.array_equal(new_map.flux, flux)
+    assert new_map.finalized
