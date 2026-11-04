@@ -2,8 +2,10 @@ import numpy as np
 import pytest
 import structlog
 from astropy import units as u
+from astropy.time import Time, TimeDelta
 
 from sotrplib.maps.maps import make_model_source_map
+from sotrplib.sims.maps import SimulatedMap, SimulationParameters
 from sotrplib.sims.sources.core import (
     RandomSourceSimulation,
     RandomSourceSimulationParameters,
@@ -16,7 +18,7 @@ from sotrplib.sources.force import (
     TwoDGaussianPointingFitter,
 )
 from sotrplib.sources.forced_photometry import LmFitGaussian2DFitter, gaussian_fit
-from sotrplib.sources.sources import MeasuredSource
+from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 
 ### sources returned from simulations need to be converted to registered sources
 ### for now, they have implied flux units of Jy
@@ -376,3 +378,111 @@ def test_subtraction_model_is_at_fitted_position(map_with_single_source):
     y, x = np.indices(model.shape)
     centroid = np.array([(y * model).sum(), (x * model).sum()]) / model.sum()
     assert centroid == pytest.approx(true_pixel, abs=0.1)
+
+
+def _map_with_gaussian(
+    center_dec: u.Quantity,
+    fwhm_major: float,
+    fwhm_minor: float,
+    position_angle: float,
+) -> tuple[SimulatedMap, RegisteredSource, np.ndarray]:
+    """
+    Make a map with one 10 Jy source. The widths are in arcmin on the sky. The
+    position angle is in degrees, from map +x to map +y, in pixel coordinates.
+    The source is not at the center of a pixel. Returns the map, a catalog
+    source, and the source image without noise.
+    """
+    input_map = SimulatedMap(
+        observation_start=Time.now() - TimeDelta(1, format="jd"),
+        observation_end=Time.now(),
+        simulation_parameters=SimulationParameters(center_dec=center_dec),
+    )
+    input_map.build()
+    input_map.finalize()
+    noise = np.asarray(input_map.flux).copy()
+    y_source = input_map.flux.shape[0] / 2 + 0.2
+    x_source = input_map.flux.shape[1] / 2 - 0.3
+    dec, ra = input_map.flux.pix2sky([y_source, x_source])
+    y, x = np.indices(input_map.flux.shape)
+    ## pixels in RA are smaller on the sky than in the map coordinates
+    dx = (x - x_source) * 0.5 * np.cos(dec)
+    dy = (y - y_source) * 0.5
+    angle = np.deg2rad(position_angle)
+    along = dx * np.cos(angle) + dy * np.sin(angle)
+    across = -dx * np.sin(angle) + dy * np.cos(angle)
+    to_sigma = 1 / np.sqrt(8 * np.log(2))
+    image = 10.0 * np.exp(
+        -0.5
+        * (
+            (along / (fwhm_major * to_sigma)) ** 2
+            + (across / (fwhm_minor * to_sigma)) ** 2
+        )
+    )
+    input_map.flux[...] = noise + image
+    input_map.snr[...] = (noise + image) / np.std(noise)
+    source = RegisteredSource(
+        ra=np.rad2deg(ra) * u.deg,
+        dec=np.rad2deg(dec) * u.deg,
+        flux=10 * u.Jy,
+        source_id="source",
+    )
+    return input_map, source, image
+
+
+def _fit_and_model(input_map, source, centroid_snr_limit=5.0):
+    catalog = RegisteredSourceCatalog(sources=[])
+    catalog.add_sources(sources=[source])
+    catalog.valid_fluxes = [source.source_id]
+    result = TwoDGaussianFitter(
+        mode="lmfit", centroid_snr_limit=centroid_snr_limit
+    ).force(input_map=input_map, catalogs=[catalog])[0]
+    model = make_model_source_map(
+        input_map.flux,
+        [result],
+        nominal_fwhm=2.2 * u.arcmin,
+        matched_filtered=True,
+        log=structlog.get_logger(),
+    )
+    return result, np.asarray(model)
+
+
+@pytest.mark.parametrize(
+    "center_dec,fwhm_major,fwhm_minor,position_angle",
+    [
+        (0.0, 2.2, 2.2, 0.0),  # point source
+        (0.0, 3.0, 3.0, 0.0),  # extended source
+        (0.0, 4.0, 2.2, 0.0),  # elongated source
+        (0.0, 4.0, 2.2, 90.0),
+        (0.0, 4.0, 2.2, 30.0),
+        (0.0, 4.0, 2.2, 60.0),
+        (0.0, 4.0, 2.2, 120.0),
+        (0.0, 4.0, 2.2, 150.0),
+        (-30.0, 2.2, 2.2, 0.0),  # pixels in RA are small on the sky
+        (-50.0, 2.2, 2.2, 0.0),
+    ],
+)
+def test_subtraction_model_matches_source(
+    center_dec, fwhm_major, fwhm_minor, position_angle
+):
+    input_map, source, image = _map_with_gaussian(
+        center_dec * u.deg, fwhm_major, fwhm_minor, position_angle
+    )
+    result, model = _fit_and_model(input_map, source)
+    assert not result.fit_params["forced_center"]
+    ## 2% of the peak; a model with the wrong width or angle leaves 10-45%
+    assert np.abs(image - model).max() < 0.2
+
+
+@pytest.mark.parametrize("center_dec", [0.0, -30.0, -50.0])
+def test_fit_widths_and_flux_are_on_the_sky(center_dec):
+    input_map, source, _ = _map_with_gaussian(center_dec * u.deg, 2.2, 2.2, 0.0)
+
+    free, _ = _fit_and_model(input_map, source)
+    assert free.fwhm_ra.to_value(u.arcmin) == pytest.approx(2.2, abs=0.05)
+    assert free.fwhm_dec.to_value(u.arcmin) == pytest.approx(2.2, abs=0.05)
+    assert free.flux.to_value(u.Jy) == pytest.approx(10.0, abs=0.1)
+
+    ## the fixed beam is round on the sky, not round in map pixels
+    fixed, _ = _fit_and_model(input_map, source, centroid_snr_limit=None)
+    assert fixed.fit_params["forced_center"]
+    assert fixed.flux.to_value(u.Jy) == pytest.approx(10.0, abs=0.1)

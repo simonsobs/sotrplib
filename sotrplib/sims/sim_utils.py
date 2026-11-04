@@ -408,10 +408,9 @@ def make_2d_gaussian_model_param_table(
                 break
         if not cut:
             try:
-                fwhm_x = (
-                    math.sqrt(2) * s.fwhm_ra / math.cos(s.dec.to_value(u.rad))
-                )  ## account for the declination
-                fwhm_y = math.sqrt(2) * s.fwhm_dec
+                ## The widths are on the sky. Pixels in RA are smaller on the sky.
+                fwhm_x = s.fwhm_ra / math.cos(s.dec.to_value(u.rad))
+                fwhm_y = s.fwhm_dec
             except Exception:
                 fwhm_x = None
                 fwhm_y = None
@@ -436,7 +435,8 @@ def make_2d_gaussian_model_param_table(
             model_params["x_fwhm"].append((fwhm_x / map_res).value)
             model_params["y_fwhm"].append((fwhm_y / map_res).value)
             model_params["flux"].append(s.flux.to(u.Jy).value * omega_b)
-            model_params["theta"].append(theta.to(u.rad).value)
+            ## photutils takes a float angle in degrees
+            model_params["theta"].append(theta.to(u.deg).value)
             model_params["id"].append(id_num)
             id_num += 1
     if verbose:

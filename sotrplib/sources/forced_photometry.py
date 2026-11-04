@@ -143,6 +143,13 @@ class LmFitGaussian2DFitter:
         self.fit_method = "lmfit"
         self.model = None
 
+    def _ra_pixel_scale(self) -> float:
+        """
+        The size on the sky of a thumbnail pixel in RA, relative to its size
+        in the map coordinates.
+        """
+        return 1.0 if self.reprojected else math.cos(self.source.dec.to(u.rad).value)
+
     def initialize_model(self):
         """
         Docstring for initialize_model
@@ -169,17 +176,21 @@ class LmFitGaussian2DFitter:
         xy = (X.ravel(), Y.ravel())
         self.xy = xy
 
+        # The beam is round on the sky. Pixels in RA are smaller on the sky,
+        # if the thumbnail is not reprojected.
+        pixel_on_sky = abs(self.source.thumbnail_res.to(u.arcmin).value) * [
+            self._ra_pixel_scale(),
+            1.0,
+        ]
         sigma_guess = (
-            self.fwhm_guess.to(u.arcmin).value
-            / abs(self.source.thumbnail_res.to(u.arcmin).value)
-            / 2.355
+            self.fwhm_guess.to(u.arcmin).value / pixel_on_sky / 2.355
         )  # Rough width estimate, in pixels
         theta_guess = 0
         offset_guess = 0
 
-        allowable_center_offset_pixels = self.allowable_center_offset.to(
-            u.arcmin
-        ).value / abs(self.source.thumbnail_res.to(u.arcmin).value)
+        allowable_center_offset_pixels = (
+            self.allowable_center_offset.to(u.arcmin).value / pixel_on_sky
+        )
 
         # Initial guess for parameters. All fits start at the thumbnail center
         # (the source position). Do not use the brightest pixel: it can be a
@@ -300,10 +311,16 @@ class LmFitGaussian2DFitter:
                 else None
             )
 
-        fwhm_x = 2.355 * sigma_x * abs(self.source.thumbnail_res[0])
+        ## the widths are on the sky, as the offsets are
+        fwhm_x = (
+            2.355 * sigma_x * abs(self.source.thumbnail_res[0]) * self._ra_pixel_scale()
+        )
         fwhm_y = 2.355 * sigma_y * abs(self.source.thumbnail_res[1])
         fwhm_x_err = (
-            2.355 * sigma_x_err * abs(self.source.thumbnail_res[0])
+            2.355
+            * sigma_x_err
+            * abs(self.source.thumbnail_res[0])
+            * self._ra_pixel_scale()
             if sigma_x_err is not None
             else None
         )
