@@ -186,6 +186,19 @@ def test_lmfit_forced_center_noise_is_not_biased():
     assert 0.25 < np.mean(np.array(fluxes) < 0) < 0.75
 
 
+@pytest.mark.parametrize("force_center", [True, False])
+def test_lmfit_flux_is_height_above_background(force_center):
+    ## the fitted background is not part of the flux
+    source = _thumbnail_source([(50.0, 0.0, 0.0)])
+    source.thumbnail = source.thumbnail - 10.0
+    fitter = LmFitGaussian2DFitter(source, force_center=force_center)
+    fitter.initialize_model()
+    fit = fitter.fit()
+
+    assert not fit.failed
+    assert fit.amplitude.to_value(u.mJy) == pytest.approx(50.0, rel=0.1)
+
+
 def test_lmfit_free_center_starts_at_thumbnail_center():
     ## the brightest pixel is 5 arcmin from the center, and it is not the start
     source = _thumbnail_source([(50.0, 1.5, 0.0), (200.0, -5.0, 5.0)])

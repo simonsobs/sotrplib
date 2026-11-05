@@ -117,7 +117,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default="4 arcmin",
+    default="0.1 deg",
     type=str,
     help="Thumbnail radius (half-width of square map), json compatible quantity.",
 )

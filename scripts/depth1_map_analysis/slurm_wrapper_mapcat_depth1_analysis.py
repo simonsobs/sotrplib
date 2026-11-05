@@ -262,7 +262,6 @@ def generate_config_json(
     "forced_photometry": {{
         "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
-        "thumbnail_half_width": "4 arcmin",
         "near_source_rel_flux_limit": 1.0
     }},
     "sifter": {{

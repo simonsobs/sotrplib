@@ -272,8 +272,6 @@ class LmFitGaussian2DFitter:
         sigma_y_err = params["sigma_y"].stderr
         theta = params["theta"].value
         theta_err = params["theta"].stderr
-        offset = params["offset"].value
-        offset_err = params["offset"].stderr
         chisquared = result.chisqr
         reduced_chisquared = result.redchi
         goodness_of_fit = result.rsquared
@@ -325,14 +323,11 @@ class LmFitGaussian2DFitter:
         fwhm_x_err = fwhm_x * sigma_x_err / sigma_x if sigma_x_err is not None else None
         fwhm_y_err = fwhm_y * sigma_y_err / sigma_y if sigma_y_err is not None else None
 
-        amplitude = AstroPydanticQuantity(
-            amplitude + offset, self.source.thumbnail_unit
-        )
+        ## The amplitude is the height above the fitted background.
+        amplitude = AstroPydanticQuantity(amplitude, self.source.thumbnail_unit)
         amplitude_err = (
-            AstroPydanticQuantity(
-                np.sqrt(amplitude_err**2 + offset_err**2), self.source.thumbnail_unit
-            )
-            if (amplitude_err is not None and offset_err is not None)
+            AstroPydanticQuantity(amplitude_err, self.source.thumbnail_unit)
+            if amplitude_err is not None
             else None
         )
 

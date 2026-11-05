@@ -66,7 +66,6 @@
         "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
         "min_flux": "0.01 Jy",
-        "thumbnail_half_width": "4 arcmin",
         "near_source_rel_flux_limit": 1.0
     },
     "sifter": {

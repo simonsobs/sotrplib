@@ -266,8 +266,7 @@ def generate_config_json(
     }},
     "forced_photometry": {{
         "photometry_type": "lmfit",
-        "reproject_thumbnails": "True",
-        "thumbnail_half_width": "4 arcmin"
+        "reproject_thumbnails": "True"
     }},
     "sifter": {{
         "sifter_type": "default"
