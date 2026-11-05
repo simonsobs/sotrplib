@@ -1,0 +1,127 @@
+name: Regression comment
+
+on:
+  workflow_run:
+    workflows:
+      - Regression
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  post-comment:
+    name: Post regression summary comment
+    runs-on: ubuntu-latest
+
+    # Only run for workflow_run events caused by pull_request runs.
+    if: github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Download regression summary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: regression-summary
+          path: regression-summary
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Create or update PR comment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflowRun = context.payload.workflow_run;
+
+            let pr = workflowRun.pull_requests && workflowRun.pull_requests[0];
+
+            // In most pull_request-triggered workflow_run payloads this is present.
+            // This fallback handles cases where GitHub omits pull_requests from the payload.
+            if (!pr) {
+              const associatedPulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: workflowRun.head_sha,
+              });
+
+              pr = associatedPulls.data.find(candidate =>
+                candidate.head.sha === workflowRun.head_sha
+              );
+            }
+
+            if (!pr) {
+              core.setFailed(
+                `Could not determine PR for workflow run ${workflowRun.id} at ${workflowRun.head_sha}.`
+              );
+              return;
+            }
+
+            const summary = JSON.parse(
+              fs.readFileSync('regression-summary/summary.json', 'utf8')
+            );
+
+            const marker = '<!-- regression-summary-comment -->';
+
+            const conclusion = workflowRun.conclusion ?? 'unknown';
+            const runUrl = workflowRun.html_url;
+
+            function valueOrUnknown(value) {
+              return value === undefined || value === null || value === ''
+                ? 'unknown'
+                : String(value);
+            }
+
+            const lines = [
+              marker,
+              '## Regression Test Summary',
+              '',
+              `- Workflow status: **${conclusion}**`,
+              `- Runtime: ${valueOrUnknown(summary.duration)}`,
+              `- Number changed: ${valueOrUnknown(summary.number_changed)}`,
+            ];
+
+            if (summary.error) {
+              lines.push(`- Error: ${summary.error}`);
+            }
+
+            lines.push('');
+            lines.push(`[View workflow run](${runUrl})`);
+
+            const body = lines.join('\n');
+
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+
+            const previous = comments.data.find(comment =>
+              comment.user &&
+              comment.user.type === 'Bot' &&
+              comment.body &&
+              comment.body.includes(marker)
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body,
+              });
+            }

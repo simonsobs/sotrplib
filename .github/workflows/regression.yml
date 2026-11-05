@@ -1,4 +1,4 @@
-name: Run regression tests
+name: Regression
 
 # Trigger the workflow on pushes and pull requests to the main branch, and on a daily schedule
 on:
@@ -18,6 +18,10 @@ jobs:
       FC: gfortran
       CXX: g++
       CC: gcc
+
+    permissions:
+      issues: write
+      pull-requests: write
 
     runs-on: ubuntu-latest
     strategy:
@@ -41,7 +45,7 @@ jobs:
           cd tests/regression
           python validate_results.py
           cd -
-      
+
       - name: Upload regression results
         uses: actions/upload-artifact@v5
         with:
