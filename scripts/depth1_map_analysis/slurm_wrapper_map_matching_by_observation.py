@@ -120,7 +120,7 @@ P.add_argument(
     help="Minimum SNR of the pointing sources.",
 )
 P.add_argument(
-    "--thumbnail-radius", default="0.1 deg", help="Pointing thumbnail half-width."
+    "--thumbnail-radius", default="10 arcmin", help="Pointing thumbnail half-width."
 )
 P.add_argument("--group-name", default="simonsobs", help="SLURM account.")
 P.add_argument("--ncores", type=int, default=4, help="CPU cores for each job.")

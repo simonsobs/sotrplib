@@ -22,7 +22,12 @@ from sotrplib.sources.sources import (
     MeasuredSource,
     RegisteredSource,
 )
-from sotrplib.utils.utils import get_frequency, get_fwhm, rescale_gaussian_axes
+from sotrplib.utils.utils import (
+    SIGMA_TO_FWHM,
+    get_frequency,
+    get_fwhm,
+    rescale_gaussian_axes,
+)
 
 if TYPE_CHECKING:
     from sotrplib.maps.pointing import PointingModel
@@ -181,7 +186,7 @@ class LmFitGaussian2DFitter:
             1.0,
         ]
         sigma_guess = (
-            self.fwhm_guess.to(u.arcmin).value / pixel_on_sky / 2.355
+            self.fwhm_guess.to(u.arcmin).value / pixel_on_sky / SIGMA_TO_FWHM
         )  # Rough width estimate, in pixels
         theta_guess = 0
         offset_guess = 0
@@ -318,8 +323,8 @@ class LmFitGaussian2DFitter:
         ## Report the angle in the sense of the model map, also if x is flipped.
         if self.source.thumbnail_res[0] * self.source.thumbnail_res[1] < 0:
             sky_theta = (np.pi - sky_theta) % np.pi
-        fwhm_x = 2.355 * sky_x * u.arcmin
-        fwhm_y = 2.355 * sky_y * u.arcmin
+        fwhm_x = SIGMA_TO_FWHM * sky_x * u.arcmin
+        fwhm_y = SIGMA_TO_FWHM * sky_y * u.arcmin
         fwhm_x_err = fwhm_x * sigma_x_err / sigma_x if sigma_x_err is not None else None
         fwhm_y_err = fwhm_y * sigma_y_err / sigma_y if sigma_y_err is not None else None
 
@@ -391,7 +396,7 @@ def gaussian_fit(
     fit_method: str = "lmfit",
     fit_centroid: bool = False,
     centroid_snr_limit: float | None = None,
-    thumbnail_half_width: u.Quantity = u.Quantity(0.25, "deg"),
+    thumbnail_half_width: u.Quantity = u.Quantity(10.0, "arcmin"),
     fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
     pointing_model: PointingModel | None = None,
@@ -428,7 +433,7 @@ def gaussian_fit(
         If None, just fit fixed position/beam. The default is None.
     thumbnail_half_width : astropy.units.Quantity, optional
         Half-width of the thumbnail cut-out around each source position, in
-        angular units. The default is 0.25 deg.
+        angular units. The default is 10 arcmin.
     fwhm : astropy.units.Quantity or None, optional
         Full-width at half maximum (FWHM) of the instrumental beam. If given,
         it is used to set the initial size (and/or bounds) of the Gaussian.

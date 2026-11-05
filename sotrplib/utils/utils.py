@@ -10,6 +10,8 @@ from astropy.time import Time
 from pixell import enmap
 from pixell import utils as pixell_utils
 
+SIGMA_TO_FWHM = 2.0 * np.sqrt(2.0 * np.log(2.0))
+
 
 def radec_to_str_name(
     ra: float, dec: float, source_class="pointsource", observatory="SO"
@@ -333,7 +335,7 @@ def get_pix_from_peak_to_noise(
     from astropy.modeling.models import Gaussian1D
 
     mask_pix = []
-    std = np.atleast_1d(fwhm_pix) / (2 * np.sqrt(2 * np.log(2)))
+    std = np.atleast_1d(fwhm_pix) / SIGMA_TO_FWHM
     peak = np.atleast_1d(peak)
     noise = np.atleast_1d(noise)
     for i in range(len(peak)):

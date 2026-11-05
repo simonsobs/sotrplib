@@ -1,10 +1,9 @@
-import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Literal
+from typing import Literal
 
 from astropy import units as u
 from astropydantic import AstroPydanticQuantity
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.force import (
@@ -46,27 +45,12 @@ class SimpleForcedPhotometryConfig(ForcedPhotometryConfig):
 class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
     photometry_type: Literal["lmfit"] = "lmfit"
     reproject_thumbnails: bool = False
-    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(10.0, "arcmin")
     allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(1.0, "arcmin")
     centroid_snr_limit: float | None = 5.0
     near_source_rel_flux_limit: float = 1.0
     min_flux: AstroPydanticQuantity[u.Jy] | None = None
     goodness_of_fit_threshold: float | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def ignore_flux_limit_centroid(cls, data: Any) -> Any:
-        # The catalog flux does not select the free fits now. Older configs can
-        # have this option: ignore it, with a warning.
-        if isinstance(data, dict) and "flux_limit_centroid" in data:
-            warnings.warn(
-                "forced_photometry.flux_limit_centroid is not used: use "
-                "centroid_snr_limit. Remove it from the config.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            data = {k: v for k, v in data.items() if k != "flux_limit_centroid"}
-        return data
 
     def to_forced_photometry(
         self, log: FilteringBoundLogger | None = None
@@ -88,7 +72,7 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
     photometry_type: Literal["lmfit_pointing"] = "lmfit_pointing"
     min_flux: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
-    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(10.0, "arcmin")
     allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(3.0, "arcmin")
     near_source_rel_flux_limit: float = 0.3
     goodness_of_fit_threshold: float | None = None

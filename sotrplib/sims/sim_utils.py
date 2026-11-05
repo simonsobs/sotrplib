@@ -11,7 +11,7 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
-from sotrplib.utils.utils import rescale_gaussian_axes
+from sotrplib.utils.utils import SIGMA_TO_FWHM, rescale_gaussian_axes
 
 if TYPE_CHECKING:
     from sotrplib.sources.sources import MeasuredSource
@@ -182,7 +182,7 @@ def make_gaussian_flare(
         numpy array: Array of flare amplitudes sampled at unix_times.
     """
     # Convert FWHM to standard deviation
-    sigma = flare_fwhm_s / (2 * np.sqrt(2 * np.log(2)))
+    sigma = flare_fwhm_s / SIGMA_TO_FWHM
 
     # Compute the Gaussian flare
     flare = flare_peak_Jy * np.exp(-0.5 * ((unix_times - flare_peak_time) / sigma) ** 2)

@@ -108,7 +108,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         self,
         mode: Literal["lmfit"] = "lmfit",
         reproject_thumbnails: bool = False,
-        thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        thumbnail_half_width: u.Quantity = u.Quantity(10.0, "arcmin"),
         min_flux: u.Quantity | None = None,
         near_source_rel_flux_limit: float | None = None,
         allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
@@ -130,7 +130,7 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             Whether to reproject thumbnails before fitting (default: False).
             If False, just cuts out square in pixel space.
         thumbnail_half_width : astropy.units.Quantity, optional
-            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+            Half-width of the thumbnail cutout used for fitting (default: 10 arcmin).
         allowable_center_offset : astropy.units.Quantity, optional
             Maximum offset of a free fit from the source position (default: 1.0 arcmin).
         centroid_snr_limit : float | None, optional
@@ -261,7 +261,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         mode: Literal["lmfit"] = "lmfit",
         min_flux: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
-        thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        thumbnail_half_width: u.Quantity = u.Quantity(10.0, "arcmin"),
         near_source_rel_flux_limit: float = 0.3,
         allowable_center_offset: u.Quantity = u.Quantity(3.0, "arcmin"),
         goodness_of_fit_threshold: float | None = None,
@@ -279,7 +279,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             Whether to reproject thumbnails before fitting (default: False).
             If False, just cuts out square in pixel space.
         thumbnail_half_width : astropy.units.Quantity, optional
-            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+            Half-width of the thumbnail cutout used for fitting (default: 10 arcmin).
         near_source_rel_flux_limit : float, optional
             Relative flux limit to exclude nearby sources (default: 0.3).
             If another source within the thumbnail_half_width has a flux

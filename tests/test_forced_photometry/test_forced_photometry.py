@@ -244,15 +244,13 @@ def test_lmfit_free_center_stays_in_allowed_offset():
         assert abs(fit.dec_offset) <= limit * 1.0001
 
 
-def test_lmfit_config_ignores_centroid_options():
+def test_lmfit_config_sets_centroid_options():
     from sotrplib.config.forced_photometry import LmfitGaussianFitterConfig
 
-    with pytest.warns(DeprecationWarning, match="flux_limit_centroid"):
-        config = LmfitGaussianFitterConfig(
-            flux_limit_centroid="0.1 Jy",
-            allowable_center_offset="2 arcmin",
-            centroid_snr_limit=7.0,
-        )
+    config = LmfitGaussianFitterConfig(
+        allowable_center_offset="2 arcmin",
+        centroid_snr_limit=7.0,
+    )
     fitter = config.to_forced_photometry()
     assert isinstance(fitter, TwoDGaussianFitter)
     assert fitter.allowable_center_offset == 2 * u.arcmin

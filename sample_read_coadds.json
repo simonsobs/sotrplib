@@ -15,7 +15,6 @@
     ],
     "pointing_provider": {
         "photometry_type": "lmfit_pointing",
-        "thumbnail_half_width": "0.1 deg",
         "min_flux": "0.3 Jy",
         "reproject_thumbnails": "True",
         "allowable_center_offset": "3.0 arcmin"
