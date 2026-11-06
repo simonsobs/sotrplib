@@ -758,10 +758,6 @@ def gaussian_fit(
         forced_source.fit_failure_reason = fit.failure_reason
         map_flux = _map_flux_at_fit(input_map, forced_source, fit)
         forced_source.flux = map_flux if map_flux is not None else fit.amplitude
-        ## The lmfit error is too small: it treats the thumbnail pixels as
-        ## independent, but the map pixels are correlated over the beam. Use
-        ## the map noise at the fitted position. Keep the lmfit error if the
-        ## map has no noise value there.
         map_noise = _map_noise_at_fit(input_map, forced_source, fit)
         forced_source.err_flux = (
             map_noise if map_noise is not None else fit.amplitude_err

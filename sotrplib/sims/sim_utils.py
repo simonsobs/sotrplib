@@ -433,7 +433,7 @@ def make_2d_gaussian_model_param_table(
             model_params["y_0"].append(pix[0])
             model_params["x_fwhm"].append((fwhm_x / map_res).value)
             model_params["y_fwhm"].append((fwhm_y / map_res).value)
-            ## The model is the fit, if there is one: its height is not the flux.
+            ## The model is the fit, if there is one. 
             height = fit_params.get("amplitude")
             if height is None:
                 height = s.flux
