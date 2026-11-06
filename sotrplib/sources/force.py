@@ -95,10 +95,11 @@ class SimpleForcedPhotometry(ForcedPhotometryProvider):
 
 class TwoDGaussianFitter(ForcedPhotometryProvider):
     mode: Literal["lmfit"] = "lmfit"
-    flux_limit_centroid: u.Quantity  ## this should probably not exist within the function; i.e. be decided before handing the list to the provider.
     reproject_thumbnails: bool
-    allowable_center_offset: u.Quantity
     thumbnail_half_width: u.Quantity
+    allowable_center_offset: u.Quantity | None
+    fwhm_prior_width: float | None
+    position_prior_width: float | None
     goodness_of_fit_threshold: float | None
     near_source_rel_flux_limit: float | None
     min_flux: u.Quantity | None = None
@@ -107,30 +108,39 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
     def __init__(
         self,
         mode: Literal["lmfit"] = "lmfit",
-        flux_limit_centroid: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
-        thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        thumbnail_half_width: u.Quantity = u.Quantity(10.0, "arcmin"),
         min_flux: u.Quantity | None = None,
         near_source_rel_flux_limit: float | None = None,
-        allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+        allowable_center_offset: u.Quantity | None = None,
+        fwhm_prior_width: float | None = 0.35,
+        position_prior_width: float | None = 0.5,
         goodness_of_fit_threshold: float | None = None,
         log: FilteringBoundLogger | None = None,
     ):
         """
         Initialize the GaussianFitter.
+
+        Each source is fit from its catalog position (after the pointing
+        correction) with a free position and shape.
         Parameters
         ----------
         mode : {"lmfit"}, optional
             The method to use for fitting the Gaussian. Currently only "lmfit" is supported.
-        flux_limit_centroid : astropy.units.Quantity, optional
-            Minimum flux required to attempt centroid fitting (default: 0.3 Jy).
         reproject_thumbnails : bool, optional
             Whether to reproject thumbnails before fitting (default: False).
             If False, just cuts out square in pixel space.
         thumbnail_half_width : astropy.units.Quantity, optional
-            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
-        allowable_center_offset : astropy.units.Quantity, optional
-            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+            Half-width of the thumbnail cutout used for fitting (default: 10 arcmin).
+        allowable_center_offset : astropy.units.Quantity | None, optional
+            Maximum offset of the fit from the source position, in RA and in
+            Dec (default: None). If None, use the beam FWHM.
+        fwhm_prior_width : float | None, optional
+            Width of a Gaussian prior on the natural log of each fitted width,
+            centered on the beam FWHM (default: 0.35). If None, no prior.
+        position_prior_width : float | None, optional
+            Width of a Gaussian prior on the fitted position, in units of the
+            beam FWHM (default: 0.5). If None, no prior.
         near_source_rel_flux_limit : float | None, optional
             Relative flux limit to exclude nearby sources (default: None).
             If another source within the thumbnail_half_width has a flux
@@ -147,10 +157,11 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
         """
 
         self.mode = mode
-        self.flux_limit_centroid = flux_limit_centroid
         self.reproject_thumbnails = reproject_thumbnails
         self.thumbnail_half_width = thumbnail_half_width
         self.allowable_center_offset = allowable_center_offset
+        self.fwhm_prior_width = fwhm_prior_width
+        self.position_prior_width = position_prior_width
         self.near_source_rel_flux_limit = near_source_rel_flux_limit
         self.goodness_of_fit_threshold = goodness_of_fit_threshold
         self.min_flux = min_flux
@@ -185,7 +196,6 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumbnails=self.reproject_thumbnails,
-            allowable_center_offset=self.allowable_center_offset,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             min_flux=self.min_flux,
         )
@@ -228,7 +238,10 @@ class TwoDGaussianFitter(ForcedPhotometryProvider):
             input_map,
             source_list=source_list,
             fit_method=self.mode,
-            flux_lim_fit_centroid=self.flux_limit_centroid,
+            fit_centroid=True,
+            fixed_fit_on_failure=True,
+            fwhm_prior_width=self.fwhm_prior_width,
+            position_prior_width=self.position_prior_width,
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,
@@ -257,7 +270,7 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
         mode: Literal["lmfit"] = "lmfit",
         min_flux: u.Quantity = u.Quantity(0.3, "Jy"),
         reproject_thumbnails: bool = False,
-        thumbnail_half_width: u.Quantity = u.Quantity(0.1, "deg"),
+        thumbnail_half_width: u.Quantity = u.Quantity(10.0, "arcmin"),
         near_source_rel_flux_limit: float = 0.3,
         allowable_center_offset: u.Quantity = u.Quantity(3.0, "arcmin"),
         goodness_of_fit_threshold: float | None = None,
@@ -275,14 +288,14 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             Whether to reproject thumbnails before fitting (default: False).
             If False, just cuts out square in pixel space.
         thumbnail_half_width : astropy.units.Quantity, optional
-            Half-width of the thumbnail cutout used for fitting (default: 0.1 deg).
+            Half-width of the thumbnail cutout used for fitting (default: 10 arcmin).
         near_source_rel_flux_limit : float, optional
             Relative flux limit to exclude nearby sources (default: 0.3).
             If another source within the thumbnail_half_width has a flux
             greater than near_source_rel_flux_limit * pointing_source.flux,
             the pointing source is excluded from fitting.
         allowable_center_offset : astropy.units.Quantity, optional
-            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 1.0 arcmin).
+            Maximum allowed offset from the initial guess position during Gaussian fitting (default: 3.0 arcmin).
         goodness_of_fit_threshold : float or None, optional
             Threshold for goodness of fit to flag poor fits (default: None).
         log : FilteringBoundLogger or None, optional
@@ -370,7 +383,9 @@ class TwoDGaussianPointingFitter(ForcedPhotometryProvider):
             input_map,
             source_list=pointing_source_list,
             fit_method=self.mode,
-            flux_lim_fit_centroid=self.min_flux,
+            fit_centroid=True,
+            ## This fit measures the pointing offset: no prior on the position.
+            position_prior_width=None,
             thumbnail_half_width=self.thumbnail_half_width,
             fwhm=fwhm,
             reproject_thumb=self.reproject_thumbnails,

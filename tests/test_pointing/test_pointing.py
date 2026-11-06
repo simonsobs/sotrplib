@@ -17,7 +17,6 @@ def test_median_residual_empty(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = TwoDGaussianFitter(
         mode="lmfit",
-        flux_limit_centroid=0.1 * u.Jy,
         reproject_thumbnails=False,
         thumbnail_half_width=10.0 * u.arcmin,
     )
@@ -43,7 +42,6 @@ def test_median_residual_notenough_sources(map_with_single_source):
     input_map, sources = map_with_single_source
     forced_photometry = TwoDGaussianFitter(
         mode="lmfit",
-        flux_limit_centroid=0.1 * u.Jy,
         reproject_thumbnails=False,
         thumbnail_half_width=10.0 * u.arcmin,
     )

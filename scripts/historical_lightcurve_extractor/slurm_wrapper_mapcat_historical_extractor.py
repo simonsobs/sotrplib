@@ -108,7 +108,7 @@ P.add_argument(
 P.add_argument(
     "--thumbnail-radius",
     action="store",
-    default="0.1 deg",
+    default="10 arcmin",
     type=str,
     help="Thumbnail radius (half-width of square map), json compatible quantity.",
 )
@@ -252,9 +252,7 @@ def generate_config_json(
     "forced_photometry": {{
         "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
-        "flux_limit_centroid": "0.1 Jy",
         "thumbnail_half_width": "{thumbnail_half_width}",
-        "allowable_center_offset": "1.0 arcmin",
         "near_source_rel_flux_limit": 1.0
     }},
     "sifter": {{

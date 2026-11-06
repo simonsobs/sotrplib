@@ -120,7 +120,7 @@ P.add_argument(
     help="Minimum SNR of the pointing sources.",
 )
 P.add_argument(
-    "--thumbnail-radius", default="0.1 deg", help="Pointing thumbnail half-width."
+    "--thumbnail-radius", default="10 arcmin", help="Pointing thumbnail half-width."
 )
 P.add_argument("--group-name", default="simonsobs", help="SLURM account.")
 P.add_argument("--ncores", type=int, default=4, help="CPU cores for each job.")
@@ -233,9 +233,6 @@ def config(obs: list[dict], out_dir: str, summary_dir: str) -> dict:
         "forced_photometry": {
             "photometry_type": "lmfit",
             "reproject_thumbnails": True,
-            "flux_limit_centroid": "0.1 Jy",
-            "thumbnail_half_width": "4 arcmin",
-            "allowable_center_offset": "1.0 arcmin",
             "near_source_rel_flux_limit": 1.0,
         },
         "sifter": {

@@ -11,6 +11,8 @@ from pixell import enmap
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
+from sotrplib.utils.utils import SIGMA_TO_FWHM, rescale_gaussian_axes
+
 if TYPE_CHECKING:
     from sotrplib.sources.sources import MeasuredSource
 
@@ -180,7 +182,7 @@ def make_gaussian_flare(
         numpy array: Array of flare amplitudes sampled at unix_times.
     """
     # Convert FWHM to standard deviation
-    sigma = flare_fwhm_s / (2 * np.sqrt(2 * np.log(2)))
+    sigma = flare_fwhm_s / SIGMA_TO_FWHM
 
     # Compute the Gaussian flare
     flare = flare_peak_Jy * np.exp(-0.5 * ((unix_times - flare_peak_time) / sigma) ** 2)
@@ -359,7 +361,16 @@ def make_2d_gaussian_model_param_table(
     )
     for i in range(len(sources)):
         s = sources[i]
-        pix = imap.sky2pix(np.array([s.dec.to(u.rad).value, s.ra.to(u.rad).value]))
+        ## The model goes at the fitted position, if the fit has one. The fit gives
+        ## offset = source position - fitted position, and the RA offset is on the sky.
+        dec = s.dec.to(u.rad).value
+        ra = s.ra.to(u.rad).value
+        offset_ra = getattr(s, "offset_ra", None)
+        offset_dec = getattr(s, "offset_dec", None)
+        if offset_ra is not None and offset_dec is not None:
+            dec -= offset_dec.to(u.rad).value
+            ra -= offset_ra.to(u.rad).value / math.cos(dec)
+        pix = imap.sky2pix(np.array([dec, ra]))
 
         ## unfortunate naming, a,b are semi-major and semi-minor axes,
         ## but really they're x,y from photutils gaussian fit.
@@ -399,25 +410,21 @@ def make_2d_gaussian_model_param_table(
                 break
         if not cut:
             try:
-                fwhm_x = (
-                    math.sqrt(2) * s.fwhm_ra / math.cos(s.dec.to_value(u.rad))
-                )  ## account for the declination
-                fwhm_y = math.sqrt(2) * s.fwhm_dec
-            except Exception:
-                fwhm_x = None
-                fwhm_y = None
-            if fwhm_x is None:
-                fwhm_x = nominal_fwhm
-            if fwhm_y is None:
-                fwhm_y = nominal_fwhm
-            try:
                 fit_params = s.fit_params if s.fit_params is not None else {}
             except Exception:
                 fit_params = {}
-            if "theta" in fit_params.keys():
-                theta = fit_params["theta"]
-            else:
-                theta = 0.0 * u.deg
+            theta = fit_params.get("theta", 0.0 * u.deg)
+            fwhm_x, fwhm_y = nominal_fwhm, nominal_fwhm
+            if s.fwhm_ra is not None and s.fwhm_dec is not None:
+                ## Sky widths and angle to map pixel widths and angle.
+                x_pix, y_pix, theta_pix = rescale_gaussian_axes(
+                    s.fwhm_ra.to_value(u.deg),
+                    s.fwhm_dec.to_value(u.deg),
+                    theta.to_value(u.rad),
+                    1 / math.cos(s.dec.to_value(u.rad)),
+                    1.0,
+                )
+                fwhm_x, fwhm_y, theta = x_pix * u.deg, y_pix * u.deg, theta_pix * u.rad
 
             omega_b = (math.pi / 4.0 / math.log(2)) * (fwhm_x * fwhm_y / map_res**2)
 
@@ -426,8 +433,13 @@ def make_2d_gaussian_model_param_table(
             model_params["y_0"].append(pix[0])
             model_params["x_fwhm"].append((fwhm_x / map_res).value)
             model_params["y_fwhm"].append((fwhm_y / map_res).value)
-            model_params["flux"].append(s.flux.to(u.Jy).value * omega_b)
-            model_params["theta"].append(theta.to(u.rad).value)
+            ## The model is the fit, if there is one. 
+            height = fit_params.get("amplitude")
+            if height is None:
+                height = s.flux
+            model_params["flux"].append(height.to(u.Jy).value * omega_b)
+            ## photutils takes a float angle in degrees
+            model_params["theta"].append(theta.to(u.deg).value)
             model_params["id"].append(id_num)
             id_num += 1
     if verbose:

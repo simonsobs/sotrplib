@@ -82,3 +82,6 @@ scripts/*/test*.py
 # environment configs
 run_act_prefect_env
 act_sotrp_env
+
+# Do not track lock files
+uv.lock

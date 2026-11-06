@@ -491,17 +491,20 @@ def make_model_source_map(
         log=log,
     )
 
-    shape = (
-        int(5 * nominal_fwhm.to_value(u.rad) / map_res.to_value(u.rad)),
-        int(5 * nominal_fwhm.to_value(u.rad) / map_res.to_value(u.rad)),
+    # The window of the widest source, to at most 5 nominal widths. Do not use
+    # the photutils default window: it cuts rotated models.
+    nominal_pixels = (nominal_fwhm / map_res).to_value(u.dimensionless_unscaled)
+    widest = np.max(
+        [model_params["x_fwhm"], model_params["y_fwhm"]], initial=nominal_pixels
     )
+    side = int(5 * min(widest, 5 * nominal_pixels))
 
     log.info("make_model_source_map.make_model_image.start")
     model_map = make_model_image(
         imap.shape,
         GaussianPSF(),
         model_params,
-        model_shape=shape,
+        model_shape=(side, side),
     )
     log.info("make_model_source_map.make_model_image.success")
     return model_map
