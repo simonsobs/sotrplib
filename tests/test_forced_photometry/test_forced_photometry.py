@@ -17,7 +17,11 @@ from sotrplib.sources.force import (
     TwoDGaussianFitter,
     TwoDGaussianPointingFitter,
 )
-from sotrplib.sources.forced_photometry import LmFitGaussian2DFitter, gaussian_fit
+from sotrplib.sources.forced_photometry import (
+    GaussianFitParameters,
+    LmFitGaussian2DFitter,
+    gaussian_fit,
+)
 from sotrplib.sources.sources import MeasuredSource, RegisteredSource
 
 ### sources returned from simulations need to be converted to registered sources
@@ -73,19 +77,12 @@ def test_lmfit(map_with_single_source):
 
 def test_lmfit_forced_at_catalog_position(map_with_single_source):
     input_map, sources = map_with_single_source
-    forced_photometry = TwoDGaussianFitter(
-        mode="lmfit", reproject_thumbnails=False, centroid_snr_limit=None
-    )
-
     ## the catalog position is 3 arcmin from the source: the forced flux is
     ## the flux at the catalog position, not the flux of the source
     new_sources = [x.model_copy() for x in sources]
     new_sources[0].dec += 0.05 * u.deg
 
-    catalog = RegisteredSourceCatalog(sources=[])
-    catalog.add_sources(sources=new_sources)
-    catalog.valid_fluxes = [s.source_id for s in new_sources]
-    results = forced_photometry.force(input_map=input_map, catalogs=[catalog])
+    results = gaussian_fit(input_map, source_list=new_sources, fwhm=2.2 * u.arcmin)
     assert len(results) == 1
     assert not results[0].fit_failed
     assert results[0].flux.to(u.Jy).value < 0.1 * sources[0].flux.to(u.Jy).value
@@ -249,12 +246,125 @@ def test_lmfit_config_sets_centroid_options():
 
     config = LmfitGaussianFitterConfig(
         allowable_center_offset="2 arcmin",
-        centroid_snr_limit=7.0,
     )
     fitter = config.to_forced_photometry()
     assert isinstance(fitter, TwoDGaussianFitter)
     assert fitter.allowable_center_offset == 2 * u.arcmin
-    assert fitter.centroid_snr_limit == 7.0
+    assert LmfitGaussianFitterConfig().allowable_center_offset is None
+
+
+@pytest.mark.parametrize("fwhm", [2.2, 1.4])
+def test_lmfit_default_center_limit_is_beam_fwhm(fwhm):
+    source = _thumbnail_source([(50.0, 0.0, 0.0)])
+    fitter = LmFitGaussian2DFitter(source, fwhm_guess=fwhm * u.arcmin)
+    fitter.initialize_model()
+
+    ## 0.5 arcmin pixels
+    assert fitter.initial_guess["x0"].max == pytest.approx(fwhm / 0.5)
+    assert fitter.initial_guess["y0"].min == pytest.approx(-fwhm / 0.5)
+
+
+def _noise_fit(seed, **kwargs):
+    source = _thumbnail_source([], seed=seed)
+    fitter = LmFitGaussian2DFitter(source, fwhm_guess=2.2 * u.arcmin, **kwargs)
+    fitter.initialize_model()
+    return fitter.fit()
+
+
+def test_lmfit_priors_hold_noise_fits_near_the_beam():
+    ## no source: without priors the fit goes to noise peaks of any shape
+    def spread(**kwargs):
+        fits = [_noise_fit(seed, **kwargs) for seed in range(30)]
+        fits = [fit for fit in fits if not fit.failed]
+        return (
+            np.median([abs(fit.amplitude.to_value(u.mJy)) for fit in fits]),
+            np.median(
+                [abs(np.log(fit.fwhm_ra.to_value(u.arcmin) / 2.2)) for fit in fits]
+            ),
+        )
+
+    amplitude, width = spread()
+    free_amplitude, free_width = spread(
+        fwhm_prior_width=None, position_prior_width=None
+    )
+    assert width < free_width
+    assert amplitude < free_amplitude
+
+
+def test_lmfit_data_outweigh_priors_at_high_snr():
+    ## bright, wide and off center: the fit is the data, not the prior
+    res = 0.5
+    x = (np.arange(41) - 20) * res
+    X, Y = np.meshgrid(x, x)
+    sigma = 4.4 / np.sqrt(8 * np.log(2))
+    thumbnail = np.random.default_rng(1).normal(0.0, 1.0, X.shape) + 500.0 * np.exp(
+        -0.5 * ((X - 1.5) ** 2 + Y**2) / sigma**2
+    )
+    source = MeasuredSource(
+        ra=10 * u.deg,
+        dec=0 * u.deg,
+        thumbnail=thumbnail,
+        thumbnail_res=[-res, res] * u.arcmin,
+        thumbnail_unit=u.mJy,
+    )
+    fitter = LmFitGaussian2DFitter(source, fwhm_guess=2.2 * u.arcmin)
+    fitter.initialize_model()
+    fit = fitter.fit()
+    assert not fit.failed
+    assert fit.fwhm_ra.to_value(u.arcmin) == pytest.approx(4.4, abs=0.1)
+    assert fit.fwhm_dec.to_value(u.arcmin) == pytest.approx(4.4, abs=0.1)
+    assert abs(fit.ra_offset.to_value(u.arcmin)) == pytest.approx(1.5, abs=0.05)
+    assert fit.amplitude.to_value(u.mJy) == pytest.approx(500.0, rel=0.02)
+
+
+def test_lmfit_width_has_no_hard_limit():
+    fitter = LmFitGaussian2DFitter(_thumbnail_source([(50.0, 0.0, 0.0)]))
+    fitter.initialize_model()
+    assert fitter.initial_guess["ln_sigma_x"].min == -np.inf
+    assert fitter.initial_guess["ln_sigma_x"].max == np.inf
+
+
+def test_pointing_fit_has_no_position_prior(map_with_single_source, monkeypatch):
+    input_map, sources = map_with_single_source
+    seen = []
+    original_init = LmFitGaussian2DFitter.__init__
+
+    def spy(self, *args, **kwargs):
+        seen.append(kwargs.get("position_prior_width"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(LmFitGaussian2DFitter, "__init__", spy)
+    TwoDGaussianPointingFitter(mode="lmfit", min_flux=0.0 * u.Jy).force(
+        input_map=input_map, catalogs=[_catalog(sources)]
+    )
+    assert seen == [None]
+
+
+def test_lmfit_flux_is_map_value_at_fitted_position(map_with_single_source):
+    input_map, sources = map_with_single_source
+    moved = [x.model_copy() for x in sources]
+    moved[0].dec = moved[0].dec + 0.5 * u.arcmin
+    result = TwoDGaussianFitter(mode="lmfit").force(
+        input_map=input_map, catalogs=[_catalog(moved)]
+    )[0]
+
+    dec = result.dec.to_value(u.rad) - result.offset_dec.to_value(u.rad)
+    ra = result.ra.to_value(u.rad) - result.offset_ra.to_value(u.rad) / np.cos(dec)
+    expected = input_map.flux.at(np.array([[dec], [ra]]), mode="spline", order=3)[0]
+    assert result.flux.to_value(input_map.flux_units) == pytest.approx(
+        expected, rel=1e-3
+    )
+    assert result.flux != result.fit_params["amplitude"]
+    assert result.snr == pytest.approx(
+        (result.flux / result.err_flux).to_value(u.dimensionless_unscaled)
+    )
+
+
+@pytest.mark.parametrize("fwhm_major,flagged", [(2.2, False), (8.0, True)])
+def test_lmfit_wide_fit_flag(fwhm_major, flagged):
+    input_map, source, _ = _map_with_gaussian(0.0 * u.deg, fwhm_major, 2.2, 0.0)
+    result, _ = _fit_and_model(input_map, source)
+    assert ("wide_fit" in result.flags) == flagged
 
 
 def test_lmfit_error_is_map_noise(map_with_single_source):
@@ -320,8 +430,8 @@ def _catalog(sources):
     return catalog
 
 
-def test_lmfit_bright_source_gets_free_fit(map_with_single_source):
-    ## a bright source moved from its catalog position: the fit gives the
+def test_lmfit_source_gets_free_fit(map_with_single_source):
+    ## a source moved from its catalog position: the fit gives the
     ## offset and the width, and it does not go past the limit
     input_map, sources = map_with_single_source
     moved = [x.model_copy() for x in sources]
@@ -335,15 +445,43 @@ def test_lmfit_bright_source_gets_free_fit(map_with_single_source):
     assert results[0].fwhm_ra.to_value(u.arcmin) == pytest.approx(2.2, abs=0.2)
 
 
-def test_lmfit_faint_source_stays_at_position(map_with_single_source):
-    ## a limit that this source does not reach: the fit stays at the position
+def test_lmfit_source_past_beam_width_stays_in_limit(map_with_single_source):
+    ## a source 3 arcmin from its catalog position, past the 1 FWHM limit: the
+    ## source still has a fit, and the fit does not go past the limit
     input_map, sources = map_with_single_source
-    results = TwoDGaussianFitter(mode="lmfit", centroid_snr_limit=1e12).force(
-        input_map=input_map, catalogs=[_catalog(sources)]
+    moved = [x.model_copy() for x in sources]
+    moved[0].dec = moved[0].dec + 3.0 * u.arcmin
+    results = TwoDGaussianFitter(mode="lmfit").force(
+        input_map=input_map, catalogs=[_catalog(moved)]
     )
     assert not results[0].fit_failed
-    assert results[0].fit_params["forced_center"]
-    assert results[0].offset_ra is None
+    if results[0].offset_dec is not None:
+        assert abs(results[0].offset_dec.to_value(u.arcmin)) <= 2.2 * 1.0001
+
+
+@pytest.mark.parametrize("fixed_fit_on_failure", [True, False])
+def test_lmfit_failed_free_fit_falls_back(
+    map_with_single_source, monkeypatch, fixed_fit_on_failure
+):
+    input_map, sources = map_with_single_source
+    original_fit = LmFitGaussian2DFitter.fit
+
+    def fail_free_fit(self):
+        if self.force_center:
+            return original_fit(self)
+        return GaussianFitParameters(failed=True, failure_reason="lmfit_fit_failed")
+
+    monkeypatch.setattr(LmFitGaussian2DFitter, "fit", fail_free_fit)
+    results = gaussian_fit(
+        input_map,
+        source_list=[x.model_copy() for x in sources],
+        fit_centroid=True,
+        fixed_fit_on_failure=fixed_fit_on_failure,
+        fwhm=2.2 * u.arcmin,
+    )
+    assert results[0].fit_failed != fixed_fit_on_failure
+    if fixed_fit_on_failure:
+        assert results[0].fit_params["forced_center"]
 
 
 def test_lmfit_nearby_source_stays_at_position(map_with_single_source):
@@ -353,7 +491,7 @@ def test_lmfit_nearby_source_stays_at_position(map_with_single_source):
         source_list=[x.model_copy() for x in sources],
         thumbnail_half_width=0.1 * u.deg,
         fwhm=2.2 * u.arcmin,
-        centroid_snr_limit=5.0,
+        fit_centroid=True,
         flags={"nearby_source": [True]},
     )
     assert results[0].fit_params["forced_center"]
@@ -440,13 +578,12 @@ def _map_with_gaussian(
     return input_map, source, image
 
 
-def _fit_and_model(input_map, source, centroid_snr_limit=5.0, reproject=False):
+def _fit_and_model(input_map, source, reproject=False):
     catalog = RegisteredSourceCatalog(sources=[])
     catalog.add_sources(sources=[source])
     catalog.valid_fluxes = [source.source_id]
     result = TwoDGaussianFitter(
         mode="lmfit",
-        centroid_snr_limit=centroid_snr_limit,
         reproject_thumbnails=reproject,
     ).force(input_map=input_map, catalogs=[catalog])[0]
     model = make_model_source_map(
@@ -496,7 +633,7 @@ def test_fit_widths_and_flux_are_on_the_sky(center_dec):
     assert free.flux.to_value(u.Jy) == pytest.approx(10.0, abs=0.1)
 
     ## the fixed beam is round on the sky, not round in map pixels
-    fixed, _ = _fit_and_model(input_map, source, centroid_snr_limit=None)
+    fixed = gaussian_fit(input_map, source_list=[source], fwhm=2.2 * u.arcmin)[0]
     assert fixed.fit_params["forced_center"]
     assert fixed.flux.to_value(u.Jy) == pytest.approx(10.0, abs=0.1)
 

@@ -433,7 +433,11 @@ def make_2d_gaussian_model_param_table(
             model_params["y_0"].append(pix[0])
             model_params["x_fwhm"].append((fwhm_x / map_res).value)
             model_params["y_fwhm"].append((fwhm_y / map_res).value)
-            model_params["flux"].append(s.flux.to(u.Jy).value * omega_b)
+            ## The model is the fit, if there is one: its height is not the flux.
+            height = fit_params.get("amplitude")
+            if height is None:
+                height = s.flux
+            model_params["flux"].append(height.to(u.Jy).value * omega_b)
             ## photutils takes a float angle in degrees
             model_params["theta"].append(theta.to(u.deg).value)
             model_params["id"].append(id_num)

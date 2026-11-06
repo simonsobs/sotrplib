@@ -120,9 +120,17 @@ class LmFitGaussian2DFitter:
         By default False.
     reprojected : bool, optional
         Whether the thumbnail was reprojected (affects RA offset sign), by default False
-    allowable_center_offset : AstroPydanticQuantity[u.arcmin], optional
+    allowable_center_offset : AstroPydanticQuantity[u.arcmin] or None, optional
         Maximum allowable offset from the thumbnail center for the fit, if
-        force_center is False, by default u.Quantity(1.0, "arcmin")
+        force_center is False. If None, use fwhm_guess. By default None.
+    fwhm_prior_width : float or None, optional
+        Width of a Gaussian prior on the natural log of each fitted width,
+        centered on fwhm_guess, if force_center is False. If None, no prior.
+        By default 0.35.
+    position_prior_width : float or None, optional
+        Width of a Gaussian prior on the fitted position, in units of
+        fwhm_guess and centered on the source position, if force_center is
+        False. If None, no prior. By default 0.5.
     """
 
     def __init__(
@@ -131,9 +139,9 @@ class LmFitGaussian2DFitter:
         fwhm_guess: AstroPydanticQuantity[u.arcmin] = u.Quantity(2.2, "arcmin"),
         force_center: bool = False,
         reprojected: bool = False,
-        allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(
-            1.0, "arcmin"
-        ),
+        allowable_center_offset: AstroPydanticQuantity[u.arcmin] | None = None,
+        fwhm_prior_width: float | None = 0.35,
+        position_prior_width: float | None = 0.5,
         log: FilteringBoundLogger | None = None,
     ):
         self.log = log or get_logger()
@@ -142,7 +150,13 @@ class LmFitGaussian2DFitter:
         self.fwhm_guess = fwhm_guess
         self.force_center = force_center
         self.reprojected = reprojected
-        self.allowable_center_offset = allowable_center_offset
+        self.allowable_center_offset = (
+            allowable_center_offset
+            if allowable_center_offset is not None
+            else fwhm_guess
+        )
+        self.fwhm_prior_width = fwhm_prior_width
+        self.position_prior_width = position_prior_width
         self.fit_method = "lmfit"
         self.model = None
 
@@ -185,9 +199,11 @@ class LmFitGaussian2DFitter:
             self._ra_pixel_scale(),
             1.0,
         ]
+        self.pixel_on_sky = pixel_on_sky
         sigma_guess = (
             self.fwhm_guess.to(u.arcmin).value / pixel_on_sky / SIGMA_TO_FWHM
         )  # Rough width estimate, in pixels
+        self.data_weight = self._data_weight(sigma_guess)
         theta_guess = 0
         offset_guess = 0
 
@@ -219,9 +235,12 @@ class LmFitGaussian2DFitter:
             self.initial_guess["sigma_y"].set(vary=False)
             self.initial_guess["theta"].set(vary=False)
         else:
-            # A round start has no gradient in theta.
-            self.initial_guess["sigma_x"].set(value=1.2 * sigma_guess[0])
-            self.initial_guess["sigma_y"].set(value=0.8 * sigma_guess[1])
+            # A round start has no gradient in theta. The log keeps the
+            # widths positive with no limits.
+            self.initial_guess.add("ln_sigma_x", value=np.log(1.2 * sigma_guess[0]))
+            self.initial_guess.add("ln_sigma_y", value=np.log(0.8 * sigma_guess[1]))
+            self.initial_guess["sigma_x"].set(expr="exp(ln_sigma_x)")
+            self.initial_guess["sigma_y"].set(expr="exp(ln_sigma_y)")
             self.initial_guess["theta"].set(value=np.pi / 4)
             self.initial_guess["x0"].set(
                 min=x0_guess - allowable_center_offset_pixels[0],
@@ -232,14 +251,61 @@ class LmFitGaussian2DFitter:
                 max=y0_guess + allowable_center_offset_pixels[1],
             )
 
-        self.initial_guess["sigma_x"].set(min=0.0, max=nx)
-        self.initial_guess["sigma_y"].set(min=0.0, max=ny)
         self.log.debug(
             "Gaussian2DFitter.model_initialized",
             fit_method=self.fit_method,
             model=self.model,
             initial_guess=self.initial_guess,
         )
+
+    def _data_weight(self, sigma_pixels: np.ndarray) -> float | None:
+        """
+        The weight of the thumbnail residuals against the priors: one over the
+        thumbnail noise and the square root of the pixels per beam, because
+        the pixels are correlated over the beam. None if the thumbnail has no
+        noise, or if there are no priors.
+        """
+        if self.force_center or (
+            self.fwhm_prior_width is None and self.position_prior_width is None
+        ):
+            return None
+        thumbnail = np.asarray(self.source.thumbnail)
+        noise = 1.4826 * np.median(np.abs(thumbnail - np.median(thumbnail)))
+        if not np.isfinite(noise) or noise <= 0:
+            return None
+        return 1.0 / (noise * np.sqrt(2 * np.pi * np.prod(sigma_pixels)))
+
+    def _image_residual(self, params: lmfit.Parameters) -> np.ndarray:
+        return (
+            np.asarray(self.source.thumbnail)
+            - self.model.eval(params, x=self.X, y=self.Y).reshape(
+                self.source.thumbnail.shape
+            )
+        ).ravel()
+
+    def _residual(self, params: lmfit.Parameters) -> np.ndarray:
+        image = self._image_residual(params)
+        if self.data_weight is None:
+            return image
+        terms = [image * self.data_weight]
+        fwhm = self.fwhm_guess.to_value(u.arcmin)
+        if self.fwhm_prior_width is not None:
+            sky_x, sky_y, _ = rescale_gaussian_axes(
+                params["sigma_x"].value,
+                params["sigma_y"].value,
+                params["theta"].value,
+                *self.pixel_on_sky,
+            )
+            terms.append(
+                np.log(np.array([sky_x, sky_y]) * SIGMA_TO_FWHM / fwhm)
+                / self.fwhm_prior_width
+            )
+        if self.position_prior_width is not None:
+            position = np.array([params["x0"].value, params["y0"].value])
+            terms.append(
+                position * self.pixel_on_sky / (self.position_prior_width * fwhm)
+            )
+        return np.concatenate(terms)
 
     def fit(self) -> GaussianFitParameters:
         """
@@ -253,9 +319,7 @@ class LmFitGaussian2DFitter:
             return self.fit_params
 
         try:
-            result = self.model.fit(
-                self.source.thumbnail, self.initial_guess, x=self.X, y=self.Y
-            )
+            result = lmfit.minimize(self._residual, self.initial_guess)
         except Exception as exc:  # noqa: BLE001
             self.log.error("lmfit_2d_gaussian.fit_failed", error=exc)
             self.fit_params.failed = True
@@ -277,9 +341,12 @@ class LmFitGaussian2DFitter:
         sigma_y_err = params["sigma_y"].stderr
         theta = params["theta"].value
         theta_err = params["theta"].stderr
-        chisquared = result.chisqr
-        reduced_chisquared = result.redchi
-        goodness_of_fit = result.rsquared
+        ## Fit statistics of the thumbnail only, without the priors.
+        image_residual = self._image_residual(params)
+        thumbnail = np.asarray(self.source.thumbnail)
+        chisquared = float(np.sum(image_residual**2))
+        reduced_chisquared = chisquared / max(image_residual.size - result.nvarys, 1)
+        goodness_of_fit = 1.0 - chisquared / np.sum((thumbnail - thumbnail.mean()) ** 2)
 
         if self.force_center:
             ra_offset, dec_offset = None, None
@@ -357,6 +424,50 @@ class LmFitGaussian2DFitter:
         return self.fit_params
 
 
+## A fit wider than this, in units of the beam FWHM, has the wide_fit flag.
+WIDE_FIT_FWHM_RATIO = 3.0
+
+
+def _fitted_position(
+    source: MeasuredSource, fit: GaussianFitParameters
+) -> tuple[float, float]:
+    """
+    The fitted (dec, ra) in radians: the source position, less the fit offsets
+    (offset = source position - fitted position). If the fit has no offsets
+    (forced center), this is the source position.
+    """
+    dec = source.dec.to_value(u.rad)
+    ra = source.ra.to_value(u.rad)
+    if fit.ra_offset is not None and fit.dec_offset is not None:
+        dec -= fit.dec_offset.to_value(u.rad)
+        ra -= fit.ra_offset.to_value(u.rad) / np.cos(dec)
+    return dec, ra
+
+
+def _map_flux_at_fit(
+    input_map: ProcessableMap,
+    source: MeasuredSource,
+    fit: GaussianFitParameters,
+) -> AstroPydanticQuantity | None:
+    """
+    Get the map flux at the fitted position, with cubic interpolation. Returns
+    None if the fit failed, or if the flux is not finite near that position.
+    """
+    if fit.failed:
+        return None
+    dec, ra = _fitted_position(source, fit)
+    y, x = np.round(input_map.flux.sky2pix([dec, ra])).astype(int)
+    ## The spline filters all of the array it gets: use a small patch of the map.
+    half = 8
+    if y < half or x < half:
+        return None
+    patch = input_map.flux[y - half : y + half + 1, x - half : x + half + 1]
+    if patch.shape != (2 * half + 1, 2 * half + 1) or not np.all(np.isfinite(patch)):
+        return None
+    flux = patch.at(np.array([[dec], [ra]]), mode="spline", order=3)[0]
+    return AstroPydanticQuantity(float(flux), input_map.flux_units)
+
+
 def _map_noise_at_fit(
     input_map: ProcessableMap,
     source: MeasuredSource,
@@ -365,20 +476,12 @@ def _map_noise_at_fit(
     """
     Get the map noise (flux / SNR) at the fitted source position.
 
-    The fitted position is the source position, less the fit offsets
-    (offset = source position - fitted position). If the fit has no offsets
-    (forced center), the fitted position is the source position.
-
     Returns None if the fit failed, or if the noise is not finite and
     positive at that position.
     """
     if fit.failed:
         return None
-    dec = source.dec.to_value(u.rad)
-    ra = source.ra.to_value(u.rad)
-    if fit.ra_offset is not None and fit.dec_offset is not None:
-        dec -= fit.dec_offset.to_value(u.rad)
-        ra -= fit.ra_offset.to_value(u.rad) / np.cos(dec)
+    dec, ra = _fitted_position(source, fit)
     ## noise = flux / SNR, as ProcessableMap.noise, but at one pixel only
     pos = np.array([[dec], [ra]])
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -395,12 +498,14 @@ def gaussian_fit(
     source_list: list[RegisteredSource],
     fit_method: str = "lmfit",
     fit_centroid: bool = False,
-    centroid_snr_limit: float | None = None,
+    fixed_fit_on_failure: bool = False,
+    fwhm_prior_width: float | None = 0.35,
+    position_prior_width: float | None = 0.5,
     thumbnail_half_width: u.Quantity = u.Quantity(10.0, "arcmin"),
     fwhm: u.Quantity | None = None,
     reproject_thumb: bool = False,
     pointing_model: PointingModel | None = None,
-    allowable_center_offset: u.Quantity = u.Quantity(1.0, "arcmin"),
+    allowable_center_offset: u.Quantity | None = None,
     goodness_of_fit_threshold: float | None = None,
     flags: dict = {},
     log: FilteringBoundLogger | None = None,
@@ -408,6 +513,10 @@ def gaussian_fit(
 ) -> list[MeasuredSource]:
     """
     Fit 2D Gaussian models to a list of registered sources on a map using lmfit.
+    The flux of a source is the map value at the fitted position. The fit gives
+    the position and the shape. A source with a fit wider than
+    WIDE_FIT_FWHM_RATIO beams, on either axis, has the wide_fit flag.
+
     Parameters
     ----------
     input_map : ProcessableMap
@@ -420,17 +529,20 @@ def gaussian_fit(
         Kept for backwards compatibility; accepts any value but is ignored.
         lmfit is always used for fitting.
     fit_centroid : bool, optional
-        If False, fit each source at its position (after the pointing
-        correction) with the beam shape fixed. If True, also fit the source
-        position and shape, from the thumbnail center and in the limit of
-        allowable_center_offset (use for pointing sources, before the pointing
-        correction). The default is False.
-    centroid_snr_limit : float or None, optional
-        Applies if fit_centroid is False. If not None, first fit a beam at the
-        source position. If the SNR of that fit is at or above this limit, and
-        the source has no nearby_source flag, fit again with a free position
-        and shape. Use the fit at the source position if the second fit fails.
-        If None, just fit fixed position/beam. The default is None.
+        If False, fit each source at its position with the beam shape fixed.
+        If True, also fit the source position and shape, from the thumbnail
+        center and in the limit of allowable_center_offset. A source with the
+        nearby_source flag stays at its position. The default is False.
+    fixed_fit_on_failure : bool, optional
+        If True and a fit with a free position fails, fit again at the source
+        position with the beam shape fixed. The default is False.
+    fwhm_prior_width : float or None, optional
+        Width of a Gaussian prior on the natural log of each fitted width,
+        centered on the beam FWHM. If None, no prior. The default is 0.35.
+    position_prior_width : float or None, optional
+        Width of a Gaussian prior on the fitted position, in units of the beam
+        FWHM and centered on the source position. If None, no prior. The
+        default is 0.5.
     thumbnail_half_width : astropy.units.Quantity, optional
         Half-width of the thumbnail cut-out around each source position, in
         angular units. The default is 10 arcmin.
@@ -445,10 +557,9 @@ def gaussian_fit(
     pointing_model: PointingModel or None, optional
         If provided, this model is used to apply pointing corrections to the source positions
         before cutting thumbnails and fitting.
-    allowable_center_offset : astropy.units.Quantity, optional
-        Maximum allowed offset between the fitted source position and the
-        nominal catalog position. Fits exceeding this offset may be rejected.
-        The default is 1.0 arcmin.
+    allowable_center_offset : astropy.units.Quantity or None, optional
+        Maximum offset of the fitted position from the source position, in RA
+        and in Dec. If None, use the beam FWHM. The default is None.
     goodness_of_fit_threshold : float or None, optional
         If not None, the minimum R^2 value for the fit to be considered successful.
         If None, no R^2 value cut is applied. The default is None.
@@ -604,37 +715,34 @@ def gaussian_fit(
             fit_sources.append(forced_source)
             continue
 
+        beam_fwhm = (
+            fwhm
+            if fwhm is not None
+            else get_fwhm(
+                freq=input_map.frequency,
+                arr=input_map.array,
+                instrument=input_map.instrument,
+            )
+        )
+
         def run_fit(force_center: bool) -> GaussianFitParameters:
             fitter = LmFitGaussian2DFitter(
                 forced_source,
                 reprojected=reproject_thumb,
-                fwhm_guess=fwhm
-                if fwhm is not None
-                else get_fwhm(
-                    freq=input_map.frequency,
-                    arr=input_map.array,
-                    instrument=input_map.instrument,
-                ),
+                fwhm_guess=beam_fwhm,
                 force_center=force_center,
                 allowable_center_offset=allowable_center_offset,
+                fwhm_prior_width=fwhm_prior_width,
+                position_prior_width=position_prior_width,
                 log=log,
             )
             fitter.initialize_model()
             return fitter.fit()
 
-        fit = run_fit(force_center=not fit_centroid)
-        if (
-            not fit_centroid
-            and centroid_snr_limit is not None
-            and not fit.failed
-            and "nearby_source" not in source_flags
-        ):
-            ## A faint source stays at its position: a free fit finds a noise peak.
-            noise = _map_noise_at_fit(input_map, forced_source, fit)
-            if noise is not None and fit.amplitude / noise >= centroid_snr_limit:
-                free_fit = run_fit(force_center=False)
-                if not free_fit.failed:
-                    fit = free_fit
+        force_center = not fit_centroid or "nearby_source" in source_flags
+        fit = run_fit(force_center=force_center)
+        if fit.failed and fixed_fit_on_failure and not force_center:
+            fit = run_fit(force_center=True)
         if debug:
             log.debug(f"{preamble}gauss_fit", source=source_name, fit=fit)
 
@@ -648,7 +756,8 @@ def gaussian_fit(
 
         forced_source.fit_failed = fit.failed
         forced_source.fit_failure_reason = fit.failure_reason
-        forced_source.flux = fit.amplitude
+        map_flux = _map_flux_at_fit(input_map, forced_source, fit)
+        forced_source.flux = map_flux if map_flux is not None else fit.amplitude
         ## The lmfit error is too small: it treats the thumbnail pixels as
         ## independent, but the map pixels are correlated over the beam. Use
         ## the map noise at the fitted position. Keep the lmfit error if the
@@ -658,10 +767,17 @@ def gaussian_fit(
             map_noise if map_noise is not None else fit.amplitude_err
         )
         forced_source.snr = (
-            (fit.amplitude / forced_source.err_flux).to_value(u.dimensionless_unscaled)
-            if (forced_source.err_flux is not None) and (fit.amplitude is not None)
+            (forced_source.flux / forced_source.err_flux).to_value(
+                u.dimensionless_unscaled
+            )
+            if (forced_source.err_flux is not None) and (forced_source.flux is not None)
             else None
         )
+        if (
+            not fit.failed
+            and max(fit.fwhm_ra, fit.fwhm_dec) > WIDE_FIT_FWHM_RATIO * beam_fwhm
+        ):
+            forced_source.flags = [*forced_source.flags, "wide_fit"]
 
         forced_source.offset_ra = fit.ra_offset
         forced_source.offset_dec = fit.dec_offset
