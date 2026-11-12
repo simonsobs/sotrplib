@@ -165,6 +165,7 @@ def matched_filter_depth1_map(
     apod_holes: u.Quantity = 5 * u.arcmin,
     noisemask_lim: float | None = None,
     noisemask_radius: u.Quantity = 10 * u.arcmin,
+    noisemask_noise_only: bool = False,
     highpass: bool = False,
     band_height: u.Quantity = 1 * u.degree,
     shift: float = 0,
@@ -214,10 +215,14 @@ def matched_filter_depth1_map(
         apodize this far around holes
 
     noisemask_lim: float | None = None
-        an upper limit to the noise, above which you mask. mJy/sr
+        mask pixels where |imap| exceeds this value, in the units of the input map (K for depth-1 maps).
 
     noisemask_radius: u.Quantity = 10 * utils.arcmin
         radius around bright sources to mask
+
+    noisemask_noise_only: bool = False
+        if True, the noisemask regions only leave the noise model; the filtered map keeps them,
+        so bright sources and transients stay in rho and kappa. maskfile and source_mask still mask the map.
 
     highpass: bool = False
         perform highpass filtering
@@ -305,13 +310,16 @@ def matched_filter_depth1_map(
         mask |= 1 - source_mask
 
     # Optionally mask very bright regions
+    bright_mask = None
     if noisemask_lim:
         bright = np.abs(imap.preflat[0]) < noisemask_lim * fconv
-        mask |= (
+        bright_mask = (
             bright.distance_transform(rmax=noisemask_radius.to(u.radian).value)
             < noisemask_radius.to(u.radian).value
         )
         del bright
+        if not noisemask_noise_only:
+            mask = mask | bright_mask
 
     mask = np.asanyarray(mask)
     if mask.size > 0 and mask.ndim > 0:
@@ -320,14 +328,22 @@ def matched_filter_depth1_map(
 
     imap *= noise_apod
 
+    # With noisemask_noise_only, the bright regions leave the noise model but stay in the filtered map.
+    nmap, napod = imap, noise_apod
+    if noisemask_noise_only and bright_mask is not None:
+        bright_apod = enmap.apod_mask(1 - bright_mask, apod_holes.to(u.radian).value)
+        nmap, napod = imap * bright_apod, noise_apod * bright_apod
+        del bright_apod
+    del bright_mask
+
     # Build the noise model
     iC = build_ips2d_udgrade(
-        S.forward(imap),
-        S.forward(ivarmap * noise_apod),
-        apod_corr=np.mean(noise_apod**2),
+        S.forward(nmap),
+        S.forward(ivarmap * napod),
+        apod_corr=np.mean(napod**2),
         lres=lres,
     )
-    del noise_apod
+    del noise_apod, nmap, napod
     if highpass > 0:
         iC = highpass_ips2d(iC, simple_lknee)
 
