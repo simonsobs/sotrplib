@@ -235,8 +235,11 @@ class LmFitGaussian2DFitter:
             self.initial_guess["sigma_y"].set(vary=False)
             self.initial_guess["theta"].set(vary=False)
         else:
-            # A round start has no gradient in theta. The log keeps the
-            # widths positive with no limits.
+            # Symmetric Gaussian was causing theta fit to fail.
+            # Start optimizer with some ellipticity and non-zero theta.
+            # The prior on fwhm will still favor 1.0*sigma but at least
+            # the optimizer can search now. Tested on noise and
+            # it returns the nominal beam.
             self.initial_guess.add("ln_sigma_x", value=np.log(1.2 * sigma_guess[0]))
             self.initial_guess.add("ln_sigma_y", value=np.log(0.8 * sigma_guess[1]))
             self.initial_guess["sigma_x"].set(expr="exp(ln_sigma_x)")
