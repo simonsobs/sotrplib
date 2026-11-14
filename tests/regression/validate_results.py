@@ -7,6 +7,7 @@ import numpy as np
 import pyinstrument
 import pytest
 import structlog
+from astropy import units as u
 from astropy.coordinates import SkyCoord
 
 from sotrplib.config.config import Settings
@@ -61,6 +62,18 @@ def main():
     # This script reads the sources from the return value of the runner.
     pipeline.map_matcher = EmptyMapMatcher(hold_all_maps=True)
 
+    # Pointing fits measure the position of all bright sources. Forced fits do
+    # this only for significant sources. The runner does not return pointing fits.
+    pointing_fits = []
+    pointing_force = pipeline.pointing_provider.force
+
+    def record_pointing_fits(*args, **kwargs):
+        fits = pointing_force(*args, **kwargs)
+        pointing_fits.extend(fits)
+        return fits
+
+    pipeline.pointing_provider.force = record_pointing_fits
+
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
     )
@@ -80,13 +93,8 @@ def main():
     photometry, sifter_result = result
 
     found = [candidate for candidate in photometry if not candidate.fit_failed]
-    # some forced photometry candidates don't have offsets
-    # because they weren't found in the blind search?
-    found = [
-        candidate
-        for candidate in found
-        if candidate.fit_params["dec_offset"] is not None
-    ]
+    centroided = [candidate for candidate in pointing_fits if not candidate.fit_failed]
+    assert len(centroided) > 0
 
     # simulated catalogs have a random number added to the id
     # assume this corresponds to the first element
@@ -95,14 +103,19 @@ def main():
         candidate.flux / cat.source_by_id(candidate.source_id).flux
         for candidate in found
     ]
+    bright_flux_ratios = [
+        candidate.flux / cat.source_by_id(candidate.source_id).flux
+        for candidate in found
+        if cat.source_by_id(candidate.source_id).flux > 0.1 * u.Jy
+    ]
 
     dec_offsets = np.array(
-        [candidate.fit_params["dec_offset"].value for candidate in found]
+        [candidate.fit_params["dec_offset"].value for candidate in centroided]
     )
     ra_offsets = np.array(
-        [candidate.fit_params["ra_offset"].value for candidate in found]
+        [candidate.fit_params["ra_offset"].value for candidate in centroided]
     )
-    offsets = np.array([calculate_separation(candidate) for candidate in found])
+    offsets = np.array([calculate_separation(candidate) for candidate in centroided])
 
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 4))
 
@@ -127,6 +140,11 @@ def main():
     summary = dict(
         duration=profiler.last_session.duration,
         number_with_forced_photometry=len(photometry),
+        number_with_pointing_fit=len(centroided),
+        number_forced_with_free_fit=sum(
+            not candidate.fit_params["forced_center"] for candidate in found
+        ),
+        median_flux_ratio_above_100mJy=float(np.median(bright_flux_ratios)),
         number_blind_sources=len(sifter_result.source_candidates),
         number_noise_sources=len(sifter_result.noise_candidates),
         number_transient_sources=len(sifter_result.transient_candidates),
