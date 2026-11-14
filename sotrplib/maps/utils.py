@@ -3,7 +3,7 @@ from typing import Literal
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
-from pixell import enmap
+from pixell import enmap, wcsutils
 
 type Box = np.ndarray[
     tuple[Literal[2], Literal[2]], np.dtype[np.float64]
@@ -52,10 +52,58 @@ def enmap_box_to_skycoord(raw_box: Box) -> tuple[SkyCoord, SkyCoord]:
     )
 
 
+def ra_wrap_pixels(wcs) -> int | None:
+    """Return the number of pixels in 360 deg of RA, or None if the wcs
+    does not wrap in RA."""
+    if wcsutils.is_plain(wcs):
+        return None
+    n = 360.0 / abs(wcs.wcs.cdelt[0])
+    return int(round(n)) if abs(n - round(n)) < 1e-6 else None
+
+
+def union_geometry(geometries):
+    """
+    Return the geometry that contains all the given (shape, wcs) geometries.
+
+    Like enmap.union_geometry, but RA wraps. Each geometry is moved by whole
+    wraps in RA to be nearest to the union of the geometries before it. If
+    the union is wider than 360 deg, it is cut to 360 deg, with column 0 at
+    RA +180 deg. enmap.insert wraps the inputs into it.
+    """
+    ref_wcs = geometries[0][1]
+    nwrap = ra_wrap_pixels(ref_wcs)
+    if nwrap is None:
+        return enmap.union_geometry(geometries)
+
+    boxes = [enmap.pixbox_of(ref_wcs, shape, wcs) for shape, wcs in geometries]
+    y0 = min(b[0][0] for b in boxes)
+    y1 = max(b[1][0] for b in boxes)
+    x0, x1 = boxes[0][0][1], boxes[0][1][1]
+    for box in boxes[1:]:
+        bx0, bx1 = box[0][1], box[1][1]
+        k = round((x0 + x1 - bx0 - bx1) / (2 * nwrap))
+        k = min(
+            (k - 1, k, k + 1),
+            key=lambda j: max(x1, bx1 + j * nwrap) - min(x0, bx0 + j * nwrap),
+        )
+        x0, x1 = min(x0, bx0 + k * nwrap), max(x1, bx1 + k * nwrap)
+
+    if x1 - x0 > nwrap:
+        w = ref_wcs.wcs
+        x180 = (w.crpix[0] - 1) + (180.0 - w.crval[0]) / w.cdelt[0]
+        x0 = int(round(x180))
+        x1 = x0 + nwrap
+
+    owcs = ref_wcs.deepcopy()
+    owcs.wcs.crpix -= np.array([x0, y0])
+    return (int(y1 - y0), int(x1 - x0)), owcs
+
+
 def pixell_map_union(map1, map2, op=lambda a, b: a + b):
     """Create a new pixell map that is the union of map1 and map2.
-    The new map will have the shape and wcs that covers both input maps.
-    The pixel values will be combined using the provided operation.
+    The new map will have the shape and wcs that covers both input maps
+    (see union_geometry; RA wraps). The pixel values will be combined
+    using the provided operation.
 
     Args:
         map1: First input pixell map.
@@ -63,7 +111,7 @@ def pixell_map_union(map1, map2, op=lambda a, b: a + b):
         op: Function to combine pixel values (default is addition).
 
     """
-    oshape, owcs = enmap.union_geometry([map1.geometry, map2.geometry])
+    oshape, owcs = union_geometry([map1.geometry, map2.geometry])
     omap = enmap.zeros(map1.shape[:-2] + oshape[-2:], owcs, map1.dtype)
     omap.insert(map1)
     omap.insert(map2, op=op)

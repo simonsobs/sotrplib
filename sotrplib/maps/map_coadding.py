@@ -15,6 +15,7 @@ from sotrplib.maps.core import (
     ProcessableMap,
 )
 from sotrplib.maps.preprocessor import MapPreprocessor
+from sotrplib.maps.utils import pixell_map_union
 
 # An SO LAT optics tube name: letters and then digits, for example i1 or o6.
 _ARRAY_TOKEN_RE = re.compile(r"[a-zA-Z]+\d+")
@@ -246,16 +247,16 @@ class RhoKappaMapCoadder(MapCoadder):
                 sourcemap.rho *= flux_conv
                 sourcemap.kappa /= flux_conv * flux_conv
 
-            coadd.rho = enmap.map_union(
+            coadd.rho = pixell_map_union(
                 coadd.rho,
                 sourcemap.rho,
             )
-            coadd.kappa = enmap.map_union(
+            coadd.kappa = pixell_map_union(
                 coadd.kappa,
                 sourcemap.kappa,
             )
             if coadd.mask is not None and sourcemap.mask is not None:
-                coadd.mask = enmap.map_union(
+                coadd.mask = pixell_map_union(
                     coadd.mask,
                     enmap.enmap(sourcemap.mask),
                 )
@@ -263,7 +264,7 @@ class RhoKappaMapCoadder(MapCoadder):
                 coadd.mask = enmap.enmap(sourcemap.mask)
 
             coadd.update_times(sourcemap)
-            coadd._hits = enmap.map_union(
+            coadd._hits = pixell_map_union(
                 coadd.hits,
                 sourcemap.hits,
             )
@@ -530,16 +531,16 @@ class IntensityMapCoadder(MapCoadder):
                     sourcemap_intensity = sourcemap_intensity * conv
                     sourcemap_ivar = sourcemap_ivar / (conv * conv)
 
-                coadd.intensity = enmap.map_union(
+                coadd.intensity = pixell_map_union(
                     coadd.intensity,
                     sourcemap_intensity * sourcemap_ivar,
                 )
-                coadd.inverse_variance = enmap.map_union(
+                coadd.inverse_variance = pixell_map_union(
                     coadd.inverse_variance,
                     sourcemap_ivar,
                 )
                 if coadd.mask is not None and sourcemap.mask is not None:
-                    coadd.mask = enmap.map_union(
+                    coadd.mask = pixell_map_union(
                         coadd.mask,
                         enmap.enmap(sourcemap.mask),
                     )
@@ -547,7 +548,7 @@ class IntensityMapCoadder(MapCoadder):
                     coadd.mask = enmap.enmap(sourcemap.mask)
 
                 coadd.update_times(sourcemap)
-                coadd._hits = enmap.map_union(
+                coadd._hits = pixell_map_union(
                     coadd.hits,
                     sourcemap.hits,
                 )

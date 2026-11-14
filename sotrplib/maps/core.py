@@ -1231,13 +1231,13 @@ class CoaddedRhoKappaMap(ProcessableMap):
         mid_time = new_map.observation_start + (time_delta / 2)
         self.input_map_times.append(mid_time)
 
-        total_hits = enmap.map_union(self.hits, new_map.hits)
+        total_hits = pixell_map_union(self.hits, new_map.hits)
         hit_mask = total_hits > 0
         if isinstance(new_map.time_mean, ndmap):
             if self.time_mean is None:
                 self.time_mean = enmap.enmap(new_map.time_mean)
             else:
-                self.time_mean = enmap.map_union(
+                self.time_mean = pixell_map_union(
                     self.time_mean * self.hits,
                     new_map.time_mean * new_map.hits,
                 )
