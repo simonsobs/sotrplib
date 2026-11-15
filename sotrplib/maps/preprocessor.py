@@ -221,7 +221,7 @@ class MatchedFilter(MapPreprocessor):
         band_height: AstroPydanticQuantity = 1 * u.degree,
         shift: float = 0,
         simple: bool = False,
-        simple_lknee: float = 1000,
+        simple_lknee: float | dict[str, float] = 1000,
         simple_alpha: float = -3.5,
         lres=(70, 100),
         pixwin: str = "nn",
@@ -256,6 +256,17 @@ class MatchedFilter(MapPreprocessor):
                 f"{input_map.map_name}; beam1d has bands {sorted(self.beam1d)}."
             ) from None
 
+    def _lknee_for(self, input_map: ProcessableMap) -> float:
+        if not isinstance(self.simple_lknee, dict):
+            return self.simple_lknee
+        try:
+            return self.simple_lknee[input_map.frequency]
+        except KeyError:
+            raise ValueError(
+                f"No simple_lknee for band '{input_map.frequency}' of map "
+                f"{input_map.map_name}; simple_lknee has bands {sorted(self.simple_lknee)}."
+            ) from None
+
     def preprocess(self, input_map: ProcessableMap) -> ProcessableMap:
         rho, kappa = matched_filter_depth1_map(
             imap=input_map.intensity * input_map.intensity_units.to(u.K),
@@ -283,7 +294,7 @@ class MatchedFilter(MapPreprocessor):
             band_height=self.band_height,
             shift=self.shift,
             simple=self.simple,
-            simple_lknee=self.simple_lknee,
+            simple_lknee=self._lknee_for(input_map),
             simple_alpha=self.simple_alpha,
             lres=self.lres,
             pixwin=self.pixwin,

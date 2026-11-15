@@ -1,5 +1,5 @@
 """
-Tests for choosing the matched filter's 1D beam profile per band.
+Tests for choosing the matched filter's 1D beam profile and simple-model lknee per band.
 """
 
 from pathlib import Path
@@ -44,3 +44,24 @@ def test_beam1d_per_band_missing_band_raises():
 
 def test_no_beam1d():
     assert MatchedFilterConfig().to_preprocessor()._beam1d_for(_map("f090")) is None
+
+
+def test_single_lknee_used_for_every_band():
+    matched_filter = MatchedFilterConfig(simple_lknee=2000).to_preprocessor()
+
+    assert matched_filter._lknee_for(_map("f090")) == 2000
+    assert matched_filter._lknee_for(_map("f280")) == 2000
+
+
+def test_lknee_per_band():
+    matched_filter = MatchedFilterConfig.model_validate(
+        {
+            "preprocessor_type": "matched_filter",
+            "simple_lknee": {"f090": 2000, "f150": 3000},
+        }
+    ).to_preprocessor()
+
+    assert matched_filter._lknee_for(_map("f090")) == 2000
+    assert matched_filter._lknee_for(_map("f150")) == 3000
+    with pytest.raises(ValueError, match="f220"):
+        matched_filter._lknee_for(_map("f220"))

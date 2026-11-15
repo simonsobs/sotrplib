@@ -88,7 +88,9 @@ class MatchedFilterConfig(PreprocessorConfig):
     band_height: AstroPydanticQuantity = 1 * u.degree
     shift: float = 0
     simple: bool = False
-    simple_lknee: float = 1000
+    simple_lknee: float | dict[str, float] = 1000
+    "lknee of the simple noise model (and of highpass), or a mapping of band "
+    "(e.g. 'f090') to lknee."
     simple_alpha: float = -3.5
     lres: tuple = (70, 100)
     pixwin: str = "nn"
