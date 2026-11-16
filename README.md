@@ -31,7 +31,7 @@ the package:
 ```
 uv venv --python=3.12
 source .venv/bin/activate
-uv pip install sotrplib
+uv pip install .
 ```
 
 if you plan to develop, you should install the dev requirements:

@@ -24,6 +24,10 @@
     "source_injector": {
         "injector_type": "photutils"
     },
+    "pointing_provider": {
+        "photometry_type": "lmfit_pointing",
+        "min_flux": "0.9 Jy"
+    },
     "forced_photometry": {
         "photometry_type": "lmfit"
     },
