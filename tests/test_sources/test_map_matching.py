@@ -108,6 +108,42 @@ def test_same_array_in_two_bands_counts_once():
     assert not groups[0].confirmed
 
 
+def test_min_bands_confirms_single_array_cross_band_detection():
+    """
+    SPT3G's case: one physical array ("all") across every band, so
+    min_arrays alone can never require cross-band corroboration. min_bands
+    is the only way to require it -- here, the same-array two-band group
+    from test_same_array_in_two_bands_counts_once is confirmed once
+    min_bands=2 is also satisfied.
+    """
+    _, groups = _match(
+        MultiArrayMapMatcher(min_arrays=1, min_bands=2),
+        [
+            _result("c1_f220", "all", [_candidate(10.0, -5.0)], frequency="f220"),
+            _result("c1_f280", "all", [_candidate(10.0, -5.0)], frequency="f280"),
+        ],
+    )
+
+    assert len(groups) == 1
+    assert (groups[0].n_arrays, groups[0].n_bands) == (1, 2)
+    assert groups[0].confirmed
+
+
+def test_min_bands_two_rejects_single_band_single_array_detection():
+    """
+    The flip side: min_arrays=1 alone would auto-confirm a lone detection
+    (test_min_arrays_one_keeps_single_detections) with no cross-band
+    agreement at all. min_bands=2 closes that gap.
+    """
+    results, groups = _match(
+        MultiArrayMapMatcher(min_arrays=1, min_bands=2),
+        [_result("i1", "all", [_candidate(10.0, -5.0)])],
+    )
+
+    assert not groups[0].confirmed
+    assert results[0].sifter_result.transient_candidates == []
+
+
 def test_three_arrays_three_bands_form_one_group():
     maps = [
         _result("i1_f090", "i1", [_candidate(348.3478, 2.6759)]),
@@ -286,6 +322,16 @@ def test_multi_array_config():
     assert isinstance(matcher, MultiArrayMapMatcher)
     assert matcher.radius == 1.0 * u.arcmin
     assert matcher.min_arrays == 3
+    assert matcher.min_bands == 1  # default: always satisfied, a no-op
+
+
+def test_multi_array_config_min_bands():
+    matcher = MultiArrayMapMatcherConfig.model_validate(
+        {"matcher_type": "multi_array", "min_arrays": 1, "min_bands": 2}
+    ).to_matcher()
+
+    assert matcher.min_arrays == 1
+    assert matcher.min_bands == 2
 
 
 def test_low_sig_detection_confirms_high_sig_seed():

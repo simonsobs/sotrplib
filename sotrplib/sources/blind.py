@@ -92,9 +92,25 @@ class SigmaClipBlindSearch(BlindSearchProvider):
 
         for source in extracted_sources:
             ## want to extract the thumbnail at the map location, but then apply ra,dec offsets
-            source.extract_thumbnail(
-                input_map, thumb_width=thumb_width, reproject_thumb=True
-            )
+            try:
+                source.extract_thumbnail(
+                    input_map, thumb_width=thumb_width, reproject_thumb=True
+                )
+            except Exception as e:
+                # A candidate close enough to the map's edge can make
+                # reproject.thumbnails() extract an asymmetrically clipped
+                # stamp, which its own apodization step then fails to
+                # broadcast against -- not specific to any one candidate's
+                # position, so catch broadly, as forced photometry's
+                # equivalent extract_thumbnail() call already does.
+                self.log.error(
+                    "sigma_clip_blind_search.extract_thumbnail_failed",
+                    source=source.source_id,
+                    error=str(e),
+                )
+                source.fit_failed = True
+                source.fit_failure_reason = "extract_thumbnail_failed"
+                continue
             if pointing_model:
                 pos = SkyCoord(ra=source.ra, dec=source.dec, frame="icrs")
                 corrected = pointing_model.predict(pos)

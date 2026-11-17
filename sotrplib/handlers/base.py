@@ -324,15 +324,14 @@ class BaseRunner:
     ) -> list[tuple[list[MeasuredSource], SifterResult]]:
         return self.flow(self._run)(maps)
 
-    def _run(
-        self, maps: list[ProcessableMap]
-    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
+    def analyze(self, maps: list[ProcessableMap]) -> list[MapResult]:
         """
-        The actual pipeline run logic has to be in a separate method so that it can be
-        decorated with the flow as prefect needs these to be defined in advance.
-
-        Returns one (forced photometry sources, sifter result) tuple for each
-        map set. If there are no maps, returns an empty list.
+        Build and analyze every map (filter, forced photometry, blind
+        search, sift), without matching or writing anything. Returns one
+        `MapResult` per non-empty map -- deliberately not matched or
+        written yet, so a caller can pickle these and defer matching/output
+        to a later step (e.g. a separate grid job once every map in an
+        observation has been analyzed).
         """
         maps = list(maps)
         if not maps:
@@ -354,7 +353,17 @@ class BaseRunner:
         )
         # Held in memory until every map is analyzed, so map matching can
         # group transient candidates across maps before anything is written.
-        map_results = [r for r in map_results if r is not None]
+        return [r for r in map_results if r is not None]
+
+    def match_and_output(
+        self, map_results: list[MapResult]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
+        """
+        Match transient candidates across `map_results` (e.g. every band of
+        one observation, however they were produced) and write source/
+        map-match outputs. The other half of `_run`, split out so it can run
+        as its own step once every map's `analyze()` result is in hand.
+        """
         map_results, summary = self.profilable_task(self.map_matcher.match)(map_results)
 
         self.basic_task(self.output_map_result).map(map_results).result()
@@ -365,3 +374,23 @@ class BaseRunner:
             self.profilable_task(output.output)(summary=summary)
 
         return [(r.forced_photometry_candidates, r.sifter_result) for r in map_results]
+
+    def _run(
+        self, maps: list[ProcessableMap]
+    ) -> list[tuple[list[MeasuredSource], SifterResult]]:
+        """
+        The actual pipeline run logic has to be in a separate method so that it can be
+        decorated with the flow as prefect needs these to be defined in advance.
+
+        Returns one (forced photometry sources, sifter result) tuple for each
+        map set. If there are no maps, returns an empty list.
+        """
+        maps = list(maps)
+        if not maps:
+            structlog.get_logger().warning(
+                "pipeline.no_maps_found",
+                message="No input maps. Check the map configuration or database query.",
+            )
+            return []
+        map_results = self.analyze(maps)
+        return self.match_and_output(map_results)

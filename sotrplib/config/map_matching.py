@@ -35,6 +35,12 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
     min_arrays: int = 2
     "Distinct arrays (optics tubes) an event must be detected in to stay a "
     "transient candidate."
+    min_bands: int = 1
+    "Distinct frequency bands an event must be detected in to stay a "
+    "transient candidate. Defaults to 1 (always satisfied); set this for an "
+    "instrument whose array is the same across all bands (e.g. SPT3G's "
+    "single 'all' array), where min_arrays alone can never require "
+    "cross-band corroboration."
     high_sig: float = 5.0
     "A confirmed event needs at least one detection with SNR >= high_sig."
     low_sig: float = 3.0
@@ -56,6 +62,7 @@ class MultiArrayMapMatcherConfig(MapMatcherConfig):
         return MultiArrayMapMatcher(
             radius=self.radius,
             min_arrays=self.min_arrays,
+            min_bands=self.min_bands,
             high_sig=self.high_sig,
             low_sig=self.low_sig,
             log=log,

@@ -139,6 +139,69 @@ def test_pipeline_map_matching_before_outputs(
         assert len(grouped) == len(sources)
 
 
+def test_analyze_match_split_matches_run(
+    tmp_path, map_with_sources: tuple[SimulatedMap, list[RegisteredSource]]
+):
+    """
+    `analyze()` followed by a pickle round-trip and `match_and_output()` (the
+    split a grid job -- one `analyze()` per map, pickled back -- and a later
+    matching job rely on) must group the same candidates as feeding the same
+    `MapResult`s to `match_and_output()` directly, modulo the fresh group_id
+    each `match()` call mints. Both paths consume the *same* `analyze()`
+    output (built once), so they can be compared structurally without a
+    second, independently-reseeded map build.
+    """
+    new_map, sources = map_with_sources
+    maps = [new_map, new_map]
+
+    def make_runner(source_dir):
+        source_dir.mkdir()
+        (source_dir / "match").mkdir()
+        return PipelineRunner(
+            map_coadder=None,
+            source_catalogs=[],
+            source_injector=None,
+            preprocessors=None,
+            pointing_provider=None,
+            pointing_residual_model=None,
+            postprocessors=None,
+            source_simulators=None,
+            forced_photometry=None,
+            source_subtractor=None,
+            blind_search=SigmaClipBlindSearch(),
+            sifter=SimpleCatalogSifter(radius=u.Quantity(30.0, "arcsec")),
+            source_outputs=[PickleSerializer(directory=source_dir)],
+            map_outputs=None,
+            # both copies share one array, so only min_arrays=1 confirms them
+            map_matcher=MultiArrayMapMatcher(min_arrays=1),
+            map_match_outputs=[JSONMapMatchOutput(directory=source_dir / "match")],
+        )
+
+    analyze_runner = make_runner(tmp_path / "analyze")
+    map_results = analyze_runner.analyze(maps)
+    assert len(map_results) == len(maps)
+
+    def group_fingerprint(sifted):
+        return sorted(
+            (round(c.ra.to_value("deg"), 6), round(c.dec.to_value("deg"), 6))
+            for c in sifted.transient_candidates
+        )
+
+    direct_runner = make_runner(tmp_path / "direct")
+    direct_results = direct_runner.match_and_output(map_results)
+    direct_fingerprints = [group_fingerprint(sifted) for _, sifted in direct_results]
+    assert all(fp for fp in direct_fingerprints), "expected confirmed groups"
+
+    # Round-trip through pickle, exactly as a grid job would hand its
+    # MapResult back for a separate matching job to load.
+    pickled_results = [pickle.loads(pickle.dumps(r)) for r in map_results]
+    pickled_runner = make_runner(tmp_path / "pickled")
+    pickled_results = pickled_runner.match_and_output(pickled_results)
+    pickled_fingerprints = [group_fingerprint(sifted) for _, sifted in pickled_results]
+
+    assert pickled_fingerprints == direct_fingerprints
+
+
 def test_basic_pipeline_missing_crossmatches(
     tmp_path,
     map_with_sources: tuple[SimulatedMap, list[RegisteredSource]],

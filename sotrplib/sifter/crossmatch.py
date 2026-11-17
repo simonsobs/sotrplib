@@ -532,12 +532,27 @@ def recalculate_local_snr(
     for candidate in transient_candidates:
         # Extract a thumbnail of the transient source
         ra, dec = candidate.ra, candidate.dec
-        thumbnail = get_submap(
-            imap.flux,
-            ra.to(u.deg).value,
-            dec.to(u.deg).value,
-            size_deg=thumb_size.to(u.deg).value,
-        )
+        try:
+            thumbnail = get_submap(
+                imap.flux,
+                ra.to(u.deg).value,
+                dec.to(u.deg).value,
+                size_deg=thumb_size.to(u.deg).value,
+            )
+        except ValueError as e:
+            # A candidate close enough to the map's true edge can make
+            # pixell compute a negative output shape for the requested
+            # thumbnail box. There's no local noise to recalculate the SNR
+            # against, so -- as with any other candidate this function
+            # decides against -- treat it as noise rather than crash the
+            # whole sift.
+            log.error(
+                "recalculate_local_snr.get_submap_failed",
+                source=candidate.source_id,
+                error=str(e),
+            )
+            updated_noise_candidates.append(candidate)
+            continue
 
         fwhm_pix = (
             fwhm.to(u.arcmin).value

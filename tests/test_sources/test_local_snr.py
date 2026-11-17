@@ -3,6 +3,7 @@ Tests for the local SNR that the sifter calculates for transient candidates.
 """
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 from astropy import units as u
@@ -68,3 +69,31 @@ def test_too_few_pixels_keeps_snr():
     snr, kept = _snr(imap, flux=10.0, snr=10.0)
     assert snr == 10.0
     assert kept
+
+
+def test_submap_failure_near_map_edge_becomes_noise_not_a_crash():
+    """
+    A candidate close enough to the map's true edge can make pixell compute
+    a negative output shape for the requested thumbnail box (a real crash
+    seen running the SPT3G pipeline at a low blind-search threshold, where
+    far more candidates sit close to the array boundary than at the usual
+    5-sigma threshold). With no local noise available, the candidate must
+    be demoted to noise, not allowed to crash the whole sift.
+    """
+    candidate = MeasuredSource(
+        ra=RA * u.deg, dec=DEC * u.deg, flux=10.0 * u.mJy, snr=10.0
+    )
+    with patch(
+        "sotrplib.maps.maps.get_submap",
+        side_effect=ValueError("negative dimensions are not allowed"),
+    ):
+        transients, noise = recalculate_local_snr(
+            [candidate],
+            SimpleNamespace(flux=_map(), flux_units=u.mJy),
+            thumb_size=0.25 * u.deg,
+            fwhm=FWHM,
+        )
+    assert transients == []
+    assert noise == [candidate]
+    # snr is untouched -- there was no local noise to recalculate it against.
+    assert candidate.snr == 10.0
