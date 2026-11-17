@@ -42,7 +42,6 @@
     "forced_photometry": {
         "photometry_type": "lmfit",
         "reproject_thumbnails": "True",
-        "flux_limit_centroid": "0.1 Jy",
         "min_flux": "0.01 Jy"
     },
     "sifter": {

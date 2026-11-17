@@ -34,6 +34,13 @@ steps:
 3. It writes the source outputs of each map, with the results of the map
    matching.
 
+The runner does these steps only if the map matcher has
+`hold_all_maps = True`. This is the setting for the `multi_array` map matcher.
+The `empty` map matcher does not need the other maps. Thus, by default, the
+runner writes the source outputs of each map when the analysis of the map is
+complete, and it does not keep the result. If one map fails, the runner
+stops. The source outputs of the maps that are complete stay on the disk.
+
 The two runners (`basic` and `prefect`) do these steps. Use the prefect
 runner to analyze many maps in parallel. See
 [Run `sotrp` with the prefect runner](prefect.md).
@@ -57,6 +64,7 @@ Add a `map_matcher` field to the `sotrp` config:
 | Field | Default | Meaning |
 |---|---|---|
 | `matcher_type` | `empty` | `empty`: no map matching. `multi_array`: the map matcher on this page. |
+| `hold_all_maps` | `false` | Only for `empty`. `false`: write the source outputs of each map when its analysis is complete. `true`: write all the source outputs after all the analyses, and return the results from `runner.run()`. |
 | `radius` | `1.5 arcmin` | The maximum distance between two detections of one event. |
 | `min_arrays` | `2` | The minimum number of different arrays that must detect an event. |
 | `high_sig` | `5.0` | A confirmed event must have one detection with SNR `high_sig` or more. |
@@ -144,7 +152,9 @@ depth-1 maps of 2025-09-10. Each map has approximately 850 deg² of data:
 
 Each detection gets a thumbnail (approximately 15 ms and 18 kB for each
 detection). The runner keeps the results of all the maps in memory until
-the map matching is complete. Thus, for large maps, examine the memory.
+the map matching is complete. Thus, for large maps, examine the memory. If
+one map fails, the runner stops and does not write the source outputs of the
+other maps.
 
 The sifter calculates the SNR of each transient candidate again with the
 local noise: the RMS of the map in a 0.25 deg region around the candidate.

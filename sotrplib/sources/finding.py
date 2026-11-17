@@ -11,7 +11,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
 from sotrplib.sources.sources import MeasuredSource
-from sotrplib.utils.utils import get_frequency
+from sotrplib.utils.utils import SIGMA_TO_FWHM, get_frequency
 
 """
 Source finding routines from spt3g_software.
@@ -236,10 +236,8 @@ def convert_outstruct_to_measured_source_objects(
         )
         ms.err_ra = sigma_ra
         ms.err_dec = sigma_dec
-        # convert to FWHM
-        k = 2.0 * np.sqrt(2.0 * np.log(2.0))  # ≈ 2.354820045
-        ms.fwhm_ra = k * sigma_ra
-        ms.fwhm_dec = k * sigma_dec
+        ms.fwhm_ra = SIGMA_TO_FWHM * sigma_ra
+        ms.fwhm_dec = SIGMA_TO_FWHM * sigma_dec
 
         outlist.append(ms)
 

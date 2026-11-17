@@ -9,6 +9,7 @@ from pixell import enmap
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sources.sources import RegisteredSource
+from sotrplib.utils.utils import SIGMA_TO_FWHM
 
 
 class SimulatedSource(ABC):
@@ -88,9 +89,7 @@ class GaussianTransientSimulatedSource(SimulatedSource):
 
     def flux(self, time: Time) -> u.Quantity:
         delta_s = (time - self.peak_time).to_value("s")
-        sigma_s = self.flare_width.to_value("s") / (
-            2.0 * math.sqrt(2.0 * math.log(2.0))
-        )
+        sigma_s = self.flare_width.to_value("s") / SIGMA_TO_FWHM
         exponent = delta_s / sigma_s
 
         return self.peak_amplitude * math.exp(-0.5 * exponent * exponent)

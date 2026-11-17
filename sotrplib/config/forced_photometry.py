@@ -44,10 +44,11 @@ class SimpleForcedPhotometryConfig(ForcedPhotometryConfig):
 
 class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
     photometry_type: Literal["lmfit"] = "lmfit"
-    flux_limit_centroid: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
-    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
-    allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(1.0, "arcmin")
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(10.0, "arcmin")
+    allowable_center_offset: AstroPydanticQuantity[u.arcmin] | None = None
+    fwhm_prior_width: float | None = 0.35
+    position_prior_width: float | None = 0.5
     near_source_rel_flux_limit: float = 1.0
     min_flux: AstroPydanticQuantity[u.Jy] | None = None
     goodness_of_fit_threshold: float | None = None
@@ -57,10 +58,11 @@ class LmfitGaussianFitterConfig(ForcedPhotometryConfig):
     ) -> TwoDGaussianFitter:
         return TwoDGaussianFitter(
             mode="lmfit",
-            flux_limit_centroid=self.flux_limit_centroid,
             reproject_thumbnails=self.reproject_thumbnails,
             thumbnail_half_width=self.thumbnail_half_width,
             allowable_center_offset=self.allowable_center_offset,
+            fwhm_prior_width=self.fwhm_prior_width,
+            position_prior_width=self.position_prior_width,
             near_source_rel_flux_limit=self.near_source_rel_flux_limit,
             goodness_of_fit_threshold=self.goodness_of_fit_threshold,
             min_flux=self.min_flux,
@@ -72,7 +74,7 @@ class Lmfit2DGaussianPointingConfig(ForcedPhotometryConfig):
     photometry_type: Literal["lmfit_pointing"] = "lmfit_pointing"
     min_flux: AstroPydanticQuantity[u.Jy] = u.Quantity(0.3, "Jy")
     reproject_thumbnails: bool = False
-    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(0.1, "deg")
+    thumbnail_half_width: AstroPydanticQuantity[u.deg] = u.Quantity(10.0, "arcmin")
     allowable_center_offset: AstroPydanticQuantity[u.arcmin] = u.Quantity(3.0, "arcmin")
     near_source_rel_flux_limit: float = 0.3
     goodness_of_fit_threshold: float | None = None
