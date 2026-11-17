@@ -139,14 +139,18 @@ def clean_map(
 ):
     ## cut_on can be max or median, this sets the imap to zero for values of inverse variance
     ## which are below fraction*max or fraction*median of inverse variance map.
+    ## The statistic uses only pixels with inverse variance > 0 (zero pixels off the footprint excluded).
+    hit = np.isfinite(inverse_variance) & (inverse_variance > 0)
+    if not np.any(hit):
+        return imap
     if cut_on == "median" or cut_on == "med":
-        imap[inverse_variance < (np.nanmedian(inverse_variance) * fraction)] = 0
+        imap[inverse_variance < (np.median(inverse_variance[hit]) * fraction)] = 0
     elif cut_on == "percentile" or cut_on == "pct":
-        imap[inverse_variance < np.nanpercentile(inverse_variance, fraction)] = 0
+        imap[inverse_variance < np.percentile(inverse_variance[hit], fraction)] = 0
     else:
         if cut_on != "max":
-            print("%s cut_on not supported, defaulting to max cut" % cut_on)
-        imap[inverse_variance < (np.nanmax(inverse_variance) * fraction)] = 0
+            print(f"{cut_on} cut_on not supported, defaulting to max cut")
+        imap[inverse_variance < (np.max(inverse_variance[hit]) * fraction)] = 0
     return imap
 
 
