@@ -4,10 +4,12 @@ Unit tests for the stacking methods in sotrplib.sources.stacking.
 These tests build stamps in memory and do not need the map database.
 """
 
+import logging
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import structlog
 from pixell import enmap
 from structlog.testing import capture_logs
 
@@ -19,6 +21,21 @@ from sotrplib.sources.stacking import (
     Stamps,
     clean_stamps,
 )
+
+
+@pytest.fixture(autouse=True)
+def debug_logging():
+    """
+    Several tests check debug-level log events. Other modules (e.g. the CLIs)
+    configure structlog at INFO when imported, which turns debug calls into
+    no-ops for the rest of the session, so set DEBUG here and restore after.
+    """
+    old_config = structlog.get_config()
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG)
+    )
+    yield
+    structlog.configure(**old_config)
 
 
 @pytest.fixture
