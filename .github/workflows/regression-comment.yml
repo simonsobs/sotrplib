@@ -1,0 +1,88 @@
+name: Post regression report
+
+# Runs after "Run regression tests" finishes on a pull request. Pull requests
+# from forks only get a read-only token, so the comment is posted from here,
+# where the workflow runs in the context of the base repository.
+#
+# Security: this workflow never checks out or executes code from the PR. It
+# only reads the report artifact, which is treated as untrusted text.
+on:
+  workflow_run:
+    workflows: ["Run regression tests"]
+    types: [completed]
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Download report
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: regression-report
+          path: report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Post or update comment
+        if: steps.download.outcome == 'success'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- sotrplib-regression-report -->';
+
+            const prNumber = parseInt(fs.readFileSync('report/pr_number', 'utf8').trim(), 10);
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed('Invalid PR number in artifact');
+              return;
+            }
+
+            // Make sure the artifact really belongs to this PR's head commit,
+            // so a run from one PR cannot post on another.
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            const headSha = context.payload.workflow_run.head_sha;
+            if (pr.head.sha !== headSha) {
+              core.info(`PR head ${pr.head.sha} != run head ${headSha}; skipping (stale run).`);
+              return;
+            }
+
+            let body = fs.readFileSync('report/report.md', 'utf8');
+            if (!body.startsWith(marker)) {
+              body = `${marker}\n${body}`;
+            }
+            body = body.slice(0, 60000);
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }

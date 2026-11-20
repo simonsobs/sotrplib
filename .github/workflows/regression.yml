@@ -20,8 +20,8 @@ jobs:
       CC: gcc
 
     permissions:
-      issues: write
-      pull-requests: write
+      contents: read
+      actions: read  # to download the baseline artifact from main
 
     runs-on: ubuntu-latest
     strategy:
@@ -46,44 +46,64 @@ jobs:
           python validate_results.py
           cd -
 
-      - name: Post summary
-        uses: actions/github-script@v8
+      - name: Download baseline from main
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Records BASELINE_STATUS so the report can say why a comparison
+          # is missing: lookup-failed, no-run, download-failed, or ok.
+          set +e
+          # Latest successful push/scheduled run on main (excludes PR runs,
+          # whose head branch could also be called "main" on a fork).
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow regression.yml \
+            --branch main --status success --limit 20 --json databaseId,event \
+            --jq '[.[] | select(.event == "push" or .event == "schedule")][0].databaseId // empty')
+          if [ $? -ne 0 ]; then
+            echo "BASELINE_STATUS=lookup-failed" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "$run_id" ]; then
+            echo "No baseline run found on main"
+            echo "BASELINE_STATUS=no-run" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "BASELINE_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id" >> "$GITHUB_ENV"
+          if gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+              --name regression-results --dir baseline; then
+            echo "BASELINE_STATUS=ok" >> "$GITHUB_ENV"
+          else
+            echo "BASELINE_STATUS=download-failed" >> "$GITHUB_ENV"
+          fi
+
+      - name: Write report
+        if: ${{ !cancelled() && hashFiles('tests/regression/summary.json') != '' }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Unset means the download step died before recording an outcome.
+            status="${BASELINE_STATUS:-unknown}"
+          else
+            status="not-applicable"
+          fi
+          mkdir -p report
+          python tests/regression/report.py tests/regression/summary.json \
+            --baseline baseline/summary.json \
+            --baseline-status "$status" \
+            --baseline-url "${BASELINE_URL:-}" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --output report/report.md
+          cat report/report.md >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "${{ github.event.pull_request.number }}" > report/pr_number
+          fi
+
+      - name: Upload report
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('report/report.md') != '' }}
+        uses: actions/upload-artifact@v5
         with:
-          script: |
-            const fs = require('fs');
-            const summary = JSON.parse(fs.readFileSync('tests/regression/summary.json', 'utf8'));
-            const body = `
-            ## Regression Test Summary
-
-            - Runtime (s): ${summary.duration}
-
-            ### Sources
-
-            - Forced Sources: ${summary.number_with_forced_photometry}
-            - Blind Sources: ${summary.number_blind_sources}
-            - Noise Sources: ${summary.number_noise_sources}
-            - Transient Sources: ${summary.number_transient_sources}
-
-            ### Recovered Source Statistics
-
-            - Mean RA Offset (deg): ${summary.mean_ra_offset_deg}
-            - Median RA Offset (deg): ${summary.median_ra_offset_deg}
-            - Std RA Offset (deg): ${summary.std_ra_offset_deg}
-            - Mean Dec Offset (deg): ${summary.mean_dec_offset_deg}
-            - Median Dec Offset (deg): ${summary.median_dec_offset_deg}
-            - Std Dec Offset (deg): ${summary.std_dec_offset_deg}
-            - Mean Flux Ratio: ${summary.mean_flux_ratio}
-            - Median Flux Ratio: ${summary.median_flux_ratio}
-            - Std Flux Ratio: ${summary.std_flux_ratio}
-
-            ![Offset ECDF](tests/regression/offset_ecdf.png)
-            `;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body,
-            });
+          name: regression-report
+          path: report/
 
       - name: Upload regression results
         uses: actions/upload-artifact@v5
