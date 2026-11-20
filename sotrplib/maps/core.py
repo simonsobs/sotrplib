@@ -347,45 +347,52 @@ class ProcessableMap(ABC):
         """
         return f"{self.frequency}_{self.array}_{int(self.observation_start.unix)}"
 
+    def _time_weights(self, arr: ndmap, x0: int, x1: int, y0: int, y1: int):
+        """
+        Weights for time-map pixels: hits where the time is finite and > 0, else 0.
+        """
+        values = np.asarray(arr[x0:x1, y0:y1], dtype=float)
+        valid = np.isfinite(values) & (values > 0)
+        if self.hits is None:
+            return values, valid.astype(float)
+        hits = np.asarray(self.hits[x0:x1, y0:y1], dtype=float)
+        return values, np.where(valid, hits, 0.0)
+
     def _gap_filled_pixel_value(self, arr: ndmap, x: int, y: int) -> float | None:
         """
-        Hits-weighted average of `arr` over a 3x3 window around (x, y), expanding to
-        5x5 if the smaller window has no hit pixels. Returns None if neither window
-        has any valid (hits > 0) neighbor -- a genuine coverage boundary, rather than
-        a narrow scan gap that the matched filter already smooths over for flux/SNR
-        but that the (unfiltered) time map still shows as a hard zero.
+        Weighted mean of valid times in a 3x3 window around (x, y), then 5x5.
+        Returns None if no window has a valid time.
         """
-        dim0, dim1 = self.hits.shape[-2:]
+        dim0, dim1 = arr.shape[-2:]
         for radius in (1, 2):
             x0, x1 = max(0, x - radius), min(dim0, x + radius + 1)
             y0, y1 = max(0, y - radius), min(dim1, y + radius + 1)
-            hit_window = self.hits[x0:x1, y0:y1]
-            weight_sum = hit_window.sum()
+            values, weights = self._time_weights(arr, x0, x1, y0, y1)
+            weight_sum = weights.sum()
             if weight_sum > 0:
-                value_window = arr[x0:x1, y0:y1]
-                return float((value_window * hit_window).sum() / weight_sum)
+                values = np.where(weights > 0, values, 0.0)
+                return float((values * weights).sum() / weight_sum)
         return None
 
     def _resolve_pixel_time(
         self, arr: ndmap | None, x: int, y: int, fallback: Time
     ) -> Time | None:
         """
-        Time for pixel (x, y) in time-map `arr`. A pixel with zero hits was never
-        accumulated into by the mapmaker, so its entry is left at a fill value of 0
-        -- a valid-looking unix timestamp (1970-01-01) rather than a missing one --
-        so this falls back to a local hits-weighted neighbor average (see
-        `_gap_filled_pixel_value`) instead of trusting it directly. Returns
-        `fallback` if there's no time map at all, or None if the pixel has no
-        valid time even after gap-filling.
+        Time for pixel (x, y) in time map `arr`.
+        A time of 0 or non-finite, or zero hits, is a missing time; fill it from
+        the neighbours. Returns `fallback` if `arr` is None, or None if no fill.
         """
         if arr is None:
             return fallback
 
-        has_hits = self.hits is not None and self.hits[x, y] > 0
+        _, weight = self._time_weights(arr, x, x + 1, y, y + 1)
         value = (
-            float(arr[x, y]) if has_hits else self._gap_filled_pixel_value(arr, x, y)
+            float(arr[x, y])
+            if weight[0, 0] > 0
+            else self._gap_filled_pixel_value(arr, x, y)
         )
         return Time(value, format="unix") if value is not None else None
+
     @property
     def map_type(self) -> MapCatMapType:
         """Return "depth1_map" or "coadd", as in mapcat."""
