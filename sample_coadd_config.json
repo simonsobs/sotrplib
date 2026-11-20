@@ -1,0 +1,68 @@
+{
+  "instrument": "SOLAT",
+  "maps": {
+    "map_generator_type": "mapcat_database",
+    "map_type": "intensity",
+    "frequency": "f090",
+    "array": null,
+    "instrument": "SOLAT",
+    "start_time": "2025-09-04T00:00:00Z",
+    "end_time": "2025-09-11T00:00:00Z",
+    "rerun": false,
+    "time_binning": "left-bound"
+  },
+  "preprocessors": [
+    {
+      "preprocessor_type": "planet_mask",
+      "mask_radius": "15 arcmin"
+    },
+    {
+      "preprocessor_type": "asteroid_mask",
+      "use_socat": true,
+      "mask_radius": "10 arcmin"
+    },
+    {
+      "preprocessor_type": "matched_filter",
+      "band_height": "1 deg",
+      "shrink_holes": "5 arcmin",
+      "noisemask_lim": 0.1,
+      "noisemask_radius": "10 arcmin",
+      "apod_holes": "10 arcmin",
+      "beam1d": "/path/to/beam1d_f090.txt"
+    },
+    {
+      "preprocessor_type": "kappa_rho"
+    },
+    {
+      "preprocessor_type": "edge_mask",
+      "mask_on": "kappa",
+      "edge_width": "10.0 arcmin"
+    }
+  ],
+  "map_coadder": {
+    "coadd_type": "rhokappa",
+    "frequencies": [
+      "f090"
+    ],
+    "instrument": "SOLAT"
+  },
+  "map_outputs": [
+    {
+      "output_type": "maps",
+      "directory": "/path/to/coadds/20250904",
+      "fields": [
+        "rho",
+        "kappa",
+        "flux",
+        "snr",
+        "hits",
+        "time_mean"
+      ]
+    }
+  ],
+  "mapcat_registration": {
+    "coadd_name": "week00_f090",
+    "coadd_type": "depth1_streaming_coadd",
+    "enabled": true
+  }
+}

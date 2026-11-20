@@ -18,13 +18,34 @@ P.add_argument(
     help="Directory where the slurm job scripts live. ",
 )
 
+P.add_argument(
+    "--stagger-minutes",
+    action="store",
+    default=0.0,
+    type=float,
+    help="Delay the earliest start of job i by i * stagger-minutes (sbatch --begin), "
+    "so that jobs that write to the same database do not all start together. 0: no delay.",
+)
+
+P.add_argument(
+    "--skip",
+    action="store",
+    nargs="+",
+    default=[],
+    help="Do not submit the slurm scripts whose file name contains one of these strings.",
+)
+
 args = P.parse_args()
 
 
-slurm_files = glob(args.dir + "*.slurm")
+slurm_files = sorted(
+    f for f in glob(args.dir + "*.slurm") if not any(s in f for s in args.skip)
+)
 
 sleeptime = 0.1
-j0 = 0
 for i in tqdm(range(len(slurm_files)), desc="Submitting slurm jobs"):
-    sp.run(["sbatch", slurm_files[i]])
+    cmd = ["sbatch"]
+    if args.stagger_minutes > 0:
+        cmd.append(f"--begin=now+{round(i * args.stagger_minutes * 60)}")
+    sp.run(cmd + [slurm_files[i]])
     time.sleep(sleeptime)

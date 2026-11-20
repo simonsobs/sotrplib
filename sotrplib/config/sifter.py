@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.sifter.core import (
+    DEFAULT_SIFTER_CUTS,
     DefaultSifter,
     EmptySifter,
     SiftingProvider,
@@ -45,10 +46,15 @@ class SimpleCatalogSifterConfig(SifterConfig):
 class DefaultSifterConfig(SifterConfig):
     sifter_type: Literal["default"] = "default"
     min_match_radius: AstroPydanticQuantity[u.arcmin] = 1.5 * u.arcmin
+    cuts: dict[str, list[float]] | None = None
+    'Cuts to change, {name: [min, max]}, for example {"snr": [3.0, inf]}. '
+    "The other cuts keep their values in DEFAULT_SIFTER_CUTS. A candidate "
+    "outside a cut becomes a noise candidate."
 
     def to_sifter(self, log: FilteringBoundLogger | None = None) -> SiftingProvider:
         return DefaultSifter(
             min_match_radius=self.min_match_radius,
+            cuts={**DEFAULT_SIFTER_CUTS, **(self.cuts or {})},
             log=log,
         )
 

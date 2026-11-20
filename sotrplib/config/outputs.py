@@ -8,6 +8,7 @@ from structlog.types import FilteringBoundLogger
 
 from sotrplib.outputs.core import (
     CutoutImageOutput,
+    JSONMapMatchOutput,
     JSONSerializer,
     MapOutputSerializer,
     PickleSerializer,
@@ -15,6 +16,7 @@ from sotrplib.outputs.core import (
 )
 from sotrplib.outputs.lightcurvedb import LightcurveDBOutput
 from sotrplib.outputs.lightserve import LightServeOutput
+from sotrplib.outputs.parquet import ParquetOutput
 
 
 class OutputConfig(BaseModel, ABC):
@@ -81,11 +83,53 @@ class LightcurveDBOutputConfig(OutputConfig):
     "Over-ride individual settings from the LightcurveDB environment variable setup."
     upsert_sources: bool = False
     "Upsert sources to LightcurveDB before outputting flux measuurements. Data is taken from the crossmatches."
+    create_instruments: bool = True
+    "Create the LightcurveDB instrument (band, tube) of a measurement if it is not registered."
+    telescope: str = "lat"
+    "The telescope of the instruments that the output creates."
+    instrument: str = "latr"
+    "The instrument name of the instruments that the output creates."
 
     def to_output(self, log: FilteringBoundLogger | None = None) -> SourceOutput:
         settings = LightcurveDBSettings(**(self.override_settings or {}))
         return LightcurveDBOutput(
-            settings=settings, upsert_sources=self.upsert_sources, log=log
+            settings=settings,
+            upsert_sources=self.upsert_sources,
+            create_instruments=self.create_instruments,
+            telescope=self.telescope,
+            instrument=self.instrument,
+            log=log,
+        )
+
+
+class ParquetOutputConfig(OutputConfig):
+    output_type: Literal["parquet"] = "parquet"
+    directory: Path
+    output_source_candidates: bool = True
+    output_transient_candidates: bool = True
+    output_noise_candidates: bool = False
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> ParquetOutput:
+        return ParquetOutput(
+            directory=self.directory,
+            output_source_candidates=self.output_source_candidates,
+            output_transient_candidates=self.output_transient_candidates,
+            output_noise_candidates=self.output_noise_candidates,
+            log=log,
+        )
+
+
+class JSONMapMatchOutputConfig(OutputConfig):
+    output_type: Literal["json"] = "json"
+    directory: Path
+    include_all_groups: bool = False
+    "If False, list only the notable groups. The file counts the other groups."
+
+    def to_output(self, log: FilteringBoundLogger | None = None) -> JSONMapMatchOutput:
+        return JSONMapMatchOutput(
+            directory=self.directory,
+            include_all_groups=self.include_all_groups,
+            log=log,
         )
 
 
@@ -96,6 +140,7 @@ AllOutputConfigTypes = (
     | CutoutImageOutputConfig
     | LightServeOutputConfig
     | LightcurveDBOutputConfig
+    | ParquetOutputConfig
 )
 
 SourceOutputConfigTypes = (
@@ -104,6 +149,9 @@ SourceOutputConfigTypes = (
     | LightcurveDBOutputConfig
     | LightServeOutputConfig
     | CutoutImageOutputConfig
+    | ParquetOutputConfig
 )
 
 MapOutputConfigTypes = MapOutputConfig
+
+MapMatchOutputConfigTypes = JSONMapMatchOutputConfig

@@ -1,8 +1,11 @@
 Example ACT Pipeline
 ====================
 
-Below, we show an example of the pipeline running on some pre match-filtered
-maps from the Atacama Cosmology Telescope.
+This example uses the `sotrplib` library directly in Python, without the
+`sotrp` command. It runs the pipeline on matched-filtered maps from the
+Atacama Cosmology Telescope. The example makes the library objects and gives
+them to a `PipelineRunner`. The `sotrp` command makes the same objects from a
+JSON config.
 
 ```python
 from astropy import units as u

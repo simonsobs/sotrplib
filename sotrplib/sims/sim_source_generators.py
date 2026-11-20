@@ -7,9 +7,10 @@ the random generation of those sources.
 import random
 from abc import ABC, abstractmethod
 
+import numpy as np
 import uuid7 as uuid
 from astropy import units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import Angle, SkyCoord
 from astropy.time import Time, TimeDelta
 from socat.client.settings import SOCatClientSettings
 from structlog import get_logger
@@ -78,13 +79,42 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
         max_flux: u.Quantity,
         number: int,
         catalog_fraction: float = 1.0,
+        edge_pad: u.Quantity = 0.0 * u.arcmin,
         log: FilteringBoundLogger | None = None,
     ):
         self.min_flux = min_flux.to(u.Jy)
         self.max_flux = max_flux.to(u.Jy)
         self.number = number
         self.catalog_fraction = catalog_fraction
+        self.edge_pad = edge_pad.to(u.deg)
         self.log = log or get_logger()
+
+    def _pad_sky_box(
+        self, ra_lims: tuple[Angle, Angle], dec_lims: tuple[Angle, Angle]
+    ) -> tuple[tuple[Angle, Angle], tuple[Angle, Angle]]:
+        """
+        Remove edge_pad from each side of the box. The RA pad is
+        edge_pad / cos(|dec|) at the declination nearest a pole, so the pad
+        on the sky is at least edge_pad. If the box covers all RA, do not pad
+        in RA.
+        """
+        dec_lims = (dec_lims[0] + self.edge_pad, dec_lims[1] - self.edge_pad)
+        if dec_lims[0] >= dec_lims[1]:
+            raise ValueError(
+                f"edge_pad={self.edge_pad} is too large for the declination range"
+            )
+        ra_width = Angle(ra_lims[1] - ra_lims[0]).wrap_at(360 * u.deg)
+        if ra_width >= 359 * u.deg:
+            return ra_lims, dec_lims
+        max_abs_dec = max(abs(dec_lims[0]), abs(dec_lims[1]))
+        ra_pad = self.edge_pad / np.cos(max_abs_dec.to_value(u.rad))
+        if 2 * ra_pad >= ra_width:
+            raise ValueError(f"edge_pad={self.edge_pad} is too large for the RA range")
+        ra_lims = (
+            Angle(ra_lims[0] + ra_pad).wrap_at(360 * u.deg),
+            Angle(ra_lims[1] - ra_pad).wrap_at(360 * u.deg),
+        )
+        return ra_lims, dec_lims
 
     def generate(
         self,
@@ -99,15 +129,24 @@ class FixedSourceGenerator(SimulatedSourceGenerator):
             ]
 
         if input_map is not None:
-            positions = generate_random_positions_in_map(self.number, input_map.flux)
+            edge_pad_pixels = int(
+                np.ceil((self.edge_pad / input_map.map_resolution).to_value(u.one))
+            )
+            positions = generate_random_positions_in_map(
+                self.number, input_map.flux, edge_pad_pixels=edge_pad_pixels
+            )
         else:
             # sky_box[0] = (ra_min, dec_min), sky_box[1] = (ra_max, dec_max).
             # When the box wraps RA=0, sky_box[0].ra > sky_box[1].ra (e.g. 357° vs 3°);
             # generate_random_positions handles that by converting to negative RA.
+            ra_lims = (sky_box[0].ra, sky_box[1].ra)
+            dec_lims = (sky_box[0].dec, sky_box[1].dec)
+            if self.edge_pad > 0 * u.deg:
+                ra_lims, dec_lims = self._pad_sky_box(ra_lims, dec_lims)
             positions = generate_random_positions(
                 self.number,
-                ra_lims=(sky_box[0].ra, sky_box[1].ra),
-                dec_lims=(sky_box[0].dec, sky_box[1].dec),
+                ra_lims=ra_lims,
+                dec_lims=dec_lims,
             )
 
         log = self.log.bind(sky_box=sky_box)

@@ -1,6 +1,13 @@
 # Installing SOTRPLib
 
-SOTRPLib is a python package that provides executables.
+SOTRPLib is a Python package. When you install it, you get:
+
+- the `sotrplib` library, which you can import in Python;
+- the `sotrp` and `sotrp-coadd` commands, which use the library to run
+  pipelines from a JSON config.
+
+The `scripts/` directory is not installed. To use a script, run it from a
+checkout of the repository. See [Overview](overview.md).
 
 ## Development requirements
 

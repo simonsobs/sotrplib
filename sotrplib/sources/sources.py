@@ -7,7 +7,7 @@ from astropy import units as u
 from astropydantic import AstroPydanticQuantity, AstroPydanticTime, AstroPydanticUnit
 from numpydantic import NDArray
 from pixell import reproject
-from pydantic import BaseModel, PrivateAttr
+from pydantic import UUID7, BaseModel, Field, PrivateAttr
 from structlog.types import FilteringBoundLogger
 
 from sotrplib.maps.core import ProcessableMap
@@ -35,7 +35,7 @@ class CrossMatch(BaseModel):
     ra: AstroPydanticQuantity[u.deg] | None = None
     dec: AstroPydanticQuantity[u.deg] | None = None
     observation_time: AstroPydanticTime | None = None
-    source_id: str | uuid.UUID
+    source_id: str | UUID7
     source_type: str | None = None
     probability: float | None = None
     angular_separation: AstroPydanticQuantity[u.deg] | None = None
@@ -43,7 +43,7 @@ class CrossMatch(BaseModel):
     err_flux: AstroPydanticQuantity[u.mJy] | None = None
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     catalog_name: str | None = None
-    catalog_idx: int | str | uuid.UUID | None = None
+    catalog_idx: int | str | UUID7 | None = None
     alternate_names: list[str] | None = None
 
 
@@ -57,7 +57,7 @@ class RegisteredSource(BaseSource):
     Extendedness and positional uncertainty is stored if available.
     """
 
-    source_id: str | uuid.UUID | None = None
+    source_id: str | UUID7 | None = None
     source_type: (
         Literal["extragalactic", "star", "sso", "simulated", "unknown"] | None
     ) = None
@@ -123,10 +123,29 @@ class MeasuredSource(RegisteredSource):
     err_fwhm_dec: AstroPydanticQuantity[u.deg] | None = None
 
     measurement_type: Literal["forced", "blind", "simulated"] = "forced"
-    measurement_id: str | None = None
+    measurement_id: UUID7 = Field(
+        default_factory=uuid.create,
+        description="Unique identifier for this measurement",
+    )
     frequency: AstroPydanticQuantity[u.GHz] | None = None
     instrument: str | None = None
     array: str | None = None
+
+    map_id: UUID7 | None = None
+    "mapcat identifier of the map that gave this measurement (the map_id of "
+    "a depth-1 map or the coadd_id of a coadd). None if the map is not in mapcat."
+    map_name: str | None = None
+    "Label of the map that gave this measurement (ProcessableMap.map_name)."
+
+    group_id: UUID7 | None = None
+    "The map matcher's group of this detection. The detections of the same "
+    "event in the other maps of the run have the same group_id. Set for the "
+    "transient candidates of confirmed groups and for the noise candidates "
+    "of groups that are not confirmed. None if the map matcher did not group "
+    "this detection."
+    group_rank: int | None = None
+    "Rank of the group in the run. 1 is the most significant group. The "
+    "confirmed groups rank first."
 
     fit_method: Literal[
         "lmfit_2d_gaussian",
@@ -141,13 +160,30 @@ class MeasuredSource(RegisteredSource):
     thumbnail: NDArray | None = None
     thumbnail_res: AstroPydanticQuantity[u.arcmin] | None = None
     thumbnail_unit: AstroPydanticUnit | None = None
+    thumbnail_source_pixel: tuple[float, float] | None = None
+    "The (y, x) pixel of the source position in the thumbnail. It could be "
+    "a fraction of a pixel. "
+    "None if the source is at the middle of the thumbnail."
 
     _log: FilteringBoundLogger = PrivateAttr(default_factory=structlog.get_logger)
+
+    def set_map(self, input_map: ProcessableMap) -> "MeasuredSource":
+        """
+        Record the map that gave this measurement: set map_id and map_name.
+        Returns the source.
+        """
+        self.map_id = input_map.mapcat_id
+        try:
+            self.map_name = input_map.map_name
+        except (AttributeError, TypeError):
+            # map_name needs the observation start time.
+            self.map_name = None
+        return self
 
     def extract_thumbnail(
         self,
         input_map: ProcessableMap,
-        thumb_width: u.Quantity = 0.1 * u.deg,
+        thumb_width: u.Quantity = 10.0 * u.arcmin,
         reproject_thumb=False,
     ):
         """
@@ -160,6 +196,7 @@ class MeasuredSource(RegisteredSource):
                 r=thumb_width.to(u.rad).value,
                 res=input_map.map_resolution.to(u.rad).value,
             )
+            self.thumbnail_source_pixel = None
         else:
             thumb = input_map.flux.submap(
                 [
@@ -172,6 +209,15 @@ class MeasuredSource(RegisteredSource):
                         self.ra.to(u.rad).value + thumb_width.to(u.rad).value,
                     ],
                 ],
+            )
+            # A submap keeps whole map pixels, so the source is not always at
+            # the middle of the thumbnail.
+            source_pixel = thumb.sky2pix(
+                [self.dec.to(u.rad).value, self.ra.to(u.rad).value]
+            )
+            self.thumbnail_source_pixel = (
+                float(source_pixel[0]),
+                float(source_pixel[1]),
             )
 
         self.thumbnail_res = (

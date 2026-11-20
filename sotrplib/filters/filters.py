@@ -270,7 +270,7 @@ def matched_filter_depth1_map(
         beam = np.exp(-0.5 * uht.l**2 * bsigma**2)
         beam_response = None
     else:
-        raise "Need one of beam1d or beam_fwhm"
+        raise ValueError("Need one of beam1d or beam_fwhm")
 
     ## convert map in T_cmb to mJy/sr
     imap *= fconv

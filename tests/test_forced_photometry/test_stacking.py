@@ -13,7 +13,7 @@ def test_stacker(database_sessionmaker, create_test_maps):
         session.add_all(d1tables)
         session.commit()
 
-    update_sky_coverage.core(session=database_sessionmaker, convention="standard")
+    update_sky_coverage.core(session=database_sessionmaker)
 
     end_time = Time("2025-01-10T00:00:00", scale="utc")
     start_time = end_time - TimeDelta(11, format="jd")

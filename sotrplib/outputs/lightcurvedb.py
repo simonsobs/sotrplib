@@ -7,11 +7,15 @@ from datetime import timezone
 from uuid import UUID
 
 import uuid7
-from astropy.time import Time
+from astropy.time import Time, TimezoneInfo
 from lightcurvedb.config import Settings as LightcurveDBSettings
 from lightcurvedb.models.cutout import Cutout
-from lightcurvedb.models.exceptions import SourceNotFoundException
+from lightcurvedb.models.exceptions import (
+    InstrumentNotFoundException,
+    SourceNotFoundException,
+)
 from lightcurvedb.models.flux import FluxMeasurement
+from lightcurvedb.models.instrument import Instrument
 from lightcurvedb.models.source import Source
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
@@ -21,6 +25,17 @@ from sotrplib.sims.sim_sources import SimulatedSource
 from sotrplib.sources.sources import MeasuredSource
 
 from .core import SourceOutput
+
+UTC = TimezoneInfo(tzname="utc")
+
+
+def lightcurvedb_ra(ra_deg: float) -> float:
+    """
+    Return the RA in the lightcurvedb range [-180, 180) degrees. The
+    lightcurvedb tables reject an RA that is not in this range, and sotrplib
+    gives RA in [0, 360).
+    """
+    return (ra_deg + 180.0) % 360.0 - 180.0
 
 
 class LightcurveDBOutput(SourceOutput):
@@ -34,10 +49,16 @@ class LightcurveDBOutput(SourceOutput):
         self,
         settings: LightcurveDBSettings,
         upsert_sources: bool = False,
+        create_instruments: bool = True,
+        telescope: str = "lat",
+        instrument: str = "latr",
         log: FilteringBoundLogger | None = None,
     ):
         self.settings = settings
         self.upsert_sources = upsert_sources
+        self.create_instruments = create_instruments
+        self.telescope = telescope
+        self.instrument = instrument
         self.log = log or get_logger()
 
     async def _lookup_or_create_source_id(
@@ -65,7 +86,7 @@ class LightcurveDBOutput(SourceOutput):
                 source=Source(
                     socat_id=socat_id,
                     name=name,
-                    ra=ra,
+                    ra=lightcurvedb_ra(ra),
                     dec=dec,
                     variable=False,
                     extra=None,
@@ -117,7 +138,8 @@ class LightcurveDBOutput(SourceOutput):
         input_measurement: MeasuredSource,
         socat_to_internal: dict[UUID, UUID],
         map_time: Time | None = None,
-        map_id: str | None = None,
+        map_name: str | None = None,
+        mapcat_id: uuid7.UUID | None = None,
     ) -> tuple[FluxMeasurement, Cutout] | None:
         if not input_measurement.crossmatches:
             self.log.warning(
@@ -138,13 +160,26 @@ class LightcurveDBOutput(SourceOutput):
             )
             return None
 
+        if input_measurement.frequency is None or input_measurement.array is None:
+            self.log.warning(
+                "lightcurvedb.output.skipping_source_no_frequency_or_array",
+                frequency=input_measurement.frequency,
+                array=input_measurement.array,
+                ra=input_measurement.ra.to_value("deg"),
+                dec=input_measurement.dec.to_value("deg"),
+            )
+            return None
+
+        frequency = int(input_measurement.frequency.to_value("GHz"))
+        module = input_measurement.array
+
         fm = FluxMeasurement(
-            measurement_id=uuid7.create(),
-            frequency=90,
-            module="i1",
+            measurement_id=input_measurement.measurement_id,
+            frequency=frequency,
+            module=module,
             source_id=source_id,
             time=(
-                input_measurement.observation_mean_time.to_datetime()
+                input_measurement.observation_mean_time.to_datetime(timezone=UTC)
                 if input_measurement.observation_mean_time is not None
                 else (
                     map_time.to_datetime(timezone=timezone.utc)
@@ -152,7 +187,7 @@ class LightcurveDBOutput(SourceOutput):
                     else None
                 )
             ),
-            ra=input_measurement.ra.to_value("deg"),
+            ra=lightcurvedb_ra(input_measurement.ra.to_value("deg")),
             dec=input_measurement.dec.to_value("deg"),
             ra_uncertainty=(
                 input_measurement.err_ra.to_value("deg")
@@ -177,8 +212,8 @@ class LightcurveDBOutput(SourceOutput):
             extra={
                 "map_id": (
                     input_measurement.map_id
-                    if hasattr(input_measurement, "map_id")
-                    else map_id
+                    if input_measurement.map_id is not None
+                    else mapcat_id
                 ),
             },
         )
@@ -187,7 +222,7 @@ class LightcurveDBOutput(SourceOutput):
             Cutout(
                 data=input_measurement.thumbnail.tolist(),
                 time=(
-                    input_measurement.observation_mean_time.to_datetime()
+                    input_measurement.observation_mean_time.to_datetime(timezone=UTC)
                     if input_measurement.observation_mean_time is not None
                     else (
                         map_time.to_datetime(timezone=timezone.utc)
@@ -200,8 +235,8 @@ class LightcurveDBOutput(SourceOutput):
                     if input_measurement.flux is not None
                     else "Jy"
                 ),
-                frequency=90,
-                module="i1",
+                frequency=frequency,
+                module=module,
                 source_id=source_id,
             )
             if input_measurement.thumbnail is not None
@@ -215,14 +250,19 @@ class LightcurveDBOutput(SourceOutput):
         sources: list[MeasuredSource],
         socat_to_internal: dict[UUID, UUID],
         map_time: Time | None = None,
-        map_id: str | None = None,
+        map_name: str | None = None,
+        mapcat_id: uuid7.UUID | None = None,
     ) -> tuple[list[FluxMeasurement], list[Cutout]]:
         flux_measurements = []
         cutouts = []
 
         for source in sources:
             result = self._convert_internal_to_lightcurvedb_source(
-                source, socat_to_internal, map_time, map_id=map_id
+                source,
+                socat_to_internal,
+                map_time,
+                map_name=map_name,
+                mapcat_id=mapcat_id,
             )
             if result is not None:
                 fm, cutout = result
@@ -231,12 +271,43 @@ class LightcurveDBOutput(SourceOutput):
 
         return flux_measurements, cutouts
 
+    async def _create_missing_instruments(
+        self, backend, flux_measurements: list[FluxMeasurement]
+    ) -> None:
+        """
+        Create the lightcurvedb instruments (frequency, module) of the
+        measurements that are not in the instruments table. Each flux row
+        must refer to a registered instrument.
+        """
+        for frequency, module in sorted(
+            {(fm.frequency, fm.module) for fm in flux_measurements}
+        ):
+            try:
+                await backend.instruments.get(frequency=frequency, module=module)
+            except InstrumentNotFoundException:
+                await backend.instruments.create(
+                    Instrument(
+                        frequency=frequency,
+                        module=module,
+                        telescope=self.telescope,
+                        instrument=self.instrument,
+                        details={"created_by": "sotrplib"},
+                    )
+                )
+                await self.log.ainfo(
+                    "lightcurvedb.output.created_instrument",
+                    frequency=frequency,
+                    module=module,
+                )
+
     async def _upload_sources(
         self,
         flux_measurements: list[FluxMeasurement],
         cutouts: list[Cutout],
     ) -> int:
         async with self.settings.backend as backend:
+            if self.create_instruments:
+                await self._create_missing_instruments(backend, flux_measurements)
             # create_batch() doesn't return the created IDs (neither the
             # postgres nor the parquet backend implementation does, despite
             # _upload_sources previously assuming otherwise) -- use each
@@ -259,7 +330,8 @@ class LightcurveDBOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         map_time: Time | None = None,
-        map_id: str | None = None,
+        map_name: str | None = None,
+        mapcat_id: uuid7.UUID | None = None,
     ):
         socat_to_internal = await self._extract_and_upsert_sources(
             forced_photometry_candidates=forced_photometry_candidates
@@ -268,7 +340,8 @@ class LightcurveDBOutput(SourceOutput):
             sources=forced_photometry_candidates,
             socat_to_internal=socat_to_internal,
             map_time=map_time,
-            map_id=map_id,
+            map_name=map_name,
+            mapcat_id=mapcat_id,
         )
         return await self._upload_sources(
             flux_measurements=flux_measurements, cutouts=cutouts
@@ -278,7 +351,8 @@ class LightcurveDBOutput(SourceOutput):
         self,
         forced_photometry_candidates: list[MeasuredSource],
         sifter_result: SifterResult,
-        map_id: str,
+        map_name: str,
+        mapcat_id: uuid7.UUID | None = None,
         pointing_sources: list[MeasuredSource] = [],  # for compatibility
         injected_sources: list[SimulatedSource] = [],  # for compatibility
     ):
@@ -287,7 +361,8 @@ class LightcurveDBOutput(SourceOutput):
         successful_uploads = asyncio.run(
             self._flux_upload_flow(
                 forced_photometry_candidates,
-                map_id=map_id,
+                map_name=map_name,
+                mapcat_id=mapcat_id,
             )
         )
 

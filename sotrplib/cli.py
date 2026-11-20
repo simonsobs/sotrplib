@@ -3,9 +3,11 @@ Command-line interface for sotrplib.
 """
 
 import logging
+import random
 from argparse import ArgumentParser
 from pathlib import Path
 
+import numpy as np
 import structlog
 
 from sotrplib.config.config import Settings
@@ -45,6 +47,12 @@ def main():
         wrapper_class=structlog.make_filtering_bound_logger(config.log_level),
     )
     log = structlog.get_logger()
+
+    if config.seed is not None:
+        # Simulations use both the random and numpy.random generators.
+        random.seed(config.seed)
+        np.random.seed(config.seed)
+        log.info("sotrp.random_seed_set", seed=config.seed)
 
     maps = None
     if isinstance(config.maps, MapGeneratorConfig):
