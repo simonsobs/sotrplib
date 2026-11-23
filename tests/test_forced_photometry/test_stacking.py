@@ -3,7 +3,17 @@ from astropy.time import Time, TimeDelta
 from mapcat.toolkit import update_sky_coverage
 
 from sotrplib.maps.database import FluxMapReader, RhoKappaMapReader
-from sotrplib.sources.stacking import Stacker
+from sotrplib.sources.stacking import InverseVarianceStacking, Stacker
+
+
+def check_stacked_peaks(stacked):
+    """Each test source has unit flux, so each stack should peak near 1."""
+    assert len(stacked) == 3
+    for per_source in stacked:
+        assert len(per_source) == 1, "every stamp of a source was dropped"
+        (stack,) = per_source
+        assert np.all(stack.ivar > 0)
+        assert 0.95 <= np.amax(stack.flux) <= 1.1
 
 
 def test_stacker(database_sessionmaker, create_test_maps):
@@ -29,13 +39,7 @@ def test_stacker(database_sessionmaker, create_test_maps):
     )
 
     stacker = Stacker(reader=db_reader)
-    Stamps = stacker.stamp(sources)
-    for i in range(3):
-        simple_stack = np.sum(
-            Stamps[i].flux_stamps / np.square(Stamps[i].ivar_stamps), axis=0
-        ) / np.sum(1 / np.square(Stamps[i].ivar_stamps), axis=0)
-        assert np.amax(simple_stack) <= 1.1
-        assert np.amax(simple_stack) >= 0.95
+    check_stacked_peaks(stacker.stack(sources, InverseVarianceStacking()))
 
     db_reader = FluxMapReader(
         number_to_read=None,
@@ -48,14 +52,9 @@ def test_stacker(database_sessionmaker, create_test_maps):
     )
 
     stacker = Stacker(reader=db_reader)
-    Stamps = stacker.stamp(sources)
-    for i in range(3):
-        simple_stack = np.sum(
-            Stamps[i].flux_stamps / np.square(Stamps[i].ivar_stamps), axis=0
-        ) / np.sum(1 / np.square(Stamps[i].ivar_stamps), axis=0)
-        assert np.amax(simple_stack) <= 1.1
-        assert np.amax(simple_stack) >= 0.95
+    check_stacked_peaks(stacker.stack(sources, InverseVarianceStacking()))
 
+    Stamps = stacker.stamps
     for i in range(10):
         assert np.isclose(
             Stamps[0].times[i] - start_time.unix,
