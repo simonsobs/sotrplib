@@ -6,6 +6,7 @@ from astropydantic import AstroPydanticQuantity
 from numpydantic import NDArray
 from photutils import segmentation as pseg
 from pixell.enmap import ndmap
+from scipy.spatial import cKDTree
 from structlog import get_logger
 from structlog.types import FilteringBoundLogger
 
@@ -75,6 +76,23 @@ def get_source_observation_time(
         extracted_sources[f]["observation_end_time"] = t_end
 
     return extracted_sources
+
+
+def select_isolated_peaks(
+    x: np.ndarray, y: np.ndarray, radius: np.ndarray
+) -> np.ndarray:
+    """
+    Return a boolean mask of the peaks to keep. The peaks are in priority
+    order. Peak j is kept if no kept peak before it is within radius[j]
+    pixels.
+    """
+    xy = np.column_stack([x, y])
+    neighbours = cKDTree(xy).query_ball_point(xy, r=radius)
+    keep = np.zeros(len(xy), dtype=bool)
+    for j, nb in enumerate(neighbours):
+        # Peaks after j are not kept yet, so only earlier peaks count.
+        keep[j] = not keep[nb].any()
+    return keep
 
 
 def extract_sources(
@@ -162,20 +180,14 @@ def extract_sources(
     else:
         minrad_pix_all = np.full(npeaks, minrad_pix[0])
 
-    output_struct = {}
-    for j in range(npeaks):
-        if output_struct:
-            prev_x = np.array([src["xpeak"] for src in output_struct.values()])
-            prev_y = np.array([src["ypeak"] for src in output_struct.values()])
-            distpix = np.sqrt(
-                (prev_x - peaks["xcen"][j]) ** 2 + (prev_y - peaks["ycen"][j]) ** 2
-            )
-            close_idx = np.where(distpix <= minrad_pix_all[j])[0]
-            if len(close_idx) > 0:
-                # npeaks sorted by snr.
-                # if it's already associated with a source, skip it
-                continue
+    keep = select_isolated_peaks(
+        np.asarray(peaks["xcen"], dtype=float),
+        np.asarray(peaks["ycen"], dtype=float),
+        minrad_pix_all,
+    )
 
+    output_struct = {}
+    for j in np.flatnonzero(keep):
         k = len(output_struct)
         output_struct[k] = {
             "xpeak": peaks["xcen"][j],
